@@ -1,0 +1,50 @@
+{
+  "api_version": "guild-skill-v1",
+  "key": {
+    "namespace": "example",
+    "name": "hello-inspect"
+  },
+  "version": "0.1.0",
+  "display_name": "Hello Inspect",
+  "description": "A tiny inspect-only example skill.",
+  "runtime": {
+    "kind": "wasm-component",
+    "entrypoint": "guild-skill",
+    "abi": "guild-skill-v1"
+  },
+  "interface": {
+    "input_schema_uri": "guild://examples/hello-inspect/input-schema",
+    "output_schema_uri": "guild://examples/hello-inspect/output-schema",
+    "examples_uri": "guild://examples/hello-inspect/examples"
+  },
+  "behavior": {
+    "category": "explain",
+    "mutability": "read-only",
+    "idempotent": true,
+    "open_world": false,
+    "freshness": "deterministic"
+  },
+  "capabilities": [
+    {
+      "id": "log-write",
+      "access": "write",
+      "required": false,
+      "constraints": {}
+    }
+  ],
+  "dependencies": [],
+  "publisher": {
+    "id": "local.example",
+    "display_name": "Local Example",
+    "homepage": null
+  },
+  "package": {
+    "visibility": "private",
+    "trust_tier": "local",
+    "artifact_uri": "oci://example.invalid/guild/hello-inspect:0.1.0",
+    "artifact_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "sbom_uri": null,
+    "signature_uri": null
+  },
+  "tests": []
+}

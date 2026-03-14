@@ -1,0 +1,10 @@
+[package]
+name = "guild-runner"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+guild-manifest = { path = "../guild-manifest" }
+guild-types = { path = "../guild-types" }
+serde.workspace = true
+schemars.workspace = true

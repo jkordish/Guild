@@ -1,0 +1,4 @@
+[package]
+name = "guild-mcp"
+version.workspace = true
+edition.workspace = true

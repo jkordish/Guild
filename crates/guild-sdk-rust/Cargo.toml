@@ -1,0 +1,9 @@
+[package]
+name = "guild-sdk-rust"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+guild-manifest = { path = "../guild-manifest" }
+guild-types = { path = "../guild-types" }
+serde_json.workspace = true

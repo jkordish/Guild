@@ -1,0 +1,10 @@
+[package]
+name = "guild-manifest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+guild-types = { path = "../guild-types" }
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true

@@ -1,0 +1,95 @@
+package guild:skill@1.0.0
+
+interface types {
+  type json = string
+
+  enum execution-mode {
+    inspect,
+    plan,
+    apply,
+  }
+
+  enum mutability {
+    read-only,
+    additive,
+    destructive,
+  }
+
+  record budget {
+    max-millis: u64,
+    max-memory-bytes: u64,
+    max-output-bytes: u64,
+    max-network-requests: u32,
+    max-child-executions: u16,
+  }
+
+  record execution-context {
+    execution-id: string,
+    trace-id: string,
+    tenant-id: string,
+    mode: execution-mode,
+    input-sha256: string,
+    now-utc: option<string>,
+    budget: budget,
+  }
+
+  record diagnostic {
+    severity: string,
+    code: string,
+    message: string,
+    retryable: bool,
+    detail: option<json>,
+  }
+
+  record effect {
+    kind: mutability,
+    target: string,
+    summary: string,
+  }
+
+  record evidence-ref {
+    uri: string,
+    mime-type: option<string>,
+    sha256: option<string>,
+    title: option<string>,
+  }
+
+  record execution-result {
+    summary: string,
+    structured: json,
+    diagnostics: list<diagnostic>,
+    effects: list<effect>,
+    evidence: list<evidence-ref>,
+  }
+
+  record skill-error {
+    code: string,
+    message: string,
+    retryable: bool,
+    detail: option<json>,
+  }
+}
+
+interface host {
+  use types.{execution-result, json}
+
+  log: func(level: string, message: string)
+  read-resource: func(uri: string) -> result<list<u8>, string>
+  cache-get: func(key: string) -> option<json>
+  cache-put: func(key: string, value: json, ttl-seconds: u32)
+  invoke-skill: func(skill-ref: string, input: json) -> result<execution-result, string>
+  http-request: func(request: json) -> result<json, string>
+  get-secret: func(handle: string) -> result<list<u8>, string>
+  emit-evidence: func(item: json)
+}
+
+interface skill {
+  use types.{execution-context, execution-result, json, skill-error}
+
+  run: func(ctx: execution-context, input: json) -> result<execution-result, skill-error>
+}
+
+world guild-skill {
+  import host
+  export skill
+}
