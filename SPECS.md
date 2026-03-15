@@ -28,7 +28,9 @@ A Guild-conformant system MUST turn a user or system request for a skill into a 
 4. persist what happened as durable host-owned records
 5. permit later inspection and explanation grounded in those records
 
-The central claim of Guild is simple: AI skills should be treated like real software units with identity, runtime constraints, receipts, and evidence, not as informal prompt-era behavior.
+This is the central claim of Guild:
+
+AI skills should be treated like real software units with identity, runtime constraints, receipts, and evidence, not as informal prompt-era behavior.
 
 ## 3. Non-Goals
 
@@ -71,7 +73,7 @@ An immutable reference identifying the exact executable artifact selected for ex
 
 ### 5.6 Executable artifact
 
-A packaged installed skill payload suitable for constrained execution.
+A packaged skill payload suitable for sandboxed execution.
 
 ### 5.7 ExecutionRecord
 
@@ -158,11 +160,11 @@ Execution MUST record the resolved identity that actually ran.
 
 ### 9.5 Mutable aliases
 
-Implementations MAY support aliases such as channels, approvals, or environment-specific selectors, but execution MUST still bind to a concrete immutable resolved artifact.
+Implementations MAY support aliases such as stable, approved, or channel-like selectors, but execution MUST still bind to a concrete immutable resolved artifact.
 
 ### 9.6 Resolution visibility
 
-The resolved identity SHOULD remain inspectable after execution.
+The resolved identity SHOULD be inspectable after execution.
 
 ## 10. Artifact Packaging and Lifecycle
 
@@ -180,7 +182,7 @@ Guild SHOULD support importing bundles into a fresh Guild root while preserving 
 
 ### 10.4 Integrity verification
 
-Imported artifacts MUST be integrity-verifiable. Verification failure MUST prevent installation or execution.
+Imported artifacts MUST be integrity-verifiable. Verification failure MUST prevent execution.
 
 ### 10.5 Host authority on import
 
@@ -222,14 +224,14 @@ The host MUST grant only the capabilities required for the execution.
 
 Implementations MAY define capability families such as:
 
+- `inspect`
+- `explain`
 - `read-resource`
-- `invoke-skill`
-- `emit-evidence`
-- `log-write`
-- `http-request`
-- `get-secret`
+- `write-evidence`
+- `invoke-child`
+- `policy-introspect`
 
-If supported, those capabilities MUST be enforced by the host.
+If supported, these MUST be enforced by the host.
 
 ### 12.4 Denied capability use
 
@@ -248,13 +250,13 @@ The current repository enforces typed constraints for:
 - `emit-evidence`: `max_bytes`, `audiences`, `redactions`
 - `log-write`: `levels`
 
-Unknown fields, wrong-family constraint shapes, and empty scoped lists are validation errors.
+Those are the currently implemented product names in the Rust and WIT surface. Unknown fields, wrong-family constraint shapes, and empty scoped lists are validation errors.
 
 ## 13. Execution Semantics
 
 ### 13.1 Execution attempt
 
-Every top-level invocation MUST create a host-recognized execution attempt once a resolved skill has been selected.
+Every top-level invocation MUST create a host-recognized execution attempt.
 
 ### 13.2 Outcome classes
 
@@ -266,7 +268,7 @@ Every execution attempt MUST terminate as one of at least:
 
 ### 13.3 Persistence
 
-Those outcomes MUST be durably representable as `ExecutionRecord` resources.
+These outcomes MUST be durably representable as `ExecutionRecord` resources.
 
 ### 13.4 Host-issued receipt
 
@@ -278,7 +280,7 @@ If composite skills are supported, child skill calls MUST create child execution
 
 ### 13.6 Rejection semantics
 
-Policy rejection MUST be representable as a durable terminal outcome, not as a silent short circuit.
+Policy rejection MUST be a real observable outcome, not a silent short circuit.
 
 ### 13.7 Mode separation
 
@@ -288,21 +290,19 @@ Policy rejection MUST be representable as a durable terminal outcome, not as a s
 
 The current repository implements `inspect` end to end, defers `plan`, and globally rejects `apply`.
 
-## 14. ExecutionRecord Requirements
+## 14. ExecutionRecord Schema Requirements
 
-A minimally useful `ExecutionRecord` MUST contain enough host-owned data to answer what was requested, what actually ran, how it ended, and what durable artifacts were involved.
-
-At minimum, implementations SHOULD preserve:
+A minimally useful `ExecutionRecord` MUST contain:
 
 - execution identifier
 - requested skill reference
 - resolved skill reference
-- parent execution identifier when applicable
+- parent execution identifier if applicable
 - start timestamp
 - terminal timestamp
 - outcome class
 - status summary or failure classification
-- granted capability slice or a durable reference to it
+- granted capability slice or reference thereto
 - evidence references read or produced
 - policy decision metadata sufficient for audit
 
@@ -334,13 +334,6 @@ Evidence persisted during execution MUST be available for later inspect and expl
 
 Evidence SHOULD preserve provenance or chain-of-custody metadata sufficient for later analysis.
 
-### 15.7 Current repository URI forms
-
-The current repository issues durable local URIs of the form:
-
-- `guild://executions/{execution_id}`
-- `guild://objects/sha256/{digest}`
-
 ## 16. Inspect and Explain
 
 ### 16.1 Supported workload type
@@ -349,7 +342,7 @@ Guild SHOULD support inspect and explain skills as first-class workloads.
 
 ### 16.2 Artifact grounding
 
-Inspect and explain behavior SHOULD be grounded in durable execution and evidence artifacts, not only transient conversational recall.
+Inspect and explain behavior SHOULD be grounded in durable execution and evidence artifacts, not just transient conversational recall.
 
 ### 16.3 Failed and rejected executions
 
@@ -415,7 +408,7 @@ Resource access SHOULD be attributable to execution attempts.
 
 ### 19.3 Auditability
 
-The system SHOULD be able to answer what a given execution read and under which capability grant.
+The system SHOULD be able to answer: what did this execution read, and under which capability grant?
 
 ## 20. Security Properties
 

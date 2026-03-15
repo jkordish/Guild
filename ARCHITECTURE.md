@@ -22,27 +22,26 @@ The architecture is intentionally boring in the good way. You want predictable s
 
 A practical Guild implementation contains the following subsystems:
 
-1. Registry and Resolver
-2. Installer and Bundle Manager
+1. Registry / Resolver
+2. Installer / Bundle Manager
 3. Runtime Host
 4. Execution Store
 5. Evidence Store
 6. Resource Backend
 7. Policy Engine
-8. Inspect and Explain Skill Layer
-9. MCP Facade
+8. Inspect / Explain Skill Layer
 
-### 2.1 Registry and Resolver
+### 2.1 Registry / Resolver
 
 Responsible for mapping `RequestedSkillRef` values to `ResolvedSkillRef` values and locating executable artifacts.
 
-### 2.2 Installer and Bundle Manager
+### 2.2 Installer / Bundle Manager
 
 Responsible for installation, import, export, integrity verification, and local artifact indexing.
 
 ### 2.3 Runtime Host
 
-Responsible for execution orchestration, capability enforcement, host-issued IDs, policy decisions, and runtime-boundary mediation.
+Responsible for execution orchestration, capability enforcement, host-issued IDs, policy decisions, and runtime boundary mediation.
 
 ### 2.4 Execution Store
 
@@ -60,17 +59,13 @@ Responsible for host-mediated reads of persisted or external resources, ideally 
 
 Responsible for authorization decisions against skill refs, executable identities, capability families, and resource access.
 
-### 2.8 Inspect and Explain Skill Layer
+### 2.8 Inspect / Explain Skill Layer
 
 Responsible for reading durable execution and evidence artifacts and producing grounded summaries or explanations.
 
-### 2.9 MCP Facade
+### 2.9 Current repository mapping
 
-Responsible for exposing a small stable tool surface such as `guild.inspect`, `guild.plan`, and `guild.apply`.
-
-## 3. Repository Mapping
-
-The current repository maps the architecture onto a small Rust workspace:
+The current repository maps this architecture onto a small Rust workspace:
 
 - `crates/guild-types`: shared contract types for identities, capabilities, execution, and evidence
 - `crates/guild-manifest`: manifest model for source and installed skill metadata
@@ -81,36 +76,36 @@ The current repository maps the architecture onto a small Rust workspace:
 - `wit/guild-skill-v1.wit`: guest and host ABI contract
 - `examples/skills/`: runnable source skills used to prove the vertical slice
 
-## 4. Logical Data Model
+## 3. Logical Data Model
 
 Guild has four core object classes:
 
-### 4.1 Skill artifact metadata
+### 3.1 Skill artifact metadata
 
-Describes an installed executable artifact, including resolved identity, staged artifact location, dependency snapshot, and compatibility metadata.
+Describes an installed executable artifact, including its resolved identity and compatibility metadata.
 
-### 4.2 ExecutionRecord
+### 3.2 ExecutionRecord
 
 Describes one execution attempt and its outcome.
 
-### 4.3 Evidence object
+### 3.3 Evidence object
 
 Stores durable evidence content plus provenance metadata.
 
-### 4.4 Linkage metadata
+### 3.4 Linkage metadata
 
 Stores relationships such as:
 
-- requested ref to resolved ref
-- parent execution to child execution
-- execution to evidence read
-- execution to evidence produced
+- requested ref -> resolved ref
+- parent execution -> child execution
+- execution -> evidence read
+- execution -> evidence produced
 
-The exact storage schema can evolve. The important part is that these are real host-owned objects, not dead strings scattered through logs.
+The important thing is not the exact schema on day one. The important thing is that these are real objects and not dead strings scattered through logs like confetti after a bad conference keynote.
 
-## 5. Reference Execution Flow
+## 4. Reference Execution Flow
 
-### 5.1 Step 1: Request ingress
+### 4.1 Step 1: Request ingress
 
 Caller submits:
 
@@ -118,19 +113,19 @@ Caller submits:
 - input payload
 - caller identity or execution context
 
-At this point the system has not yet selected what will run.
+The system has not yet selected what will run.
 
-### 5.2 Step 2: Resolution
+### 4.2 Step 2: Resolution
 
-Registry resolves the request to:
+Registry resolves the requested ref to:
 
 - concrete resolved skill ref
 - executable artifact location
 - compatibility and constraint metadata
 
-This is where Guild becomes materially different from vague agent frameworks. A name is not enough. The system must know the exact thing it is about to run.
+This is the point where Guild becomes materially different from vague agent frameworks. A name is not enough. The system must know the exact thing it is about to run.
 
-### 5.3 Step 3: Authorization and capability computation
+### 4.3 Step 3: Authorization and capability computation
 
 Policy engine evaluates whether the request is allowed and computes the capability slice granted to the guest.
 
@@ -140,20 +135,20 @@ Possible outcomes:
 - allowed with narrowed capabilities
 - rejected
 
-If rejected, the runtime host still persists an execution record with rejection outcome.
+If rejected, the runtime host still persists an `ExecutionRecord` with rejection outcome.
 
-### 5.4 Step 4: Host-issued execution envelope
+### 4.4 Step 4: Host-issued execution envelope
 
 Runtime host creates:
 
 - execution identifier
 - execution context
 - granted capability slice
-- parent execution linkage when applicable
+- parent execution linkage if applicable
 
 The guest does not mint any of this.
 
-### 5.5 Step 5: Guest execution
+### 4.5 Step 5: Guest execution
 
 Runtime host executes the skill within the runtime boundary.
 
@@ -164,21 +159,21 @@ The guest may:
 - invoke child skills through host-mediated calls
 - return structured outputs or failure signals
 
-### 5.6 Step 6: Persistence
+### 4.6 Step 6: Persistence
 
 Runtime host persists:
 
 - terminal execution record
 - evidence objects produced or referenced
-- child execution linkage when present
+- child execution linkage if present
 
-### 5.7 Step 7: Later inspection
+### 4.7 Step 7: Later inspection
 
 Inspect and explain skills query the durable stores and produce grounded explanations of what happened.
 
-## 6. Trust Boundary
+## 5. Trust Boundary
 
-### 6.1 Host responsibilities
+### 5.1 Host responsibilities
 
 The host is the authority for:
 
@@ -190,7 +185,7 @@ The host is the authority for:
 - durable persistence
 - audit metadata
 
-### 6.2 Guest responsibilities
+### 5.2 Guest responsibilities
 
 The guest is responsible for:
 
@@ -198,15 +193,15 @@ The guest is responsible for:
 - requesting permitted operations
 - returning outputs or errors
 
-### 6.3 Hard boundary rule
+### 5.3 Hard boundary rule
 
 Guests do not get to decide what they are, what they are allowed to do, or what durable identifiers count as authoritative.
 
-Once the guest can self-assert authority, the whole model starts to collapse.
+That line matters. Once the guest can self-assert authority, the whole model starts smelling like a haunted house built from JSON.
 
-## 7. Runtime Design
+## 6. Runtime Design
 
-### 7.1 Wasm/WASI as the reference runtime
+### 6.1 Wasm/WASI as reference runtime
 
 Wasm/WASI is the preferred execution substrate because it gives Guild:
 
@@ -214,114 +209,113 @@ Wasm/WASI is the preferred execution substrate because it gives Guild:
 - portable artifacts
 - host-mediated capability exposure
 - reduced ambient authority
-- a clean guest-host separation
+- a clean guest/host separation
 
-### 7.2 Runtime host interface
+### 6.2 Runtime host interface
 
 The runtime host SHOULD expose a narrow interface to the guest for operations such as:
 
 - `read-resource`
-- `emit-evidence`
-- `invoke-dependency`
-- `log`
+- `write-evidence`
+- `invoke-child`
+- `emit-output`
+- `emit-failure`
 
 The exact ABI can evolve, but the shape should stay minimal and explicit.
 
-### 7.3 Boundary discipline
+### 6.3 Boundary discipline
 
 Anything that changes durable system state or reaches outside the guest boundary SHOULD go through host APIs.
 
-### 7.4 Current repository runtime
+### 6.4 Current repository runtime
 
-The current repository uses a Wasmtime-backed Wasm component adapter for the working slice. Primitive, explain, and composite example skills execute through `wit/guild-skill-v1.wit`, with host imports enforcing typed capability constraints.
+The current repository uses a Wasmtime-backed Wasm component adapter for the working slice. Primitive, explain, and composite example skills execute through `wit/guild-skill-v1.wit`, where the current host-facing operation names are `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`, and skill output or failure is returned from `skill.run` rather than emitted through separate host calls.
 
-## 8. Registry and Resolution Architecture
+## 7. Registry and Resolution Architecture
 
-### 8.1 Requested refs
+### 7.1 Requested refs
 
-Human-meaningful references may be aliases, names, channels, or semantic version selectors.
+Human-meaningful references may be aliases, names, channels, or semantic identifiers.
 
-### 8.2 Resolved refs
+### 7.2 Resolved refs
 
 Resolved refs identify exact artifacts and SHOULD be digest-addressed.
 
-### 8.3 Registry duties
+### 7.3 Registry duties
 
-The registry and resolver are responsible for:
+The registry / resolver is responsible for:
 
 - requested ref lookup
-- alias and channel handling
+- alias/channel handling
 - compatibility selection
 - resolved identity issuance
 - artifact lookup
 
-### 8.4 Why this split exists
+### 7.4 Why this split exists
 
-Without this split, you cannot reliably answer the question: what exact thing ran?
+Without this split, you cannot reliably answer the question:
 
-If you cannot answer that, you are not building infrastructure.
+what exact thing ran?
 
-### 8.5 Current repository registry behavior
+And if you cannot answer that, you are not building infrastructure. You are building folklore.
 
-The current repository uses a file-backed local registry. Source skills install into digest-pinned installed records, installed manifests pin child dependencies by alias, and execution resolves only against installed state.
+## 8. Artifact Lifecycle Architecture
 
-## 9. Artifact Lifecycle Architecture
+### 8.1 Install path
 
-### 9.1 Install path
+Install takes a source artifact and produces:
 
-Install takes source material and produces:
-
-- a verified local installed artifact record
+- a verified local artifact record
 - resolved identity metadata
 - executable placement within the Guild root
 
-### 9.2 Export path
+### 8.2 Export path
 
 Export produces a portable bundle including:
 
 - executable payload
 - resolved identity metadata
-- signatures or local provenance metadata
-- dependency snapshot information
+- optional signatures or provenance metadata
+- compatibility constraints
 
-### 9.3 Import path
+### 8.3 Import path
 
-Import validates the bundle, verifies integrity, verifies publisher trust, and installs it into the local Guild root.
+Import validates the bundle, verifies integrity, and installs it into the local Guild root.
 
-### 9.4 Root portability
+### 8.4 Root portability
 
-Two different Guild roots should be able to agree on artifact identity for the same bundle even if their local storage layout differs.
+Two different Guild roots should be able to agree on artifact identity for the same bundle, even if their local storage layout differs.
 
-### 9.5 Current repository bundle flow
+### 8.5 Current repository bundle flow
 
 The working bundle flow is built from installed executable state rather than source directories. Import verifies signature, trust, and bundled file digests before installation and writes host-owned verification metadata alongside imported installed records.
 
-## 10. Execution Store Design
+## 9. Execution Store Design
 
-### 10.1 Required records
+### 9.1 Required records
 
-Execution store MUST persist all of:
+Execution store must persist all of:
 
 - successful executions
 - failed executions
 - rejected executions
 
-### 10.2 Why rejections matter
+### 9.2 Why rejections matter
 
 Rejections are not noise. They are part of the system truth.
 
-If a skill was denied by policy, that matters just as much as a crash in a security-sensitive system.
+If a skill was denied by policy, that matters just as much as a crash, especially in security-sensitive systems.
 
-### 10.3 Parent-child graph
+### 9.3 Parent-child graph
 
-Execution store SHOULD support traversal across:
+Execution store should support traversal across:
 
-- parent to child
-- child to parent
-- execution to evidence
-- evidence to execution
+- parent -> child
+- child -> parent
+- execution -> evidence
+- evidence -> execution
 
-### 10.4 Suggested storage shape
+### 9.4 Suggested storage shape
 
 Implementation is flexible, but the model should support:
 
@@ -330,15 +324,15 @@ Implementation is flexible, but the model should support:
 - outcome classes
 - lineage edges
 - audit metadata
-- structured search and filtering
+- structured search/filtering
 
-## 11. Evidence Store Design
+## 10. Evidence Store Design
 
-### 11.1 Evidence as durable object
+### 10.1 Evidence as durable object
 
 Evidence store is not just a cache. It is a durable artifact store.
 
-### 11.2 Evidence contents
+### 10.2 Evidence contents
 
 Evidence may contain:
 
@@ -348,117 +342,109 @@ Evidence may contain:
 - normalized observations
 - explanation-ready snapshots
 
-### 11.3 Evidence references
+### 10.3 Evidence references
 
-Evidence store issues host-owned references that can later be reused by inspect and explain skills.
+Evidence store issues host-owned references that can later be reused by inspect/explain skills.
 
-### 11.4 Provenance
+### 10.4 Provenance
 
-Evidence metadata SHOULD capture at least:
+Evidence metadata should capture at least:
 
 - producing execution
-- read source when applicable
+- read source if applicable
 - creation time
-- type or format
-- integrity metadata when relevant
+- type/format
+- integrity metadata if relevant
 
-### 11.5 Current repository evidence backend
+## 11. Resource Backend Architecture
 
-The current repository stores evidence durably in a local object store keyed by SHA-256 and exposes those objects through `guild://objects/sha256/{digest}` URIs.
-
-## 12. Resource Backend Architecture
-
-### 12.1 Shared semantics
+### 11.1 Shared semantics
 
 Host reads and guest `read-resource` calls should hit the same conceptual backend.
 
-### 12.2 Why this matters
+### 11.2 Why this matters
 
 If host-side inspection sees one world and guest-side execution sees another, explanations become fake fast.
 
-### 12.3 Backend responsibilities
+### 11.3 Backend responsibilities
 
 Resource backend should provide:
 
 - stable references
 - controlled access
 - explicit attribution
-- optional caching and normalization
+- optional caching/normalization
 - policy-aware reads
 
-### 12.4 Current repository resource model
+## 12. Composite Skill Architecture
 
-The current repository serves both MCP resource reads and guest-side `read-resource` calls from the same local execution and object store.
-
-## 13. Composite Skill Architecture
-
-### 13.1 Composite control flow
+### 12.1 Composite control flow
 
 Composite skills coordinate child skill invocations through the runtime host.
 
-### 13.2 Host-mediated child calls
+### 12.2 Host-mediated child calls
 
-Child calls SHOULD not bypass the runtime host. The host still:
+Child calls should not bypass the runtime host. The host must still:
 
-- resolves child requested refs
-- applies policy
-- computes capability slices
-- issues child execution IDs
-- persists child outcomes
+- resolve child requested refs
+- apply policy
+- compute capability slices
+- issue child execution IDs
+- persist child outcomes
 
-### 13.3 Composite success semantics
+### 12.3 Composite success semantics
 
-A composite skill MAY complete successfully even if a child fails or is rejected, provided its own logic handles that outcome.
+A composite skill may complete successfully even if a child fails or is rejected, provided its own logic handles that outcome.
 
-### 13.4 Inspection goal
+### 12.4 Inspection goal
 
 After the fact, the system must still make it easy to answer:
 
-- which child skills ran
-- in what relation
-- under which resolved identities
-- which failed
-- which were rejected
-- which evidence objects were involved
+- which child skills ran?
+- in what relation?
+- under which resolved identities?
+- which failed?
+- which were rejected?
+- which evidence objects were involved?
 
-## 14. Inspect and Explain Architecture
+## 13. Inspect / Explain Architecture
 
-### 14.1 Explain from artifacts
+### 13.1 Explain from artifacts
 
 Explain skills are consumers of durable system truth.
 
-### 14.2 Input sources
+### 13.2 Input sources
 
 An explain skill may read:
 
 - execution records
 - evidence objects
 - resource references
-- policy results when permitted
+- policy results where permitted
 
-### 14.3 Failure handling
+### 13.3 Failure handling
 
-Explain skills SHOULD operate over failed and rejected runs, not only clean successes.
+Explain skills should operate over failed and rejected runs, not only clean successes.
 
-### 14.4 Why this is a core feature
+### 13.4 Why this is a core feature
 
-This is not bolt-on observability. It is part of the product claim. If the system cannot later explain what happened from durable artifacts, it falls back into prompt-era fog.
+This is not bolt-on observability. It is the whole point. If the system cannot later explain what happened from durable artifacts, it falls back into prompt-era fog.
 
-## 15. Policy Engine Architecture
+## 14. Policy Engine Architecture
 
-### 15.1 Decision points
+### 14.1 Decision points
 
-Policy SHOULD be enforced at:
+Policy should be enforced at:
 
 - initial execution request
 - resource read
 - evidence write
 - child invocation
-- inspect and explain access
+- inspect/explain access
 
-### 15.2 Policy inputs
+### 14.2 Policy inputs
 
-A policy decision MAY consider:
+A policy decision may consider:
 
 - caller identity or caller class
 - requested skill ref
@@ -469,17 +455,11 @@ A policy decision MAY consider:
 - evidence identity
 - environment or root configuration
 
-### 15.3 Durable denials
+### 14.3 Durable denials
 
-Rejected operations SHOULD be durable enough to support later audit.
+Rejected operations should be durable enough to support later audit.
 
-### 15.4 Current repository policy shape
-
-The working slice accepts explicit caller-provided grants and uses a shared typed capability evaluator rather than a full general policy engine.
-
-## 16. Example Guild Root Layout
-
-An illustrative local Guild root looks like this:
+## 15. Example Logical Layout of a Guild Root
 
 ```text
 .guild/
@@ -499,51 +479,57 @@ An illustrative local Guild root looks like this:
   registry/
     requested/
     resolved/
-  trust/
-    publishers/
   cache/
   temp/
 ```
 
-This shape is illustrative, not normative. The important part is that the root has clear homes for artifacts, records, evidence, trust metadata, and resolver state.
+This is illustrative, not normative. The important thing is that the root has clear homes for artifacts, records, evidence, and resolver metadata.
 
-## 17. Sequence Sketch
+## 16. Sequence Sketch
 
-```text
-Caller -> Resolver: RequestedSkillRef + input
-Resolver -> Host: ResolvedSkillRef + artifact
-Host -> Policy: authorize(request, resolved, caller)
-Policy -> Host: allow/reject + capability slice
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Resolver
+    participant Policy
+    participant Host
+    participant Guest
+    participant ExecStore
+    participant EvidenceStore
 
-If rejected:
-  Host -> Execution Store: persist rejection record
-  Host -> Caller: execution receipt
-
-If allowed:
-  Host -> Guest: execute within boundary
-  Guest -> Host: read-resource / emit-evidence / invoke-child
-  Host -> Evidence Store: persist evidence as needed
-  Host -> Execution Store: persist terminal execution record
-  Host -> Caller: execution receipt + output
+    Caller->>Resolver: RequestedSkillRef + input
+    Resolver-->>Host: ResolvedSkillRef + artifact
+    Host->>Policy: authorize(request, resolved, caller)
+    Policy-->>Host: allow/reject + capability slice
+    alt rejected
+        Host->>ExecStore: persist rejection record
+        Host-->>Caller: execution receipt
+    else allowed
+        Host->>Guest: execute within boundary
+        Guest->>Host: read-resource / write-evidence / invoke-child
+        Host->>EvidenceStore: persist evidence as needed
+        Host->>ExecStore: persist terminal execution record
+        Host-->>Caller: execution receipt + output
+    end
 ```
 
-## 18. Deployment Shape
+## 17. Deployment Shape
 
-### 18.1 Local-first default
+### 17.1 Local-first default
 
-Guild SHOULD work as a local process or local service boundary without requiring a central hosted control plane.
+Guild should work as a local process or local service boundary without requiring a central hosted control plane.
 
-### 18.2 Future decomposition
+### 17.2 Future decomposition
 
 The architecture can later split across processes or services, but only if the core trust boundaries remain intact.
 
-### 18.3 Good decomposition rule
+### 17.3 Good decomposition rule
 
 Split implementation boundaries where they improve integrity, portability, or inspectability. Do not split them just to cosplay distributed systems.
 
-## 19. Operational Benefits
+## 18. Operational Benefits
 
-This architecture buys the properties most agent stacks keep hand-waving about:
+This architecture buys you the things most agent stacks keep hand-waving about:
 
 - reproducibility through immutable execution identity
 - security through explicit capability mediation
@@ -552,34 +538,54 @@ This architecture buys the properties most agent stacks keep hand-waving about:
 - explainability grounded in artifacts
 - portability across local roots
 
-That is why the architecture exists. Not because more components are fun.
+That is why the architecture exists. Not because more components are fun. No one needs more components. People can barely survive the ones they already invented.
+
+## 19. Current Repository Baseline
+
+The current repository implements a real but intentionally narrow slice of this architecture:
+
+- source skills install into local digest-pinned installed records
+- the local registry resolves only against installed executable state
+- the runtime host executes Wasm components through Wasmtime
+- explicit caller-provided grants are enforced through typed capability evaluation
+- successful, failed, and rejected resolved executions persist as durable execution records
+- evidence persists as durable local objects and is readable through the same backend used by guest `read-resource`
+- composite skills invoke declared child dependencies by alias through the same host boundary
+- `guild.inspect` in `guild-mcp` rides that same registry, runner, and storage path
+
+What is still deferred in this repo:
+
+- a general policy engine beyond explicit grants
+- full `plan` execution
+- `apply` mode
+- remote registry and publication infrastructure
 
 ## 20. Near-Term Build Priorities
 
-### Phase 1
+Phase 1
 
-- install, resolve, and execute on immutable artifacts
+- install/resolve/execute on immutable artifacts
 - Wasm/WASI runtime boundary
 - durable execution store
 - durable evidence store
 - primitive and composite execution support
 
-### Phase 2
+Phase 2
 
-- inspect and explain skills over persisted artifacts
+- inspect/explain skills over persisted artifacts
 - execution graph queries
-- failure and rejection views
+- failure/rejection views
 - resource backend unification
 
-### Phase 3
+Phase 3
 
 - signatures and provenance
 - richer policy engine
 - ecosystem distribution and trust tiers
-- retention and governance controls
+- retention/governance controls
 
 ## 21. Bottom Line
 
 Guild architecture is about making AI skill execution behave like a real system.
 
-That means exact identity, bounded runtime authority, durable records, durable evidence, and later explanation that does not depend on remembering what the model probably did.
+That means exact identity, bounded runtime authority, durable records, durable evidence, and later explanation that does not depend on remembering what the model "probably did."

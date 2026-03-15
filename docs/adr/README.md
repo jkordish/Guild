@@ -4,21 +4,20 @@ Guild uses ADRs to record platform-shaping decisions and to queue the next contr
 
 ## Current ADRs
 
-- `0001-core-principles.md` - accepted foundation for Rust core, WASM-first execution, explicit capabilities, digest-pinned resolution, and a small MCP facade
+- `0001-guild-thesis.md` - accepted foundation for local-first, Rust-core, Wasm-first, contract-first Guild execution
 - `0002-skill-output-and-execution-record.md` - accepted split between skill-authored output and host-owned execution records
-- `0003-guild-thesis.md` - proposed project framing for local-first, durable, policy-bounded skill execution
 
 ## Backlog
 
 The next ADRs should land in this order so the contract surface grows in the same sequence the system executes:
 
-1. Bundle format
+1. `0003` Bundle format
    Define the portable installed bundle payload, signature envelope, import verification semantics, and compatibility versioning.
-2. Capability schema
+2. `0004` Capability schema
    Define capability family versioning, typed constraint registry rules, and compatibility expectations across Rust types, manifests, and WIT.
-3. Execution record schema
+3. `0005` Execution record schema
    Define the durable execution object shape, terminal metadata, lineage fields, and query-oriented invariants.
-4. Evidence schema
+4. `0006` Evidence schema
    Define durable evidence object metadata, provenance expectations, content-addressing rules, and read semantics.
 
 ## Working Rule
