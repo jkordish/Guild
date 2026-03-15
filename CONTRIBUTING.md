@@ -2,7 +2,7 @@
 
 Thanks for contributing to Guild.
 
-This project is early, so the contribution bar is less about polish and more about architectural honesty. A small, clean change that preserves the trust model is worth more than a large "helpful" change that smuggles in future regret.
+This project is early, so the contribution bar is less about polish and more about architectural honesty. A small, clean change that preserves the trust model is worth more than a large helpful change that smuggles in future regret.
 
 ## Ground rules
 
@@ -10,7 +10,7 @@ This project is early, so the contribution bar is less about polish and more abo
 - least privilege by default
 - prefer explicit types over flexible ambiguity
 - preserve digest-pinned execution
-- keep the MCP façade small
+- keep the MCP facade small
 - document invariants when changing them
 
 ## Getting started
@@ -18,8 +18,9 @@ This project is early, so the contribution bar is less about polish and more abo
 1. Read:
    - `README.md`
    - `AGENTS.md`
-   - `docs/contracts.md`
-   - `docs/architecture.md`
+   - `SPECS.md`
+   - `ARCHITECTURE.md`
+   - `docs/adr/README.md`
 
 2. Make the smallest coherent change that proves the point.
 
@@ -43,7 +44,7 @@ Add or update an ADR when you change any of the following:
 - trust or publication model
 - execution mode semantics
 - crate boundary that affects public structure
-- MCP façade semantics
+- MCP facade semantics
 
 Current ADRs live in `docs/adr/`.
 
@@ -72,9 +73,9 @@ During the initial phase, contributions are most useful in these areas:
 
 - contract refinement
 - WASM execution model
-- registry / manifest design
+- registry and manifest design
 - policy and capability evaluation
-- MCP façade design
+- MCP facade design
 - example skills and fixtures
 
 Less useful right now:

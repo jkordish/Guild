@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HelloInspectOutput",
+  "type": "object",
+  "properties": {
+    "echoed_input": {
+      "type": "object"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["inspect"]
+    },
+    "skill": {
+      "type": "object"
+    },
+    "granted_capabilities": {
+      "type": "object"
+    },
+    "message": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "echoed_input",
+    "mode",
+    "skill",
+    "granted_capabilities",
+    "message"
+  ],
+  "additionalProperties": false
+}

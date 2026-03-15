@@ -1,0 +1,1 @@
+/home/ubuntu/Guild/examples/skills/explain-execution/skill-rust/target/wasm32-wasip2/release/guild_example_explain_execution.wasm: /home/ubuntu/Guild/examples/skills/explain-execution/skill-rust/src/lib.rs /home/ubuntu/Guild/wit/guild-skill-v1.wit

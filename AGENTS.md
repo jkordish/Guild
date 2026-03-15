@@ -4,6 +4,18 @@ This file is for coding agents and human contributors acting like coding agents 
 
 Guild is a **contracts-first** repository. Treat architecture, types, manifests, and execution boundaries as product surface, not internal implementation trivia.
 
+## Canonical docs
+
+Read these first and treat them as the current human-facing source of truth:
+
+- `README.md`: repo entrypoint and current proof path
+- `SPECS.md`: normative contract and conformance language
+- `ARCHITECTURE.md`: practical system view and trust boundaries
+- `docs/adr/README.md`: decision log and ADR backlog
+- `docs/roadmap.md`: phase ordering
+
+The files at `docs/contracts.md` and `docs/architecture.md` are compatibility wrappers kept for stable links.
+
 ## What this repo is optimizing for
 
 - portable skills
@@ -18,7 +30,7 @@ Guild is a **contracts-first** repository. Treat architecture, types, manifests,
 These are not suggestions.
 
 1. **The Rust core is the platform boundary.**
-   - Registry, policy, runner, and MCP façade live in Rust.
+   - Registry, policy, runner, and MCP facade live in Rust.
    - Keep unsafe behavior and broad host access out of the default path.
 
 2. **WASM is the preferred execution format.**
@@ -47,7 +59,7 @@ These are not suggestions.
    - Do not optimize for paragraph-only responses.
 
 7. **The MCP surface stays small.**
-   - Prefer stable façade tools like `guild.search`, `guild.describe`, `guild.inspect`, `guild.plan`, `guild.apply`.
+   - Prefer stable facade tools like `guild.search`, `guild.describe`, `guild.inspect`, `guild.plan`, `guild.apply`.
    - Do not expose every skill as a top-level MCP tool.
 
 8. **Contract changes are multi-file changes.**
@@ -55,26 +67,63 @@ These are not suggestions.
    - `crates/guild-types`
    - `crates/guild-manifest`
    - `wit/guild-skill-v1.wit`
-   - `docs/contracts.md`
+   - `SPECS.md`
+   - `ARCHITECTURE.md` when execution shape or trust boundaries change
    - example manifests if affected
 
 ## Repository map
 
+- `SPECS.md`: normative repository contract
+- `ARCHITECTURE.md`: practical system view
 - `crates/guild-types`: core shared structs and enums
 - `crates/guild-manifest`: manifest model
 - `crates/guild-runner`: runtime abstraction and execution boundary
 - `crates/guild-registry`: publication, lookup, resolution model
-- `crates/guild-mcp`: MCP-facing names and façade concepts
+- `crates/guild-mcp`: MCP-facing names and facade concepts
 - `crates/guild-sdk-rust`: authoring trait for Rust skills
 - `wit/`: platform ABI contract
-- `docs/`: architecture, contracts, ADRs, roadmap
+- `docs/adr/`: accepted and proposed architectural decisions
+- `docs/roadmap.md`: phased build priorities
 - `examples/`: example skills and sample manifests
+
+## Current working baseline
+
+The repository now has a real local inspect-only path:
+
+- source manifests install into digest-pinned executable records under the local registry root
+- `RequestedSkillRef` resolves through the local file-backed registry
+- installed manifests and staged artifact digests are validated before execution
+- the runner builds `ExecutionContext` with explicit grants
+- primitive and composite example skills execute through the Wasmtime-backed Wasm runtime adapter
+- composite skills invoke declared child dependencies by alias through the host boundary
+- supported capability families now use typed constraints enforced by one shared host-side evaluator
+- resolved execution attempts persist under local Guild URIs on success, failure, and rejection
+- evidence emitted through the Wasm boundary persists as durable local objects
+- `guild.inspect` in `guild-mcp` rides that same path
+- installed skills can be exported as signed portable bundles, verified against a local trust store, and imported into fresh Guild roots without rebuilding
+
+Preferred local proof commands:
+
+```bash
+cargo run -p guild-mcp --example inspect_local
+cargo run -p guild-mcp --example inspect_composite_local
+cargo run -p guild-mcp --example explain_execution_local
+cargo run -p guild-mcp --example explain_failure_local
+cargo run -p guild-mcp --example export_import_local
+cargo run -p guild-mcp --example export_import_composite_local
+cargo run -p guild-mcp --example signed_import_failures_local
+```
+
+Those commands are the canonical local install workflows: they build the example source skills, install them into command-specific cleaned subdirectories under `target/dev-local-registry/`, resolve them, and execute them. The source manifests no longer require manual artifact digest updates.
+They also prove the storage layer by reading back persisted execution and evidence resources, `explain_execution_local` proves that a Wasm guest can consume those same Guild URIs through a host-mediated `read-resource` capability, and `explain_failure_local` proves that unsuccessful resolved executions now persist durable host-owned records that can be explained after the fact.
+`export_import_local` and `export_import_composite_local` now prove signed bundle portability with an explicit local publisher identity plus local trust-store import verification, while `signed_import_failures_local` proves that untrusted or tampered bundles fail closed before installation.
+The current working capability families are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, all with typed constraints rather than ad hoc JSON matching.
 
 ## Change rules
 
 ### When adding a new host capability
 You must:
-- document the capability in `docs/contracts.md`
+- document the capability in `SPECS.md`
 - add the type-level representation
 - explain the security boundary
 - describe how policy grants or denies it
@@ -82,10 +131,19 @@ You must:
 
 ### When changing execution semantics
 You must:
-- update the request/result types
+- update the request and result types
 - update the WIT world if the ABI changes
 - update examples
-- call out compatibility impact in the relevant doc or ADR
+- call out compatibility impact in `SPECS.md` and the relevant ADR
+
+### When changing installed portability or bundle flow
+You must:
+- build transport units from installed executable state, not source directories
+- preserve digest pinning and dependency alias snapshots
+- keep imported execution source-independent
+- verify signature, trust, and bundled digests before installation
+- keep verification metadata host-owned
+- update the local proof examples, `SPECS.md`, and `ARCHITECTURE.md` together
 
 ### When touching apply mode
 Default posture: do less.
@@ -119,7 +177,7 @@ Before considering a change ready, verify:
 - do not add raw shell execution because it feels convenient
 - do not add runtime-resolution of floating versions
 - do not stuff policy into stringly JSON when a type belongs in Rust
-- do not make "temporary" network or secret access permanent by inertia
+- do not make temporary network or secret access permanent by inertia
 - do not add a workflow DSL in the first phase
 - do not bypass the contracts because a demo needs to work today
 

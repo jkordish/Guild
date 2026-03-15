@@ -1,147 +1,113 @@
 # Guild
 
-**Guild** is a Rust-first, WASM-native registry and runtime for portable agent skills.
+**Guild** is a Rust-first, WASM-native registry and runtime for portable AI skills.
 
-Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages **operational know-how** as versioned, capability-scoped, portable skills that can be searched, verified, executed, and shared.
+Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages operational know-how as versioned, capability-scoped, portable skills that can be resolved, executed, inspected, and shared without giving guests ambient authority.
 
-> Status: pre-alpha. This repository currently focuses on **contracts, crate boundaries, and architectural guardrails** before implementation detail sprawl sets in.
+> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, signed local bundles can be exported and imported without rebuilding, execution attempts persist as host-owned records, and evidence persists as durable Guild objects.
 
-## Why this exists
+## Why Guild Exists
 
-Most agent systems stop at "the model can call a function." That is useful, but not enough.
+Guild is opinionated about a few things:
 
-Guild is built around a stronger unit:
+- requested identity is not executable identity
+- the host, not the guest, owns trust-sensitive authority
+- evidence is a durable artifact, not a prompt scrap
+- inspect, plan, and apply are distinct modes
+- the MCP surface should stay small and boring
 
-- a **skill** has identity, version, and immutable artifact digest
-- a skill declares **input/output schemas**
-- a skill asks for explicit **host capabilities**
-- a skill returns **structured results**, evidence, and diagnostics
-- a skill is executable in **inspect**, **plan**, or **apply** mode
-- a skill can be **shared** across users, teams, and MCP-compatible clients
+The goal is a platform for portable, auditable, reusable skills, not a pile of tool wrappers glued together by vibes.
 
-The result is a platform for **portable, auditable, reusable playbooks**, not just a loose pile of tool wrappers.
+## Current Proof Path
 
-## Design stance
+The current repository proves a narrow but real path:
 
-Guild is opinionated on purpose.
+1. build and install a source skill into local installed state
+2. resolve a `RequestedSkillRef` to a digest-pinned executable artifact
+3. execute it through the Wasm runtime with explicit granted capabilities
+4. persist `ExecutionRecord` and `EvidenceRef` artifacts under local Guild URIs
+5. optionally export the installed skill as a signed portable bundle and import it into a fresh Guild root
 
-- **Rust core** for the platform, policy, runtime, and registry
-- **WASM-first** for portable skill distribution
-- **Host capabilities, not ambient authority**
-- **Digest-pinned execution**, even when humans ask for "latest"
-- **Inspect / Plan / Apply** as separate execution modes
-- **Evidence is mandatory**, not decorative
-- **Contracts before code generation**
-- **Small MCP surface**, not one tool per skill
+Useful local proof commands:
 
-If a future change makes the system easier to demo but harder to trust, the trust model wins.
-
-## What a skill is
-
-A Guild skill is a package containing:
-
-- manifest metadata
-- an artifact, preferably a WASM component
-- JSON schemas for input and output
-- declared capabilities
-- examples and test fixtures
-- publisher and provenance information
-
-Skills fall into a few initial classes:
-
-- **Inventory**: gather and normalize facts
-- **Explain**: interpret inventory into operator-readable meaning
-- **Playbook**: recommend or carry out next steps
-- **Transform**: reshape structured data for downstream use
-
-## System overview
-
-```text
-+-------------------+        +------------------+
-| MCP Client / LLM  | <----> |   guild-mcp      |
-+-------------------+        +------------------+
-                                     |
-                                     v
-                           +--------------------+
-                           |  Registry + Policy |
-                           +--------------------+
-                                     |
-                                     v
-                           +--------------------+
-                           |  Runner / Sandbox  |
-                           +--------------------+
-                                     |
-                       +-------------+-------------+
-                       |                           |
-                       v                           v
-              +------------------+       +------------------+
-              | WASM Skill       |       | External Adapter |
-              | (preferred)      |       | (later / narrow) |
-              +------------------+       +------------------+
+```bash
+make test
+cargo run -p guild-mcp --example inspect_local
+cargo run -p guild-mcp --example explain_execution_local
+cargo run -p guild-mcp --example export_import_local
 ```
 
-## Repository layout
+Additional examples cover composite execution, durable rejected executions, composite portability, and tampered or untrusted bundle rejection.
+
+## Canonical Docs
+
+- [`SPECS.md`](SPECS.md) - normative contract and conformance requirements
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) - practical system view and data flow
+- [`docs/adr/README.md`](docs/adr/README.md) - ADR index and follow-on ADR backlog
+- [`AGENTS.md`](AGENTS.md) - contributor guardrails for contract-first changes
+- [`docs/roadmap.md`](docs/roadmap.md) - phased build priorities
+
+Compatibility wrappers remain at [`docs/contracts.md`](docs/contracts.md) and [`docs/architecture.md`](docs/architecture.md) so existing links keep working.
+
+## Repository Map
 
 ```text
 .
 ├── README.md
+├── SPECS.md
+├── ARCHITECTURE.md
 ├── AGENTS.md
 ├── CONTRIBUTING.md
 ├── Cargo.toml
-├── Makefile
 ├── docs/
+│   ├── adr/
 │   ├── architecture.md
 │   ├── contracts.md
-│   ├── roadmap.md
-│   └── adr/
-│       └── 0001-core-principles.md
+│   └── roadmap.md
 ├── wit/
 │   └── guild-skill-v1.wit
 ├── examples/
 │   └── skills/
-│       └── hello-inspect/
 └── crates/
     ├── guild-types/
     ├── guild-manifest/
-    ├── guild-runner/
     ├── guild-registry/
+    ├── guild-runner/
     ├── guild-mcp/
     └── guild-sdk-rust/
 ```
 
-## Initial crate responsibilities
+Current crate responsibilities:
 
-- **guild-types**: core shared types for execution, evidence, capabilities, and results
-- **guild-manifest**: manifest model for published skills
-- **guild-runner**: execution boundary and runtime adapter traits
-- **guild-registry**: storage and resolution model for skill publication and lookup
-- **guild-mcp**: MCP-facing surface and stable tool naming
-- **guild-sdk-rust**: authoring trait for Rust-based skills
+- `guild-types`: shared types for identities, capabilities, execution, and evidence
+- `guild-manifest`: source and installed manifest model
+- `guild-registry`: local installation, bundle flow, resolution, and Guild resource persistence
+- `guild-runner`: runtime orchestration, capability checks, and execution boundary
+- `guild-mcp`: stable facade surface and local proof examples
+- `guild-sdk-rust`: guest authoring support for Rust-based skills
 
-## Non-goals for the first phase
+## Current Scope
 
-The first phase is intentionally narrow.
+What is real today:
 
-- no workflow DSL
-- no shell-as-a-platform nonsense
-- no raw filesystem/network/process access from skills
-- no "floating latest" execution
-- no one-tool-per-skill MCP explosion
-- no broad write/apply mode until idempotency, approvals, and audit paths exist
+- source-to-installed manifest lifecycle
+- digest-pinned local resolution
+- Wasmtime-backed Wasm component execution
+- typed capability enforcement for the implemented host imports
+- durable execution and evidence persistence
+- composite child invocation with durable lineage
+- signed local bundle export and import with trust-store verification
 
-## Skill lifecycle
+What is still deferred:
 
-1. **Author** a skill in Rust or another supported language.
-2. **Package** it as a WASM component when possible.
-3. **Describe** it with a signed manifest and schemas.
-4. **Publish** it into the registry with immutable digests.
-5. **Resolve** it by version requirement into a concrete digest.
-6. **Execute** it through the runner with granted capabilities.
-7. **Return** structured output, evidence, diagnostics, and provenance.
+- general policy evaluation beyond explicit caller-provided grants
+- full `plan` mode
+- `apply` mode
+- remote registries, publication flows, and transparency infrastructure
 
 ## Development
 
-This repo is scaffolded as a Cargo workspace. The current code is intentionally thin and contract-heavy.
+Workspace commands:
 
 ```bash
 make check
@@ -150,45 +116,8 @@ make fmt
 make clippy
 ```
 
-## First milestones
-
-### Phase 0
-- stabilize core types and manifest shapes
-- stabilize `guild-skill-v1.wit`
-- land a runner abstraction
-- define the MCP façade
-- ship one example inspect-only skill
-
-### Phase 1
-- WASM runner
-- local registry
-- evidence storage
-- policy evaluation for capability grants
-- signed package ingestion
-
-### Phase 2
-- org/public visibility
-- trust tiers and publisher verification
-- composition / child execution budgets
-- inspect and plan mode across the full stack
-
-### Phase 3
-- carefully gated apply mode
-- approvals and idempotency keys
-- audit log and promotion flows
-- richer skill packs by domain
-
-## Read next
-
-- [`docs/architecture.md`](docs/architecture.md)
-- [`docs/contracts.md`](docs/contracts.md)
-- [`docs/adr/0001-core-principles.md`](docs/adr/0001-core-principles.md)
-- [`AGENTS.md`](AGENTS.md)
+The canonical example flows install into cleaned subdirectories under `target/dev-local-registry/` so proof runs stay isolated from one another.
 
 ## Naming
 
-**Guild** is the working project name because the system is fundamentally about shared craft, standards, and portable skills. It also avoids the usual "tool galaxy" naming disease, which is refreshing.
-
-## License
-
-No license has been selected yet. Pick one before publishing anything beyond private experimentation.
+The name **Guild** implies shared operational knowledge made durable and reusable.

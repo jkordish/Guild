@@ -1,0 +1,74 @@
+{
+  "summary": "Hello, Ada. Composite inspect is working.",
+  "structured": {
+    "echoed_input": {
+      "name": "Ada"
+    },
+    "mode": "inspect",
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "hello-composite"
+      },
+      "version": "0.1.0",
+      "digest": "__PARENT_DIGEST__"
+    },
+    "granted_capabilities": {
+      "grants": [
+        {
+          "id": "invoke-skill",
+          "access": "invoke",
+          "constraints": {
+            "aliases": ["hello"]
+          }
+        },
+        {
+          "id": "emit-evidence",
+          "access": "write",
+          "constraints": {
+            "max_bytes": 65536,
+            "audiences": ["user"],
+            "redactions": ["none"]
+          }
+        }
+      ]
+    },
+    "invoked_alias": "hello",
+    "message": "Composite hello for Ada",
+    "child": {
+      "summary": "Hello, Ada. Guild inspect is working.",
+      "structured": {
+        "echoed_input": {
+          "name": "Ada",
+          "emit_log": false
+        },
+        "mode": "inspect",
+        "skill": {
+          "key": {
+            "namespace": "example",
+            "name": "hello-inspect"
+          },
+          "version": "0.1.0",
+          "digest": "__CHILD_DIGEST__"
+        },
+        "granted_capabilities": {
+          "grants": [
+            {
+              "id": "emit-evidence",
+              "access": "write",
+              "constraints": {
+                "max_bytes": 65536,
+                "audiences": ["user"],
+                "redactions": ["none"]
+              }
+            }
+          ]
+        },
+        "message": "Hello, Ada"
+      }
+    }
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

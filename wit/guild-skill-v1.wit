@@ -1,7 +1,22 @@
-package guild:skill@1.0.0
+package guild:skill@1.0.0;
 
 interface types {
-  type json = string
+  type json = string;
+
+  record skill-key {
+    namespace: string,
+    name: string,
+  }
+
+  record resolved-skill-ref {
+    key: skill-key,
+    version: string,
+    digest: string,
+  }
+
+  enum abi-version {
+    guild-skill-v1,
+  }
 
   enum execution-mode {
     inspect,
@@ -13,6 +28,82 @@ interface types {
     read-only,
     additive,
     destructive,
+  }
+
+  enum severity {
+    info,
+    warn,
+    error,
+  }
+
+  enum capability-id {
+    http-request,
+    read-resource,
+    invoke-skill,
+    emit-evidence,
+    get-secret,
+    cache-read,
+    cache-write,
+    log-write,
+    monotonic-clock,
+    wall-clock,
+  }
+
+  enum capability-access {
+    read,
+    write,
+    invoke,
+  }
+
+  enum evidence-audience {
+    user,
+    assistant,
+    internal,
+  }
+
+  enum redaction-class {
+    none,
+    secrets-removed,
+    pii-removed,
+    tenant-sensitive,
+  }
+
+  enum resource-kind {
+    execution,
+    object,
+  }
+
+  record read-resource-constraints {
+    uri-prefixes: option<list<string>>,
+    resource-kinds: option<list<resource-kind>>,
+  }
+
+  record invoke-dependency-constraints {
+    aliases: option<list<string>>,
+  }
+
+  record emit-evidence-constraints {
+    max-bytes: option<u64>,
+    audiences: option<list<evidence-audience>>,
+    redactions: option<list<redaction-class>>,
+  }
+
+  record log-constraints {
+    levels: option<list<severity>>,
+  }
+
+  variant capability-constraints {
+    none,
+    read-resource(read-resource-constraints),
+    invoke-dependency(invoke-dependency-constraints),
+    emit-evidence(emit-evidence-constraints),
+    log(log-constraints),
+  }
+
+  record granted-capability {
+    id: capability-id,
+    access: capability-access,
+    constraints: capability-constraints,
   }
 
   record budget {
@@ -27,14 +118,16 @@ interface types {
     execution-id: string,
     trace-id: string,
     tenant-id: string,
+    skill: resolved-skill-ref,
     mode: execution-mode,
     input-sha256: string,
     now-utc: option<string>,
     budget: budget,
+    granted-capabilities: list<granted-capability>,
   }
 
   record diagnostic {
-    severity: string,
+    severity: severity,
     code: string,
     message: string,
     retryable: bool,
@@ -52,14 +145,38 @@ interface types {
     mime-type: option<string>,
     sha256: option<string>,
     title: option<string>,
+    audience: evidence-audience,
+    redaction: redaction-class,
+    freshness: option<string>,
   }
 
-  record execution-result {
+  record evidence-emission-request {
+    payload: list<u8>,
+    mime-type: string,
+    title: option<string>,
+    audience: evidence-audience,
+    redaction: redaction-class,
+    freshness: option<string>,
+  }
+
+  record resource-read-result {
+    uri: string,
+    mime-type: string,
+    bytes: list<u8>,
+    sha256: option<string>,
+  }
+
+  record skill-output {
     summary: string,
     structured: json,
     diagnostics: list<diagnostic>,
     effects: list<effect>,
     evidence: list<evidence-ref>,
+  }
+
+  record dependency-invocation-request {
+    alias: string,
+    input: json,
   }
 
   record skill-error {
@@ -71,25 +188,27 @@ interface types {
 }
 
 interface host {
-  use types.{execution-result, json}
+  use types.{dependency-invocation-request, evidence-emission-request, evidence-ref, json, resource-read-result, severity, skill-error, skill-output};
 
-  log: func(level: string, message: string)
-  read-resource: func(uri: string) -> result<list<u8>, string>
-  cache-get: func(key: string) -> option<json>
-  cache-put: func(key: string, value: json, ttl-seconds: u32)
-  invoke-skill: func(skill-ref: string, input: json) -> result<execution-result, string>
-  http-request: func(request: json) -> result<json, string>
-  get-secret: func(handle: string) -> result<list<u8>, string>
-  emit-evidence: func(item: json)
+  log: func(level: severity, message: string);
+  emit-evidence: func(request: evidence-emission-request) -> result<evidence-ref, string>;
+  read-resource: func(uri: string) -> result<resource-read-result, string>;
+  cache-get: func(key: string) -> option<json>;
+  cache-put: func(key: string, value: json, ttl-seconds: u32);
+  invoke-dependency: func(request: dependency-invocation-request) -> result<skill-output, skill-error>;
+  http-request: func(request: json) -> result<json, string>;
+  get-secret: func(handle: string) -> result<list<u8>, string>;
+  monotonic-now: func() -> result<u64, string>;
+  wall-clock-now: func() -> result<string, string>;
 }
 
 interface skill {
-  use types.{execution-context, execution-result, json, skill-error}
+  use types.{execution-context, json, skill-error, skill-output};
 
-  run: func(ctx: execution-context, input: json) -> result<execution-result, skill-error>
+  run: func(ctx: execution-context, input: json) -> result<skill-output, skill-error>;
 }
 
 world guild-skill {
-  import host
-  export skill
+  import host;
+  export skill;
 }

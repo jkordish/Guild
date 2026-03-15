@@ -1,0 +1,67 @@
+{
+  "summary": "Explained stored execution __TARGET_EXECUTION_URI__.",
+  "structured": {
+    "target_execution_uri": "__TARGET_EXECUTION_URI__",
+    "execution_resource": {
+      "uri": "__TARGET_EXECUTION_URI__",
+      "mime_type": "application/json",
+      "sha256": "__TARGET_EXECUTION_SHA256__"
+    },
+    "target_status": "succeeded",
+    "target_skill": {
+      "key": {
+        "namespace": "example",
+        "name": "hello-inspect"
+      },
+      "version": "0.1.0",
+      "digest": "__TARGET_SKILL_DIGEST__"
+    },
+    "stored_summary": "Hello, Ada. Guild inspect is working.",
+    "termination": null,
+    "evidence_count": 1,
+    "child_execution_count": 0,
+    "child_execution_uris": [],
+    "child_execution_statuses": [],
+    "first_evidence": {
+      "uri": "__TARGET_EVIDENCE_URI__",
+      "mime_type": "application/json",
+      "sha256": "__TARGET_EVIDENCE_DIGEST__",
+      "json": {
+        "kind": "hello-inspect-snapshot",
+        "echoed_input": {
+          "name": "Ada"
+        },
+        "mode": "inspect",
+        "skill": {
+          "key": {
+            "namespace": "example",
+            "name": "hello-inspect"
+          },
+          "version": "0.1.0",
+          "digest": "__TARGET_SKILL_DIGEST__"
+        }
+      }
+    },
+    "granted_capabilities": {
+      "grants": [
+        {
+          "id": "read-resource",
+          "access": "read",
+          "constraints": {
+            "resource_kinds": [
+              "execution",
+              "object"
+            ],
+            "uri_prefixes": [
+              "guild://executions/",
+              "guild://objects/sha256/"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HelloCompositeInput",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "child_alias": {
+      "type": "string"
+    },
+    "child_emit_log": {
+      "type": "boolean"
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

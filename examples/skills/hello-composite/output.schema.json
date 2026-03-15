@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HelloCompositeOutput",
+  "type": "object",
+  "properties": {
+    "echoed_input": {
+      "type": "object"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "object"
+    },
+    "granted_capabilities": {
+      "type": "object"
+    },
+    "invoked_alias": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "child": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "echoed_input",
+    "mode",
+    "skill",
+    "granted_capabilities",
+    "invoked_alias",
+    "message",
+    "child"
+  ],
+  "additionalProperties": false
+}

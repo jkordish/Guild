@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HelloInspectInput",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "emit_log": {
+      "type": "boolean"
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

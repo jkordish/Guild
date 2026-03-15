@@ -1,0 +1,44 @@
+{
+  "summary": "Hello, Ada. Guild inspect is working.",
+  "structured": {
+    "echoed_input": {
+      "name": "Ada"
+    },
+    "mode": "inspect",
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "hello-inspect"
+      },
+      "version": "0.1.0",
+      "digest": "__INSTALLED_DIGEST__"
+    },
+    "granted_capabilities": {
+      "grants": [
+        {
+          "id": "emit-evidence",
+          "access": "write",
+          "constraints": {
+            "max_bytes": 65536,
+            "audiences": ["user"],
+            "redactions": ["none"]
+          }
+        }
+      ]
+    },
+    "message": "Hello, Ada"
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": [
+    {
+      "uri": "__EVIDENCE_URI__",
+      "title": "hello-inspect snapshot",
+      "mime_type": "application/json",
+      "sha256": "__EVIDENCE_DIGEST__",
+      "audience": "user",
+      "redaction": "none",
+      "freshness": "deterministic"
+    }
+  ]
+}

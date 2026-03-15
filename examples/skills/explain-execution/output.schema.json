@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExplainExecutionOutput",
+  "type": "object",
+  "properties": {
+    "target_execution_uri": {
+      "type": "string"
+    },
+    "execution_resource": {
+      "type": "object"
+    },
+    "target_status": {
+      "type": "string"
+    },
+    "target_skill": {
+      "type": "object"
+    },
+    "stored_summary": {
+      "type": ["string", "null"]
+    },
+    "termination": {
+      "type": ["object", "null"]
+    },
+    "evidence_count": {
+      "type": "integer"
+    },
+    "child_execution_count": {
+      "type": "integer"
+    },
+    "child_execution_uris": {
+      "type": "array"
+    },
+    "child_execution_statuses": {
+      "type": "array"
+    },
+    "first_evidence": {
+      "type": ["object", "null"]
+    },
+    "granted_capabilities": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "target_execution_uri",
+    "execution_resource",
+    "target_status",
+    "target_skill",
+    "stored_summary",
+    "termination",
+    "evidence_count",
+    "child_execution_count",
+    "child_execution_uris",
+    "child_execution_statuses",
+    "first_evidence",
+    "granted_capabilities"
+  ],
+  "additionalProperties": false
+}

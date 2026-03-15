@@ -1,0 +1,77 @@
+{
+  "api_version": "guild-skill-v1",
+  "key": {
+    "namespace": "example",
+    "name": "explain-execution"
+  },
+  "version": "0.1.0",
+  "display_name": "Explain Execution",
+  "description": "An inspect-only skill that reads stored Guild execution resources and explains them.",
+  "runtime": {
+    "kind": "wasm-component",
+    "entrypoint": "guild-skill",
+    "abi": "guild-skill-v1"
+  },
+  "interface": {
+    "input_schema_uri": "./input.schema.json",
+    "output_schema_uri": "./output.schema.json",
+    "examples_uri": "./examples.json"
+  },
+  "behavior": {
+    "category": "explain",
+    "mutability": "read-only",
+    "idempotent": true,
+    "open_world": false,
+    "freshness": "deterministic",
+    "modes": {
+      "supported": ["inspect"],
+      "apply_requires_approval": false,
+      "apply_requires_idempotency_key": false
+    }
+  },
+  "capabilities": [
+    {
+      "id": "read-resource",
+      "access": "read",
+      "required": true,
+      "constraints": {
+        "uri_prefixes": ["guild://executions/"],
+        "resource_kinds": ["execution"]
+      }
+    },
+    {
+      "id": "read-resource",
+      "access": "read",
+      "required": false,
+      "constraints": {
+        "uri_prefixes": ["guild://objects/sha256/"],
+        "resource_kinds": ["object"]
+      }
+    }
+  ],
+  "dependencies": [],
+  "publisher": {
+    "id": "local.example",
+    "display_name": "Local Example",
+    "homepage": null
+  },
+  "package": {
+    "visibility": "private",
+    "trust_tier": "local",
+    "sbom_uri": null,
+    "signature_uri": null
+  },
+  "build": {
+    "kind": "cargo-wasm-component",
+    "cargo_manifest_path": "./skill-rust/Cargo.toml",
+    "target": "wasm32-wasip2",
+    "profile": "release"
+  },
+  "tests": [
+    {
+      "name": "explains-a-stored-execution-resource",
+      "fixtures_uri": "./tests/explain-input.json",
+      "expected_output_uri": "./tests/expected-output.json"
+    }
+  ]
+}

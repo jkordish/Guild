@@ -5,6 +5,16 @@ edition.workspace = true
 
 [dependencies]
 guild-manifest = { path = "../guild-manifest" }
+guild-registry = { path = "../guild-registry" }
+guild-sdk-rust = { path = "../guild-sdk-rust" }
 guild-types = { path = "../guild-types" }
 serde.workspace = true
+serde_json.workspace = true
 schemars.workspace = true
+sha2.workspace = true
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+trybuild = "1"

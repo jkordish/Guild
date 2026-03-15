@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExplainExecutionInput",
+  "type": "object",
+  "properties": {
+    "execution_uri": {
+      "type": "string"
+    },
+    "include_first_evidence": {
+      "type": "boolean"
+    }
+  },
+  "required": ["execution_uri"],
+  "additionalProperties": false
+}

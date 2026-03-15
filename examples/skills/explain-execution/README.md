@@ -1,0 +1,40 @@
+# Explain Execution
+
+`explain-execution` is an inspect-only example skill that reads a stored Guild execution resource through the host-mediated `read-resource` import and returns a structured explanation.
+
+It proves:
+
+- stored execution records are reusable inputs, not just return values
+- evidence/object URIs can be consumed through the same local resource backend used by MCP
+- resource access stays capability-scoped and host-mediated
+- failed and rejected execution records can be explained without requiring a skill-authored output
+
+The skill expects an execution URI and can optionally read the first linked evidence object.
+
+Canonical local proof flow:
+
+```bash
+cargo run -p guild-mcp --example explain_execution_local
+cargo run -p guild-mcp --example explain_failure_local
+```
+
+That command:
+
+1. installs `hello-inspect`
+2. runs `guild.inspect` to produce a stored execution URI
+3. installs `explain-execution`
+4. executes `explain-execution` against the stored URI through the same Wasmtime-backed path
+
+`explain_failure_local` uses the same skill to explain a persisted rejected execution record returned through an MCP error receipt URI.
+
+Imported verified skills produce the same local execution resources. That means `explain-execution` can also be used against records created by the signed portable bundle proof flows after import.
+
+The required `read-resource` capability is constrained to local Guild execution and object URIs:
+
+- `guild://executions/`
+- `guild://objects/sha256/`
+
+The current typed grant shape is:
+
+- `resource_kinds: ["execution", "object"]`
+- `uri_prefixes: ["guild://executions/", "guild://objects/sha256/"]`

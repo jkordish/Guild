@@ -2,3 +2,11 @@
 name = "guild-mcp"
 version.workspace = true
 edition.workspace = true
+
+[dependencies]
+guild-registry = { path = "../guild-registry" }
+guild-runner = { path = "../guild-runner" }
+guild-types = { path = "../guild-types" }
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
