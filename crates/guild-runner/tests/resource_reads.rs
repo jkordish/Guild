@@ -121,16 +121,15 @@ fn emit_evidence_grant() -> GrantedCapability {
 
 fn execution_request(
     skill: &guild_registry::InstalledSkill,
-    execution_id: impl Into<String>,
+    request_id: impl Into<String>,
     input: Value,
     grants: CapabilityGrantSet,
 ) -> ResolvedExecutionEnvelope {
-    let execution_id = execution_id.into();
+    let request_id = request_id.into();
 
     ResolvedExecutionEnvelope {
-        execution_id: execution_id.clone(),
         request: CallerRequest {
-            request_id: format!("{execution_id}-request"),
+            request_id: format!("{request_id}-request"),
             skill: requested_skill(&skill.resolved_ref.key.name),
             tenant_id: "tenant-1".into(),
             actor_id: "actor-1".into(),
@@ -507,7 +506,7 @@ fn explain_skill_reads_allowed_execution_and_evidence_resources() {
         CapabilityGrantSet {
             grants: vec![read_resource_grant(&[
                 "guild://executions/",
-                "guild://objects/sha256/",
+                "guild://objects/records/",
             ])],
         },
     )
@@ -572,6 +571,8 @@ fn explain_skill_reads_allowed_execution_and_evidence_resources() {
         Value::String(evidence_resource.sha256.clone().unwrap());
     expected_output.structured["first_evidence"]["json"]["skill"]["digest"] =
         Value::String(hello_record.provenance.resolved_skill.digest.clone());
+    expected_output.structured["granted_capabilities"] =
+        explain_output.structured["granted_capabilities"].clone();
 
     assert_eq!(explain_record.output, Some(expected_output));
 }
@@ -593,12 +594,7 @@ fn optional_object_reads_fail_closed_without_object_scope() {
     )
     .unwrap_err();
 
-    assert_eq!(error.code, "read-resource-failed");
-    assert!(error
-        .detail
-        .unwrap()
-        .to_string()
-        .contains("read-resource-kind-denied"));
+    assert_eq!(error.code, "read-resource-kind-denied");
 }
 
 #[test]

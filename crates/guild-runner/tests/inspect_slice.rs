@@ -3,15 +3,14 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use guild_registry::{
-    execution_resource_uri, object_resource_uri, LocalRegistry, LocalSourceInstaller, SkillRegistry,
-};
+use guild_registry::{execution_resource_uri, LocalRegistry, LocalSourceInstaller, SkillRegistry};
 use guild_runner::{Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
     CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, EvidenceRef, ExecutionMode, ExecutionStatus,
-    GrantedCapability, LogConstraints, PolicyDecision, PolicyDecisionOutcome, RedactionClass,
-    RequestedSkillRef, ResolvedExecutionEnvelope, Severity, SkillKey, VersionRequirement,
+    CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, EvidenceRef, ExecutionMode,
+    ExecutionStatus, GrantedCapability, LogConstraints, PolicyDecision, PolicyDecisionOutcome,
+    RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope, Severity, SkillKey,
+    VersionRequirement,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -83,19 +82,18 @@ fn sample_request(
 
 fn envelope_for(
     installed: &guild_registry::InstalledSkill,
-    execution_id: impl Into<String>,
+    request_id: impl Into<String>,
     trace_id: impl Into<String>,
     input: Value,
     grants: CapabilityGrantSet,
     mode: ExecutionMode,
 ) -> ResolvedExecutionEnvelope {
-    let execution_id = execution_id.into();
+    let request_id = request_id.into();
     let trace_id = trace_id.into();
 
     ResolvedExecutionEnvelope {
-        execution_id: execution_id.clone(),
         request: CallerRequest {
-            request_id: format!("{execution_id}-request"),
+            request_id: format!("{request_id}-request"),
             skill: requested_skill(),
             tenant_id: "tenant-1".into(),
             actor_id: "actor-1".into(),
@@ -155,12 +153,16 @@ fn expected_evidence_payload(installed: &guild_registry::InstalledSkill, input: 
     })
 }
 
-fn expected_evidence_ref(installed: &guild_registry::InstalledSkill, input: &Value) -> EvidenceRef {
+fn expected_evidence_ref(
+    uri: String,
+    installed: &guild_registry::InstalledSkill,
+    input: &Value,
+) -> EvidenceRef {
     let payload = serde_json::to_vec(&expected_evidence_payload(installed, input)).unwrap();
     let digest_hex = format!("{:x}", Sha256::digest(&payload));
 
     EvidenceRef {
-        uri: object_resource_uri(&digest_hex),
+        uri,
         title: Some("hello-inspect snapshot".into()),
         mime_type: Some("application/json".into()),
         sha256: Some(format!("sha256:{digest_hex}")),
@@ -246,11 +248,17 @@ fn runner_executes_example_skill_and_wraps_execution_record() {
     let runner = build_runner();
 
     let record = runner.execute(&registry, &installed, request).unwrap();
-    let stored = registry.load_execution_record("exec-1").unwrap();
+    let stored = registry
+        .load_execution_record(&record.receipt.execution_id)
+        .unwrap();
     let output = record.output.as_ref().unwrap();
 
-    assert_eq!(record.receipt.execution_id, "exec-1");
-    assert_eq!(record.receipt.uri, execution_resource_uri("exec-1"));
+    assert_ne!(record.receipt.execution_id, "exec-1");
+    assert_eq!(record.request.request_id, "exec-1-request");
+    assert_eq!(
+        record.receipt.uri,
+        execution_resource_uri(&record.receipt.execution_id)
+    );
     assert_eq!(record.receipt.trace_id, "trace-1");
     assert_eq!(record.parent_execution_id, None);
     assert_eq!(record.status, ExecutionStatus::Succeeded);
@@ -277,7 +285,11 @@ fn runner_executes_example_skill_and_wraps_execution_record() {
     );
     assert_eq!(
         output.evidence,
-        vec![expected_evidence_ref(&installed, &json!({"name": "Ada"}))]
+        vec![expected_evidence_ref(
+            record.emitted_evidence[0].uri.clone(),
+            &installed,
+            &json!({"name": "Ada"})
+        )]
     );
     assert_eq!(
         record
@@ -288,7 +300,13 @@ fn runner_executes_example_skill_and_wraps_execution_record() {
         output.evidence
     );
     assert_eq!(record.emitted_evidence[0].mime_type, "application/json");
+    assert_eq!(
+        record.emitted_evidence[0].produced_by_execution.as_deref(),
+        Some(record.receipt.execution_id.as_str())
+    );
     assert_eq!(record.provenance.resolved_skill, installed.resolved_ref);
+    assert!(record.provenance.started_at_utc.is_some());
+    assert!(record.provenance.finished_at_utc.is_some());
     assert_eq!(record, stored);
     assert!(record.metrics.duration_ms <= record.metrics.duration_ms);
 
@@ -337,7 +355,11 @@ fn example_fixture_expected_output_matches_real_execution() {
     let mut expected_output = expected_output;
     expected_output.structured["skill"]["digest"] =
         serde_json::Value::String(installed.resolved_ref.digest.clone());
-    let expected_evidence = expected_evidence_ref(&installed, &json!({"name": "Ada"}));
+    let expected_evidence = expected_evidence_ref(
+        record.output.as_ref().unwrap().evidence[0].uri.clone(),
+        &installed,
+        &json!({"name": "Ada"}),
+    );
     expected_output.evidence[0].uri = expected_evidence.uri;
     expected_output.evidence[0].sha256 = expected_evidence.sha256;
 
@@ -384,20 +406,28 @@ fn emitted_evidence_is_deduped_by_digest_and_resources_are_readable() {
         .unwrap();
 
     assert_eq!(
-        first.output.as_ref().unwrap().evidence,
-        second.output.as_ref().unwrap().evidence
+        first.output.as_ref().unwrap().evidence[0].uri,
+        first.emitted_evidence[0].uri
+    );
+    assert_ne!(
+        first.output.as_ref().unwrap().evidence[0].uri,
+        second.output.as_ref().unwrap().evidence[0].uri
+    );
+    assert_eq!(
+        first.output.as_ref().unwrap().evidence[0].sha256,
+        second.output.as_ref().unwrap().evidence[0].sha256
     );
     assert_eq!(
         first
             .emitted_evidence
-            .iter()
-            .map(|evidence| evidence.evidence_ref())
-            .collect::<Vec<_>>(),
+            .first()
+            .expect("first emitted evidence exists")
+            .blob_uri,
         second
             .emitted_evidence
-            .iter()
-            .map(|evidence| evidence.evidence_ref())
-            .collect::<Vec<_>>()
+            .first()
+            .expect("second emitted evidence exists")
+            .blob_uri
     );
     let stored = registry
         .read_resource(&first.emitted_evidence[0].uri)
@@ -459,6 +489,8 @@ fn guest_cannot_emit_evidence_without_returning_host_issued_refs() {
         guild_types::ExecutionPhase::RuntimeExec
     );
     assert_eq!(stored.emitted_evidence.len(), 1);
+    assert!(stored.provenance.started_at_utc.is_some());
+    assert!(stored.provenance.finished_at_utc.is_some());
 }
 
 #[test]
@@ -479,6 +511,8 @@ fn unsupported_plan_mode_fails_closed() {
         stored.termination.as_ref().unwrap().phase,
         guild_types::ExecutionPhase::Mode
     );
+    assert!(stored.provenance.started_at_utc.is_some());
+    assert!(stored.provenance.finished_at_utc.is_some());
 }
 
 #[test]
@@ -512,6 +546,8 @@ fn apply_stays_globally_gated_even_if_manifest_declares_it() {
         stored.termination.as_ref().unwrap().phase,
         guild_types::ExecutionPhase::Mode
     );
+    assert!(stored.provenance.started_at_utc.is_some());
+    assert!(stored.provenance.finished_at_utc.is_some());
 }
 
 #[test]
@@ -537,6 +573,8 @@ fn missing_required_grant_is_rejected_before_execution() {
     let termination = stored.termination.as_ref().unwrap();
     assert_eq!(termination.phase, guild_types::ExecutionPhase::Grant);
     assert_eq!(termination.code, "capability-mismatch");
+    assert!(stored.provenance.started_at_utc.is_some());
+    assert!(stored.provenance.finished_at_utc.is_some());
 }
 
 #[test]
@@ -573,4 +611,150 @@ fn host_log_import_fails_closed_without_grant() {
     let termination = stored.termination.as_ref().unwrap();
     assert_eq!(termination.phase, guild_types::ExecutionPhase::Grant);
     assert_eq!(termination.code, "log-write-not-granted");
+    assert!(stored.provenance.started_at_utc.is_some());
+    assert!(stored.provenance.finished_at_utc.is_some());
+}
+
+#[test]
+fn caller_request_ids_do_not_control_durable_execution_ids_or_overwrite_records() {
+    let registry = load_registry();
+    let installed = registry.resolve(&requested_skill()).unwrap();
+    let runner = build_runner();
+    let first_request = envelope_for(
+        &installed,
+        "caller-request",
+        "trace-repeat",
+        json!({"name": "Ada"}),
+        CapabilityGrantSet {
+            grants: vec![emit_evidence_grant()],
+        },
+        ExecutionMode::Inspect,
+    );
+    let second_request = envelope_for(
+        &installed,
+        "caller-request",
+        "trace-repeat",
+        json!({"name": "Ada"}),
+        CapabilityGrantSet {
+            grants: vec![emit_evidence_grant()],
+        },
+        ExecutionMode::Inspect,
+    );
+
+    let first = runner
+        .execute(&registry, &installed, first_request)
+        .unwrap();
+    let second = runner
+        .execute(&registry, &installed, second_request)
+        .unwrap();
+
+    assert_eq!(first.request.request_id, second.request.request_id);
+    assert_ne!(first.receipt.execution_id, first.request.request_id);
+    assert_ne!(first.receipt.execution_id, second.receipt.execution_id);
+    assert_eq!(
+        registry
+            .load_execution_record(&first.receipt.execution_id)
+            .unwrap()
+            .receipt
+            .execution_id,
+        first.receipt.execution_id
+    );
+    assert_eq!(
+        registry
+            .load_execution_record(&second.receipt.execution_id)
+            .unwrap()
+            .receipt
+            .execution_id,
+        second.receipt.execution_id
+    );
+}
+
+#[test]
+fn duplicate_execution_record_persistence_is_rejected() {
+    let registry = load_registry();
+    let installed = registry.resolve(&requested_skill()).unwrap();
+    let runner = build_runner();
+    let record = runner
+        .execute(
+            &registry,
+            &installed,
+            envelope_for(
+                &installed,
+                "duplicate-persist",
+                "trace-duplicate-persist",
+                json!({"name": "Ada"}),
+                CapabilityGrantSet {
+                    grants: vec![emit_evidence_grant()],
+                },
+                ExecutionMode::Inspect,
+            ),
+        )
+        .unwrap();
+
+    let error = registry.persist_execution_record(&record).unwrap_err();
+    assert_eq!(error.code, "execution-record-exists");
+}
+
+#[test]
+fn emit_evidence_denials_are_host_owned_rejections() {
+    let registry = load_registry();
+    let mut installed = registry.resolve(&requested_skill()).unwrap();
+    installed
+        .manifest
+        .capabilities
+        .iter_mut()
+        .find(|capability| capability.id == CapabilityId::EmitEvidence)
+        .expect("fixture exposes emit-evidence capability")
+        .required = false;
+    let runner = build_runner();
+    let error = runner
+        .execute(
+            &registry,
+            &installed,
+            envelope_for(
+                &installed,
+                "emit-denied",
+                "trace-emit-denied",
+                json!({"name": "Ada"}),
+                CapabilityGrantSet::default(),
+                ExecutionMode::Inspect,
+            ),
+        )
+        .unwrap_err();
+
+    assert_eq!(error.code, "emit-evidence-not-granted");
+    let receipt = error.receipt.expect("emit-evidence rejection is persisted");
+    let stored = registry
+        .load_execution_record(&receipt.execution_id)
+        .unwrap();
+    assert_eq!(stored.status, ExecutionStatus::Rejected);
+    assert_eq!(
+        stored.termination.as_ref().unwrap().phase,
+        guild_types::ExecutionPhase::Grant
+    );
+}
+
+#[test]
+fn unsupported_manifest_capabilities_are_rejected_before_execution() {
+    let (mut installed, request) =
+        sample_request(CapabilityGrantSet::default(), ExecutionMode::Inspect);
+    installed.manifest.capabilities.push(CapabilityRequirement {
+        id: CapabilityId::CacheRead,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::none(),
+        required: false,
+    });
+
+    let registry = load_registry();
+    let runner = build_runner();
+    let error = runner.execute(&registry, &installed, request).unwrap_err();
+
+    assert_eq!(error.code, "unsupported-runtime-surface");
+    let receipt = error
+        .receipt
+        .expect("unsupported manifest capability rejection is persisted");
+    let stored = registry
+        .load_execution_record(&receipt.execution_id)
+        .unwrap();
+    assert_eq!(stored.status, ExecutionStatus::Rejected);
 }

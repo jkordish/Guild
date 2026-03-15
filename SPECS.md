@@ -81,19 +81,21 @@ A durable host-owned record describing a single execution attempt and its outcom
 
 ### 5.8 Evidence
 
-A durable host-owned object representing material read, derived, or produced in support of execution or explanation.
+A durable host-owned object model representing material read, derived, or produced in support of execution or explanation.
 
 ### 5.9 EvidenceRef
 
-A host-issued stable reference to a persisted evidence object.
+A host-issued stable reference to a persisted evidence record.
 
 ### 5.10 EvidenceRecord
 
-A durable host-owned metadata record describing a persisted evidence object.
+A durable host-owned metadata record describing one persisted evidence emission and linking it to the underlying blob identity.
 
 ### 5.11 CallerRequest
 
 A caller-facing request object carrying requested identity plus caller intent and inputs.
+
+Caller-supplied request identifiers are correlation data only. They are not durable execution record identifiers.
 
 ### 5.12 ResolvedExecutionEnvelope
 
@@ -160,12 +162,17 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - source and installed manifests now carry distinct `manifest_schema_version`, `skill_api_version`, and `runtime.guest_abi_version` axes
 - execution resolves only against installed executable state
 - the host now models caller intent separately from resolved execution envelopes and durable execution records
+- durable execution record identifiers are minted by the host rather than accepted from callers
 - `guild.inspect` runs through a real Wasmtime-backed Wasm component runtime
 - resolved execution attempts persist on success, failure, and rejection
-- evidence persists as durable host-owned objects behind `EvidenceRef` values plus host-loadable `EvidenceRecord` metadata
+- evidence persists as durable host-owned objects behind host-issued per-emission `EvidenceRef` values plus host-loadable `EvidenceRecord` metadata
+- evidence payload blobs remain content-addressed by digest and distinct from evidence-record identity
 - signed local bundle export and import verifies trust, signature, and bundled file digests before installation
 - composite skills invoke declared child dependencies by alias through the host boundary
-- supported typed capability families are currently `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- local source installs stage and validate before an atomic move into place
+- requested resolution fails closed if a single key and version maps to multiple installed digests
+- supported typed capability families in the active Wasm inspect slice are currently `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- unsupported capability families present elsewhere in shared contracts are rejected before execution in the active inspect slice
 
 The current repository does not yet implement full `plan` mode, a general policy engine, or `apply` mode.
 
@@ -187,11 +194,21 @@ A `ResolvedSkillRef` MUST correspond to an immutable executable artifact. Digest
 
 Execution MUST record the resolved identity that actually ran.
 
-### 9.5 Mutable aliases
+### 9.5 Durable execution identifier ownership
+
+Durable execution record identifiers MUST be minted by the host. Callers MAY supply correlation or request identifiers, but those values MUST NOT control durable execution record identity.
+
+### 9.6 Mutable aliases
 
 Implementations MAY support aliases such as stable, approved, or channel-like selectors, but execution MUST still bind to a concrete immutable resolved artifact.
 
-### 9.6 Resolution visibility
+### 9.7 Requested resolution ambiguity
+
+If a requested reference would match multiple installed digests for the same selected skill key and version, the host MUST use an explicit deterministic policy. Silent tie-breaking by scan order, directory order, or incidental path order is not conformant.
+
+The current repository policy is to reject such resolution as ambiguous unless the caller already names an exact resolved digest.
+
+### 9.8 Resolution visibility
 
 The resolved identity SHOULD be inspectable after execution.
 
@@ -200,6 +217,8 @@ The resolved identity SHOULD be inspectable after execution.
 ### 10.1 Installation
 
 Guild SHOULD support local installation of executable artifacts into host-managed records.
+
+Install flows MUST NOT require destructive pre-deletion of existing installed state.
 
 ### 10.2 Export
 
@@ -220,6 +239,10 @@ The host MAY accept, reject, quarantine, or reclassify imported bundles. Import 
 ### 10.6 Installed execution source
 
 Execution SHOULD resolve from host-managed installed state rather than directly from mutable source directories.
+
+### 10.7 Atomic local source installs
+
+Local source installs SHOULD stage into temporary host-managed state, validate there, and then move into installed state atomically. Install failure MUST NOT destroy previously working installed artifacts for the same requested key and version.
 
 ## 12. Runtime Boundary
 
@@ -256,8 +279,9 @@ Implementations MAY define capability families such as:
 - `inspect`
 - `explain`
 - `read-resource`
-- `write-evidence`
-- `invoke-child`
+- `emit-evidence`
+- `invoke-skill`
+- `log-write`
 - `policy-introspect`
 
 If supported, these MUST be enforced by the host.
@@ -265,6 +289,8 @@ If supported, these MUST be enforced by the host.
 ### 12.4 Denied capability use
 
 If a guest attempts an ungranted operation, the host MUST deny it in a way that can be represented durably.
+
+Authorization denials MUST remain host-owned outcomes. A capability denial MUST NOT be silently recast as a guest-domain skill failure.
 
 ### 12.5 No self-escalation
 
@@ -279,7 +305,9 @@ The current repository enforces typed constraints for:
 - `emit-evidence`: `max_bytes`, `audiences`, `redactions`
 - `log-write`: `levels`
 
-Those are the currently implemented product names in the Rust and WIT surface. Unknown fields, wrong-family constraint shapes, and empty scoped lists are validation errors.
+Those are the currently implemented product names in the active Wasm inspect slice. Unknown fields, wrong-family constraint shapes, and empty scoped lists are validation errors.
+
+Shared contracts may mention broader capability families for future phases, but the active inspect slice MUST either prune unsupported families from the executable surface or reject them before execution. The current repository chooses preflight rejection.
 
 ## 14. Execution Semantics
 
@@ -303,6 +331,8 @@ These outcomes MUST be durably representable as `ExecutionRecord` resources.
 
 A top-level execution SHOULD return a host-issued receipt suitable for locating the durable execution record.
 
+Receipts SHOULD expose the host-issued durable execution URI rather than a caller-chosen identifier.
+
 ### 13.5 Composite executions
 
 If composite skills are supported, child skill calls MUST create child execution attempts with durable parent-child linkage.
@@ -324,6 +354,7 @@ The current repository implements `inspect` end to end, defers `plan`, and globa
 A minimally useful `ExecutionRecord` MUST contain:
 
 - execution identifier
+- caller request or correlation identifier if supplied
 - requested skill reference
 - resolved skill reference
 - parent execution identifier if applicable
@@ -334,6 +365,8 @@ A minimally useful `ExecutionRecord` MUST contain:
 - granted capability slice or reference thereto
 - evidence references read or produced
 - policy decision metadata sufficient for audit
+
+The start and terminal timestamps in durable execution records MUST be host-stamped rather than guest-authored placeholders.
 
 Implementations MAY include richer diagnostics, logs, structured outputs, lineage edges, or timing breakdowns.
 
@@ -346,6 +379,8 @@ Evidence MUST be persistable as a durable host-owned object.
 ### 15.2 Stable evidence references
 
 Persisted evidence MUST be addressable by `EvidenceRef` values issued by the host.
+
+An `EvidenceRef` SHOULD identify an evidence record for a single emission event rather than only the underlying blob digest.
 
 ### 15.3 Evidence linkage
 
@@ -362,6 +397,12 @@ Evidence persisted during execution MUST be available for later inspect and expl
 ### 15.6 Provenance
 
 Evidence SHOULD preserve provenance or chain-of-custody metadata sufficient for later analysis.
+
+### 15.7 Blob identity and record identity
+
+Implementations SHOULD distinguish content-addressed evidence blob identity from host-issued evidence-record identity.
+
+If multiple executions emit the same payload digest, implementations MAY deduplicate the underlying blob storage, but they MUST preserve distinct evidence-record identity and per-emission metadata.
 
 ## 17. Inspect and Explain
 
@@ -420,6 +461,8 @@ Policy MAY be expressed against:
 ### 18.3 Durable denial record
 
 Policy rejection SHOULD produce a durable record suitable for later inspection and audit.
+
+In the current repository, authorization denials across runner checks and supported host imports are represented as host-owned rejected executions rather than guest-authored failures.
 
 ### 18.4 Safety precedence
 

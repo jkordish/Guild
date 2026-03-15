@@ -36,7 +36,7 @@ pub struct InspectRequest {
     pub budget: Budget,
     #[serde(default)]
     pub grants: CapabilityGrantSet,
-    pub execution_id: String,
+    pub request_id: String,
     pub trace_id: String,
 }
 
@@ -57,7 +57,7 @@ impl InspectRequest {
             actor_id: actor_id.into(),
             budget: Budget::default(),
             grants,
-            execution_id: format!("inspect-{id}"),
+            request_id: format!("inspect-{id}"),
             trace_id: format!("trace-{id}"),
         }
     }
@@ -137,11 +137,9 @@ where
 
     pub fn inspect(&self, request: InspectRequest) -> Result<InspectResponse, McpError> {
         let installed = self.registry.resolve(&request.skill)?;
-        let requested_execution_id = request.execution_id.clone();
         let execution_request = ResolvedExecutionEnvelope {
-            execution_id: request.execution_id,
             request: CallerRequest {
-                request_id: requested_execution_id,
+                request_id: request.request_id,
                 skill: request.skill,
                 tenant_id: request.tenant_id,
                 actor_id: request.actor_id,

@@ -10,14 +10,15 @@ use guild_manifest::SkillManifest;
 use guild_registry::{execution_resource_uri, InstalledSkill, RegistryError, SkillRegistry};
 use guild_sdk_rust::GuildSkill;
 use guild_types::{
-    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    CapabilityRequirement, ChildExecutionRecord, Diagnostic, Effect, EmitEvidenceConstraints,
-    EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionContext,
-    ExecutionMetrics, ExecutionMode, ExecutionPhase, ExecutionReceipt, ExecutionRecord,
-    ExecutionStatus, GrantedCapability, InvokeDependencyConstraints, LogConstraints, Mutability,
-    PolicyDecision, PolicyDecisionOutcome, Provenance, ReadResourceConstraints, RedactionClass,
-    ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind,
-    Severity, SkillError, SkillOutput, TerminationDetail,
+    host_now_utc, mint_host_execution_id, CapabilityAccess, CapabilityConstraints,
+    CapabilityGrantSet, CapabilityId, CapabilityRequirement, ChildExecutionRecord, Diagnostic,
+    Effect, EmitEvidenceConstraints, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
+    EvidenceRef, ExecutionContext, ExecutionMetrics, ExecutionMode, ExecutionPhase,
+    ExecutionReceipt, ExecutionRecord, ExecutionStatus, GrantedCapability,
+    InvokeDependencyConstraints, LogConstraints, Mutability, PolicyDecision, PolicyDecisionOutcome,
+    Provenance, ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope,
+    ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError,
+    SkillOutput, TerminationDetail,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -57,7 +58,11 @@ pub trait RuntimeHost: Send + Sync {
         input: &Value,
     ) -> Result<ChildInvocationOutcome, ChildInvocationError>;
 
-    fn emit_evidence(&self, request: &EvidenceEmissionRequest) -> Result<EvidenceRef, SkillError>;
+    fn emit_evidence(
+        &self,
+        execution_id: &str,
+        request: &EvidenceEmissionRequest,
+    ) -> Result<EvidenceRef, SkillError>;
 
     fn read_resource(&self, uri: &str) -> Result<ResourceReadResult, SkillError>;
 }
@@ -163,6 +168,7 @@ pub struct ChildInvocationOutcome {
 pub struct ChildInvocationError {
     pub skill_error: SkillError,
     pub record: Option<Box<ChildExecutionRecord>>,
+    denial: Option<CapabilityDenial>,
 }
 
 impl ChildInvocationError {
@@ -170,6 +176,15 @@ impl ChildInvocationError {
         Self {
             skill_error,
             record: None,
+            denial: None,
+        }
+    }
+
+    fn denied(denial: CapabilityDenial) -> Self {
+        Self {
+            skill_error: denial.clone().into_skill_error(),
+            record: None,
+            denial: Some(denial),
         }
     }
 }
@@ -530,10 +545,13 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
             self.grants(),
             &CapabilityOperation::EmitEvidence { request: &request },
         ) {
-            return Ok(Err(capability_denial_message(&denial)));
+            return Err(capability_denial_trap(denial));
         }
 
-        match self.host.emit_evidence(&request) {
+        match self
+            .host
+            .emit_evidence(&self.execution.execution_id, &request)
+        {
             Ok(evidence) => {
                 self.emitted_evidence.push(evidence.clone());
                 Ok(Ok(to_wit_evidence(&evidence)))
@@ -563,16 +581,21 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
         uri: String,
     ) -> wasmtime::Result<Result<bindings::guild::skill::types::ResourceReadResult, String>> {
         let Some(kind) = ResourceKind::from_uri(&uri) else {
-            return Ok(Err(
-                "resource-read-kind-denied: unsupported Guild resource URI".into(),
-            ));
+            return Err(capability_denial_trap(CapabilityDenial {
+                code: "read-resource-kind-denied".into(),
+                message: format!("resource URI `{uri}` was not granted for read access"),
+                detail: serde_json::json!({
+                    "uri": uri,
+                    "resource_kind": "unsupported",
+                }),
+            }));
         };
 
         if let Err(denial) = CapabilityEvaluator::authorize(
             self.grants(),
             &CapabilityOperation::ReadResource { uri: &uri, kind },
         ) {
-            return Ok(Err(capability_denial_message(&denial)));
+            return Err(capability_denial_trap(denial));
         }
 
         match self.host.read_resource(&uri) {
@@ -632,6 +655,9 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
                 Ok(Ok(to_wit_skill_output(&outcome.output)))
             }
             Err(error) => {
+                if let Some(denial) = error.denial {
+                    return Err(capability_denial_trap(denial));
+                }
                 if let Some(record) = error.record {
                     self.child_executions.push(*record);
                 }
@@ -694,13 +720,16 @@ where
         R: SkillRegistry + Clone + Send + Sync + 'static,
     {
         let started = Instant::now();
-        let provenance = Self::build_provenance(installed, &envelope);
+        let execution_id = mint_host_execution_id();
+        let started_at_utc = host_now_utc();
 
         if let Err(error) = Self::validate_manifest(&installed.manifest) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
+                installed,
                 &envelope,
-                &provenance,
+                &execution_id,
+                &started_at_utc,
                 duration_ms(started.elapsed()),
                 error,
                 Vec::new(),
@@ -710,8 +739,10 @@ where
         if let Err(error) = Self::validate_request(&installed.manifest, &envelope) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
+                installed,
                 &envelope,
-                &provenance,
+                &execution_id,
+                &started_at_utc,
                 duration_ms(started.elapsed()),
                 error,
                 Vec::new(),
@@ -721,8 +752,24 @@ where
         if let Err(error) = self.validate_runtime(installed) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
+                installed,
                 &envelope,
-                &provenance,
+                &execution_id,
+                &started_at_utc,
+                duration_ms(started.elapsed()),
+                error,
+                Vec::new(),
+                Vec::new(),
+            ));
+        }
+        if let Err(error) = self.validate_runtime_surface(installed, &envelope.granted_capabilities)
+        {
+            return Err(Self::persist_unsuccessful_attempt(
+                registry,
+                installed,
+                &envelope,
+                &execution_id,
+                &started_at_utc,
                 duration_ms(started.elapsed()),
                 error,
                 Vec::new(),
@@ -732,8 +779,10 @@ where
         if let Err(error) = self.validate_resolved_ref(installed, &envelope) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
+                installed,
                 &envelope,
-                &provenance,
+                &execution_id,
+                &started_at_utc,
                 duration_ms(started.elapsed()),
                 error,
                 Vec::new(),
@@ -743,8 +792,10 @@ where
         if let Err(error) = self.validate_grants(installed, &envelope.granted_capabilities) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
+                installed,
                 &envelope,
-                &provenance,
+                &execution_id,
+                &started_at_utc,
                 duration_ms(started.elapsed()),
                 error,
                 Vec::new(),
@@ -752,7 +803,7 @@ where
             ));
         }
 
-        let context = Self::build_context(&envelope);
+        let context = Self::build_context(&envelope, &execution_id, &started_at_utc);
         let runtime_host: Arc<dyn RuntimeHost> = Arc::new(RunnerRuntimeHost {
             runner: self.clone(),
             registry: registry.clone(),
@@ -766,8 +817,10 @@ where
                 Err(failure) => {
                     return Err(Self::persist_unsuccessful_attempt(
                         registry,
+                        installed,
                         &envelope,
-                        &provenance,
+                        &execution_id,
+                        &started_at_utc,
                         duration_ms(started.elapsed()),
                         *failure.error,
                         failure.child_executions,
@@ -776,7 +829,12 @@ where
                 }
             };
         let duration_ms = duration_ms(started.elapsed());
-        let receipt = Self::build_receipt(&envelope, ExecutionStatus::Succeeded);
+        let finished_at_utc = host_now_utc();
+        let receipt = Self::build_receipt(
+            &execution_id,
+            &envelope.request.trace_id,
+            ExecutionStatus::Succeeded,
+        );
 
         let record = ExecutionRecord {
             receipt,
@@ -794,7 +852,12 @@ where
                 child_executions: outcome.child_executions.len() as u16,
                 ..ExecutionMetrics::default()
             },
-            provenance,
+            provenance: Self::build_provenance(
+                installed,
+                &envelope,
+                &started_at_utc,
+                &finished_at_utc,
+            ),
             child_executions: outcome.child_executions,
         };
 
@@ -803,15 +866,19 @@ where
         Ok(record)
     }
 
-    pub fn build_context(envelope: &ResolvedExecutionEnvelope) -> ExecutionContext {
+    pub fn build_context(
+        envelope: &ResolvedExecutionEnvelope,
+        execution_id: &str,
+        now_utc: &str,
+    ) -> ExecutionContext {
         ExecutionContext {
-            execution_id: envelope.execution_id.clone(),
+            execution_id: execution_id.to_owned(),
             trace_id: envelope.request.trace_id.clone(),
             tenant_id: envelope.request.tenant_id.clone(),
             skill: envelope.resolved_skill.clone(),
             mode: envelope.request.mode.clone(),
             input_sha256: hash_json(&envelope.request.input),
-            now_utc: None,
+            now_utc: Some(now_utc.to_owned()),
             budget: envelope.request.budget.clone(),
             granted_capabilities: envelope.granted_capabilities.clone(),
         }
@@ -867,6 +934,62 @@ where
         }
 
         Ok(())
+    }
+
+    fn validate_runtime_surface(
+        &self,
+        installed: &InstalledSkill,
+        grants: &CapabilityGrantSet,
+    ) -> Result<(), ExecutionError> {
+        if self.runtime.kind() != RuntimeKind::WasmComponent {
+            return Ok(());
+        }
+
+        let unsupported_manifest_capabilities: Vec<_> = installed
+            .manifest
+            .capabilities
+            .iter()
+            .filter(|requirement| {
+                !is_supported_wasm_inspect_capability(&requirement.id, &requirement.access)
+            })
+            .map(|requirement| {
+                serde_json::json!({
+                    "id": requirement.id,
+                    "access": requirement.access,
+                    "constraints": requirement.constraints,
+                    "required": requirement.required,
+                })
+            })
+            .collect();
+
+        let unsupported_grants: Vec<_> = grants
+            .grants
+            .iter()
+            .filter(|grant| !is_supported_wasm_inspect_capability(&grant.id, &grant.access))
+            .map(|grant| {
+                serde_json::json!({
+                    "id": grant.id,
+                    "access": grant.access,
+                    "constraints": grant.constraints,
+                })
+            })
+            .collect();
+
+        if unsupported_manifest_capabilities.is_empty() && unsupported_grants.is_empty() {
+            return Ok(());
+        }
+
+        Err(ExecutionError::new(
+            "unsupported-runtime-surface",
+            "Wasm inspect execution only supports the active capability allowlist",
+        )
+        .with_detail(serde_json::json!({
+            "runtime_kind": self.runtime.kind(),
+            "supported_capabilities": supported_wasm_inspect_capabilities(),
+            "unsupported_manifest_capabilities": unsupported_manifest_capabilities,
+            "unsupported_grants": unsupported_grants,
+        }))
+        .with_phase(ExecutionPhase::Validation))
     }
 
     fn validate_resolved_ref(
@@ -952,6 +1075,8 @@ where
     fn build_provenance(
         installed: &InstalledSkill,
         envelope: &ResolvedExecutionEnvelope,
+        started_at_utc: &str,
+        finished_at_utc: &str,
     ) -> Provenance {
         Provenance {
             resolved_skill: envelope.resolved_skill.clone(),
@@ -962,8 +1087,8 @@ where
                 .iter()
                 .map(|dependency| dependency.skill.digest.clone())
                 .collect(),
-            started_at_utc: None,
-            finished_at_utc: None,
+            started_at_utc: Some(started_at_utc.to_owned()),
+            finished_at_utc: Some(finished_at_utc.to_owned()),
         }
     }
 
@@ -982,13 +1107,14 @@ where
     }
 
     fn build_receipt(
-        envelope: &ResolvedExecutionEnvelope,
+        execution_id: &str,
+        trace_id: &str,
         status: ExecutionStatus,
     ) -> ExecutionReceipt {
         ExecutionReceipt {
-            execution_id: envelope.execution_id.clone(),
-            uri: execution_resource_uri(&envelope.execution_id),
-            trace_id: envelope.request.trace_id.clone(),
+            execution_id: execution_id.to_owned(),
+            uri: execution_resource_uri(execution_id),
+            trace_id: trace_id.to_owned(),
             status,
         }
     }
@@ -1031,8 +1157,10 @@ where
 
     fn persist_unsuccessful_attempt<R>(
         registry: &R,
+        installed: &InstalledSkill,
         envelope: &ResolvedExecutionEnvelope,
-        provenance: &Provenance,
+        execution_id: &str,
+        started_at_utc: &str,
         duration_ms: u64,
         error: ExecutionError,
         child_executions: Vec<ChildExecutionRecord>,
@@ -1042,7 +1170,8 @@ where
         R: SkillRegistry + ?Sized,
     {
         let status = status_from_error(&error);
-        let receipt = Self::build_receipt(envelope, status.clone());
+        let finished_at_utc = host_now_utc();
+        let receipt = Self::build_receipt(execution_id, &envelope.request.trace_id, status.clone());
         let record = ExecutionRecord {
             receipt,
             request: envelope.request.clone(),
@@ -1060,7 +1189,12 @@ where
                 child_executions: child_executions.len() as u16,
                 ..ExecutionMetrics::default()
             },
-            provenance: provenance.clone(),
+            provenance: Self::build_provenance(
+                installed,
+                envelope,
+                started_at_utc,
+                &finished_at_utc,
+            ),
             child_executions,
         };
 
@@ -1116,9 +1250,7 @@ where
             &context.granted_capabilities,
             &CapabilityOperation::InvokeDependency { alias },
         ) {
-            return Err(ChildInvocationError::without_record(
-                denial.into_skill_error(),
-            ));
+            return Err(ChildInvocationError::denied(denial));
         }
 
         if context.budget.max_child_executions == 0 {
@@ -1154,12 +1286,10 @@ where
             &child_installed.manifest.capabilities,
             &context.granted_capabilities,
         )
-        .map_err(ChildInvocationError::without_record)?;
-        let child_execution_id = format!("{}/child/{sequence}", context.execution_id);
+        .map_err(ChildInvocationError::denied)?;
         let child_request = ResolvedExecutionEnvelope {
-            execution_id: child_execution_id.clone(),
             request: guild_types::CallerRequest {
-                request_id: child_execution_id.clone(),
+                request_id: format!("{}:child:{sequence}", context.execution_id),
                 skill: exact_requested_skill_ref(&child_installed.resolved_ref),
                 tenant_id: context.tenant_id.clone(),
                 actor_id: "skill".into(),
@@ -1205,6 +1335,7 @@ where
                 return Err(ChildInvocationError {
                     skill_error: child_execution_error_to_skill_error(alias, error),
                     record: child_record.map(Box::new),
+                    denial: None,
                 });
             }
         };
@@ -1222,9 +1353,13 @@ where
         })
     }
 
-    fn emit_evidence(&self, request: &EvidenceEmissionRequest) -> Result<EvidenceRef, SkillError> {
+    fn emit_evidence(
+        &self,
+        execution_id: &str,
+        request: &EvidenceEmissionRequest,
+    ) -> Result<EvidenceRef, SkillError> {
         self.registry
-            .store_evidence(request)
+            .store_evidence(execution_id, request)
             .map_err(|error| SkillError {
                 code: "evidence-store-failed".into(),
                 message: "failed to persist evidence in the local object store".into(),
@@ -1675,7 +1810,7 @@ impl CapabilityEvaluator {
     fn derive_child_grants(
         child_capabilities: &[CapabilityRequirement],
         parent_grants: &CapabilityGrantSet,
-    ) -> Result<CapabilityGrantSet, SkillError> {
+    ) -> Result<CapabilityGrantSet, CapabilityDenial> {
         let mut grants = Vec::new();
 
         for capability in child_capabilities {
@@ -1684,25 +1819,23 @@ impl CapabilityEvaluator {
                 .iter()
                 .find(|grant| Self::grant_covers_requirement(grant, capability))
             {
-                let constraints = reduce_child_constraints(parent_grant, capability)
-                    .map_err(|denial| denial.into_skill_error())?;
+                let constraints = reduce_child_constraints(parent_grant, capability)?;
                 grants.push(GrantedCapability {
                     id: capability.id.clone(),
                     access: capability.access.clone(),
                     constraints,
                 });
             } else if capability.required {
-                return Err(SkillError {
+                return Err(CapabilityDenial {
                     code: "child-capability-mismatch".into(),
                     message:
                         "child invocation required capabilities that were not granted to the parent"
                             .into(),
-                    retryable: false,
-                    detail: Some(serde_json::json!({
+                    detail: serde_json::json!({
                         "id": capability.id,
                         "access": capability.access,
                         "constraints": capability.constraints,
-                    })),
+                    }),
                 });
             }
         }
@@ -1998,11 +2131,26 @@ fn reduce_required_max_bytes(parent: Option<u64>, required: Option<u64>) -> Opti
     }
 }
 
-const CAPABILITY_DENIAL_TRAP_PREFIX: &str = "guild-capability-denial:";
-
-fn capability_denial_message(denial: &CapabilityDenial) -> String {
-    format!("{}: {}", denial.code, denial.message)
+fn is_supported_wasm_inspect_capability(id: &CapabilityId, access: &CapabilityAccess) -> bool {
+    matches!(
+        (id, access),
+        (CapabilityId::ReadResource, CapabilityAccess::Read)
+            | (CapabilityId::InvokeSkill, CapabilityAccess::Invoke)
+            | (CapabilityId::EmitEvidence, CapabilityAccess::Write)
+            | (CapabilityId::LogWrite, CapabilityAccess::Write)
+    )
 }
+
+fn supported_wasm_inspect_capabilities() -> Vec<Value> {
+    vec![
+        serde_json::json!({ "id": CapabilityId::ReadResource, "access": CapabilityAccess::Read }),
+        serde_json::json!({ "id": CapabilityId::InvokeSkill, "access": CapabilityAccess::Invoke }),
+        serde_json::json!({ "id": CapabilityId::EmitEvidence, "access": CapabilityAccess::Write }),
+        serde_json::json!({ "id": CapabilityId::LogWrite, "access": CapabilityAccess::Write }),
+    ]
+}
+
+const CAPABILITY_DENIAL_TRAP_PREFIX: &str = "guild-capability-denial:";
 
 fn capability_denial_trap(denial: CapabilityDenial) -> wasmtime::Error {
     let payload = serde_json::to_string(&denial).expect("capability denial serializes");

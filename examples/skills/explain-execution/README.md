@@ -6,6 +6,7 @@ It proves:
 
 - stored execution records are reusable inputs, not just return values
 - evidence/object URIs can be consumed through the same local resource backend used by MCP
+- `EvidenceRef` values identify per-emission evidence records, not just payload digests
 - resource access stays capability-scoped and host-mediated
 - failed and rejected execution records can be explained without requiring a skill-authored output
 
@@ -32,9 +33,11 @@ Imported verified skills produce the same local execution resources. That means 
 The required `read-resource` capability is constrained to local Guild execution and object URIs:
 
 - `guild://executions/`
-- `guild://objects/sha256/`
+- `guild://objects/records/`
 
 The current typed grant shape is:
 
 - `resource_kinds: ["execution", "object"]`
-- `uri_prefixes: ["guild://executions/", "guild://objects/sha256/"]`
+- `uri_prefixes: ["guild://executions/", "guild://objects/records/"]`
+
+When the explain skill reads an evidence-record URI, the host dereferences that record through the same local backend and returns the referenced payload. Authorization denials stay host-owned rejections rather than guest-domain failures.

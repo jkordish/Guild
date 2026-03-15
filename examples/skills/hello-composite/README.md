@@ -6,10 +6,12 @@ It proves:
 
 - composite source manifests declare dependencies by alias
 - local install resolves those dependencies into digest-pinned installed records
+- requested same-version multi-digest resolution fails closed instead of silently picking a child artifact
 - the Wasm guest invokes a child through the host-managed dependency boundary
 - the host executes the child through the normal registry + runner + Wasmtime path
 - the parent receives child `SkillOutput`
 - the parent `ExecutionRecord` retains host-owned child execution metadata
+- parent and child durable execution IDs are both host-minted
 - the child execution record and child evidence are durable local resources
 - typed `invoke-skill` alias scope and nested capability reduction stay fail-closed
 
@@ -40,6 +42,8 @@ That command:
 4. executes it through `guild.inspect`
 5. reads back the parent execution, child execution, and child evidence resources
 
+Both execution records carry host-stamped timestamps, and the child lineage is preserved through host-owned durable metadata rather than guest-authored IDs.
+
 `export_import_composite_local` proves composite portability through installed dependency closure:
 
 1. installs `hello-inspect` and `hello-composite` into registry A
@@ -54,3 +58,5 @@ The working example uses:
 
 - `invoke-skill` with the declared alias `hello`
 - `emit-evidence` so the child can still emit its bounded evidence under reduced grants
+
+The active Wasm inspect slice does not expose broader capability families such as cache, secret, or network-style surfaces. Unsupported families are rejected before the composite starts running.

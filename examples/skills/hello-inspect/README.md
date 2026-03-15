@@ -8,10 +8,13 @@ It proves:
 
 - requested refs resolve before execution
 - source manifests are installed into digest-pinned executable records
+- source installs stage and validate before an atomic move into installed state
 - installed manifests and staged artifact digests are validated locally
 - explicit grants flow into `ExecutionContext`
+- durable execution IDs are host-minted; caller request IDs are correlation-only
 - typed `emit-evidence` and `log-write` capability constraints are enforced by the host
 - the Wasm guest emits evidence through the host boundary
+- identical payload blobs may dedupe by digest while each evidence emission still gets its own host-issued `EvidenceRef`
 - a skill returns `SkillOutput`
 - the runner wraps that into `ExecutionRecord` and persists it locally
 - `guild.inspect` uses the same path
@@ -56,6 +59,8 @@ That command:
 4. executes it through `guild.inspect`
 5. reads back the stored execution and evidence resources
 
+The stored execution URI is host-issued. Any caller-supplied request ID is preserved only as correlation metadata inside the durable record.
+
 `export_import_local` uses the same installed artifact as the transport unit instead of the source tree:
 
 1. installs `hello-inspect` into registry A
@@ -75,6 +80,8 @@ The normal happy path grants:
 
 - `emit-evidence` with a bounded byte limit plus allowed audience/redaction sets
 - optional `log-write` with `info` level when the caller wants the guest to emit a log line
+
+The active inspect runtime slice is intentionally limited to `emit-evidence`, `log-write`, `read-resource`, and `invoke-skill`. Other typed capability families may exist elsewhere in the contracts, but this slice rejects them before execution.
 
 Manual rebuilds are no longer the normal workflow. If you want to inspect the raw guest build directly, you can still run:
 

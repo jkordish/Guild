@@ -14,7 +14,6 @@ fn main() {
     };
 
     let _request = ResolvedExecutionEnvelope {
-        execution_id: "exec-1".into(),
         request: CallerRequest {
             request_id: "request-1".into(),
             skill: requested,

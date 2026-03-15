@@ -87,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
                     uri_prefixes: Some(vec![
                         "guild://executions/".into(),
-                        "guild://objects/sha256/".into(),
+                        "guild://objects/records/".into(),
                     ]),
                     resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Object]),
                 }),

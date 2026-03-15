@@ -12,11 +12,16 @@ What is materially real today:
 - skills execute through the real Wasmtime-backed Wasm component path
 - primitive and composite inspect skills run end to end
 - resolved top-level and child execution attempts persist as host-owned `ExecutionRecord` resources on success, failure, and rejection
-- evidence persists as durable local Guild objects with host-issued `EvidenceRef` values
+- durable execution IDs are host-minted, collision-resistant, and protected against silent overwrite
+- evidence persists as durable local Guild objects with distinct blob identity and per-emission evidence-record identity
 - MCP resource reads and guest-side `read-resource` calls use the same local backend
 - a resource-aware explain skill can read stored execution and evidence artifacts through the Wasm host boundary, including failed and rejected records
 - top-level unsuccessful inspect calls return host-issued execution receipts pointing at persisted `guild://executions/...` records
 - supported inspect-slice capability families now use typed host-enforced constraints
+- unsupported capability families are rejected before execution in the active inspect slice
+- same-version / different-digest requested resolution now fails closed instead of silently picking an artifact
+- local source installs are staged and atomic instead of destructive pre-delete operations
+- durable execution records now carry host-stamped start and finish timestamps
 - signed bundle import now verifies local trust, signature validity, and bundled digests before installation
 
 The trust boundary remains intact:
@@ -25,7 +30,7 @@ The trust boundary remains intact:
 - the registry resolves to digest-pinned executable refs
 - the runner executes only resolved refs
 - skills return `SkillOutput`
-- the host owns `ExecutionRecord`, evidence storage, URIs, and child execution metadata
+- the host owns durable execution identity, `ExecutionRecord`, evidence storage, URIs, timestamps, denial classification, and child execution metadata
 
 ## What We Have Done
 
@@ -44,15 +49,24 @@ The trust boundary remains intact:
 - Replaced loose capability constraint handling with typed constraints plus one shared host-side evaluator.
 - Added portable local bundle export/import built from installed executable records, including composite dependency closure export/import.
 - Added local publisher identities, signed bundle export, local trust-store verification on import, and host-owned verification metadata for imported installs.
+- Hardened execution identity so durable execution IDs are host-minted UUIDv7 values rather than caller-controlled IDs or process-local counters.
+- Made execution persistence create-only so stored execution records cannot be silently overwritten by duplicate IDs.
+- Split evidence payload blob identity from evidence-record identity and changed `EvidenceRef` to point at host-issued evidence-record URIs.
+- Added explicit ambiguity rejection when a requested key and version map to multiple installed digests.
+- Reworked local source installs to stage, validate, and atomically move digest directories into place without deleting sibling installs.
+- Unified host authorization denials so runner checks and supported Wasm host imports persist as host-owned rejected executions instead of guest-domain failures.
+- Enforced an honest active inspect runtime slice by rejecting unsupported capability families before execution.
+- Stamped durable execution provenance with real host-generated UTC start and finish timestamps across top-level and child records.
 
 ## Current Functionality
 
 ### Install and resolve
 
 - Source manifests and installed manifests are distinct lifecycle stages.
-- `LocalSourceInstaller` builds Wasm component skills locally, computes digests, stages artifacts, and writes installed manifests.
+- `LocalSourceInstaller` builds Wasm component skills locally, computes digests, stages artifacts, validates them, and atomically writes installed manifests without pre-deleting existing version state.
 - Installed executable directories can now be exported as signed portable local bundles and imported into a fresh local registry root.
 - `LocalRegistry` resolves only installed executable records for execution.
+- Requested semver-style resolution now fails closed with an explicit ambiguity error if the selected key and version exist under multiple installed digests.
 
 ### Portability
 
@@ -66,9 +80,12 @@ The trust boundary remains intact:
 ### Execute
 
 - The real runtime path is `WasmtimeRuntimeAdapter` using `wit/guild-skill-v1.wit`.
-- `ExecutionContext` carries explicit `CapabilityGrantSet` data into the guest.
+- `ExecutionContext` carries explicit `CapabilityGrantSet` data into the guest together with a host-minted durable execution ID.
 - The runner still executes only resolved refs and still globally rejects `apply`.
 - The host now evaluates typed constraints for `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`.
+- Unsupported capability families in the broader shared contract are rejected before execution in the active inspect slice.
+- Host authorization denials across runner checks, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log` are classified through one host-owned rejection model.
+- Durable successful, failed, and rejected execution records now carry host-stamped start and finish timestamps.
 
 ### Compose
 
@@ -81,11 +98,14 @@ The trust boundary remains intact:
 ### Persist and read artifacts
 
 - Resolved execution attempts persist under `guild://executions/...` whether they succeed, fail, or are rejected.
-- Evidence objects persist under `guild://objects/sha256/...`.
+- Execution persistence is create-only, so duplicate durable IDs fail closed instead of overwriting prior records.
+- Evidence payload blobs persist under `guild://objects/sha256/...`.
+- Evidence emissions persist under distinct host-issued record URIs at `guild://objects/records/...`.
 - Parent execution records retain host-owned child execution metadata and child execution URIs.
 - Failed and rejected execution records carry host-owned `termination` metadata and may omit `SkillOutput`.
 - Top-level unsuccessful inspect calls still return errors, but those errors now carry a receipt URI for the persisted execution record.
-- MCP can read execution and evidence resources from the same local store.
+- Evidence records retain per-emission metadata plus `produced_by_execution` linkage even when multiple executions emit the same payload digest.
+- MCP can read execution resources, evidence-record URIs, and underlying payload blobs from the same local store.
 - Guests can now read allowed Guild URIs through `read-resource` when granted typed `uri_prefixes` plus `resource_kinds`.
 
 ### Example flows
@@ -135,11 +155,11 @@ Current sharp edges worth remembering:
 - the local store is honest and useful, but still not a broader storage platform
 - pre-resolution request/lookup failures are still not persisted in this milestone
 - persistence failures themselves still surface as direct errors; Guild does not yet write provisional/in-progress records
-- unsuccessful records currently use a simple host-owned failure model, not a broader incident taxonomy or retry/orchestration system
+- unsuccessful records now have a consistent host-owned rejection path for authorization denials, but still not a broader incident taxonomy or retry/orchestration system
 
 ## Next Steps
 
-The clean next milestones are:
+The clean next milestones after integrity hardening are:
 
 1. Improve resource-aware skills
    - add one more explain/debug skill that consumes stored execution trees more deeply
@@ -162,6 +182,10 @@ The clean next milestones are:
    - remote registries/publication
    - eventually `plan`
    - much later, carefully gated `apply`
+
+6. Keep integrity work local and surgical
+   - add replay/idempotency semantics only when they are explicit and testable
+   - add install GC or replacement policy only when it cannot reintroduce destructive ambiguity
 
 ## Coverage
 
@@ -188,17 +212,25 @@ Regression coverage now includes:
 - detached bundle signature metadata and bundled file digests
 - registry resolution returning executable `ResolvedSkillRef` records from installed manifests
 - reinstall digest changes when guest artifacts change
+- requested same-version multi-digest ambiguity failing closed instead of silently choosing a digest
 - missing staged artifacts failing closed
 - missing/tampered bundle content failing closed on import
 - source-only manifests not being treated as executable installs
+- failed source reinstalls preserving previously working installed digests
 - primitive and composite Wasmtime execution
 - imported primitive and composite execution through the same Wasmtime-backed path without rebuild
 - imported verified installs carrying host-owned verification metadata
 - alias-scoped child invocation and undeclared alias rejection
 - child grant reduction and child budget reduction
+- caller request IDs not controlling durable execution IDs
+- duplicate durable execution record persistence being rejected
 - persisted top-level and child execution records on success, failure, and rejection once a resolved execution attempt exists
-- durable evidence storage and host-issued evidence refs
+- durable evidence blob storage and host-issued per-emission evidence refs
+- distinct evidence-record URIs for repeated emissions of the same payload digest
 - guest-side `read-resource` authorization and failure modes
+- host-owned denial classification for authorization failures across runner and import paths
+- unsupported capability families failing before execution in the active inspect slice
+- durable provenance timestamps on successful, failed, rejected, and child records
 - shared backend consistency between MCP resource reads and guest resource reads
 - resource-aware explain skill execution against stored successful, failed, and rejected artifacts
 - documented primitive and composite portability proof flows using separate registry A / bundle / registry B roots

@@ -115,7 +115,8 @@ In the current repository this logical model is now split more explicitly into:
 - `CallerRequest` for caller intent and requested identity
 - `ResolvedExecutionEnvelope` for host-issued resolved execution input
 - `ExecutionRecord` and `ExecutionReceipt` for durable execution truth
-- `EvidenceRecord` plus `EvidenceRef` for host-owned evidence metadata and guest-visible handles
+- `EvidenceBlobRecord` for content-addressed payload storage
+- `EvidenceRecord` plus `EvidenceRef` for host-owned per-emission metadata and guest-visible handles
 - distinct manifest schema, skill API, and guest ABI version axes
 
 ## 4. Reference Execution Flow
@@ -127,6 +128,7 @@ Caller submits:
 - requested skill ref
 - input payload
 - caller identity or execution context
+- optional request or correlation ID
 
 The system has not yet selected what will run.
 
@@ -156,10 +158,11 @@ If rejected, the runtime host still persists an `ExecutionRecord` with rejection
 
 Runtime host creates:
 
-- execution identifier
+- host-minted execution identifier
 - execution context
 - granted capability slice
 - parent execution linkage if applicable
+- host-stamped start time
 
 The guest does not mint any of this.
 
@@ -179,7 +182,8 @@ The guest may:
 Runtime host persists:
 
 - terminal execution record
-- evidence objects produced or referenced
+- evidence blobs produced or referenced
+- evidence records linking each emission to the underlying blob
 - child execution linkage if present
 
 ### 4.7 Step 7: Later inspection
@@ -196,7 +200,7 @@ The host is the authority for:
 - policy
 - capability enforcement
 - execution IDs
-- evidence IDs
+- evidence record IDs
 - durable persistence
 - audit metadata
 
@@ -231,10 +235,9 @@ Wasm/WASI is the preferred execution substrate because it gives Guild:
 The runtime host SHOULD expose a narrow interface to the guest for operations such as:
 
 - `read-resource`
-- `write-evidence`
-- `invoke-child`
-- `emit-output`
-- `emit-failure`
+- `emit-evidence`
+- `invoke-skill`
+- `log-write`
 
 The exact ABI can evolve, but the shape should stay minimal and explicit.
 
@@ -245,6 +248,8 @@ Anything that changes durable system state or reaches outside the guest boundary
 ### 6.4 Current repository runtime
 
 The current repository uses a Wasmtime-backed Wasm component adapter for the working slice. Primitive, explain, and composite example skills execute through `wit/guild-skill-v1.wit`, where the current host-facing operation names are `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`, and skill output or failure is returned from `skill.run` rather than emitted through separate host calls.
+
+The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution so the runtime surface stays honest.
 
 ## 7. Registry and Resolution Architecture
 
@@ -283,6 +288,8 @@ Install takes a source artifact and produces:
 - a verified local artifact record
 - resolved identity metadata
 - executable placement within the Guild root
+
+The current local installer stages source installs into temporary directories, validates the staged result, and atomically moves the digest directory into place. It does not pre-delete the entire version subtree, and install failure does not remove previously working installed digests.
 
 ### 8.2 Export path
 
@@ -341,6 +348,8 @@ Implementation is flexible, but the model should support:
 - audit metadata
 - structured search/filtering
 
+The current file-backed execution store is create-only for execution records. Duplicate durable execution IDs are rejected instead of silently overwriting prior records.
+
 ## 10. Evidence Store Design
 
 ### 10.1 Evidence as durable object
@@ -370,6 +379,12 @@ Evidence metadata should capture at least:
 - creation time
 - type/format
 - integrity metadata if relevant
+
+The current repository separates evidence blob identity from evidence-record identity:
+
+- payload blobs are stored content-addressed under digest URIs
+- each evidence emission gets a host-minted evidence-record URI
+- evidence records link the emission to the blob digest plus `produced_by_execution` metadata
 
 ## 11. Resource Backend Architecture
 
@@ -404,7 +419,7 @@ Child calls should not bypass the runtime host. The host must still:
 - resolve child requested refs
 - apply policy
 - compute capability slices
-- issue child execution IDs
+- issue host-minted child execution IDs
 - persist child outcomes
 
 ### 12.3 Composite success semantics
@@ -521,7 +536,7 @@ sequenceDiagram
         Host-->>Caller: execution receipt
     else allowed
         Host->>Guest: execute within boundary
-        Guest->>Host: read-resource / write-evidence / invoke-child
+        Guest->>Host: read-resource / emit-evidence / invoke-skill
         Host->>EvidenceStore: persist evidence as needed
         Host->>ExecStore: persist terminal execution record
         Host-->>Caller: execution receipt + output
@@ -560,12 +575,15 @@ That is why the architecture exists. Not because more components are fun. No one
 The current repository implements a real but intentionally narrow slice of this architecture:
 
 - source skills install into local digest-pinned installed records
+- source installs stage and validate before an atomic move into installed state
 - the local registry resolves only against installed executable state
+- requested resolution fails closed on same-version multi-digest ambiguity
 - the runtime host executes Wasm components through Wasmtime
 - explicit caller-provided grants are enforced through typed capability evaluation
-- successful, failed, and rejected resolved executions persist as durable execution records
-- evidence persists as durable local objects and is readable through the same backend used by guest `read-resource`
+- successful, failed, and rejected resolved executions persist as durable execution records with host-minted IDs and host-stamped timestamps
+- evidence persists as durable local objects with separate blob and evidence-record identity and is readable through the same backend used by guest `read-resource`
 - composite skills invoke declared child dependencies by alias through the same host boundary
+- supported capability families in the active inspect slice are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; unsupported families are rejected before execution
 - `guild.inspect` in `guild-mcp` rides that same registry, runner, and storage path
 
 What is still deferred in this repo:

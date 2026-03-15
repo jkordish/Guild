@@ -12,6 +12,23 @@ use semver::{Version, VersionReq};
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
+use uuid::Uuid;
+
+pub fn mint_host_execution_id() -> String {
+    Uuid::now_v7().to_string()
+}
+
+pub fn mint_host_evidence_record_id() -> String {
+    Uuid::now_v7().to_string()
+}
+
+pub fn host_now_utc() -> String {
+    OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .expect("UTC timestamps format as RFC3339")
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub struct SkillKey {
@@ -256,7 +273,9 @@ impl ResourceKind {
     pub fn from_uri(uri: &str) -> Option<Self> {
         if uri.starts_with("guild://executions/") {
             Some(Self::Execution)
-        } else if uri.starts_with("guild://objects/sha256/") {
+        } else if uri.starts_with("guild://objects/sha256/")
+            || uri.starts_with("guild://objects/records/")
+        {
             Some(Self::Object)
         } else {
             None
@@ -268,6 +287,8 @@ impl ResourceKind {
             Some(Self::Execution)
         } else if "guild://objects/sha256/".starts_with(prefix)
             || prefix.starts_with("guild://objects/sha256/")
+            || "guild://objects/records/".starts_with(prefix)
+            || prefix.starts_with("guild://objects/records/")
         {
             Some(Self::Object)
         } else {
@@ -613,7 +634,6 @@ pub struct PolicyDecision {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct ResolvedExecutionEnvelope {
-    pub execution_id: String,
     pub request: CallerRequest,
     pub resolved_skill: ResolvedSkillRef,
     pub granted_capabilities: CapabilityGrantSet,
@@ -760,8 +780,16 @@ pub struct Provenance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct EvidenceBlobRecord {
+    pub uri: String,
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct EvidenceRecord {
     pub uri: String,
+    pub blob_uri: String,
     pub mime_type: String,
     pub sha256: String,
     pub size_bytes: u64,

@@ -4,7 +4,7 @@
 
 Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages operational know-how as versioned, capability-scoped, portable skills that can be resolved, executed, inspected, and shared without giving guests ambient authority.
 
-> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, signed local bundles can be exported and imported without rebuilding, execution attempts persist as host-owned records, and evidence persists as durable Guild objects.
+> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, signed local bundles can be exported and imported without rebuilding, execution attempts persist as host-owned records with host-minted durable IDs, and evidence persists as durable Guild objects with distinct blob and record identity.
 
 ## Why Guild Exists
 
@@ -38,6 +38,18 @@ cargo run -p guild-mcp --example export_import_local
 ```
 
 Additional examples cover composite execution, durable rejected executions, composite portability, and tampered or untrusted bundle rejection.
+
+## Integrity Model
+
+The current inspect slice is intentionally strict about a few things:
+
+- durable execution IDs are minted by the host; caller-supplied IDs are correlation data only
+- `EvidenceRef` identifies a host-issued evidence record URI for a single emission, while payload blobs remain content-addressed by digest
+- requested resolution fails closed if the same skill key and version exist under multiple digests
+- local source installs stage and validate in a temporary directory before an atomic move into installed state
+- host authorization denials persist as host-owned rejected executions instead of leaking into guest-owned failure semantics
+- the active Wasm inspect slice only supports `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; broader typed families are rejected before execution
+- durable execution records now carry host-stamped start and finish timestamps
 
 ## Canonical Docs
 
@@ -94,7 +106,9 @@ What is real today:
 - digest-pinned local resolution
 - Wasmtime-backed Wasm component execution
 - typed capability enforcement for the implemented host imports
-- durable execution and evidence persistence
+- host-minted durable execution IDs with create-only execution persistence
+- durable execution persistence with host-stamped timestamps
+- split evidence blob and evidence-record persistence
 - composite child invocation with durable lineage
 - signed local bundle export and import with trust-store verification
 

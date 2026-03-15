@@ -467,8 +467,62 @@ fn reinstall_updates_digest_when_source_changes() {
     assert_ne!(first.resolved_ref.digest, second.resolved_ref.digest);
 
     let registry = LocalRegistry::load(&registry_root).unwrap();
+    let error = registry.resolve(&requested_hello_inspect()).unwrap_err();
+    assert_eq!(error.code, "skill-version-ambiguous");
+    assert_eq!(
+        registry
+            .resolve_exact(&first.resolved_ref)
+            .unwrap()
+            .resolved_ref,
+        first.resolved_ref
+    );
+    assert_eq!(
+        registry
+            .resolve_exact(&second.resolved_ref)
+            .unwrap()
+            .resolved_ref,
+        second.resolved_ref
+    );
+}
+
+#[test]
+fn failed_source_reinstall_preserves_existing_working_digest() {
+    let temp = TempFixtureDir::new();
+    let workspace_root = temp.path().join("workspace");
+    let source_root = workspace_root.join("examples/skills/hello-inspect");
+    let registry_root = temp.path().join("registry");
+
+    copy_dir_recursive(&example_source_dir(), &source_root);
+    copy_dir_recursive(&repo_root().join("wit"), &workspace_root.join("wit"));
+
+    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    let first = installer.install(&source_root).unwrap();
+
+    let guest_source = source_root.join("skill-rust/src/lib.rs");
+    let guest = fs::read_to_string(&guest_source)
+        .unwrap()
+        .replace("Guild inspect is working.", "Guild inspect failed staging.");
+    fs::write(&guest_source, guest).unwrap();
+
+    let manifest_path = source_root.join("manifest.json");
+    let manifest = fs::read_to_string(&manifest_path)
+        .unwrap()
+        .replace("\"./examples.json\"", "\"./missing-examples.json\"");
+    fs::write(&manifest_path, manifest).unwrap();
+
+    let error = installer.install(&source_root).unwrap_err();
+    assert_eq!(error.code, "source-file-missing");
+
+    let registry = LocalRegistry::load(&registry_root).unwrap();
     let resolved = registry.resolve(&requested_hello_inspect()).unwrap();
-    assert_eq!(resolved.resolved_ref.digest, second.resolved_ref.digest);
+    assert_eq!(resolved.resolved_ref, first.resolved_ref);
+    assert_eq!(
+        registry
+            .resolve_exact(&first.resolved_ref)
+            .unwrap()
+            .resolved_ref,
+        first.resolved_ref
+    );
 }
 
 #[test]
@@ -532,38 +586,60 @@ fn composite_install_resolves_declared_dependency_to_installed_record() {
 fn evidence_objects_are_stored_deduped_and_readable() {
     let registry = LocalRegistry::load(prepared_registry_root()).unwrap();
     let first = registry
-        .store_evidence(&EvidenceEmissionRequest {
-            payload: br#"{"hello":"world"}"#.to_vec(),
-            mime_type: "application/json".into(),
-            title: Some("fixture".into()),
-            audience: EvidenceAudience::User,
-            redaction: RedactionClass::None,
-            freshness: Some("deterministic".into()),
-        })
+        .store_evidence(
+            "execution-1",
+            &EvidenceEmissionRequest {
+                payload: br#"{"hello":"world"}"#.to_vec(),
+                mime_type: "application/json".into(),
+                title: Some("fixture".into()),
+                audience: EvidenceAudience::User,
+                redaction: RedactionClass::None,
+                freshness: Some("deterministic".into()),
+            },
+        )
         .unwrap();
     let second = registry
-        .store_evidence(&EvidenceEmissionRequest {
-            payload: br#"{"hello":"world"}"#.to_vec(),
-            mime_type: "application/json".into(),
-            title: Some("fixture-again".into()),
-            audience: EvidenceAudience::Assistant,
-            redaction: RedactionClass::None,
-            freshness: Some("deterministic".into()),
-        })
+        .store_evidence(
+            "execution-2",
+            &EvidenceEmissionRequest {
+                payload: br#"{"hello":"world"}"#.to_vec(),
+                mime_type: "application/json".into(),
+                title: Some("fixture-again".into()),
+                audience: EvidenceAudience::Assistant,
+                redaction: RedactionClass::None,
+                freshness: Some("deterministic".into()),
+            },
+        )
         .unwrap();
 
-    assert_eq!(first.uri, second.uri);
+    assert_ne!(first.uri, second.uri);
     assert_eq!(first.sha256, second.sha256);
 
-    let evidence = registry.load_evidence_record(&first.uri).unwrap();
+    let first_record = registry.load_evidence_record(&first.uri).unwrap();
+    let second_record = registry.load_evidence_record(&second.uri).unwrap();
     let stored = registry.read_resource(&first.uri).unwrap();
-    assert_eq!(evidence.uri, first.uri);
-    assert_eq!(evidence.sha256, first.sha256.clone().unwrap());
-    assert_eq!(evidence.mime_type, "application/json");
-    assert_eq!(evidence.title.as_deref(), Some("fixture"));
+    let blob = registry.read_resource(&first_record.blob_uri).unwrap();
+
+    assert_eq!(first_record.uri, first.uri);
+    assert_eq!(first_record.sha256, first.sha256.clone().unwrap());
+    assert_eq!(first_record.mime_type, "application/json");
+    assert_eq!(first_record.title.as_deref(), Some("fixture"));
+    assert_eq!(
+        first_record.produced_by_execution.as_deref(),
+        Some("execution-1")
+    );
+    assert_eq!(second_record.title.as_deref(), Some("fixture-again"));
+    assert_eq!(
+        second_record.produced_by_execution.as_deref(),
+        Some("execution-2")
+    );
+    assert_eq!(first_record.blob_uri, second_record.blob_uri);
     assert_eq!(stored.mime_type, "application/json");
     assert_eq!(stored.bytes, br#"{"hello":"world"}"#);
     assert_eq!(stored.sha256, first.sha256);
+    assert_eq!(blob.mime_type, "application/octet-stream");
+    assert_eq!(blob.bytes, br#"{"hello":"world"}"#);
+    assert_eq!(blob.sha256, first.sha256);
 }
 
 #[test]

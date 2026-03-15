@@ -91,14 +91,17 @@ These are not suggestions.
 The repository now has a real local inspect-only path:
 
 - source manifests install into digest-pinned executable records under the local registry root
+- source installs stage and validate before an atomic move into installed state
 - `RequestedSkillRef` resolves through the local file-backed registry
+- requested same-version multi-digest resolution now fails closed as ambiguous
 - installed manifests and staged artifact digests are validated before execution
 - the runner builds `ExecutionContext` with explicit grants
 - primitive and composite example skills execute through the Wasmtime-backed Wasm runtime adapter
 - composite skills invoke declared child dependencies by alias through the host boundary
 - supported capability families now use typed constraints enforced by one shared host-side evaluator
-- resolved execution attempts persist under local Guild URIs on success, failure, and rejection
-- evidence emitted through the Wasm boundary persists as durable local objects
+- only the active inspect-slice capability families `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are actually executable; unsupported families fail before execution
+- resolved execution attempts persist under local Guild URIs on success, failure, and rejection with host-minted durable IDs and host-stamped timestamps
+- evidence emitted through the Wasm boundary persists as content-addressed blobs plus host-issued per-emission evidence records
 - `guild.inspect` in `guild-mcp` rides that same path
 - installed skills can be exported as signed portable bundles, verified against a local trust store, and imported into fresh Guild roots without rebuilding
 
@@ -117,7 +120,7 @@ cargo run -p guild-mcp --example signed_import_failures_local
 Those commands are the canonical local install workflows: they build the example source skills, install them into command-specific cleaned subdirectories under `target/dev-local-registry/`, resolve them, and execute them. The source manifests no longer require manual artifact digest updates.
 They also prove the storage layer by reading back persisted execution and evidence resources, `explain_execution_local` proves that a Wasm guest can consume those same Guild URIs through a host-mediated `read-resource` capability, and `explain_failure_local` proves that unsuccessful resolved executions now persist durable host-owned records that can be explained after the fact.
 `export_import_local` and `export_import_composite_local` now prove signed bundle portability with an explicit local publisher identity plus local trust-store import verification, while `signed_import_failures_local` proves that untrusted or tampered bundles fail closed before installation.
-The current working capability families are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, all with typed constraints rather than ad hoc JSON matching.
+The current working capability families are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, all with typed constraints rather than ad hoc JSON matching. Caller request IDs are correlation only, not durable execution IDs, and `EvidenceRef` values now identify evidence-record URIs rather than raw blob digests.
 
 ## Change rules
 

@@ -70,7 +70,6 @@ fn composite_request(
     let installed = load_registry().resolve(&requested_composite()).unwrap();
 
     ResolvedExecutionEnvelope {
-        execution_id: "exec-composite-1".into(),
         request: CallerRequest {
             request_id: "request-composite-1".into(),
             skill: requested_composite(),
@@ -186,11 +185,6 @@ fn composite_skill_invokes_child_and_records_host_owned_metadata() {
                         invoke_hello_grant(&["hello"]),
                         emit_evidence_grant(),
                         log_info_grant(),
-                        GrantedCapability {
-                            id: CapabilityId::CacheRead,
-                            access: CapabilityAccess::Read,
-                            constraints: CapabilityConstraints::none(),
-                        },
                     ],
                 },
                 serde_json::json!({ "name": "Ada" }),
@@ -213,7 +207,7 @@ fn composite_skill_invokes_child_and_records_host_owned_metadata() {
     assert_eq!(record.child_executions[0].trace_id, "trace-composite-1");
     assert_eq!(
         record.child_executions[0].parent_execution_id,
-        "exec-composite-1"
+        record.receipt.execution_id
     );
     assert_eq!(record.child_executions[0].uri, stored_child.receipt.uri);
     assert_eq!(
@@ -251,8 +245,12 @@ fn composite_skill_invokes_child_and_records_host_owned_metadata() {
     assert_eq!(record, stored_parent);
     assert_eq!(
         stored_child.parent_execution_id.as_deref(),
-        Some("exec-composite-1")
+        Some(record.receipt.execution_id.as_str())
     );
+    assert!(record.provenance.started_at_utc.is_some());
+    assert!(record.provenance.finished_at_utc.is_some());
+    assert!(stored_child.provenance.started_at_utc.is_some());
+    assert!(stored_child.provenance.finished_at_utc.is_some());
     assert_eq!(stored_child_output.evidence.len(), 1);
     assert_eq!(
         stored_child
@@ -387,6 +385,47 @@ fn child_capabilities_must_be_satisfied_by_parent_grants() {
 }
 
 #[test]
+fn unsupported_capability_grants_are_rejected_before_execution() {
+    let registry = load_registry();
+    let installed = registry.resolve(&requested_composite()).unwrap();
+    let runner = build_runner();
+    let error = runner
+        .execute(
+            &registry,
+            &installed,
+            request_for(
+                &installed,
+                CapabilityGrantSet {
+                    grants: vec![
+                        invoke_hello_grant(&["hello"]),
+                        emit_evidence_grant(),
+                        GrantedCapability {
+                            id: CapabilityId::CacheRead,
+                            access: CapabilityAccess::Read,
+                            constraints: CapabilityConstraints::none(),
+                        },
+                    ],
+                },
+                serde_json::json!({ "name": "Ada" }),
+            ),
+        )
+        .unwrap_err();
+
+    assert_eq!(error.code, "unsupported-runtime-surface");
+    let receipt = error
+        .receipt
+        .expect("unsupported grant rejection is persisted");
+    let stored = registry
+        .load_execution_record(&receipt.execution_id)
+        .unwrap();
+    assert_eq!(stored.status, ExecutionStatus::Rejected);
+    assert_eq!(
+        stored.termination.as_ref().unwrap().phase,
+        guild_types::ExecutionPhase::Validation
+    );
+}
+
+#[test]
 fn child_runtime_failures_persist_parent_and_child_execution_records() {
     let temp = TempFixtureDir::new();
     let installer = LocalSourceInstaller::new(temp.path()).unwrap();
@@ -403,7 +442,7 @@ fn child_runtime_failures_persist_parent_and_child_execution_records() {
         },
         serde_json::json!({ "name": "Ada", "child_emit_log": true }),
     );
-    request.execution_id = unique_id("exec-composite-child-failed");
+    request.request.request_id = unique_id("request-composite-child-failed");
     request.request.trace_id = unique_id("trace-composite-child-failed");
     let error = runner.execute(&registry, &installed, request).unwrap_err();
 
