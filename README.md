@@ -49,6 +49,7 @@ The current inspect slice is intentionally strict about a few things:
 - local source installs stage and validate in a temporary directory before an atomic move into installed state
 - host authorization denials persist as host-owned rejected executions instead of leaking into guest-owned failure semantics
 - the active Wasm inspect slice only supports `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; broader typed families are rejected before execution
+- `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
 - durable execution records now carry host-stamped start and finish timestamps
 
 ## Canonical Docs

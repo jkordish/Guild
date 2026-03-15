@@ -19,6 +19,7 @@ What is materially real today:
 - top-level unsuccessful inspect calls return host-issued execution receipts pointing at persisted `guild://executions/...` records
 - supported inspect-slice capability families now use typed host-enforced constraints
 - unsupported capability families are rejected before execution in the active inspect slice
+- `read-resource` authorization now matches parsed canonical Guild URI scopes instead of loose raw string prefixes
 - same-version / different-digest requested resolution now fails closed instead of silently picking an artifact
 - local source installs are staged and atomic instead of destructive pre-delete operations
 - durable execution records now carry host-stamped start and finish timestamps
@@ -56,6 +57,7 @@ The trust boundary remains intact:
 - Reworked local source installs to stage, validate, and atomically move digest directories into place without deleting sibling installs.
 - Unified host authorization denials so runner checks and supported Wasm host imports persist as host-owned rejected executions instead of guest-domain failures.
 - Enforced an honest active inspect runtime slice by rejecting unsupported capability families before execution.
+- Replaced raw-prefix `read-resource` authorization with parsed canonical Guild URI scope matching and fail-closed URI validation.
 - Stamped durable execution provenance with real host-generated UTC start and finish timestamps across top-level and child records.
 
 ## Current Functionality
@@ -107,6 +109,8 @@ The trust boundary remains intact:
 - Evidence records retain per-emission metadata plus `produced_by_execution` linkage even when multiple executions emit the same payload digest.
 - MCP can read execution resources, evidence-record URIs, and underlying payload blobs from the same local store.
 - Guests can now read allowed Guild URIs through `read-resource` when granted typed `uri_prefixes` plus `resource_kinds`.
+- `read-resource` authorization now parses Guild URIs and canonical scope roots like `guild://executions/`, `guild://objects/records/`, and `guild://objects/sha256/` before matching.
+- Malformed or ambiguous Guild URIs fail closed instead of being normalized or accepted through permissive prefix logic.
 
 ### Example flows
 
@@ -228,6 +232,7 @@ Regression coverage now includes:
 - durable evidence blob storage and host-issued per-emission evidence refs
 - distinct evidence-record URIs for repeated emissions of the same payload digest
 - guest-side `read-resource` authorization and failure modes
+- canonical Guild URI scope validation and parsed URI authorization matching
 - host-owned denial classification for authorization failures across runner and import paths
 - unsupported capability families failing before execution in the active inspect slice
 - durable provenance timestamps on successful, failed, rejected, and child records

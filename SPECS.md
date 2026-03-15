@@ -307,6 +307,8 @@ The current repository enforces typed constraints for:
 
 Those are the currently implemented product names in the active Wasm inspect slice. Unknown fields, wrong-family constraint shapes, and empty scoped lists are validation errors.
 
+For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, and `guild://objects/sha256/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching.
+
 Shared contracts may mention broader capability families for future phases, but the active inspect slice MUST either prune unsupported families from the executable surface or reject them before execution. The current repository chooses preflight rejection.
 
 ## 14. Execution Semantics
@@ -473,6 +475,8 @@ When policy conflicts with convenience, the host MUST prefer policy.
 ### 19.1 Host-mediated reads
 
 Reads of persisted or external resources MUST be mediated by the host.
+
+Local Guild resource authorization SHOULD parse supported Guild URIs into typed execution/blob/evidence-record forms before matching them against granted scopes. Malformed or ambiguous Guild URIs SHOULD be rejected rather than normalized loosely.
 
 ### 19.2 Explicit attribution
 

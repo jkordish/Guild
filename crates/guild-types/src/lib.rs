@@ -269,31 +269,171 @@ pub enum ResourceKind {
     Object,
 }
 
-impl ResourceKind {
-    pub fn from_uri(uri: &str) -> Option<Self> {
-        if uri.starts_with("guild://executions/") {
-            Some(Self::Execution)
-        } else if uri.starts_with("guild://objects/sha256/")
-            || uri.starts_with("guild://objects/records/")
-        {
-            Some(Self::Object)
-        } else {
-            None
+pub const GUILD_EXECUTION_URI_PREFIX: &str = "guild://executions/";
+pub const GUILD_OBJECT_BLOB_URI_PREFIX: &str = "guild://objects/sha256/";
+pub const GUILD_OBJECT_RECORD_URI_PREFIX: &str = "guild://objects/records/";
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum GuildResourceScope {
+    Execution,
+    ObjectBlob,
+    ObjectRecord,
+}
+
+impl GuildResourceScope {
+    pub fn parse(scope: &str) -> Result<Self, GuildResourceParseError> {
+        match scope {
+            GUILD_EXECUTION_URI_PREFIX => Ok(Self::Execution),
+            GUILD_OBJECT_BLOB_URI_PREFIX => Ok(Self::ObjectBlob),
+            GUILD_OBJECT_RECORD_URI_PREFIX => Ok(Self::ObjectRecord),
+            _ => Err(GuildResourceParseError::new(format!(
+                "read-resource uri_prefixes must use canonical Guild scope roots: `{}`, `{}`, or `{}`",
+                GUILD_EXECUTION_URI_PREFIX,
+                GUILD_OBJECT_BLOB_URI_PREFIX,
+                GUILD_OBJECT_RECORD_URI_PREFIX
+            ))),
         }
     }
 
-    pub fn from_uri_prefix(prefix: &str) -> Option<Self> {
-        if "guild://executions/".starts_with(prefix) || prefix.starts_with("guild://executions/") {
-            Some(Self::Execution)
-        } else if "guild://objects/sha256/".starts_with(prefix)
-            || prefix.starts_with("guild://objects/sha256/")
-            || "guild://objects/records/".starts_with(prefix)
-            || prefix.starts_with("guild://objects/records/")
-        {
-            Some(Self::Object)
-        } else {
-            None
+    pub fn kind(&self) -> ResourceKind {
+        match self {
+            Self::Execution => ResourceKind::Execution,
+            Self::ObjectBlob | Self::ObjectRecord => ResourceKind::Object,
         }
+    }
+
+    pub fn canonical_prefix(&self) -> &'static str {
+        match self {
+            Self::Execution => GUILD_EXECUTION_URI_PREFIX,
+            Self::ObjectBlob => GUILD_OBJECT_BLOB_URI_PREFIX,
+            Self::ObjectRecord => GUILD_OBJECT_RECORD_URI_PREFIX,
+        }
+    }
+
+    pub fn matches(&self, uri: &GuildResourceUri) -> bool {
+        matches!(
+            (self, uri),
+            (Self::Execution, GuildResourceUri::Execution { .. })
+                | (Self::ObjectBlob, GuildResourceUri::ObjectBlob { .. })
+                | (Self::ObjectRecord, GuildResourceUri::ObjectRecord { .. })
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GuildResourceUri {
+    Execution { execution_id: String },
+    ObjectBlob { digest_hex: String },
+    ObjectRecord { evidence_record_id: String },
+}
+
+impl GuildResourceUri {
+    pub fn parse(uri: &str) -> Result<Self, GuildResourceParseError> {
+        if let Some(encoded) = uri.strip_prefix(GUILD_EXECUTION_URI_PREFIX) {
+            if encoded.is_empty() {
+                return Err(GuildResourceParseError::new(
+                    "execution resource URI must contain a non-empty execution identifier",
+                ));
+            }
+
+            let execution_id = percent_decode_component(encoded).map_err(|error| {
+                GuildResourceParseError::new(format!(
+                    "execution resource URI contained invalid percent encoding: {error}"
+                ))
+            })?;
+            if execution_id.is_empty() {
+                return Err(GuildResourceParseError::new(
+                    "execution resource URI must contain a non-empty execution identifier",
+                ));
+            }
+
+            return Ok(Self::Execution { execution_id });
+        }
+
+        if let Some(digest_hex) = uri.strip_prefix(GUILD_OBJECT_BLOB_URI_PREFIX) {
+            if digest_hex.is_empty() || !digest_hex.chars().all(is_lower_hex_digit) {
+                return Err(GuildResourceParseError::new(
+                    "object blob URI must contain a lowercase hexadecimal sha256 digest",
+                ));
+            }
+
+            return Ok(Self::ObjectBlob {
+                digest_hex: digest_hex.to_owned(),
+            });
+        }
+
+        if let Some(encoded) = uri.strip_prefix(GUILD_OBJECT_RECORD_URI_PREFIX) {
+            if encoded.is_empty() {
+                return Err(GuildResourceParseError::new(
+                    "evidence record URI must contain a non-empty record identifier",
+                ));
+            }
+
+            let evidence_record_id = percent_decode_component(encoded).map_err(|error| {
+                GuildResourceParseError::new(format!(
+                    "evidence record URI contained invalid percent encoding: {error}"
+                ))
+            })?;
+            if evidence_record_id.is_empty() {
+                return Err(GuildResourceParseError::new(
+                    "evidence record URI must contain a non-empty record identifier",
+                ));
+            }
+
+            return Ok(Self::ObjectRecord { evidence_record_id });
+        }
+
+        Err(GuildResourceParseError::new(
+            "resource URI did not match a supported local Guild resource",
+        ))
+    }
+
+    pub fn kind(&self) -> ResourceKind {
+        match self {
+            Self::Execution { .. } => ResourceKind::Execution,
+            Self::ObjectBlob { .. } | Self::ObjectRecord { .. } => ResourceKind::Object,
+        }
+    }
+
+    pub fn scope(&self) -> GuildResourceScope {
+        match self {
+            Self::Execution { .. } => GuildResourceScope::Execution,
+            Self::ObjectBlob { .. } => GuildResourceScope::ObjectBlob,
+            Self::ObjectRecord { .. } => GuildResourceScope::ObjectRecord,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuildResourceParseError {
+    message: String,
+}
+
+impl GuildResourceParseError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for GuildResourceParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for GuildResourceParseError {}
+
+impl ResourceKind {
+    pub fn from_uri(uri: &str) -> Option<Self> {
+        GuildResourceUri::parse(uri).ok().map(|uri| uri.kind())
+    }
+
+    pub fn from_uri_prefix(prefix: &str) -> Option<Self> {
+        GuildResourceScope::parse(prefix)
+            .ok()
+            .map(|scope| scope.kind())
     }
 }
 
@@ -450,12 +590,13 @@ impl ReadResourceConstraints {
                     continue;
                 }
 
-                let Some(kind) = ResourceKind::from_uri_prefix(prefix) else {
+                let Ok(scope) = GuildResourceScope::parse(prefix) else {
                     errors.push(format!(
-                        "unsupported Guild resource URI prefix `{prefix}` for read-resource"
+                        "unsupported Guild resource URI scope `{prefix}` for read-resource; expected canonical roots",
                     ));
                     continue;
                 };
+                let kind = scope.kind();
 
                 if let Some(kinds) = &self.resource_kinds {
                     if !kinds.contains(&kind) {
@@ -904,4 +1045,36 @@ fn string_schema(format: Option<&str>, description: Option<&str>) -> Schema {
     }
 
     Schema::Object(schema)
+}
+
+fn percent_decode_component(input: &str) -> Result<String, &'static str> {
+    let mut bytes = Vec::with_capacity(input.len());
+    let mut chars = input.as_bytes().iter().copied();
+
+    while let Some(byte) = chars.next() {
+        if byte == b'%' {
+            let high = chars.next().ok_or("truncated escape sequence")?;
+            let low = chars.next().ok_or("truncated escape sequence")?;
+            let high = hex_nibble(high).ok_or("invalid escape sequence")?;
+            let low = hex_nibble(low).ok_or("invalid escape sequence")?;
+            bytes.push((high << 4) | low);
+        } else {
+            bytes.push(byte);
+        }
+    }
+
+    String::from_utf8(bytes).map_err(|_| "decoded component was not valid UTF-8")
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn is_lower_hex_digit(ch: char) -> bool {
+    matches!(ch, '0'..='9' | 'a'..='f')
 }

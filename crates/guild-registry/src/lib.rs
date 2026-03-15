@@ -15,8 +15,9 @@ use guild_manifest::{
 };
 use guild_types::{
     mint_host_evidence_record_id, CapabilityId, EvidenceBlobRecord, EvidenceEmissionRequest,
-    EvidenceRecord, EvidenceRef, ExecutionRecord, RequestedSkillRef, ResolvedSkillRef,
-    ResourceReadResult, SkillCategory,
+    EvidenceRecord, EvidenceRef, ExecutionRecord, GuildResourceUri, RequestedSkillRef,
+    ResolvedSkillRef, ResourceReadResult, SkillCategory, GUILD_EXECUTION_URI_PREFIX,
+    GUILD_OBJECT_BLOB_URI_PREFIX, GUILD_OBJECT_RECORD_URI_PREFIX,
 };
 use rand_core::OsRng;
 use schemars::JsonSchema;
@@ -903,7 +904,7 @@ impl SkillRegistry for LocalRegistry {
     }
 
     fn load_evidence_record(&self, uri: &str) -> Result<EvidenceRecord, RegistryError> {
-        let GuildUri::ObjectRecord { evidence_record_id } = parse_guild_uri(uri)? else {
+        let GuildResourceUri::ObjectRecord { evidence_record_id } = parse_guild_uri(uri)? else {
             return Err(RegistryError::new(
                 "resource-kind-mismatch",
                 "evidence records are only available for Guild evidence-record URIs",
@@ -942,7 +943,7 @@ impl SkillRegistry for LocalRegistry {
 
     fn read_resource(&self, uri: &str) -> Result<ResourceReadResult, RegistryError> {
         match parse_guild_uri(uri)? {
-            GuildUri::Execution { execution_id } => {
+            GuildResourceUri::Execution { execution_id } => {
                 let record = self.load_execution_record(&execution_id)?;
                 let bytes = serde_json::to_vec_pretty(&record).map_err(|error| {
                     RegistryError::new(
@@ -958,9 +959,11 @@ impl SkillRegistry for LocalRegistry {
                     bytes,
                 })
             }
-            GuildUri::ObjectRecord { evidence_record_id } => {
+            GuildResourceUri::ObjectRecord { evidence_record_id } => {
                 let record = self.load_evidence_record(uri)?;
-                let GuildUri::ObjectBlob { digest_hex } = parse_guild_uri(&record.blob_uri)? else {
+                let GuildResourceUri::ObjectBlob { digest_hex } =
+                    parse_guild_uri(&record.blob_uri)?
+                else {
                     return Err(RegistryError::new(
                         "object-metadata-invalid",
                         "evidence record referenced an invalid blob URI",
@@ -999,7 +1002,7 @@ impl SkillRegistry for LocalRegistry {
                     bytes,
                 })
             }
-            GuildUri::ObjectBlob { digest_hex } => {
+            GuildResourceUri::ObjectBlob { digest_hex } => {
                 let object_dir = object_blob_path(&self.root, &digest_hex);
                 let payload_path = object_dir.join("payload");
                 let metadata_path = object_dir.join("blob.json");
@@ -1774,7 +1777,8 @@ fn execution_path(root: &Path, execution_id: &str) -> PathBuf {
 
 pub fn execution_resource_uri(execution_id: &str) -> String {
     format!(
-        "guild://executions/{}",
+        "{}{}",
+        GUILD_EXECUTION_URI_PREFIX,
         percent_encode_component(execution_id)
     )
 }
@@ -1784,7 +1788,7 @@ fn object_blob_path(root: &Path, digest_hex: &str) -> PathBuf {
 }
 
 pub fn object_resource_uri(digest_hex: &str) -> String {
-    format!("guild://objects/sha256/{digest_hex}")
+    format!("{GUILD_OBJECT_BLOB_URI_PREFIX}{digest_hex}")
 }
 
 fn evidence_record_path(root: &Path, evidence_record_id: &str) -> PathBuf {
@@ -1796,67 +1800,16 @@ fn evidence_record_path(root: &Path, evidence_record_id: &str) -> PathBuf {
 
 pub fn evidence_record_resource_uri(evidence_record_id: &str) -> String {
     format!(
-        "guild://objects/records/{}",
+        "{}{}",
+        GUILD_OBJECT_RECORD_URI_PREFIX,
         percent_encode_component(evidence_record_id)
     )
 }
 
-enum GuildUri {
-    Execution { execution_id: String },
-    ObjectBlob { digest_hex: String },
-    ObjectRecord { evidence_record_id: String },
-}
-
-fn parse_guild_uri(uri: &str) -> Result<GuildUri, RegistryError> {
-    if let Some(encoded) = uri.strip_prefix("guild://executions/") {
-        let execution_id = percent_decode_component(encoded).map_err(|error| {
-            RegistryError::new(
-                "resource-uri-invalid",
-                "execution resource URI contained invalid percent encoding",
-            )
-            .with_detail(serde_json::json!({ "uri": uri, "error": error }))
-        })?;
-        return Ok(GuildUri::Execution { execution_id });
-    }
-
-    if let Some(digest_hex) = uri.strip_prefix("guild://objects/sha256/") {
-        if digest_hex.is_empty() || !digest_hex.chars().all(|ch| ch.is_ascii_hexdigit()) {
-            return Err(RegistryError::new(
-                "resource-uri-invalid",
-                "object resource URI must contain a lowercase hexadecimal sha256 digest",
-            )
-            .with_detail(uri.to_owned()));
-        }
-
-        return Ok(GuildUri::ObjectBlob {
-            digest_hex: digest_hex.to_owned(),
-        });
-    }
-
-    if let Some(encoded) = uri.strip_prefix("guild://objects/records/") {
-        let evidence_record_id = percent_decode_component(encoded).map_err(|error| {
-            RegistryError::new(
-                "resource-uri-invalid",
-                "evidence record URI contained invalid percent encoding",
-            )
-            .with_detail(serde_json::json!({ "uri": uri, "error": error }))
-        })?;
-        if evidence_record_id.is_empty() {
-            return Err(RegistryError::new(
-                "resource-uri-invalid",
-                "evidence record URI must contain a non-empty record identifier",
-            )
-            .with_detail(uri.to_owned()));
-        }
-
-        return Ok(GuildUri::ObjectRecord { evidence_record_id });
-    }
-
-    Err(RegistryError::new(
-        "resource-uri-invalid",
-        "resource URI did not match a supported local Guild resource",
-    )
-    .with_detail(uri.to_owned()))
+fn parse_guild_uri(uri: &str) -> Result<GuildResourceUri, RegistryError> {
+    GuildResourceUri::parse(uri).map_err(|error| {
+        RegistryError::new("resource-uri-invalid", error.to_string()).with_detail(uri.to_owned())
+    })
 }
 
 fn percent_encode_component(input: &str) -> String {
@@ -1872,34 +1825,6 @@ fn percent_encode_component(input: &str) -> String {
     }
 
     encoded
-}
-
-fn percent_decode_component(input: &str) -> Result<String, &'static str> {
-    let mut bytes = Vec::with_capacity(input.len());
-    let mut chars = input.as_bytes().iter().copied();
-
-    while let Some(byte) = chars.next() {
-        if byte == b'%' {
-            let high = chars.next().ok_or("truncated escape sequence")?;
-            let low = chars.next().ok_or("truncated escape sequence")?;
-            let high = hex_nibble(high).ok_or("invalid escape sequence")?;
-            let low = hex_nibble(low).ok_or("invalid escape sequence")?;
-            bytes.push((high << 4) | low);
-        } else {
-            bytes.push(byte);
-        }
-    }
-
-    String::from_utf8(bytes).map_err(|_| "decoded component was not valid UTF-8")
-}
-
-fn hex_nibble(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 const BUNDLE_FORMAT_VERSION: &str = "guild-installed-bundle-v2";

@@ -45,7 +45,7 @@
       "access": "read",
       "required": false,
       "constraints": {
-        "uri_prefixes": ["guild://objects/sha256/"],
+        "uri_prefixes": ["guild://objects/records/"],
         "resource_kinds": ["object"]
       }
     }

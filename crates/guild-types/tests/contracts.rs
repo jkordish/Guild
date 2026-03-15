@@ -1,7 +1,8 @@
 use guild_types::{
     Budget, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    ExecutionContext, ExecutionMode, GrantedCapability, ReadResourceConstraints, ResolvedSkillRef,
-    ResourceKind, SkillKey, SkillVersion, VersionRequirement,
+    ExecutionContext, ExecutionMode, GrantedCapability, GuildResourceScope, GuildResourceUri,
+    ReadResourceConstraints, ResolvedSkillRef, ResourceKind, SkillKey, SkillVersion,
+    VersionRequirement,
 };
 
 #[test]
@@ -55,4 +56,49 @@ fn execution_context_roundtrips_grants() {
         encoded["granted_capabilities"]["grants"][0]["id"],
         "read-resource"
     );
+}
+
+#[test]
+fn guild_resource_scopes_must_be_canonical_roots() {
+    assert_eq!(
+        GuildResourceScope::parse("guild://executions/")
+            .unwrap()
+            .kind(),
+        ResourceKind::Execution
+    );
+    assert_eq!(
+        GuildResourceScope::parse("guild://objects/records/")
+            .unwrap()
+            .kind(),
+        ResourceKind::Object
+    );
+    assert!(GuildResourceScope::parse("guild://executions").is_err());
+    assert!(GuildResourceScope::parse("guild://objects/").is_err());
+    assert!(GuildResourceScope::parse("guild://exec").is_err());
+}
+
+#[test]
+fn guild_resource_uris_parse_canonically() {
+    assert_eq!(
+        GuildResourceUri::parse("guild://executions/exec-1")
+            .unwrap()
+            .kind(),
+        ResourceKind::Execution
+    );
+    assert_eq!(
+        GuildResourceUri::parse("guild://objects/records/record-1")
+            .unwrap()
+            .kind(),
+        ResourceKind::Object
+    );
+    assert_eq!(
+        GuildResourceUri::parse(
+            "guild://objects/sha256/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        )
+        .unwrap()
+        .kind(),
+        ResourceKind::Object
+    );
+    assert!(GuildResourceUri::parse("guild://objects/sha256/ABCDEF").is_err());
+    assert!(GuildResourceUri::parse("guild://executions/%GG").is_err());
 }

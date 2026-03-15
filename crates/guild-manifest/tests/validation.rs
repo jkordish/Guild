@@ -228,7 +228,7 @@ fn explain_fixture_source_manifest_declares_scoped_resource_reads() {
     assert_eq!(
         manifest.capabilities[1].constraints,
         CapabilityConstraints::ReadResource(ReadResourceConstraints {
-            uri_prefixes: Some(vec!["guild://objects/sha256/".into()]),
+            uri_prefixes: Some(vec!["guild://objects/records/".into()]),
             resource_kinds: Some(vec![ResourceKind::Object]),
         })
     );

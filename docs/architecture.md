@@ -12,6 +12,7 @@ Current architecture highlights worth knowing before you follow older notes:
 - evidence blob storage is separate from per-emission evidence records
 - source installs stage and move atomically instead of pre-deleting installed state
 - unsupported capability families are rejected before execution in the active inspect slice
+- read-resource auth uses canonical parsed Guild URI scopes
 
 Read next:
 

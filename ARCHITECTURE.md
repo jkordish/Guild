@@ -392,6 +392,8 @@ The current repository separates evidence blob identity from evidence-record ide
 
 Host reads and guest `read-resource` calls should hit the same conceptual backend.
 
+The current repository also treats authorization scopes canonically: `read-resource` grants are expressed as exact local Guild scope roots and matched against parsed execution, blob, and evidence-record URIs rather than ad hoc raw string-prefix checks.
+
 ### 11.2 Why this matters
 
 If host-side inspection sees one world and guest-side execution sees another, explanations become fake fast.

@@ -54,7 +54,7 @@
             ],
             "uri_prefixes": [
               "guild://executions/",
-              "guild://objects/sha256/"
+              "guild://objects/records/"
             ]
           }
         }

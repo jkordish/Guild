@@ -14,11 +14,11 @@ use guild_types::{
     CapabilityGrantSet, CapabilityId, CapabilityRequirement, ChildExecutionRecord, Diagnostic,
     Effect, EmitEvidenceConstraints, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
     EvidenceRef, ExecutionContext, ExecutionMetrics, ExecutionMode, ExecutionPhase,
-    ExecutionReceipt, ExecutionRecord, ExecutionStatus, GrantedCapability,
-    InvokeDependencyConstraints, LogConstraints, Mutability, PolicyDecision, PolicyDecisionOutcome,
-    Provenance, ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope,
-    ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError,
-    SkillOutput, TerminationDetail,
+    ExecutionReceipt, ExecutionRecord, ExecutionStatus, GrantedCapability, GuildResourceScope,
+    GuildResourceUri, InvokeDependencyConstraints, LogConstraints, Mutability, PolicyDecision,
+    PolicyDecisionOutcome, Provenance, ReadResourceConstraints, RedactionClass,
+    ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind,
+    Severity, SkillError, SkillOutput, TerminationDetail,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -580,20 +580,25 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
         &mut self,
         uri: String,
     ) -> wasmtime::Result<Result<bindings::guild::skill::types::ResourceReadResult, String>> {
-        let Some(kind) = ResourceKind::from_uri(&uri) else {
-            return Err(capability_denial_trap(CapabilityDenial {
-                code: "read-resource-kind-denied".into(),
-                message: format!("resource URI `{uri}` was not granted for read access"),
-                detail: serde_json::json!({
-                    "uri": uri,
-                    "resource_kind": "unsupported",
-                }),
-            }));
+        let parsed_uri = match GuildResourceUri::parse(&uri) {
+            Ok(parsed_uri) => parsed_uri,
+            Err(error) => {
+                return Err(capability_denial_trap(CapabilityDenial {
+                    code: "resource-uri-invalid".into(),
+                    message: error.to_string(),
+                    detail: serde_json::json!({
+                        "uri": uri,
+                    }),
+                }));
+            }
         };
 
         if let Err(denial) = CapabilityEvaluator::authorize(
             self.grants(),
-            &CapabilityOperation::ReadResource { uri: &uri, kind },
+            &CapabilityOperation::ReadResource {
+                uri: &uri,
+                parsed_uri: &parsed_uri,
+            },
         ) {
             return Err(capability_denial_trap(denial));
         }
@@ -1497,7 +1502,7 @@ impl CapabilityDenial {
 enum CapabilityOperation<'a> {
     ReadResource {
         uri: &'a str,
-        kind: ResourceKind,
+        parsed_uri: &'a GuildResourceUri,
     },
     InvokeDependency {
         alias: &'a str,
@@ -1558,7 +1563,8 @@ impl CapabilityEvaluator {
         operation: &CapabilityOperation<'_>,
     ) -> Result<(), CapabilityDenial> {
         match operation {
-            CapabilityOperation::ReadResource { uri, kind } => {
+            CapabilityOperation::ReadResource { uri, parsed_uri } => {
+                let kind = parsed_uri.kind();
                 let matching = grants
                     .grants
                     .iter()
@@ -1584,7 +1590,7 @@ impl CapabilityEvaluator {
                     CapabilityConstraints::ReadResource(constraints) => constraints
                         .resource_kinds
                         .as_ref()
-                        .is_none_or(|kinds| kinds.contains(kind)),
+                        .is_none_or(|kinds| kinds.contains(&kind)),
                     _ => false,
                 });
 
@@ -1593,7 +1599,7 @@ impl CapabilityEvaluator {
                         code: "read-resource-kind-denied".into(),
                         message: format!(
                             "resource kind `{}` was not granted for read access",
-                            resource_kind_label(kind)
+                            resource_kind_label(&kind)
                         ),
                         detail: serde_json::json!({
                             "uri": uri,
@@ -1602,17 +1608,20 @@ impl CapabilityEvaluator {
                     });
                 }
 
-                let prefix_allowed = matching.iter().any(|grant| match &grant.constraints {
+                let scope_allowed = matching.iter().any(|grant| match &grant.constraints {
                     CapabilityConstraints::None(_) => true,
                     CapabilityConstraints::ReadResource(constraints) => {
                         constraints.uri_prefixes.as_ref().is_none_or(|prefixes| {
-                            prefixes.iter().any(|prefix| uri.starts_with(prefix))
+                            prefixes.iter().any(|prefix| {
+                                GuildResourceScope::parse(prefix)
+                                    .is_ok_and(|scope| scope.matches(parsed_uri))
+                            })
                         })
                     }
                     _ => false,
                 });
 
-                if prefix_allowed {
+                if scope_allowed {
                     Ok(())
                 } else {
                     Err(CapabilityDenial {
@@ -1890,17 +1899,18 @@ fn reduce_child_read_resource_constraints(
     parent: &ReadResourceConstraints,
     required: &ReadResourceConstraints,
 ) -> Result<ReadResourceConstraints, CapabilityDenial> {
-    let uri_prefixes =
-        reduce_required_string_scope(parent.uri_prefixes.as_ref(), required.uri_prefixes.as_ref())
-            .ok_or_else(|| CapabilityDenial {
-                code: "child-capability-mismatch".into(),
-                message: "child resource-read URI scope could not be reduced from the parent grant"
-                    .into(),
-                detail: serde_json::json!({
-                    "parent_constraints": parent,
-                    "required_constraints": required,
-                }),
-            })?;
+    let uri_prefixes = reduce_required_resource_scope(
+        parent.uri_prefixes.as_ref(),
+        required.uri_prefixes.as_ref(),
+    )
+    .ok_or_else(|| CapabilityDenial {
+        code: "child-capability-mismatch".into(),
+        message: "child resource-read URI scope could not be reduced from the parent grant".into(),
+        detail: serde_json::json!({
+            "parent_constraints": parent,
+            "required_constraints": required,
+        }),
+    })?;
     let resource_kinds = reduce_required_enum_scope(
         parent.resource_kinds.as_ref(),
         required.resource_kinds.as_ref(),
@@ -1924,15 +1934,17 @@ fn reduce_child_invoke_dependency_constraints(
     parent: &InvokeDependencyConstraints,
     required: &InvokeDependencyConstraints,
 ) -> Result<InvokeDependencyConstraints, CapabilityDenial> {
-    let aliases = reduce_required_string_scope(parent.aliases.as_ref(), required.aliases.as_ref())
-        .ok_or_else(|| CapabilityDenial {
-            code: "child-capability-mismatch".into(),
-            message: "child invocation aliases could not be reduced from the parent grant".into(),
-            detail: serde_json::json!({
-                "parent_constraints": parent,
-                "required_constraints": required,
-            }),
-        })?;
+    let aliases =
+        reduce_required_exact_string_scope(parent.aliases.as_ref(), required.aliases.as_ref())
+            .ok_or_else(|| CapabilityDenial {
+                code: "child-capability-mismatch".into(),
+                message: "child invocation aliases could not be reduced from the parent grant"
+                    .into(),
+                detail: serde_json::json!({
+                    "parent_constraints": parent,
+                    "required_constraints": required,
+                }),
+            })?;
 
     Ok(InvokeDependencyConstraints { aliases })
 }
@@ -2004,7 +2016,7 @@ fn read_resource_covers(
     grant: &ReadResourceConstraints,
     required: &ReadResourceConstraints,
 ) -> bool {
-    string_scope_covers_by_prefix(grant.uri_prefixes.as_ref(), required.uri_prefixes.as_ref())
+    resource_scope_covers(grant.uri_prefixes.as_ref(), required.uri_prefixes.as_ref())
         && enum_scope_covers(
             grant.resource_kinds.as_ref(),
             required.resource_kinds.as_ref(),
@@ -2044,18 +2056,22 @@ fn string_scope_covers_exact(
     }
 }
 
-fn string_scope_covers_by_prefix(
-    granted: Option<&Vec<String>>,
-    required: Option<&Vec<String>>,
-) -> bool {
+fn resource_scope_covers(granted: Option<&Vec<String>>, required: Option<&Vec<String>>) -> bool {
     match (granted, required) {
         (_, None) => true,
         (None, Some(_)) => true,
-        (Some(granted), Some(required)) => required.iter().all(|required_prefix| {
-            granted
+        (Some(granted), Some(required)) => {
+            let Some(granted) = parse_resource_scopes(granted) else {
+                return false;
+            };
+            let Some(required) = parse_resource_scopes(required) else {
+                return false;
+            };
+
+            required
                 .iter()
-                .any(|granted_prefix| required_prefix.starts_with(granted_prefix))
-        }),
+                .all(|required_scope| granted.contains(required_scope))
+        }
     }
 }
 
@@ -2077,7 +2093,7 @@ fn max_bytes_covers(granted: Option<u64>, required: Option<u64>) -> bool {
     }
 }
 
-fn reduce_required_string_scope(
+fn reduce_required_exact_string_scope(
     parent: Option<&Vec<String>>,
     required: Option<&Vec<String>>,
 ) -> Option<Option<Vec<String>>> {
@@ -2098,6 +2114,53 @@ fn reduce_required_string_scope(
             }
         }
     }
+}
+
+fn reduce_required_resource_scope(
+    parent: Option<&Vec<String>>,
+    required: Option<&Vec<String>>,
+) -> Option<Option<Vec<String>>> {
+    match (parent, required) {
+        (None, None) => Some(None),
+        (Some(parent), None) => canonicalize_resource_scopes(parent).map(Some),
+        (None, Some(required)) => canonicalize_resource_scopes(required).map(Some),
+        (Some(parent), Some(required)) => {
+            let parent = parse_resource_scopes(parent)?;
+            let required = parse_resource_scopes(required)?;
+            let reduced = required
+                .iter()
+                .filter(|candidate| parent.contains(candidate))
+                .map(|scope| scope.canonical_prefix().to_owned())
+                .collect::<Vec<_>>();
+            if reduced.is_empty() {
+                None
+            } else {
+                Some(Some(reduced))
+            }
+        }
+    }
+}
+
+fn canonicalize_resource_scopes(scopes: &[String]) -> Option<Vec<String>> {
+    parse_resource_scopes(scopes).map(|scopes| {
+        scopes
+            .into_iter()
+            .map(|scope| scope.canonical_prefix().to_owned())
+            .collect()
+    })
+}
+
+fn parse_resource_scopes(scopes: &[String]) -> Option<Vec<GuildResourceScope>> {
+    let mut parsed = Vec::with_capacity(scopes.len());
+
+    for scope in scopes {
+        let scope = GuildResourceScope::parse(scope).ok()?;
+        if !parsed.contains(&scope) {
+            parsed.push(scope);
+        }
+    }
+
+    Some(parsed)
 }
 
 fn reduce_required_enum_scope<T: Clone + PartialEq>(

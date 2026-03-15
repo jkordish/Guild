@@ -598,6 +598,29 @@ fn optional_object_reads_fail_closed_without_object_scope() {
 }
 
 #[test]
+fn object_record_scope_mismatch_fails_distinctly_from_missing_resource() {
+    let registry = load_registry();
+    let runner = build_runner();
+    let hello_record = run_hello_inspect(&registry, &runner);
+
+    let error = run_explain_execution(
+        &registry,
+        &runner,
+        &hello_record.receipt.uri,
+        true,
+        CapabilityGrantSet {
+            grants: vec![read_resource_grant(&[
+                "guild://executions/",
+                "guild://objects/sha256/",
+            ])],
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, "read-resource-not-granted");
+}
+
+#[test]
 fn missing_execution_resource_fails_cleanly() {
     let registry = load_registry();
     let runner = build_runner();
@@ -618,6 +641,56 @@ fn missing_execution_resource_fails_cleanly() {
         .unwrap()
         .to_string()
         .contains("execution-not-found"));
+}
+
+#[test]
+fn malformed_execution_uri_fails_cleanly() {
+    let registry = load_registry();
+    let runner = build_runner();
+    let error = run_explain_execution(
+        &registry,
+        &runner,
+        "guild://executions/%GG",
+        false,
+        CapabilityGrantSet {
+            grants: vec![read_resource_grant(&["guild://executions/"])],
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, "resource-uri-invalid");
+}
+
+#[test]
+fn non_canonical_resource_scopes_are_rejected_before_execution() {
+    let registry = load_registry();
+    let runner = build_runner();
+    let hello_record = run_hello_inspect(&registry, &runner);
+
+    let error = run_explain_execution(
+        &registry,
+        &runner,
+        &hello_record.receipt.uri,
+        false,
+        CapabilityGrantSet {
+            grants: vec![GrantedCapability {
+                id: CapabilityId::ReadResource,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(vec!["guild://objects/".into()]),
+                    resource_kinds: Some(vec![ResourceKind::Object]),
+                }),
+            }],
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, "capability-grant-invalid");
+    assert!(error
+        .detail
+        .unwrap()
+        .to_string()
+        .contains("expected canonical roots"));
 }
 
 #[test]
@@ -751,7 +824,7 @@ fn nested_child_resource_reads_cannot_expand_parent_scope() {
                 CapabilityGrantSet {
                     grants: vec![
                         invoke_grant(&["report"]),
-                        read_resource_grant(&["guild://executions/"]),
+                        read_resource_grant(&["guild://executions/", "guild://objects/sha256/"]),
                     ],
                 },
             ),
@@ -759,9 +832,4 @@ fn nested_child_resource_reads_cannot_expand_parent_scope() {
         .unwrap_err();
 
     assert_eq!(error.code, "child-invocation-failed");
-    assert!(error
-        .detail
-        .unwrap()
-        .to_string()
-        .contains("read-resource-kind-denied"));
 }

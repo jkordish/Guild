@@ -102,6 +102,7 @@ The repository now has a real local inspect-only path:
 - only the active inspect-slice capability families `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are actually executable; unsupported families fail before execution
 - resolved execution attempts persist under local Guild URIs on success, failure, and rejection with host-minted durable IDs and host-stamped timestamps
 - evidence emitted through the Wasm boundary persists as content-addressed blobs plus host-issued per-emission evidence records
+- `read-resource` authorization uses canonical parsed Guild URI scopes rather than loose raw string prefix checks
 - `guild.inspect` in `guild-mcp` rides that same path
 - installed skills can be exported as signed portable bundles, verified against a local trust store, and imported into fresh Guild roots without rebuilding
 
