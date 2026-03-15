@@ -9,9 +9,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use guild_registry::{RegistryError, SkillRegistry};
 use guild_runner::{ExecutionError, Runner, RuntimeAdapter};
 use guild_types::{
-    Budget, CallerRequest, CapabilityGrantSet, ExecutionMode, ExecutionReceipt,
-    ExecutionRecord, PolicyDecision, PolicyDecisionOutcome, RequestedSkillRef,
-    ResolvedExecutionEnvelope, ResourceReadResult,
+    Budget, CallerRequest, CapabilityGrantSet, ExecutionMode, ExecutionReceipt, ExecutionRecord,
+    PolicyDecision, PolicyDecisionOutcome, RequestedSkillRef, ResolvedExecutionEnvelope,
+    ResourceReadResult,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -73,8 +73,8 @@ pub struct InspectResponse {
 pub struct McpError {
     pub code: String,
     pub message: String,
-    pub detail: Option<Value>,
-    pub receipt: Option<ExecutionReceipt>,
+    pub detail: Option<Box<Value>>,
+    pub receipt: Option<Box<ExecutionReceipt>>,
 }
 
 impl McpError {
@@ -101,7 +101,7 @@ impl From<RegistryError> for McpError {
         Self {
             code: value.code,
             message: value.message,
-            detail: value.detail,
+            detail: value.detail.map(Box::new),
             receipt: None,
         }
     }

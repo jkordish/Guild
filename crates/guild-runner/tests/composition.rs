@@ -10,8 +10,8 @@ use guild_types::{
     Budget, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
     CapabilityId, EmitEvidenceConstraints, EvidenceAudience, ExecutionMode, ExecutionStatus,
     GrantedCapability, InvokeDependencyConstraints, LogConstraints, PolicyDecision,
-    PolicyDecisionOutcome, RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope,
-    Severity, SkillKey, VersionRequirement,
+    PolicyDecisionOutcome, RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope, Severity,
+    SkillKey, VersionRequirement,
 };
 
 fn repo_root() -> PathBuf {
@@ -217,7 +217,11 @@ fn composite_skill_invokes_child_and_records_host_owned_metadata() {
     );
     assert_eq!(record.child_executions[0].uri, stored_child.receipt.uri);
     assert_eq!(
-        record.child_executions[0].provenance.resolved_skill.key.name,
+        record.child_executions[0]
+            .provenance
+            .resolved_skill
+            .key
+            .name,
         "hello-inspect"
     );
     assert_eq!(output.structured["invoked_alias"], "hello");

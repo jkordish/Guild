@@ -228,7 +228,12 @@ fn guild_inspect_uses_real_registry_and_runner_path() {
     assert_eq!(response.summary, output.summary);
     assert_eq!(output.structured["mode"], "inspect");
     assert_eq!(
-        response.structured_content.provenance.resolved_skill.key.name,
+        response
+            .structured_content
+            .provenance
+            .resolved_skill
+            .key
+            .name,
         "hello-inspect"
     );
     assert_eq!(stored.mime_type, "application/json");

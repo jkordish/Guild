@@ -15,9 +15,9 @@ use guild_types::{
     EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionContext,
     ExecutionMetrics, ExecutionMode, ExecutionPhase, ExecutionReceipt, ExecutionRecord,
     ExecutionStatus, GrantedCapability, InvokeDependencyConstraints, LogConstraints, Mutability,
-    PolicyDecision, PolicyDecisionOutcome, Provenance, ReadResourceConstraints,
-    RedactionClass, ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind,
-    ResourceReadResult, RuntimeKind, Severity, SkillError, SkillOutput, TerminationDetail,
+    PolicyDecision, PolicyDecisionOutcome, Provenance, ReadResourceConstraints, RedactionClass,
+    ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind,
+    Severity, SkillError, SkillOutput, TerminationDetail,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -68,8 +68,8 @@ pub struct ExecutionError {
     pub message: String,
     pub retryable: bool,
     pub phase: Option<ExecutionPhase>,
-    pub detail: Option<Value>,
-    pub receipt: Option<ExecutionReceipt>,
+    pub detail: Option<Box<Value>>,
+    pub receipt: Option<Box<ExecutionReceipt>>,
 }
 
 impl ExecutionError {
@@ -85,7 +85,7 @@ impl ExecutionError {
     }
 
     pub fn with_detail(mut self, detail: impl Into<Value>) -> Self {
-        self.detail = Some(detail.into());
+        self.detail = Some(Box::new(detail.into()));
         self
     }
 
@@ -100,7 +100,7 @@ impl ExecutionError {
     }
 
     pub fn with_receipt(mut self, receipt: ExecutionReceipt) -> Self {
-        self.receipt = Some(receipt);
+        self.receipt = Some(Box::new(receipt));
         self
     }
 }
@@ -120,7 +120,7 @@ impl From<SkillError> for ExecutionError {
             message: value.message,
             retryable: value.retryable,
             phase: Some(ExecutionPhase::SkillDomain),
-            detail: value.detail,
+            detail: value.detail.map(Box::new),
             receipt: None,
         }
     }
@@ -133,7 +133,7 @@ impl From<RegistryError> for ExecutionError {
             message: value.message,
             retryable: false,
             phase: None,
-            detail: value.detail,
+            detail: value.detail.map(Box::new),
             receipt: None,
         }
     }
@@ -148,7 +148,7 @@ pub struct RuntimeOutcome {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeFailure {
-    pub error: ExecutionError,
+    pub error: Box<ExecutionError>,
     pub emitted_evidence: Vec<EvidenceRef>,
     pub child_executions: Vec<ChildExecutionRecord>,
 }
@@ -162,7 +162,7 @@ pub struct ChildInvocationOutcome {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChildInvocationError {
     pub skill_error: SkillError,
-    pub record: Option<ChildExecutionRecord>,
+    pub record: Option<Box<ChildExecutionRecord>>,
 }
 
 impl ChildInvocationError {
@@ -217,36 +217,42 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
     ) -> Result<RuntimeOutcome, RuntimeFailure> {
         let artifact_bytes =
             fs::read(&installed.artifact_path).map_err(|error| RuntimeFailure {
-                error: ExecutionError::new("artifact-read-failed", "failed to read artifact file")
-                    .with_detail(error.to_string())
-                    .with_phase(ExecutionPhase::RuntimeLoad),
+                error: Box::new(
+                    ExecutionError::new("artifact-read-failed", "failed to read artifact file")
+                        .with_detail(error.to_string())
+                        .with_phase(ExecutionPhase::RuntimeLoad),
+                ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
             })?;
 
         let artifact: InProcessArtifact =
             serde_json::from_slice(&artifact_bytes).map_err(|error| RuntimeFailure {
-                error: ExecutionError::new(
-                    "artifact-parse-failed",
-                    "failed to parse in-process artifact metadata",
-                )
-                .with_detail(error.to_string())
-                .with_phase(ExecutionPhase::RuntimeLoad),
+                error: Box::new(
+                    ExecutionError::new(
+                        "artifact-parse-failed",
+                        "failed to parse in-process artifact metadata",
+                    )
+                    .with_detail(error.to_string())
+                    .with_phase(ExecutionPhase::RuntimeLoad),
+                ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
             })?;
 
         if artifact.implementation != installed.manifest.runtime.entrypoint {
             return Err(RuntimeFailure {
-                error: ExecutionError::new(
-                    "artifact-entrypoint-mismatch",
-                    "artifact implementation id does not match manifest entrypoint",
-                )
-                .with_detail(serde_json::json!({
-                    "artifact_implementation": artifact.implementation,
-                    "manifest_entrypoint": installed.manifest.runtime.entrypoint,
-                }))
-                .with_phase(ExecutionPhase::RuntimeLoad),
+                error: Box::new(
+                    ExecutionError::new(
+                        "artifact-entrypoint-mismatch",
+                        "artifact implementation id does not match manifest entrypoint",
+                    )
+                    .with_detail(serde_json::json!({
+                        "artifact_implementation": artifact.implementation,
+                        "manifest_entrypoint": installed.manifest.runtime.entrypoint,
+                    }))
+                    .with_phase(ExecutionPhase::RuntimeLoad),
+                ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
             });
@@ -256,12 +262,14 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
             .implementations
             .get(&artifact.implementation)
             .ok_or_else(|| RuntimeFailure {
-                error: ExecutionError::new(
-                    "implementation-not-registered",
-                    "no in-process skill implementation is registered for this artifact",
-                )
-                .with_detail(artifact.implementation.clone())
-                .with_phase(ExecutionPhase::RuntimeLoad),
+                error: Box::new(
+                    ExecutionError::new(
+                        "implementation-not-registered",
+                        "no in-process skill implementation is registered for this artifact",
+                    )
+                    .with_detail(artifact.implementation.clone())
+                    .with_phase(ExecutionPhase::RuntimeLoad),
+                ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
             })?;
@@ -274,7 +282,7 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 child_executions: Vec::new(),
             })
             .map_err(|error| RuntimeFailure {
-                error: ExecutionError::from(error),
+                error: Box::new(ExecutionError::from(error)),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
             })
@@ -387,7 +395,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
         let (mut store, instance) =
             self.instantiate(installed, context, host)
                 .map_err(|error| RuntimeFailure {
-                    error,
+                    error: Box::new(error),
                     emitted_evidence: Vec::new(),
                     child_executions: Vec::new(),
                 })?;
@@ -398,7 +406,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
             .guild_skill_skill()
             .call_run(&mut store, &wit_context, &wit_input)
             .map_err(|error: wasmtime::Error| RuntimeFailure {
-                error: parse_capability_denial_trap(&error).map_or_else(
+                error: Box::new(parse_capability_denial_trap(&error).map_or_else(
                     || {
                         ExecutionError::new(
                             "component-call-failed",
@@ -408,7 +416,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                         .with_phase(ExecutionPhase::RuntimeExec)
                     },
                     |denial| denial.into_execution_error(ExecutionPhase::Grant),
-                ),
+                )),
                 emitted_evidence: store.data().emitted_evidence.clone(),
                 child_executions: store.data().child_executions.clone(),
             })?;
@@ -416,13 +424,13 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
         match result {
             Ok(output) => {
                 let output = from_wit_skill_output(output).map_err(|error| RuntimeFailure {
-                    error,
+                    error: Box::new(error),
                     emitted_evidence: store.data().emitted_evidence.clone(),
                     child_executions: store.data().child_executions.clone(),
                 })?;
                 validate_emitted_evidence(&output, &store.data().emitted_evidence).map_err(
                     |error| RuntimeFailure {
-                        error,
+                        error: Box::new(error),
                         emitted_evidence: store.data().emitted_evidence.clone(),
                         child_executions: store.data().child_executions.clone(),
                     },
@@ -434,7 +442,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                 })
             }
             Err(error) => Err(RuntimeFailure {
-                error: from_wit_skill_error(error),
+                error: Box::new(from_wit_skill_error(error)),
                 emitted_evidence: store.data().emitted_evidence.clone(),
                 child_executions: store.data().child_executions.clone(),
             }),
@@ -625,7 +633,7 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
             }
             Err(error) => {
                 if let Some(record) = error.record {
-                    self.child_executions.push(record);
+                    self.child_executions.push(*record);
                 }
 
                 Ok(Err(to_wit_skill_error(&error.skill_error)))
@@ -732,9 +740,7 @@ where
                 Vec::new(),
             ));
         }
-        if let Err(error) =
-            self.validate_grants(installed, &envelope.granted_capabilities)
-        {
+        if let Err(error) = self.validate_grants(installed, &envelope.granted_capabilities) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
                 &envelope,
@@ -751,23 +757,24 @@ where
             runner: self.clone(),
             registry: registry.clone(),
         });
-        let outcome = match self
-            .runtime
-            .execute(installed, &context, &envelope.request.input, runtime_host)
-        {
-            Ok(outcome) => outcome,
-            Err(failure) => {
-                return Err(Self::persist_unsuccessful_attempt(
-                    registry,
-                    &envelope,
-                    &provenance,
-                    duration_ms(started.elapsed()),
-                    failure.error,
-                    failure.child_executions,
-                    failure.emitted_evidence,
-                ));
-            }
-        };
+        let outcome =
+            match self
+                .runtime
+                .execute(installed, &context, &envelope.request.input, runtime_host)
+            {
+                Ok(outcome) => outcome,
+                Err(failure) => {
+                    return Err(Self::persist_unsuccessful_attempt(
+                        registry,
+                        &envelope,
+                        &provenance,
+                        duration_ms(started.elapsed()),
+                        *failure.error,
+                        failure.child_executions,
+                        failure.emitted_evidence,
+                    ));
+                }
+            };
         let duration_ms = duration_ms(started.elapsed());
         let receipt = Self::build_receipt(&envelope, ExecutionStatus::Succeeded);
 
@@ -781,10 +788,7 @@ where
             output: Some(outcome.output),
             termination: None,
             granted_capabilities: envelope.granted_capabilities.clone(),
-            emitted_evidence: Self::load_evidence_records(
-                registry,
-                &outcome.emitted_evidence,
-            )?,
+            emitted_evidence: Self::load_evidence_records(registry, &outcome.emitted_evidence)?,
             metrics: ExecutionMetrics {
                 duration_ms,
                 child_executions: outcome.child_executions.len() as u16,
@@ -997,7 +1001,7 @@ where
             ExecutionStatus::Rejected => PolicyDecision {
                 outcome: PolicyDecisionOutcome::Rejected,
                 summary: error.message.clone(),
-                detail: error.detail.clone(),
+                detail: error.detail.as_deref().cloned(),
             },
             _ => envelope.policy_decision.clone(),
         }
@@ -1012,13 +1016,15 @@ where
     {
         refs.iter()
             .map(|evidence| {
-                registry.load_evidence_record(&evidence.uri).map_err(|error| {
-                    ExecutionError::from(error)
-                        .with_phase(ExecutionPhase::Persistence)
-                        .with_detail(serde_json::json!({
-                            "uri": evidence.uri,
-                        }))
-                })
+                registry
+                    .load_evidence_record(&evidence.uri)
+                    .map_err(|error| {
+                        ExecutionError::from(error)
+                            .with_phase(ExecutionPhase::Persistence)
+                            .with_detail(serde_json::json!({
+                                "uri": evidence.uri,
+                            }))
+                    })
             })
             .collect()
     }
@@ -1198,7 +1204,7 @@ where
 
                 return Err(ChildInvocationError {
                     skill_error: child_execution_error_to_skill_error(alias, error),
-                    record: child_record,
+                    record: child_record.map(Box::new),
                 });
             }
         };
@@ -1277,7 +1283,7 @@ fn termination_from_error(error: &ExecutionError) -> TerminationDetail {
         code: error.code.clone(),
         message: error.message.clone(),
         retryable: error.retryable,
-        detail: error.detail.clone(),
+        detail: error.detail.as_deref().cloned(),
     }
 }
 
@@ -2262,11 +2268,14 @@ fn from_wit_skill_error(error: bindings::guild::skill::types::SkillError) -> Exe
         message: error.message,
         retryable: error.retryable,
         phase: Some(phase),
-        detail: error.detail.and_then(|payload| {
-            serde_json::from_str(&payload)
-                .ok()
-                .or(Some(Value::String(payload)))
-        }),
+        detail: error
+            .detail
+            .and_then(|payload| {
+                serde_json::from_str(&payload)
+                    .ok()
+                    .or(Some(Value::String(payload)))
+            })
+            .map(Box::new),
         receipt: None,
     }
 }

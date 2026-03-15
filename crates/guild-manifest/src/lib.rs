@@ -2,8 +2,8 @@
 
 use guild_types::{
     AbiVersion, CapabilityRequirement, ExecutionMode, FreshnessClass, ManifestSchemaVersion,
-    Mutability, RequestedSkillRef, ResolvedSkillRef, RuntimeKind, SkillApiVersion,
-    SkillCategory, SkillKey, SkillVersion,
+    Mutability, RequestedSkillRef, ResolvedSkillRef, RuntimeKind, SkillApiVersion, SkillCategory,
+    SkillKey, SkillVersion,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

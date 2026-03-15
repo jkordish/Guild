@@ -388,7 +388,8 @@ fn emitted_evidence_is_deduped_by_digest_and_resources_are_readable() {
         second.output.as_ref().unwrap().evidence
     );
     assert_eq!(
-        first.emitted_evidence
+        first
+            .emitted_evidence
             .iter()
             .map(|evidence| evidence.evidence_ref())
             .collect::<Vec<_>>(),

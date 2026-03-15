@@ -364,16 +364,30 @@ impl CapabilityConstraints {
     }
 
     pub fn matches_capability(&self, id: &CapabilityId, access: &CapabilityAccess) -> bool {
-        match (id, access, self) {
-            (_, _, Self::None(_)) => true,
-            (CapabilityId::ReadResource, CapabilityAccess::Read, Self::ReadResource(_)) => true,
-            (CapabilityId::InvokeSkill, CapabilityAccess::Invoke, Self::InvokeDependency(_)) => {
-                true
-            }
-            (CapabilityId::EmitEvidence, CapabilityAccess::Write, Self::EmitEvidence(_)) => true,
-            (CapabilityId::LogWrite, CapabilityAccess::Write, Self::Log(_)) => true,
-            _ => false,
-        }
+        matches!(
+            (id, access, self),
+            (_, _, Self::None(_))
+                | (
+                    CapabilityId::ReadResource,
+                    CapabilityAccess::Read,
+                    Self::ReadResource(_)
+                )
+                | (
+                    CapabilityId::InvokeSkill,
+                    CapabilityAccess::Invoke,
+                    Self::InvokeDependency(_)
+                )
+                | (
+                    CapabilityId::EmitEvidence,
+                    CapabilityAccess::Write,
+                    Self::EmitEvidence(_)
+                )
+                | (
+                    CapabilityId::LogWrite,
+                    CapabilityAccess::Write,
+                    Self::Log(_)
+                )
+        )
     }
 
     pub fn validate_for(&self, id: &CapabilityId, access: &CapabilityAccess) -> Vec<String> {
@@ -726,25 +740,13 @@ pub struct TerminationDetail {
     pub detail: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct ExecutionMetrics {
     pub duration_ms: u64,
     pub network_requests: u32,
     pub child_executions: u16,
     pub cache_hits: u32,
     pub cache_misses: u32,
-}
-
-impl Default for ExecutionMetrics {
-    fn default() -> Self {
-        Self {
-            duration_ms: 0,
-            network_requests: 0,
-            child_executions: 0,
-            cache_hits: 0,
-            cache_misses: 0,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -860,9 +862,11 @@ fn capability_access_label(access: &CapabilityAccess) -> &'static str {
 }
 
 fn string_schema(format: Option<&str>, description: Option<&str>) -> Schema {
-    let mut schema = SchemaObject::default();
-    schema.instance_type = Some(InstanceType::String.into());
-    schema.format = format.map(str::to_owned);
+    let mut schema = SchemaObject {
+        instance_type: Some(InstanceType::String.into()),
+        format: format.map(str::to_owned),
+        ..Default::default()
+    };
 
     if let Some(description) = description {
         schema.metadata = Some(Box::new(Metadata {

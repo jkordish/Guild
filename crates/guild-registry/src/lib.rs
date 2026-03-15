@@ -501,8 +501,7 @@ impl LocalRegistry {
             bundled.push(installed);
         }
 
-        bundled
-            .sort_by(|left, right| bundle_skill_sort_key(left).cmp(&bundle_skill_sort_key(right)));
+        bundled.sort_by_key(bundle_skill_sort_key);
 
         Ok(bundled)
     }
