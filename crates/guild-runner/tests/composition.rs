@@ -7,10 +7,11 @@ use guild_manifest::SkillManifest;
 use guild_registry::{LocalRegistry, LocalSourceInstaller, SkillRegistry};
 use guild_runner::{Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
-    Budget, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, ExecutionMode, ExecutionRequest, ExecutionStatus,
-    GrantedCapability, InvokeDependencyConstraints, LogConstraints, RedactionClass,
-    RequestedSkillRef, Severity, SkillKey, VersionRequirement,
+    Budget, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
+    CapabilityId, EmitEvidenceConstraints, EvidenceAudience, ExecutionMode, ExecutionStatus,
+    GrantedCapability, InvokeDependencyConstraints, LogConstraints, PolicyDecision,
+    PolicyDecisionOutcome, RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope,
+    Severity, SkillKey, VersionRequirement,
 };
 
 fn repo_root() -> PathBuf {
@@ -62,22 +63,34 @@ fn build_runner() -> Runner<WasmtimeRuntimeAdapter> {
     Runner::new(WasmtimeRuntimeAdapter::new().unwrap())
 }
 
-fn composite_request(grants: CapabilityGrantSet, input: serde_json::Value) -> ExecutionRequest {
-    ExecutionRequest {
+fn composite_request(
+    grants: CapabilityGrantSet,
+    input: serde_json::Value,
+) -> ResolvedExecutionEnvelope {
+    let installed = load_registry().resolve(&requested_composite()).unwrap();
+
+    ResolvedExecutionEnvelope {
         execution_id: "exec-composite-1".into(),
-        skill: load_registry()
-            .resolve(&requested_composite())
-            .unwrap()
-            .resolved_ref,
-        tenant_id: "tenant-1".into(),
-        actor_id: "actor-1".into(),
-        mode: ExecutionMode::Inspect,
-        input,
-        budget: Budget::default(),
-        grants,
-        idempotency_key: None,
+        request: CallerRequest {
+            request_id: "request-composite-1".into(),
+            skill: requested_composite(),
+            tenant_id: "tenant-1".into(),
+            actor_id: "actor-1".into(),
+            mode: ExecutionMode::Inspect,
+            input,
+            budget: Budget::default(),
+            requested_capabilities: grants.clone(),
+            idempotency_key: None,
+            trace_id: "trace-composite-1".into(),
+        },
+        resolved_skill: installed.resolved_ref,
+        granted_capabilities: grants,
+        policy_decision: PolicyDecision {
+            outcome: PolicyDecisionOutcome::Allowed,
+            summary: "test request allowed".into(),
+            detail: None,
+        },
         parent_execution_id: None,
-        trace_id: "trace-composite-1".into(),
     }
 }
 
@@ -85,9 +98,9 @@ fn request_for(
     installed: &guild_registry::InstalledSkill,
     grants: CapabilityGrantSet,
     input: serde_json::Value,
-) -> ExecutionRequest {
+) -> ResolvedExecutionEnvelope {
     let mut request = composite_request(grants, input);
-    request.skill = installed.resolved_ref.clone();
+    request.resolved_skill = installed.resolved_ref.clone();
     request
 }
 
@@ -185,7 +198,7 @@ fn composite_skill_invokes_child_and_records_host_owned_metadata() {
         )
         .unwrap();
     let stored_parent = registry
-        .load_execution_record(&record.execution_id)
+        .load_execution_record(&record.receipt.execution_id)
         .unwrap();
     let stored_child = registry
         .load_execution_record(&record.child_executions[0].execution_id)
@@ -202,9 +215,9 @@ fn composite_skill_invokes_child_and_records_host_owned_metadata() {
         record.child_executions[0].parent_execution_id,
         "exec-composite-1"
     );
-    assert_eq!(record.child_executions[0].uri, stored_child.uri);
+    assert_eq!(record.child_executions[0].uri, stored_child.receipt.uri);
     assert_eq!(
-        record.child_executions[0].provenance.skill.key.name,
+        record.child_executions[0].provenance.resolved_skill.key.name,
         "hello-inspect"
     );
     assert_eq!(output.structured["invoked_alias"], "hello");
@@ -237,7 +250,14 @@ fn composite_skill_invokes_child_and_records_host_owned_metadata() {
         Some("exec-composite-1")
     );
     assert_eq!(stored_child_output.evidence.len(), 1);
-    assert_eq!(stored_child.emitted_evidence, stored_child_output.evidence);
+    assert_eq!(
+        stored_child
+            .emitted_evidence
+            .iter()
+            .map(|evidence| evidence.evidence_ref())
+            .collect::<Vec<_>>(),
+        stored_child_output.evidence
+    );
 
     let child_evidence = registry
         .read_resource(&stored_child.emitted_evidence[0].uri)
@@ -380,7 +400,7 @@ fn child_runtime_failures_persist_parent_and_child_execution_records() {
         serde_json::json!({ "name": "Ada", "child_emit_log": true }),
     );
     request.execution_id = unique_id("exec-composite-child-failed");
-    request.trace_id = unique_id("trace-composite-child-failed");
+    request.request.trace_id = unique_id("trace-composite-child-failed");
     let error = runner.execute(&registry, &installed, request).unwrap_err();
 
     assert_eq!(error.code, "child-invocation-failed");
@@ -413,7 +433,7 @@ fn child_runtime_failures_persist_parent_and_child_execution_records() {
             .code,
         "log-write-not-granted"
     );
-    assert_eq!(parent.child_executions[0].uri, child.uri);
+    assert_eq!(parent.child_executions[0].uri, child.receipt.uri);
 }
 
 #[test]
@@ -427,8 +447,8 @@ fn child_execution_budget_is_decremented_and_exhaustion_fails_closed() {
         },
         serde_json::json!({ "name": "Ada" }),
     );
-    request.skill = installed.resolved_ref.clone();
-    request.budget.max_child_executions = 0;
+    request.resolved_skill = installed.resolved_ref.clone();
+    request.request.budget.max_child_executions = 0;
 
     let error = runner.execute(&registry, &installed, request).unwrap_err();
     assert_eq!(error.code, "child-budget-exhausted");

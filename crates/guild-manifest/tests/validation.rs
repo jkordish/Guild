@@ -5,14 +5,15 @@ use guild_manifest::{
 };
 use guild_types::{
     AbiVersion, CapabilityAccess, CapabilityConstraints, CapabilityId, CapabilityRequirement,
-    EmitEvidenceConstraints, ExecutionMode, FreshnessClass, Mutability, ReadResourceConstraints,
-    RequestedSkillRef, ResolvedSkillRef, ResourceKind, RuntimeKind, SkillCategory, SkillKey,
-    SkillVersion, VersionRequirement,
+    EmitEvidenceConstraints, ExecutionMode, FreshnessClass, ManifestSchemaVersion, Mutability,
+    ReadResourceConstraints, RequestedSkillRef, ResolvedSkillRef, ResourceKind, RuntimeKind,
+    SkillApiVersion, SkillCategory, SkillKey, SkillVersion, VersionRequirement,
 };
 
 fn sample_source_manifest() -> SourceSkillManifest {
     SourceSkillManifest {
-        api_version: AbiVersion::GuildSkillV1,
+        manifest_schema_version: ManifestSchemaVersion::GuildManifestV1,
+        skill_api_version: SkillApiVersion::GuildSkillV1,
         key: SkillKey {
             namespace: "example".into(),
             name: "hello-inspect".into(),
@@ -23,7 +24,7 @@ fn sample_source_manifest() -> SourceSkillManifest {
         runtime: RuntimeSpec {
             kind: RuntimeKind::WasmComponent,
             entrypoint: "guild-skill".into(),
-            abi: AbiVersion::GuildSkillV1,
+            guest_abi_version: AbiVersion::GuildSkillV1,
         },
         interface: InterfaceSpec {
             input_schema_uri: "./input.schema.json".into(),
@@ -105,6 +106,12 @@ fn source_manifest_roundtrips_typed_versions_and_mode_policy() {
         decoded.behavior.modes.supported,
         vec![ExecutionMode::Inspect]
     );
+    assert_eq!(
+        decoded.manifest_schema_version,
+        ManifestSchemaVersion::GuildManifestV1
+    );
+    assert_eq!(decoded.skill_api_version, SkillApiVersion::GuildSkillV1);
+    assert_eq!(decoded.runtime.guest_abi_version, AbiVersion::GuildSkillV1);
     assert_eq!(decoded, manifest);
 }
 

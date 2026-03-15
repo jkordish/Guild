@@ -4,6 +4,10 @@
 
 Accepted
 
+## Note
+
+ADR 0003 refines the boundary frozen here. ADR 0002 remains the historical split decision; ADR 0003 is the authoritative statement of the WIT guest ABI versus durable host record layering model.
+
 ## Context
 
 Guild originally modeled a single execution result shape across Rust types, the WIT ABI, and host-facing docs. That shape mixed together:
@@ -19,7 +23,7 @@ That made digest-pinned execution optional in public types, hid granted capabili
 Guild will separate execution into four layers:
 
 1. requested intent via `RequestedSkillRef`
-2. resolved execution via `ResolvedSkillRef`, `ExecutionRequest`, `ExecutionContext`, and `CapabilityGrantSet`
+2. resolved execution via `ResolvedSkillRef`, `ResolvedExecutionEnvelope`, `ExecutionContext`, and `CapabilityGrantSet`
 3. skill-authored output via `SkillOutput` and `SkillError`
 4. host-owned records via `ExecutionRecord`, `ExecutionStatus`, `ExecutionMetrics`, and `Provenance`
 

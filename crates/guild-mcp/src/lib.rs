@@ -7,10 +7,11 @@ use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use guild_registry::{RegistryError, SkillRegistry};
-use guild_runner::{ExecutionError, ExecutionReceipt, Runner, RuntimeAdapter};
+use guild_runner::{ExecutionError, Runner, RuntimeAdapter};
 use guild_types::{
-    Budget, CapabilityGrantSet, ExecutionMode, ExecutionRecord, ExecutionRequest,
-    RequestedSkillRef, ResourceReadResult,
+    Budget, CallerRequest, CapabilityGrantSet, ExecutionMode, ExecutionReceipt,
+    ExecutionRecord, PolicyDecision, PolicyDecisionOutcome, RequestedSkillRef,
+    ResolvedExecutionEnvelope, ResourceReadResult,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -136,18 +137,29 @@ where
 
     pub fn inspect(&self, request: InspectRequest) -> Result<InspectResponse, McpError> {
         let installed = self.registry.resolve(&request.skill)?;
-        let execution_request = ExecutionRequest {
+        let requested_execution_id = request.execution_id.clone();
+        let execution_request = ResolvedExecutionEnvelope {
             execution_id: request.execution_id,
-            skill: installed.resolved_ref.clone(),
-            tenant_id: request.tenant_id,
-            actor_id: request.actor_id,
-            mode: ExecutionMode::Inspect,
-            input: request.input,
-            budget: request.budget,
-            grants: request.grants,
-            idempotency_key: None,
+            request: CallerRequest {
+                request_id: requested_execution_id,
+                skill: request.skill,
+                tenant_id: request.tenant_id,
+                actor_id: request.actor_id,
+                mode: ExecutionMode::Inspect,
+                input: request.input,
+                budget: request.budget,
+                requested_capabilities: request.grants.clone(),
+                idempotency_key: None,
+                trace_id: request.trace_id,
+            },
+            resolved_skill: installed.resolved_ref.clone(),
+            granted_capabilities: request.grants,
+            policy_decision: PolicyDecision {
+                outcome: PolicyDecisionOutcome::Allowed,
+                summary: "inspect request allowed".into(),
+                detail: None,
+            },
             parent_execution_id: None,
-            trace_id: request.trace_id,
         };
 
         let record = self

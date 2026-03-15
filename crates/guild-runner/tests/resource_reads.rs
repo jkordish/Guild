@@ -6,10 +6,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use guild_registry::{LocalRegistry, LocalSourceInstaller, SkillRegistry};
 use guild_runner::{ExecutionError, Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
-    Budget, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, ExecutionMode, ExecutionRecord, ExecutionRequest,
-    GrantedCapability, InvokeDependencyConstraints, ReadResourceConstraints, RedactionClass,
-    RequestedSkillRef, ResourceKind, SkillKey, SkillOutput, VersionRequirement,
+    Budget, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
+    CapabilityId, EmitEvidenceConstraints, EvidenceAudience, ExecutionMode, ExecutionRecord,
+    GrantedCapability, InvokeDependencyConstraints, PolicyDecision, PolicyDecisionOutcome,
+    ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope,
+    ResourceKind, SkillKey, SkillOutput, VersionRequirement,
 };
 use serde_json::{json, Value};
 
@@ -123,19 +124,31 @@ fn execution_request(
     execution_id: impl Into<String>,
     input: Value,
     grants: CapabilityGrantSet,
-) -> ExecutionRequest {
-    ExecutionRequest {
-        execution_id: execution_id.into(),
-        skill: skill.resolved_ref.clone(),
-        tenant_id: "tenant-1".into(),
-        actor_id: "actor-1".into(),
-        mode: ExecutionMode::Inspect,
-        input,
-        budget: Budget::default(),
-        grants,
-        idempotency_key: None,
+) -> ResolvedExecutionEnvelope {
+    let execution_id = execution_id.into();
+
+    ResolvedExecutionEnvelope {
+        execution_id: execution_id.clone(),
+        request: CallerRequest {
+            request_id: format!("{execution_id}-request"),
+            skill: requested_skill(&skill.resolved_ref.key.name),
+            tenant_id: "tenant-1".into(),
+            actor_id: "actor-1".into(),
+            mode: ExecutionMode::Inspect,
+            input,
+            budget: Budget::default(),
+            requested_capabilities: grants.clone(),
+            idempotency_key: None,
+            trace_id: unique_id("trace"),
+        },
+        resolved_skill: skill.resolved_ref.clone(),
+        granted_capabilities: grants,
+        policy_decision: PolicyDecision {
+            outcome: PolicyDecisionOutcome::Allowed,
+            summary: "test request allowed".into(),
+            detail: None,
+        },
         parent_execution_id: None,
-        trace_id: unique_id("trace"),
     }
 }
 
@@ -280,7 +293,8 @@ fn write_temp_resource_composite_skill(root: &Path) -> PathBuf {
     write_json(
         &source_root.join("manifest.json"),
         &json!({
-            "api_version": "guild-skill-v1",
+            "manifest_schema_version": "guild-manifest-v1",
+            "skill_api_version": "guild-skill-v1",
             "key": {
                 "namespace": "example",
                 "name": "resource-composite"
@@ -291,7 +305,7 @@ fn write_temp_resource_composite_skill(root: &Path) -> PathBuf {
             "runtime": {
                 "kind": "wasm-component",
                 "entrypoint": "guild-skill",
-                "abi": "guild-skill-v1"
+                "guest_abi_version": "guild-skill-v1"
             },
             "interface": {
                 "input_schema_uri": "./input.schema.json",
@@ -480,7 +494,7 @@ fn explain_skill_reads_allowed_execution_and_evidence_resources() {
     let runner = build_runner();
     let hello_record = run_hello_inspect(&registry, &runner);
     let hello_output = hello_record.output.as_ref().unwrap();
-    let execution_resource = registry.read_resource(&hello_record.uri).unwrap();
+    let execution_resource = registry.read_resource(&hello_record.receipt.uri).unwrap();
     let evidence_resource = registry
         .read_resource(&hello_record.emitted_evidence[0].uri)
         .unwrap();
@@ -488,7 +502,7 @@ fn explain_skill_reads_allowed_execution_and_evidence_resources() {
     let explain_record = run_explain_execution(
         &registry,
         &runner,
-        &hello_record.uri,
+        &hello_record.receipt.uri,
         true,
         CapabilityGrantSet {
             grants: vec![read_resource_grant(&[
@@ -502,11 +516,11 @@ fn explain_skill_reads_allowed_execution_and_evidence_resources() {
 
     assert_eq!(
         explain_output.summary,
-        format!("Explained stored execution {}.", hello_record.uri)
+        format!("Explained stored execution {}.", hello_record.receipt.uri)
     );
     assert_eq!(
         explain_output.structured["target_execution_uri"],
-        hello_record.uri
+        hello_record.receipt.uri
     );
     assert_eq!(
         explain_output.structured["execution_resource"]["mime_type"],
@@ -518,7 +532,7 @@ fn explain_skill_reads_allowed_execution_and_evidence_resources() {
     );
     assert_eq!(
         explain_output.structured["target_skill"]["digest"],
-        hello_record.provenance.skill.digest
+        hello_record.provenance.resolved_skill.digest
     );
     assert_eq!(
         explain_output.structured["stored_summary"],
@@ -542,21 +556,22 @@ fn explain_skill_reads_allowed_execution_and_evidence_resources() {
     .unwrap();
     expected_output.summary = expected_output
         .summary
-        .replace("__TARGET_EXECUTION_URI__", &hello_record.uri);
-    expected_output.structured["target_execution_uri"] = Value::String(hello_record.uri.clone());
+        .replace("__TARGET_EXECUTION_URI__", &hello_record.receipt.uri);
+    expected_output.structured["target_execution_uri"] =
+        Value::String(hello_record.receipt.uri.clone());
     expected_output.structured["execution_resource"]["uri"] =
-        Value::String(hello_record.uri.clone());
+        Value::String(hello_record.receipt.uri.clone());
     expected_output.structured["execution_resource"]["sha256"] =
         Value::String(execution_resource.sha256.clone().unwrap());
     expected_output.structured["target_skill"]["digest"] =
-        Value::String(hello_record.provenance.skill.digest.clone());
+        Value::String(hello_record.provenance.resolved_skill.digest.clone());
     expected_output.structured["termination"] = Value::Null;
     expected_output.structured["first_evidence"]["uri"] =
         Value::String(hello_record.emitted_evidence[0].uri.clone());
     expected_output.structured["first_evidence"]["sha256"] =
         Value::String(evidence_resource.sha256.clone().unwrap());
     expected_output.structured["first_evidence"]["json"]["skill"]["digest"] =
-        Value::String(hello_record.provenance.skill.digest.clone());
+        Value::String(hello_record.provenance.resolved_skill.digest.clone());
 
     assert_eq!(explain_record.output, Some(expected_output));
 }
@@ -570,7 +585,7 @@ fn optional_object_reads_fail_closed_without_object_scope() {
     let error = run_explain_execution(
         &registry,
         &runner,
-        &hello_record.uri,
+        &hello_record.receipt.uri,
         true,
         CapabilityGrantSet {
             grants: vec![read_resource_grant(&["guild://executions/"])],
@@ -634,7 +649,7 @@ fn explain_skill_reports_child_execution_linkage_for_composites() {
     let explain_record = run_explain_execution(
         &registry,
         &runner,
-        &composite_record.uri,
+        &composite_record.receipt.uri,
         false,
         CapabilityGrantSet {
             grants: vec![read_resource_grant(&["guild://executions/"])],
@@ -664,7 +679,7 @@ fn explain_skill_summarizes_capability_rejections_without_output() {
     let explain_record = run_explain_execution(
         &registry,
         &runner,
-        &failed.uri,
+        &failed.receipt.uri,
         false,
         CapabilityGrantSet {
             grants: vec![read_resource_grant(&["guild://executions/"])],
@@ -692,7 +707,7 @@ fn explain_skill_summarizes_rejected_execution_records_without_output() {
     let explain_record = run_explain_execution(
         &registry,
         &runner,
-        &rejected.uri,
+        &rejected.receipt.uri,
         false,
         CapabilityGrantSet {
             grants: vec![read_resource_grant(&["guild://executions/"])],
@@ -736,7 +751,7 @@ fn nested_child_resource_reads_cannot_expand_parent_scope() {
             execution_request(
                 &composite,
                 unique_id("resource-composite"),
-                json!({ "execution_uri": hello_record.uri }),
+                json!({ "execution_uri": hello_record.receipt.uri }),
                 CapabilityGrantSet {
                     grants: vec![
                         invoke_grant(&["report"]),

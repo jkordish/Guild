@@ -37,7 +37,7 @@ fn execution_context_roundtrips_grants() {
         input_sha256: "sha256:abc".into(),
         now_utc: Some("2026-03-14T00:00:00Z".into()),
         budget: Budget::default(),
-        grants: CapabilityGrantSet {
+        granted_capabilities: CapabilityGrantSet {
             grants: vec![GrantedCapability {
                 id: CapabilityId::ReadResource,
                 access: CapabilityAccess::Read,
@@ -51,5 +51,8 @@ fn execution_context_roundtrips_grants() {
 
     let encoded = serde_json::to_value(&ctx).unwrap();
     assert_eq!(encoded["skill"]["key"]["name"], "hello-inspect");
-    assert_eq!(encoded["grants"]["grants"][0]["id"], "read-resource");
+    assert_eq!(
+        encoded["granted_capabilities"]["grants"][0]["id"],
+        "read-resource"
+    );
 }

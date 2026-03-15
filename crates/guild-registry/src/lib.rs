@@ -13,8 +13,8 @@ use guild_manifest::{
     InstalledDependencySpec, PublisherRef, SkillManifest, SourceBuildKind, SourceSkillManifest,
 };
 use guild_types::{
-    CapabilityId, EvidenceEmissionRequest, EvidenceRef, ExecutionRecord, RequestedSkillRef,
-    ResolvedSkillRef, ResourceReadResult, SkillCategory,
+    CapabilityId, EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionRecord,
+    RequestedSkillRef, ResolvedSkillRef, ResourceReadResult, SkillCategory,
 };
 use rand_core::OsRng;
 use schemars::JsonSchema;
@@ -112,14 +112,6 @@ pub struct InstalledVerificationRecord {
     pub scheme: SignatureScheme,
     pub bundle_sha256: String,
     pub signature: BundleSignatureEnvelope,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-struct StoredObjectMetadata {
-    pub uri: String,
-    pub sha256: String,
-    pub mime_type: String,
-    pub size_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -238,6 +230,8 @@ pub trait SkillRegistry {
         &self,
         request: &EvidenceEmissionRequest,
     ) -> Result<EvidenceRef, RegistryError>;
+
+    fn load_evidence_record(&self, uri: &str) -> Result<EvidenceRecord, RegistryError>;
 
     fn read_resource(&self, uri: &str) -> Result<ResourceReadResult, RegistryError>;
 }
@@ -704,20 +698,20 @@ impl SkillRegistry for LocalRegistry {
     }
 
     fn persist_execution_record(&self, record: &ExecutionRecord) -> Result<(), RegistryError> {
-        let expected_uri = execution_resource_uri(&record.execution_id);
-        if record.uri != expected_uri {
+        let expected_uri = execution_resource_uri(&record.receipt.execution_id);
+        if record.receipt.uri != expected_uri {
             return Err(RegistryError::new(
                 "execution-uri-mismatch",
                 "execution record URI did not match the host-issued execution URI",
             )
             .with_detail(serde_json::json!({
                 "expected": expected_uri,
-                "actual": record.uri,
-                "execution_id": record.execution_id,
+                "actual": record.receipt.uri,
+                "execution_id": record.receipt.execution_id,
             })));
         }
 
-        let path = execution_path(&self.root, &record.execution_id);
+        let path = execution_path(&self.root, &record.receipt.execution_id);
         write_json(&path, record)
     }
 
@@ -775,7 +769,7 @@ impl SkillRegistry for LocalRegistry {
         })?;
 
         if payload_path.exists() && metadata_path.exists() {
-            let metadata: StoredObjectMetadata =
+            let metadata: EvidenceRecord =
                 serde_json::from_str(&fs::read_to_string(&metadata_path).map_err(|error| {
                     RegistryError::new(
                         "object-metadata-read-failed",
@@ -813,11 +807,16 @@ impl SkillRegistry for LocalRegistry {
 
             write_json(
                 &metadata_path,
-                &StoredObjectMetadata {
+                &EvidenceRecord {
                     uri: uri.clone(),
-                    sha256: digest_label.clone(),
                     mime_type: request.mime_type.clone(),
+                    sha256: digest_label.clone(),
                     size_bytes: request.payload.len() as u64,
+                    title: request.title.clone(),
+                    audience: request.audience.clone(),
+                    redaction: request.redaction.clone(),
+                    freshness: request.freshness.clone(),
+                    produced_by_execution: None,
                 },
             )?;
         }
@@ -830,6 +829,44 @@ impl SkillRegistry for LocalRegistry {
             audience: request.audience.clone(),
             redaction: request.redaction.clone(),
             freshness: request.freshness.clone(),
+        })
+    }
+
+    fn load_evidence_record(&self, uri: &str) -> Result<EvidenceRecord, RegistryError> {
+        let GuildUri::ObjectSha256 { digest_hex } = parse_guild_uri(uri)? else {
+            return Err(RegistryError::new(
+                "resource-kind-mismatch",
+                "evidence records are only available for Guild object URIs",
+            )
+            .with_detail(serde_json::json!({ "uri": uri })));
+        };
+
+        let metadata_path = object_path(&self.root, &digest_hex).join("metadata.json");
+        let contents = fs::read_to_string(&metadata_path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                RegistryError::new(
+                    "object-not-found",
+                    "evidence record was not found in the local object store",
+                )
+                .with_detail(serde_json::json!({
+                    "uri": uri,
+                    "path": metadata_path.display().to_string(),
+                }))
+            } else {
+                RegistryError::new(
+                    "object-metadata-read-failed",
+                    "failed to read evidence record metadata",
+                )
+                .with_detail(error.to_string())
+            }
+        })?;
+
+        serde_json::from_str(&contents).map_err(|error| {
+            RegistryError::new(
+                "object-metadata-parse-failed",
+                "failed to parse evidence record metadata",
+            )
+            .with_detail(error.to_string())
         })
     }
 
@@ -875,7 +912,7 @@ impl SkillRegistry for LocalRegistry {
                     }
                 })?;
 
-                let metadata: StoredObjectMetadata =
+                let metadata: EvidenceRecord =
                     serde_json::from_str(&fs::read_to_string(&metadata_path).map_err(|error| {
                         RegistryError::new(
                             "object-metadata-read-failed",

@@ -1,5 +1,5 @@
 error[E0308]: mismatched types
-  --> tests/ui/execution_request_rejects_requested_skill_ref.rs:17:16
+  --> tests/ui/execution_request_rejects_requested_skill_ref.rs:30:25
    |
-17 |         skill: requested,
-   |                ^^^^^^^^^ expected `ResolvedSkillRef`, found `RequestedSkillRef`
+30 |         resolved_skill: requested,
+   |                         ^^^^^^^^^ expected `ResolvedSkillRef`, found `RequestedSkillRef`

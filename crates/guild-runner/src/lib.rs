@@ -10,13 +10,14 @@ use guild_manifest::SkillManifest;
 use guild_registry::{execution_resource_uri, InstalledSkill, RegistryError, SkillRegistry};
 use guild_sdk_rust::GuildSkill;
 use guild_types::{
-    AbiVersion, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
+    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
     CapabilityRequirement, ChildExecutionRecord, Diagnostic, Effect, EmitEvidenceConstraints,
-    EvidenceAudience, EvidenceEmissionRequest, EvidenceRef, ExecutionContext, ExecutionMetrics,
-    ExecutionMode, ExecutionPhase, ExecutionRecord, ExecutionRequest, ExecutionStatus,
-    ExecutionTermination, GrantedCapability, InvokeDependencyConstraints, LogConstraints,
-    Mutability, Provenance, ReadResourceConstraints, RedactionClass, ResolvedSkillRef,
-    ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError, SkillOutput,
+    EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionContext,
+    ExecutionMetrics, ExecutionMode, ExecutionPhase, ExecutionReceipt, ExecutionRecord,
+    ExecutionStatus, GrantedCapability, InvokeDependencyConstraints, LogConstraints, Mutability,
+    PolicyDecision, PolicyDecisionOutcome, Provenance, ReadResourceConstraints,
+    RedactionClass, ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind,
+    ResourceReadResult, RuntimeKind, Severity, SkillError, SkillOutput, TerminationDetail,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -136,14 +137,6 @@ impl From<RegistryError> for ExecutionError {
             receipt: None,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct ExecutionReceipt {
-    pub execution_id: String,
-    pub uri: String,
-    pub trace_id: String,
-    pub status: ExecutionStatus,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -477,7 +470,7 @@ impl WasmStoreState {
     }
 
     fn grants(&self) -> &CapabilityGrantSet {
-        &self.execution.grants
+        &self.execution.granted_capabilities
     }
 }
 
@@ -686,19 +679,19 @@ where
         &self,
         registry: &R,
         installed: &InstalledSkill,
-        request: ExecutionRequest,
+        envelope: ResolvedExecutionEnvelope,
     ) -> Result<ExecutionRecord, ExecutionError>
     where
         A: Clone + 'static,
         R: SkillRegistry + Clone + Send + Sync + 'static,
     {
         let started = Instant::now();
-        let provenance = Self::build_provenance(installed, &request);
+        let provenance = Self::build_provenance(installed, &envelope);
 
         if let Err(error) = Self::validate_manifest(&installed.manifest) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
-                &request,
+                &envelope,
                 &provenance,
                 duration_ms(started.elapsed()),
                 error,
@@ -706,10 +699,10 @@ where
                 Vec::new(),
             ));
         }
-        if let Err(error) = Self::validate_request(&installed.manifest, &request) {
+        if let Err(error) = Self::validate_request(&installed.manifest, &envelope) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
-                &request,
+                &envelope,
                 &provenance,
                 duration_ms(started.elapsed()),
                 error,
@@ -720,7 +713,7 @@ where
         if let Err(error) = self.validate_runtime(installed) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
-                &request,
+                &envelope,
                 &provenance,
                 duration_ms(started.elapsed()),
                 error,
@@ -728,10 +721,10 @@ where
                 Vec::new(),
             ));
         }
-        if let Err(error) = self.validate_resolved_ref(installed, &request) {
+        if let Err(error) = self.validate_resolved_ref(installed, &envelope) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
-                &request,
+                &envelope,
                 &provenance,
                 duration_ms(started.elapsed()),
                 error,
@@ -739,10 +732,12 @@ where
                 Vec::new(),
             ));
         }
-        if let Err(error) = self.validate_grants(installed, &request.grants) {
+        if let Err(error) =
+            self.validate_grants(installed, &envelope.granted_capabilities)
+        {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
-                &request,
+                &envelope,
                 &provenance,
                 duration_ms(started.elapsed()),
                 error,
@@ -751,20 +746,20 @@ where
             ));
         }
 
-        let context = Self::build_context(&request);
+        let context = Self::build_context(&envelope);
         let runtime_host: Arc<dyn RuntimeHost> = Arc::new(RunnerRuntimeHost {
             runner: self.clone(),
             registry: registry.clone(),
         });
         let outcome = match self
             .runtime
-            .execute(installed, &context, &request.input, runtime_host)
+            .execute(installed, &context, &envelope.request.input, runtime_host)
         {
             Ok(outcome) => outcome,
             Err(failure) => {
                 return Err(Self::persist_unsuccessful_attempt(
                     registry,
-                    &request,
+                    &envelope,
                     &provenance,
                     duration_ms(started.elapsed()),
                     failure.error,
@@ -774,16 +769,22 @@ where
             }
         };
         let duration_ms = duration_ms(started.elapsed());
+        let receipt = Self::build_receipt(&envelope, ExecutionStatus::Succeeded);
 
         let record = ExecutionRecord {
-            execution_id: request.execution_id.clone(),
-            uri: execution_resource_uri(&request.execution_id),
-            trace_id: request.trace_id.clone(),
-            parent_execution_id: request.parent_execution_id.clone(),
+            receipt,
+            request: envelope.request.clone(),
+            policy_decision: envelope.policy_decision.clone(),
+            resolved_skill: envelope.resolved_skill.clone(),
+            parent_execution_id: envelope.parent_execution_id.clone(),
             status: ExecutionStatus::Succeeded,
             output: Some(outcome.output),
             termination: None,
-            emitted_evidence: outcome.emitted_evidence,
+            granted_capabilities: envelope.granted_capabilities.clone(),
+            emitted_evidence: Self::load_evidence_records(
+                registry,
+                &outcome.emitted_evidence,
+            )?,
             metrics: ExecutionMetrics {
                 duration_ms,
                 child_executions: outcome.child_executions.len() as u16,
@@ -798,38 +799,38 @@ where
         Ok(record)
     }
 
-    pub fn build_context(request: &ExecutionRequest) -> ExecutionContext {
+    pub fn build_context(envelope: &ResolvedExecutionEnvelope) -> ExecutionContext {
         ExecutionContext {
-            execution_id: request.execution_id.clone(),
-            trace_id: request.trace_id.clone(),
-            tenant_id: request.tenant_id.clone(),
-            skill: request.skill.clone(),
-            mode: request.mode.clone(),
-            input_sha256: hash_json(&request.input),
+            execution_id: envelope.execution_id.clone(),
+            trace_id: envelope.request.trace_id.clone(),
+            tenant_id: envelope.request.tenant_id.clone(),
+            skill: envelope.resolved_skill.clone(),
+            mode: envelope.request.mode.clone(),
+            input_sha256: hash_json(&envelope.request.input),
             now_utc: None,
-            budget: request.budget.clone(),
-            grants: request.grants.clone(),
+            budget: envelope.request.budget.clone(),
+            granted_capabilities: envelope.granted_capabilities.clone(),
         }
     }
 
     pub fn validate_request(
         manifest: &SkillManifest,
-        request: &ExecutionRequest,
+        envelope: &ResolvedExecutionEnvelope,
     ) -> Result<(), ExecutionError> {
         Self::validate_manifest(manifest)?;
 
-        if !manifest.supports_mode(&request.mode) {
+        if !manifest.supports_mode(&envelope.request.mode) {
             return Err(ExecutionError::new(
                 "unsupported-mode",
                 format!(
                     "skill {}.{} does not support {:?} mode",
-                    manifest.key.namespace, manifest.key.name, request.mode
+                    manifest.key.namespace, manifest.key.name, envelope.request.mode
                 ),
             )
             .with_phase(ExecutionPhase::Mode));
         }
 
-        if request.mode == ExecutionMode::Apply {
+        if envelope.request.mode == ExecutionMode::Apply {
             return Err(ExecutionError::new(
                 "apply-disabled",
                 "apply mode remains globally gated until audit and approval paths exist",
@@ -867,15 +868,15 @@ where
     fn validate_resolved_ref(
         &self,
         installed: &InstalledSkill,
-        request: &ExecutionRequest,
+        envelope: &ResolvedExecutionEnvelope,
     ) -> Result<(), ExecutionError> {
-        if installed.resolved_ref != request.skill {
+        if installed.resolved_ref != envelope.resolved_skill {
             return Err(ExecutionError::new(
                 "resolved-skill-mismatch",
                 "execution request did not match the resolved installed skill",
             )
             .with_detail(serde_json::json!({
-                "request": request.skill,
+                "request": envelope.resolved_skill,
                 "installed": installed.resolved_ref,
             }))
             .with_phase(ExecutionPhase::Validation));
@@ -944,10 +945,13 @@ where
         }
     }
 
-    fn build_provenance(installed: &InstalledSkill, request: &ExecutionRequest) -> Provenance {
+    fn build_provenance(
+        installed: &InstalledSkill,
+        envelope: &ResolvedExecutionEnvelope,
+    ) -> Provenance {
         Provenance {
-            skill: request.skill.clone(),
-            abi: AbiVersion::GuildSkillV1,
+            resolved_skill: envelope.resolved_skill.clone(),
+            abi: installed.manifest.runtime.guest_abi_version.clone(),
             dependency_digests: installed
                 .manifest
                 .dependencies
@@ -967,15 +971,61 @@ where
             ExecutionError::from(error)
                 .with_phase(ExecutionPhase::Persistence)
                 .with_detail(serde_json::json!({
-                    "execution_id": record.execution_id,
-                    "uri": record.uri,
+                    "execution_id": record.receipt.execution_id,
+                    "uri": record.receipt.uri,
                 }))
         })
     }
 
+    fn build_receipt(
+        envelope: &ResolvedExecutionEnvelope,
+        status: ExecutionStatus,
+    ) -> ExecutionReceipt {
+        ExecutionReceipt {
+            execution_id: envelope.execution_id.clone(),
+            uri: execution_resource_uri(&envelope.execution_id),
+            trace_id: envelope.request.trace_id.clone(),
+            status,
+        }
+    }
+
+    fn policy_decision_for_unsuccessful_attempt(
+        envelope: &ResolvedExecutionEnvelope,
+        error: &ExecutionError,
+    ) -> PolicyDecision {
+        match status_from_error(error) {
+            ExecutionStatus::Rejected => PolicyDecision {
+                outcome: PolicyDecisionOutcome::Rejected,
+                summary: error.message.clone(),
+                detail: error.detail.clone(),
+            },
+            _ => envelope.policy_decision.clone(),
+        }
+    }
+
+    fn load_evidence_records<R>(
+        registry: &R,
+        refs: &[EvidenceRef],
+    ) -> Result<Vec<EvidenceRecord>, ExecutionError>
+    where
+        R: SkillRegistry + ?Sized,
+    {
+        refs.iter()
+            .map(|evidence| {
+                registry.load_evidence_record(&evidence.uri).map_err(|error| {
+                    ExecutionError::from(error)
+                        .with_phase(ExecutionPhase::Persistence)
+                        .with_detail(serde_json::json!({
+                            "uri": evidence.uri,
+                        }))
+                })
+            })
+            .collect()
+    }
+
     fn persist_unsuccessful_attempt<R>(
         registry: &R,
-        request: &ExecutionRequest,
+        envelope: &ResolvedExecutionEnvelope,
         provenance: &Provenance,
         duration_ms: u64,
         error: ExecutionError,
@@ -986,21 +1036,19 @@ where
         R: SkillRegistry + ?Sized,
     {
         let status = status_from_error(&error);
-        let receipt = ExecutionReceipt {
-            execution_id: request.execution_id.clone(),
-            uri: execution_resource_uri(&request.execution_id),
-            trace_id: request.trace_id.clone(),
-            status: status.clone(),
-        };
+        let receipt = Self::build_receipt(envelope, status.clone());
         let record = ExecutionRecord {
-            execution_id: receipt.execution_id.clone(),
-            uri: receipt.uri.clone(),
-            trace_id: receipt.trace_id.clone(),
-            parent_execution_id: request.parent_execution_id.clone(),
+            receipt,
+            request: envelope.request.clone(),
+            policy_decision: Self::policy_decision_for_unsuccessful_attempt(envelope, &error),
+            resolved_skill: envelope.resolved_skill.clone(),
+            parent_execution_id: envelope.parent_execution_id.clone(),
             status,
             output: None,
             termination: Some(termination_from_error(&error)),
-            emitted_evidence,
+            granted_capabilities: envelope.granted_capabilities.clone(),
+            emitted_evidence: Self::load_evidence_records(registry, &emitted_evidence)
+                .unwrap_or_default(),
             metrics: ExecutionMetrics {
                 duration_ms,
                 child_executions: child_executions.len() as u16,
@@ -1011,10 +1059,10 @@ where
         };
 
         match Self::persist_record(registry, &record) {
-            Ok(()) => error.with_receipt(receipt),
+            Ok(()) => error.with_receipt(record.receipt.clone()),
             Err(persist_error) => persist_error.with_detail(serde_json::json!({
-                "execution_id": record.execution_id,
-                "uri": record.uri,
+                "execution_id": record.receipt.execution_id,
+                "uri": record.receipt.uri,
                 "original_error": {
                     "code": error.code,
                     "message": error.message,
@@ -1059,7 +1107,7 @@ where
             .map_err(ChildInvocationError::without_record)?;
 
         if let Err(denial) = CapabilityEvaluator::authorize(
-            &context.grants,
+            &context.granted_capabilities,
             &CapabilityOperation::InvokeDependency { alias },
         ) {
             return Err(ChildInvocationError::without_record(
@@ -1098,22 +1146,32 @@ where
 
         let child_grants = CapabilityEvaluator::derive_child_grants(
             &child_installed.manifest.capabilities,
-            &context.grants,
+            &context.granted_capabilities,
         )
         .map_err(ChildInvocationError::without_record)?;
         let child_execution_id = format!("{}/child/{sequence}", context.execution_id);
-        let child_request = ExecutionRequest {
+        let child_request = ResolvedExecutionEnvelope {
             execution_id: child_execution_id.clone(),
-            skill: child_installed.resolved_ref.clone(),
-            tenant_id: context.tenant_id.clone(),
-            actor_id: "skill".into(),
-            mode: context.mode.clone(),
-            input: input.clone(),
-            budget: derive_child_budget(&context.budget),
-            grants: child_grants,
-            idempotency_key: None,
+            request: guild_types::CallerRequest {
+                request_id: child_execution_id.clone(),
+                skill: exact_requested_skill_ref(&child_installed.resolved_ref),
+                tenant_id: context.tenant_id.clone(),
+                actor_id: "skill".into(),
+                mode: context.mode.clone(),
+                input: input.clone(),
+                budget: derive_child_budget(&context.budget),
+                requested_capabilities: child_grants.clone(),
+                idempotency_key: None,
+                trace_id: context.trace_id.clone(),
+            },
+            resolved_skill: child_installed.resolved_ref.clone(),
+            granted_capabilities: child_grants,
+            policy_decision: PolicyDecision {
+                outcome: PolicyDecisionOutcome::Allowed,
+                summary: "dependency invocation allowed".into(),
+                detail: Some(serde_json::json!({ "alias": alias })),
+            },
             parent_execution_id: Some(context.execution_id.clone()),
-            trace_id: context.trace_id.clone(),
         };
 
         let record = match self
@@ -1213,8 +1271,8 @@ fn status_from_error(error: &ExecutionError) -> ExecutionStatus {
     }
 }
 
-fn termination_from_error(error: &ExecutionError) -> ExecutionTermination {
-    ExecutionTermination {
+fn termination_from_error(error: &ExecutionError) -> TerminationDetail {
+    TerminationDetail {
         phase: error.phase.clone().unwrap_or(ExecutionPhase::RuntimeExec),
         code: error.code.clone(),
         message: error.message.clone(),
@@ -1230,14 +1288,24 @@ fn child_execution_record_from_execution_record(
 ) -> ChildExecutionRecord {
     ChildExecutionRecord {
         alias: alias.to_owned(),
-        execution_id: record.execution_id.clone(),
-        uri: record.uri.clone(),
+        execution_id: record.receipt.execution_id.clone(),
+        uri: record.receipt.uri.clone(),
         parent_execution_id: parent_execution_id.to_owned(),
-        trace_id: record.trace_id.clone(),
+        trace_id: record.receipt.trace_id.clone(),
         status: record.status.clone(),
+        policy_decision: record.policy_decision.clone(),
         termination: record.termination.clone(),
+        granted_capabilities: record.granted_capabilities.clone(),
         metrics: record.metrics.clone(),
         provenance: record.provenance.clone(),
+    }
+}
+
+fn exact_requested_skill_ref(skill: &ResolvedSkillRef) -> guild_types::RequestedSkillRef {
+    guild_types::RequestedSkillRef {
+        key: skill.key.clone(),
+        version_req: guild_types::VersionRequirement::parse(&format!("={}", skill.version))
+            .expect("resolved skill versions render as valid exact semver requirements"),
     }
 }
 
@@ -2012,7 +2080,7 @@ fn to_wit_execution_context(
             max_child_executions: context.budget.max_child_executions,
         },
         granted_capabilities: context
-            .grants
+            .granted_capabilities
             .grants
             .iter()
             .map(to_wit_granted_capability)

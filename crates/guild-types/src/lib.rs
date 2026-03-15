@@ -164,6 +164,18 @@ pub struct ResolvedSkillRef {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+pub enum ManifestSchemaVersion {
+    GuildManifestV1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SkillApiVersion {
+    GuildSkillV1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub enum AbiVersion {
     GuildSkillV1,
 }
@@ -554,22 +566,45 @@ pub struct ExecutionContext {
     pub input_sha256: String,
     pub now_utc: Option<String>,
     pub budget: Budget,
-    pub grants: CapabilityGrantSet,
+    pub granted_capabilities: CapabilityGrantSet,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-pub struct ExecutionRequest {
-    pub execution_id: String,
-    pub skill: ResolvedSkillRef,
+pub struct CallerRequest {
+    pub request_id: String,
+    pub skill: RequestedSkillRef,
     pub tenant_id: String,
     pub actor_id: String,
     pub mode: ExecutionMode,
     pub input: Value,
     pub budget: Budget,
-    pub grants: CapabilityGrantSet,
+    pub requested_capabilities: CapabilityGrantSet,
     pub idempotency_key: Option<String>,
-    pub parent_execution_id: Option<String>,
     pub trace_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PolicyDecisionOutcome {
+    Allowed,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct PolicyDecision {
+    pub outcome: PolicyDecisionOutcome,
+    pub summary: String,
+    pub detail: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ResolvedExecutionEnvelope {
+    pub execution_id: String,
+    pub request: CallerRequest,
+    pub resolved_skill: ResolvedSkillRef,
+    pub granted_capabilities: CapabilityGrantSet,
+    pub policy_decision: PolicyDecision,
+    pub parent_execution_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -683,7 +718,7 @@ pub enum ExecutionPhase {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-pub struct ExecutionTermination {
+pub struct TerminationDetail {
     pub phase: ExecutionPhase,
     pub code: String,
     pub message: String,
@@ -714,7 +749,7 @@ impl Default for ExecutionMetrics {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct Provenance {
-    pub skill: ResolvedSkillRef,
+    pub resolved_skill: ResolvedSkillRef,
     pub abi: AbiVersion,
     #[serde(default)]
     pub dependency_digests: Vec<String>,
@@ -723,16 +758,53 @@ pub struct Provenance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-pub struct ExecutionRecord {
+pub struct EvidenceRecord {
+    pub uri: String,
+    pub mime_type: String,
+    pub sha256: String,
+    pub size_bytes: u64,
+    pub title: Option<String>,
+    pub audience: EvidenceAudience,
+    pub redaction: RedactionClass,
+    pub freshness: Option<String>,
+    pub produced_by_execution: Option<String>,
+}
+
+impl EvidenceRecord {
+    pub fn evidence_ref(&self) -> EvidenceRef {
+        EvidenceRef {
+            uri: self.uri.clone(),
+            title: self.title.clone(),
+            mime_type: Some(self.mime_type.clone()),
+            sha256: Some(self.sha256.clone()),
+            audience: self.audience.clone(),
+            redaction: self.redaction.clone(),
+            freshness: self.freshness.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ExecutionReceipt {
     pub execution_id: String,
     pub uri: String,
     pub trace_id: String,
+    pub status: ExecutionStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ExecutionRecord {
+    pub receipt: ExecutionReceipt,
+    pub request: CallerRequest,
+    pub policy_decision: PolicyDecision,
+    pub resolved_skill: ResolvedSkillRef,
     pub parent_execution_id: Option<String>,
     pub status: ExecutionStatus,
     pub output: Option<SkillOutput>,
-    pub termination: Option<ExecutionTermination>,
+    pub termination: Option<TerminationDetail>,
+    pub granted_capabilities: CapabilityGrantSet,
     #[serde(default)]
-    pub emitted_evidence: Vec<EvidenceRef>,
+    pub emitted_evidence: Vec<EvidenceRecord>,
     #[serde(default)]
     pub metrics: ExecutionMetrics,
     pub provenance: Provenance,
@@ -756,7 +828,9 @@ pub struct ChildExecutionRecord {
     pub parent_execution_id: String,
     pub trace_id: String,
     pub status: ExecutionStatus,
-    pub termination: Option<ExecutionTermination>,
+    pub policy_decision: PolicyDecision,
+    pub termination: Option<TerminationDetail>,
+    pub granted_capabilities: CapabilityGrantSet,
     #[serde(default)]
     pub metrics: ExecutionMetrics,
     pub provenance: Provenance,

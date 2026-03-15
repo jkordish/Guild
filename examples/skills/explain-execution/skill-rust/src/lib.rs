@@ -67,7 +67,7 @@ impl Guest for ExplainExecution {
                     .cloned()
                     .unwrap_or(Value::Null),
                 "target_skill": execution_record
-                    .pointer("/provenance/skill")
+                    .pointer("/resolved_skill")
                     .cloned()
                     .unwrap_or(Value::Null),
                 "stored_summary": execution_record.pointer("/output/summary").cloned().unwrap_or(Value::Null),

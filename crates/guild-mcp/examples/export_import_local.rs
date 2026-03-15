@@ -116,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::to_string_pretty(&response.structured_content)?
     );
 
-    let execution_resource = facade.read_resource(&response.structured_content.uri)?;
+    let execution_resource = facade.read_resource(&response.structured_content.receipt.uri)?;
     println!("execution resource: {}", execution_resource.uri);
     println!("{}", String::from_utf8(execution_resource.bytes)?);
 

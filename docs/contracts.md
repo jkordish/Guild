@@ -10,4 +10,5 @@ Read next:
 
 - [`../SPECS.md`](../SPECS.md)
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
+- [`spec-delta-guest-abi-host-record-boundary.md`](spec-delta-guest-abi-host-record-boundary.md)
 - [`adr/README.md`](adr/README.md)

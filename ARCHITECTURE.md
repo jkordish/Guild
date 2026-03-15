@@ -18,6 +18,13 @@ Its architecture exists to preserve five properties end to end:
 
 The architecture is intentionally boring in the good way. You want predictable state transitions, explicit boundaries, and forensic visibility, not clever agent sludge.
 
+The key layering rule is now explicit:
+
+- `wit/guild-skill-v1.wit` is the canonical guest-wire boundary
+- Rust host types are the richer durable platform model
+- translation between those layers is explicit and host-owned
+- MCP transport authorization remains separate from Guild runtime capability grants
+
 ## 2. High-Level Component Model
 
 A practical Guild implementation contains the following subsystems:
@@ -102,6 +109,14 @@ Stores relationships such as:
 - execution -> evidence produced
 
 The important thing is not the exact schema on day one. The important thing is that these are real objects and not dead strings scattered through logs like confetti after a bad conference keynote.
+
+In the current repository this logical model is now split more explicitly into:
+
+- `CallerRequest` for caller intent and requested identity
+- `ResolvedExecutionEnvelope` for host-issued resolved execution input
+- `ExecutionRecord` and `ExecutionReceipt` for durable execution truth
+- `EvidenceRecord` plus `EvidenceRef` for host-owned evidence metadata and guest-visible handles
+- distinct manifest schema, skill API, and guest ABI version axes
 
 ## 4. Reference Execution Flow
 

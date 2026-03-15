@@ -1,5 +1,6 @@
 use guild_types::{
-    Budget, CapabilityGrantSet, ExecutionMode, ExecutionRequest, RequestedSkillRef, SkillKey,
+    Budget, CallerRequest, CapabilityGrantSet, ExecutionMode, PolicyDecision,
+    PolicyDecisionOutcome, RequestedSkillRef, ResolvedExecutionEnvelope, SkillKey,
     VersionRequirement,
 };
 
@@ -12,17 +13,27 @@ fn main() {
         version_req: VersionRequirement::parse("^0.1").unwrap(),
     };
 
-    let _request = ExecutionRequest {
+    let _request = ResolvedExecutionEnvelope {
         execution_id: "exec-1".into(),
-        skill: requested,
-        tenant_id: "tenant-1".into(),
-        actor_id: "actor-1".into(),
-        mode: ExecutionMode::Inspect,
-        input: serde_json::json!({}),
-        budget: Budget::default(),
-        grants: CapabilityGrantSet::default(),
-        idempotency_key: None,
+        request: CallerRequest {
+            request_id: "request-1".into(),
+            skill: requested,
+            tenant_id: "tenant-1".into(),
+            actor_id: "actor-1".into(),
+            mode: ExecutionMode::Inspect,
+            input: serde_json::json!({}),
+            budget: Budget::default(),
+            requested_capabilities: CapabilityGrantSet::default(),
+            idempotency_key: None,
+            trace_id: "trace-1".into(),
+        },
+        resolved_skill: requested,
+        granted_capabilities: CapabilityGrantSet::default(),
+        policy_decision: PolicyDecision {
+            outcome: PolicyDecisionOutcome::Allowed,
+            summary: "allowed".into(),
+            detail: None,
+        },
         parent_execution_id: None,
-        trace_id: "trace-1".into(),
     };
 }

@@ -1,15 +1,17 @@
 //! Manifest model for published Guild skills.
 
 use guild_types::{
-    AbiVersion, CapabilityRequirement, ExecutionMode, FreshnessClass, Mutability,
-    RequestedSkillRef, ResolvedSkillRef, RuntimeKind, SkillCategory, SkillKey, SkillVersion,
+    AbiVersion, CapabilityRequirement, ExecutionMode, FreshnessClass, ManifestSchemaVersion,
+    Mutability, RequestedSkillRef, ResolvedSkillRef, RuntimeKind, SkillApiVersion,
+    SkillCategory, SkillKey, SkillVersion,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct SkillManifest {
-    pub api_version: AbiVersion,
+    pub manifest_schema_version: ManifestSchemaVersion,
+    pub skill_api_version: SkillApiVersion,
     pub key: SkillKey,
     pub version: SkillVersion,
     pub display_name: String,
@@ -29,7 +31,8 @@ pub struct SkillManifest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct SourceSkillManifest {
-    pub api_version: AbiVersion,
+    pub manifest_schema_version: ManifestSchemaVersion,
+    pub skill_api_version: SkillApiVersion,
     pub key: SkillKey,
     pub version: SkillVersion,
     pub display_name: String,
@@ -52,7 +55,7 @@ pub struct SourceSkillManifest {
 pub struct RuntimeSpec {
     pub kind: RuntimeKind,
     pub entrypoint: String,
-    pub abi: AbiVersion,
+    pub guest_abi_version: AbiVersion,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -270,7 +273,8 @@ impl SourceSkillManifest {
         dependencies: Vec<InstalledDependencySpec>,
     ) -> SkillManifest {
         SkillManifest {
-            api_version: self.api_version,
+            manifest_schema_version: self.manifest_schema_version,
+            skill_api_version: self.skill_api_version,
             key: self.key,
             version: self.version,
             display_name: self.display_name,

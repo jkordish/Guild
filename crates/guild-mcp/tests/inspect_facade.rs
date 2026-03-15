@@ -221,14 +221,14 @@ fn guild_inspect_uses_real_registry_and_runner_path() {
 
     let response = facade.inspect(request).unwrap();
     let stored = facade
-        .read_resource(&response.structured_content.uri)
+        .read_resource(&response.structured_content.receipt.uri)
         .unwrap();
     let output = response.structured_content.output.as_ref().unwrap();
 
     assert_eq!(response.summary, output.summary);
     assert_eq!(output.structured["mode"], "inspect");
     assert_eq!(
-        response.structured_content.provenance.skill.key.name,
+        response.structured_content.provenance.resolved_skill.key.name,
         "hello-inspect"
     );
     assert_eq!(stored.mime_type, "application/json");
@@ -239,7 +239,7 @@ fn guild_inspect_executes_composite_skill_through_nested_path() {
     let facade = build_facade();
     let response = facade.inspect(composite_request()).unwrap();
     let parent_resource = facade
-        .read_resource(&response.structured_content.uri)
+        .read_resource(&response.structured_content.receipt.uri)
         .unwrap();
     let child_resource = facade
         .read_resource(&response.structured_content.child_executions[0].uri)
@@ -252,7 +252,7 @@ fn guild_inspect_executes_composite_skill_through_nested_path() {
     assert_eq!(
         response.structured_content.child_executions[0]
             .provenance
-            .skill
+            .resolved_skill
             .key
             .name,
         "hello-inspect"
@@ -299,20 +299,20 @@ fn explain_skill_reads_the_same_resources_mcp_exposes() {
         .unwrap();
 
     let execution_resource = facade
-        .read_resource(&primitive.structured_content.uri)
+        .read_resource(&primitive.structured_content.receipt.uri)
         .unwrap();
     let evidence_resource = facade
         .read_resource(&primitive.structured_content.emitted_evidence[0].uri)
         .unwrap();
     let explained = facade
-        .inspect(explain_request(&primitive.structured_content.uri))
+        .inspect(explain_request(&primitive.structured_content.receipt.uri))
         .unwrap();
     let explained_output = explained.structured_content.output.as_ref().unwrap();
     let primitive_output = primitive.structured_content.output.as_ref().unwrap();
 
     assert_eq!(
         explained_output.structured["target_execution_uri"],
-        primitive.structured_content.uri
+        primitive.structured_content.receipt.uri
     );
     assert_eq!(
         explained_output.structured["execution_resource"]["sha256"],
@@ -438,12 +438,12 @@ fn imported_primitive_bundle_executes_without_source_workspace() {
         ExecutionStatus::Succeeded
     );
     assert_eq!(
-        response.structured_content.provenance.skill.digest,
+        response.structured_content.provenance.resolved_skill.digest,
         installed.resolved_ref.digest
     );
     assert_eq!(
         facade
-            .read_resource(&response.structured_content.uri)
+            .read_resource(&response.structured_content.receipt.uri)
             .unwrap()
             .mime_type,
         "application/json"
@@ -481,14 +481,14 @@ fn imported_composite_bundle_executes_through_normal_nested_path() {
         ExecutionStatus::Succeeded
     );
     assert_eq!(
-        response.structured_content.provenance.skill.digest,
+        response.structured_content.provenance.resolved_skill.digest,
         composite.resolved_ref.digest
     );
     assert_eq!(response.structured_content.child_executions.len(), 1);
     assert_eq!(
         response.structured_content.child_executions[0]
             .provenance
-            .skill
+            .resolved_skill
             .digest,
         primitive.resolved_ref.digest
     );

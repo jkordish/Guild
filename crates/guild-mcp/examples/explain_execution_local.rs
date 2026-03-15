@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             version_req: VersionRequirement::parse("^0.1")?,
         },
         serde_json::json!({
-            "execution_uri": inspected.structured_content.uri,
+            "execution_uri": inspected.structured_content.receipt.uri,
             "include_first_evidence": true,
         }),
         "tenant-dev",
@@ -101,7 +101,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("installed primitive {}", primitive.resolved_ref.digest);
     println!("installed explain {}", explained.resolved_ref.digest);
-    println!("target execution URI: {}", inspected.structured_content.uri);
+    println!(
+        "target execution URI: {}",
+        inspected.structured_content.receipt.uri
+    );
     println!("{}", explanation.summary);
     println!(
         "{}",

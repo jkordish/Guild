@@ -555,7 +555,12 @@ fn evidence_objects_are_stored_deduped_and_readable() {
     assert_eq!(first.uri, second.uri);
     assert_eq!(first.sha256, second.sha256);
 
+    let evidence = registry.load_evidence_record(&first.uri).unwrap();
     let stored = registry.read_resource(&first.uri).unwrap();
+    assert_eq!(evidence.uri, first.uri);
+    assert_eq!(evidence.sha256, first.sha256.clone().unwrap());
+    assert_eq!(evidence.mime_type, "application/json");
+    assert_eq!(evidence.title.as_deref(), Some("fixture"));
     assert_eq!(stored.mime_type, "application/json");
     assert_eq!(stored.bytes, br#"{"hello":"world"}"#);
     assert_eq!(stored.sha256, first.sha256);

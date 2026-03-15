@@ -8,10 +8,10 @@ use guild_registry::{
 };
 use guild_runner::{Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
-    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, EvidenceRef, ExecutionMode, ExecutionRequest,
-    ExecutionStatus, GrantedCapability, LogConstraints, RedactionClass, RequestedSkillRef,
-    Severity, SkillKey, VersionRequirement,
+    CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
+    EmitEvidenceConstraints, EvidenceAudience, EvidenceRef, ExecutionMode, ExecutionStatus,
+    GrantedCapability, LogConstraints, PolicyDecision, PolicyDecisionOutcome, RedactionClass,
+    RequestedSkillRef, ResolvedExecutionEnvelope, Severity, SkillKey, VersionRequirement,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -66,24 +66,55 @@ fn build_runner() -> Runner<WasmtimeRuntimeAdapter> {
 fn sample_request(
     grants: CapabilityGrantSet,
     mode: ExecutionMode,
-) -> (guild_registry::InstalledSkill, ExecutionRequest) {
+) -> (guild_registry::InstalledSkill, ResolvedExecutionEnvelope) {
     let registry = load_registry();
     let installed = registry.resolve(&requested_skill()).unwrap();
-    let request = ExecutionRequest {
-        execution_id: "exec-1".into(),
-        skill: installed.resolved_ref.clone(),
-        tenant_id: "tenant-1".into(),
-        actor_id: "actor-1".into(),
-        mode,
-        input: serde_json::json!({"name": "Ada"}),
-        budget: guild_types::Budget::default(),
+    let request = envelope_for(
+        &installed,
+        "exec-1",
+        "trace-1",
+        serde_json::json!({"name": "Ada"}),
         grants,
-        idempotency_key: None,
-        parent_execution_id: None,
-        trace_id: "trace-1".into(),
-    };
+        mode,
+    );
 
     (installed, request)
+}
+
+fn envelope_for(
+    installed: &guild_registry::InstalledSkill,
+    execution_id: impl Into<String>,
+    trace_id: impl Into<String>,
+    input: Value,
+    grants: CapabilityGrantSet,
+    mode: ExecutionMode,
+) -> ResolvedExecutionEnvelope {
+    let execution_id = execution_id.into();
+    let trace_id = trace_id.into();
+
+    ResolvedExecutionEnvelope {
+        execution_id: execution_id.clone(),
+        request: CallerRequest {
+            request_id: format!("{execution_id}-request"),
+            skill: requested_skill(),
+            tenant_id: "tenant-1".into(),
+            actor_id: "actor-1".into(),
+            mode,
+            input,
+            budget: guild_types::Budget::default(),
+            requested_capabilities: grants.clone(),
+            idempotency_key: None,
+            trace_id,
+        },
+        resolved_skill: installed.resolved_ref.clone(),
+        granted_capabilities: grants,
+        policy_decision: PolicyDecision {
+            outcome: PolicyDecisionOutcome::Allowed,
+            summary: "test request allowed".into(),
+            detail: None,
+        },
+        parent_execution_id: None,
+    }
 }
 
 fn emit_evidence_grant() -> GrantedCapability {
@@ -218,11 +249,17 @@ fn runner_executes_example_skill_and_wraps_execution_record() {
     let stored = registry.load_execution_record("exec-1").unwrap();
     let output = record.output.as_ref().unwrap();
 
-    assert_eq!(record.execution_id, "exec-1");
-    assert_eq!(record.uri, execution_resource_uri("exec-1"));
-    assert_eq!(record.trace_id, "trace-1");
+    assert_eq!(record.receipt.execution_id, "exec-1");
+    assert_eq!(record.receipt.uri, execution_resource_uri("exec-1"));
+    assert_eq!(record.receipt.trace_id, "trace-1");
     assert_eq!(record.parent_execution_id, None);
     assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.request.skill.key.name, "hello-inspect");
+    assert_eq!(
+        record.policy_decision.outcome,
+        PolicyDecisionOutcome::Allowed
+    );
+    assert_eq!(record.resolved_skill.digest, installed.resolved_ref.digest);
     assert!(record.termination.is_none());
     assert_eq!(output.summary, "Hello, Ada. Guild inspect is working.");
     assert_eq!(
@@ -242,8 +279,16 @@ fn runner_executes_example_skill_and_wraps_execution_record() {
         output.evidence,
         vec![expected_evidence_ref(&installed, &json!({"name": "Ada"}))]
     );
-    assert_eq!(record.emitted_evidence, output.evidence);
-    assert_eq!(record.provenance.skill, installed.resolved_ref);
+    assert_eq!(
+        record
+            .emitted_evidence
+            .iter()
+            .map(|evidence| evidence.evidence_ref())
+            .collect::<Vec<_>>(),
+        output.evidence
+    );
+    assert_eq!(record.emitted_evidence[0].mime_type, "application/json");
+    assert_eq!(record.provenance.resolved_skill, installed.resolved_ref);
     assert_eq!(record, stored);
     assert!(record.metrics.duration_ms <= record.metrics.duration_ms);
 
@@ -276,21 +321,16 @@ fn example_fixture_expected_output_matches_real_execution() {
         .execute(
             &registry,
             &installed,
-            ExecutionRequest {
-                execution_id: "exec-2".into(),
-                skill: installed.resolved_ref.clone(),
-                tenant_id: "tenant-1".into(),
-                actor_id: "actor-1".into(),
-                mode: ExecutionMode::Inspect,
+            envelope_for(
+                &installed,
+                "exec-2",
+                "trace-2",
                 input,
-                budget: guild_types::Budget::default(),
-                grants: CapabilityGrantSet {
+                CapabilityGrantSet {
                     grants: vec![emit_evidence_grant()],
                 },
-                idempotency_key: None,
-                parent_execution_id: None,
-                trace_id: "trace-2".into(),
-            },
+                ExecutionMode::Inspect,
+            ),
         )
         .unwrap();
 
@@ -314,42 +354,32 @@ fn emitted_evidence_is_deduped_by_digest_and_resources_are_readable() {
         .execute(
             &registry,
             &installed,
-            ExecutionRequest {
-                execution_id: "exec-evidence-1".into(),
-                skill: installed.resolved_ref.clone(),
-                tenant_id: "tenant-1".into(),
-                actor_id: "actor-1".into(),
-                mode: ExecutionMode::Inspect,
-                input: json!({"name": "Ada"}),
-                budget: guild_types::Budget::default(),
-                grants: CapabilityGrantSet {
+            envelope_for(
+                &installed,
+                "exec-evidence-1",
+                "trace-evidence",
+                json!({"name": "Ada"}),
+                CapabilityGrantSet {
                     grants: vec![emit_evidence_grant()],
                 },
-                idempotency_key: None,
-                parent_execution_id: None,
-                trace_id: "trace-evidence".into(),
-            },
+                ExecutionMode::Inspect,
+            ),
         )
         .unwrap();
     let second = runner
         .execute(
             &registry,
             &installed,
-            ExecutionRequest {
-                execution_id: "exec-evidence-2".into(),
-                skill: installed.resolved_ref.clone(),
-                tenant_id: "tenant-1".into(),
-                actor_id: "actor-1".into(),
-                mode: ExecutionMode::Inspect,
-                input: json!({"name": "Ada"}),
-                budget: guild_types::Budget::default(),
-                grants: CapabilityGrantSet {
+            envelope_for(
+                &installed,
+                "exec-evidence-2",
+                "trace-evidence",
+                json!({"name": "Ada"}),
+                CapabilityGrantSet {
                     grants: vec![emit_evidence_grant()],
                 },
-                idempotency_key: None,
-                parent_execution_id: None,
-                trace_id: "trace-evidence".into(),
-            },
+                ExecutionMode::Inspect,
+            ),
         )
         .unwrap();
 
@@ -357,7 +387,17 @@ fn emitted_evidence_is_deduped_by_digest_and_resources_are_readable() {
         first.output.as_ref().unwrap().evidence,
         second.output.as_ref().unwrap().evidence
     );
-    assert_eq!(first.emitted_evidence, second.emitted_evidence);
+    assert_eq!(
+        first.emitted_evidence
+            .iter()
+            .map(|evidence| evidence.evidence_ref())
+            .collect::<Vec<_>>(),
+        second
+            .emitted_evidence
+            .iter()
+            .map(|evidence| evidence.evidence_ref())
+            .collect::<Vec<_>>()
+    );
     let stored = registry
         .read_resource(&first.emitted_evidence[0].uri)
         .unwrap();
@@ -393,21 +433,16 @@ fn guest_cannot_emit_evidence_without_returning_host_issued_refs() {
         .execute(
             &registry,
             &installed,
-            ExecutionRequest {
-                execution_id: "exec-invalid-evidence".into(),
-                skill: installed.resolved_ref.clone(),
-                tenant_id: "tenant-1".into(),
-                actor_id: "actor-1".into(),
-                mode: ExecutionMode::Inspect,
-                input: json!({"name": "Ada"}),
-                budget: guild_types::Budget::default(),
-                grants: CapabilityGrantSet {
+            envelope_for(
+                &installed,
+                "exec-invalid-evidence",
+                "trace-invalid-evidence",
+                json!({"name": "Ada"}),
+                CapabilityGrantSet {
                     grants: vec![emit_evidence_grant()],
                 },
-                idempotency_key: None,
-                parent_execution_id: None,
-                trace_id: "trace-invalid-evidence".into(),
-            },
+                ExecutionMode::Inspect,
+            ),
         )
         .unwrap_err();
 
@@ -461,7 +496,7 @@ fn apply_stays_globally_gated_even_if_manifest_declares_it() {
         .behavior
         .modes
         .apply_requires_idempotency_key = true;
-    request.idempotency_key = Some("idem-1".into());
+    request.request.idempotency_key = Some("idem-1".into());
 
     let registry = load_registry();
     let runner = build_runner();
@@ -513,21 +548,16 @@ fn host_log_import_fails_closed_without_grant() {
         .execute(
             &registry,
             &installed,
-            ExecutionRequest {
-                execution_id: "exec-3".into(),
-                skill: installed.resolved_ref.clone(),
-                tenant_id: "tenant-1".into(),
-                actor_id: "actor-1".into(),
-                mode: ExecutionMode::Inspect,
-                input: serde_json::json!({"name": "Ada", "emit_log": true}),
-                budget: guild_types::Budget::default(),
-                grants: CapabilityGrantSet {
+            envelope_for(
+                &installed,
+                "exec-3",
+                "trace-3",
+                serde_json::json!({"name": "Ada", "emit_log": true}),
+                CapabilityGrantSet {
                     grants: vec![emit_evidence_grant()],
                 },
-                idempotency_key: None,
-                parent_execution_id: None,
-                trace_id: "trace-3".into(),
-            },
+                ExecutionMode::Inspect,
+            ),
         )
         .unwrap_err();
 

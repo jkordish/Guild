@@ -87,19 +87,35 @@ A durable host-owned object representing material read, derived, or produced in 
 
 A host-issued stable reference to a persisted evidence object.
 
-### 5.10 Capability slice
+### 5.10 EvidenceRecord
+
+A durable host-owned metadata record describing a persisted evidence object.
+
+### 5.11 CallerRequest
+
+A caller-facing request object carrying requested identity plus caller intent and inputs.
+
+### 5.12 ResolvedExecutionEnvelope
+
+A host-enriched execution object carrying resolved identity, granted capabilities, policy decision, and runtime linkage.
+
+### 5.13 Capability slice
 
 A typed, host-defined permission set granted to a guest for a particular execution. In the current Rust implementation this is represented by `CapabilityGrantSet`.
 
-### 5.11 Host
+### 5.14 PolicyDecision
+
+A host-owned authorization result describing whether execution was allowed or rejected.
+
+### 5.15 Host
 
 The trusted runtime authority responsible for resolution, policy, capability enforcement, identifier issuance, and persistence.
 
-### 5.12 Guest
+### 5.16 Guest
 
 The executing skill payload running within the runtime boundary.
 
-### 5.13 Guild root
+### 5.17 Guild root
 
 A local logical root containing installed artifacts, metadata, execution records, evidence, and configuration.
 
@@ -125,22 +141,35 @@ Guild operates as a five-stage pipeline:
 4. Execute: guest runs inside the constrained runtime boundary.
 5. Persist and Inspect: host persists execution and evidence artifacts and later supports inspection or explanation.
 
-## 8. Current Repository Baseline
+## 8. Boundary Layering
+
+Guild freezes the guest and host contract boundary as follows:
+
+- `wit/guild-skill-v1.wit` is the canonical guest-wire contract.
+- Rust host types are the canonical durable platform model.
+- Translation between those layers MUST be explicit and tested.
+- Guest-visible types SHOULD stay small and focused on execution context, capability imports, `SkillOutput`, and `SkillError`.
+- Host-owned records such as `ExecutionRecord`, `ExecutionReceipt`, `EvidenceRecord`, `PolicyDecision`, provenance, and termination detail MUST NOT be pushed into WIT return types.
+- Guild runtime capability grants MUST remain distinct from MCP transport authorization.
+
+## 9. Current Repository Baseline
 
 This repository already implements a narrow local inspect-oriented slice of the specification:
 
 - source manifests install into digest-pinned installed manifests plus staged artifacts
+- source and installed manifests now carry distinct `manifest_schema_version`, `skill_api_version`, and `runtime.guest_abi_version` axes
 - execution resolves only against installed executable state
+- the host now models caller intent separately from resolved execution envelopes and durable execution records
 - `guild.inspect` runs through a real Wasmtime-backed Wasm component runtime
 - resolved execution attempts persist on success, failure, and rejection
-- evidence persists as durable host-owned objects behind `EvidenceRef` values
+- evidence persists as durable host-owned objects behind `EvidenceRef` values plus host-loadable `EvidenceRecord` metadata
 - signed local bundle export and import verifies trust, signature, and bundled file digests before installation
 - composite skills invoke declared child dependencies by alias through the host boundary
 - supported typed capability families are currently `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
 
 The current repository does not yet implement full `plan` mode, a general policy engine, or `apply` mode.
 
-## 9. Identity and Resolution
+## 10. Identity and Resolution
 
 ### 9.1 Requested skill identity
 
@@ -166,7 +195,7 @@ Implementations MAY support aliases such as stable, approved, or channel-like se
 
 The resolved identity SHOULD be inspectable after execution.
 
-## 10. Artifact Packaging and Lifecycle
+## 11. Artifact Packaging and Lifecycle
 
 ### 10.1 Installation
 
@@ -192,7 +221,7 @@ The host MAY accept, reject, quarantine, or reclassify imported bundles. Import 
 
 Execution SHOULD resolve from host-managed installed state rather than directly from mutable source directories.
 
-## 11. Runtime Boundary
+## 12. Runtime Boundary
 
 ### 11.1 Constrained execution
 
@@ -210,7 +239,7 @@ Sensitive operations MUST flow through host-defined interfaces.
 
 The runtime design SHOULD minimize host-specific coupling so skill artifacts remain portable.
 
-## 12. Capability Model
+## 13. Capability Model
 
 ### 12.1 Typed capabilities
 
@@ -252,7 +281,7 @@ The current repository enforces typed constraints for:
 
 Those are the currently implemented product names in the Rust and WIT surface. Unknown fields, wrong-family constraint shapes, and empty scoped lists are validation errors.
 
-## 13. Execution Semantics
+## 14. Execution Semantics
 
 ### 13.1 Execution attempt
 
@@ -290,7 +319,7 @@ Policy rejection MUST be a real observable outcome, not a silent short circuit.
 
 The current repository implements `inspect` end to end, defers `plan`, and globally rejects `apply`.
 
-## 14. ExecutionRecord Schema Requirements
+## 15. ExecutionRecord Schema Requirements
 
 A minimally useful `ExecutionRecord` MUST contain:
 
@@ -308,7 +337,7 @@ A minimally useful `ExecutionRecord` MUST contain:
 
 Implementations MAY include richer diagnostics, logs, structured outputs, lineage edges, or timing breakdowns.
 
-## 15. Evidence Model
+## 16. Evidence Model
 
 ### 15.1 Durable evidence
 
@@ -334,7 +363,7 @@ Evidence persisted during execution MUST be available for later inspect and expl
 
 Evidence SHOULD preserve provenance or chain-of-custody metadata sufficient for later analysis.
 
-## 16. Inspect and Explain
+## 17. Inspect and Explain
 
 ### 16.1 Supported workload type
 
@@ -352,7 +381,7 @@ Failed and rejected executions MUST remain readable to inspect and explain flows
 
 Explain skills MUST NOT claim certainty beyond what durable artifacts support.
 
-## 17. Composite Skill Requirements
+## 18. Composite Skill Requirements
 
 ### 17.1 Durable lineage
 
@@ -370,7 +399,7 @@ A composite skill MAY succeed despite failed or rejected child executions, but t
 
 Implementations SHOULD prefer narrowing capability grants across child calls rather than widening them.
 
-## 18. Policy Model
+## 19. Policy Model
 
 ### 18.1 Host-owned enforcement
 
@@ -396,7 +425,7 @@ Policy rejection SHOULD produce a durable record suitable for later inspection a
 
 When policy conflicts with convenience, the host MUST prefer policy.
 
-## 19. Resource Access Semantics
+## 20. Resource Access Semantics
 
 ### 19.1 Host-mediated reads
 
@@ -410,7 +439,7 @@ Resource access SHOULD be attributable to execution attempts.
 
 The system SHOULD be able to answer: what did this execution read, and under which capability grant?
 
-## 20. Security Properties
+## 21. Security Properties
 
 A strong Guild implementation SHOULD provide all of the following:
 
@@ -423,7 +452,7 @@ A strong Guild implementation SHOULD provide all of the following:
 
 Guild does not guarantee that the guest makes perfect decisions. It guarantees that the system around the guest is explicit, inspectable, and governable.
 
-## 21. Conformance
+## 22. Conformance
 
 A system may call itself Guild-conformant only if it supports all of the following:
 
@@ -437,7 +466,7 @@ A system may call itself Guild-conformant only if it supports all of the followi
 
 If composite skills are supported, durable parent-child linkage is also REQUIRED.
 
-## 22. Extension Points
+## 23. Extension Points
 
 Future specs or ADRs SHOULD define:
 
@@ -450,7 +479,7 @@ Future specs or ADRs SHOULD define:
 - federation across Guild roots
 - human approval or interruption semantics
 
-## 23. Bottom Line
+## 24. Bottom Line
 
 Guild exists to force AI skill execution out of the swamp of informal orchestration and into a real software contract.
 

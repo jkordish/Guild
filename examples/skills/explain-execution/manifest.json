@@ -1,5 +1,6 @@
 {
-  "api_version": "guild-skill-v1",
+  "manifest_schema_version": "guild-manifest-v1",
+  "skill_api_version": "guild-skill-v1",
   "key": {
     "namespace": "example",
     "name": "explain-execution"
@@ -10,7 +11,7 @@
   "runtime": {
     "kind": "wasm-component",
     "entrypoint": "guild-skill",
-    "abi": "guild-skill-v1"
+    "guest_abi_version": "guild-skill-v1"
   },
   "interface": {
     "input_schema_uri": "./input.schema.json",
