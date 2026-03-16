@@ -4,7 +4,7 @@
 
 Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages operational know-how as versioned, capability-scoped, portable skills that can be resolved, executed, inspected, and shared without giving guests ambient authority.
 
-> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, signed local bundles can be exported and imported without rebuilding, execution attempts persist as host-owned records with host-minted durable IDs, and evidence persists as durable Guild objects with distinct blob and record identity.
+> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, Guild can run as a real MCP stdio server, signed local bundles can be exported and imported without rebuilding, execution attempts persist as host-owned records with host-minted durable IDs, and evidence persists as durable Guild objects with distinct blob and record identity.
 
 ## Why Guild Exists
 
@@ -35,9 +35,28 @@ make test
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example export_import_local
+cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
 Additional examples cover composite execution, durable rejected executions, composite portability, and tampered or untrusted bundle rejection.
+
+## MCP Server
+
+Guild now ships a real stdio MCP server entrypoint:
+
+```bash
+cargo run -p guild-mcp --bin guild-mcp-server -- --registry-root target/dev-local-registry/mcp-stdio-local
+```
+
+The current MCP surface is intentionally small:
+
+- one public tool: `guild.inspect`
+- a bounded `resources/list` view of recent execution records
+- durable Guild execution records are exposed through `resources/read`
+- durable evidence-record and blob URIs are exposed through `resources/read`
+- resource templates are exposed for `guild://executions/{execution_id}`, `guild://objects/records/{evidence_record_id}`, and `guild://objects/sha256/{digest}`
+
+Unsuccessful inspect executions that reached the real runtime path are surfaced as MCP tool errors with `isError: true`, while preserving the persisted execution record URI instead of collapsing it into an opaque protocol failure.
 
 ## Integrity Model
 
@@ -51,6 +70,7 @@ The current inspect slice is intentionally strict about a few things:
 - the active Wasm inspect slice only supports `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; broader typed families are rejected before execution
 - `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
 - durable execution records now carry host-stamped start and finish timestamps
+- the stdio MCP server exposes only `guild.inspect` plus honest Guild resource reads; HTTP transports and subscriptions remain deferred
 
 ## Canonical Docs
 
@@ -96,7 +116,7 @@ Current crate responsibilities:
 - `guild-manifest`: source and installed manifest model
 - `guild-registry`: local installation, bundle flow, resolution, and Guild resource persistence
 - `guild-runner`: runtime orchestration, capability checks, and execution boundary
-- `guild-mcp`: stable facade surface and local proof examples
+- `guild-mcp`: stable facade surface, stdio MCP server, and local proof examples
 - `guild-sdk-rust`: guest authoring support for Rust-based skills
 
 ## Current Scope
@@ -111,6 +131,7 @@ What is real today:
 - durable execution persistence with host-stamped timestamps
 - split evidence blob and evidence-record persistence
 - composite child invocation with durable lineage
+- real stdio MCP server support for `guild.inspect` and Guild URI resources
 - signed local bundle export and import with trust-store verification
 
 What is still deferred:

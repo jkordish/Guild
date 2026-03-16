@@ -1,7 +1,7 @@
 //! MCP-facing names and façade concepts for Guild.
 //!
 //! The current working baseline is an inspect-only Rust façade that normalizes
-//! on host-owned `ExecutionRecord` values.
+//! on host-owned `ExecutionRecord` values and powers the stdio MCP server.
 
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,14 +17,34 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod protocol;
+pub mod server;
+
 pub const SERVER_NAME: &str = "guild-mcp";
-pub const SEARCH_TOOL: &str = "guild.search";
-pub const DESCRIBE_TOOL: &str = "guild.describe";
+pub const SERVER_BINARY_NAME: &str = "guild-mcp-server";
 pub const INSPECT_TOOL: &str = "guild.inspect";
-pub const PLAN_TOOL: &str = "guild.plan";
-pub const APPLY_TOOL: &str = "guild.apply";
 
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_request_sequence() -> u64 {
+    NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+fn minted_request_id(sequence: u64) -> String {
+    format!("inspect-{sequence}")
+}
+
+fn minted_trace_id(sequence: u64) -> String {
+    format!("trace-{sequence}")
+}
+
+fn default_tenant_id() -> String {
+    "local".into()
+}
+
+fn default_actor_id() -> String {
+    "mcp-client".into()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct InspectRequest {
@@ -48,7 +68,7 @@ impl InspectRequest {
         actor_id: impl Into<String>,
         grants: CapabilityGrantSet,
     ) -> Self {
-        let id = NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let id = next_request_sequence();
 
         Self {
             skill,
@@ -59,6 +79,42 @@ impl InspectRequest {
             grants,
             request_id: format!("inspect-{id}"),
             trace_id: format!("trace-{id}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct InspectToolRequest {
+    pub skill: RequestedSkillRef,
+    pub input: Value,
+    #[serde(default)]
+    pub tenant_id: Option<String>,
+    #[serde(default)]
+    pub actor_id: Option<String>,
+    #[serde(default)]
+    pub budget: Option<Budget>,
+    #[serde(default)]
+    pub grants: CapabilityGrantSet,
+    #[serde(default)]
+    pub request_id: Option<String>,
+    #[serde(default)]
+    pub trace_id: Option<String>,
+}
+
+impl InspectToolRequest {
+    pub fn into_inspect_request(self) -> InspectRequest {
+        let sequence = next_request_sequence();
+        InspectRequest {
+            skill: self.skill,
+            input: self.input,
+            tenant_id: self.tenant_id.unwrap_or_else(default_tenant_id),
+            actor_id: self.actor_id.unwrap_or_else(default_actor_id),
+            budget: self.budget.unwrap_or_default(),
+            grants: self.grants,
+            request_id: self
+                .request_id
+                .unwrap_or_else(|| minted_request_id(sequence)),
+            trace_id: self.trace_id.unwrap_or_else(|| minted_trace_id(sequence)),
         }
     }
 }
@@ -174,9 +230,22 @@ where
         })
     }
 
+    pub fn inspect_tool(&self, request: InspectToolRequest) -> Result<InspectResponse, McpError> {
+        self.inspect(request.into_inspect_request())
+    }
+
     pub fn read_resource(&self, uri: impl AsRef<str>) -> Result<ResourceReadResult, McpError> {
         self.registry
             .read_resource(uri.as_ref())
+            .map_err(McpError::from)
+    }
+
+    pub fn load_execution_record(
+        &self,
+        execution_id: impl AsRef<str>,
+    ) -> Result<ExecutionRecord, McpError> {
+        self.registry
+            .load_execution_record(execution_id.as_ref())
             .map_err(McpError::from)
     }
 

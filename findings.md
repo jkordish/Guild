@@ -14,6 +14,7 @@ What is materially real today:
 - resolved top-level and child execution attempts persist as host-owned `ExecutionRecord` resources on success, failure, and rejection
 - durable execution IDs are host-minted, collision-resistant, and protected against silent overwrite
 - evidence persists as durable local Guild objects with distinct blob identity and per-emission evidence-record identity
+- Guild now runs as a real MCP server over stdio, not just an internal façade with MCP-shaped concepts
 - MCP resource reads and guest-side `read-resource` calls use the same local backend
 - a resource-aware explain skill can read stored execution and evidence artifacts through the Wasm host boundary, including failed and rejected records
 - top-level unsuccessful inspect calls return host-issued execution receipts pointing at persisted `guild://executions/...` records
@@ -59,6 +60,9 @@ The trust boundary remains intact:
 - Enforced an honest active inspect runtime slice by rejecting unsupported capability families before execution.
 - Replaced raw-prefix `read-resource` authorization with parsed canonical Guild URI scope matching and fail-closed URI validation.
 - Stamped durable execution provenance with real host-generated UTC start and finish timestamps across top-level and child records.
+- Added a real stdio MCP server entrypoint with honest initialize/capabilities, one public tool (`guild.inspect`), Guild URI resources, and resource templates.
+- Mapped successful inspect calls to MCP tool results with `structuredContent`, text compatibility output, and execution/evidence resource links.
+- Mapped unsuccessful inspect executions to MCP tool errors with `isError: true` while preserving persisted execution receipt and record information.
 
 ## Current Functionality
 
@@ -112,6 +116,18 @@ The trust boundary remains intact:
 - `read-resource` authorization now parses Guild URIs and canonical scope roots like `guild://executions/`, `guild://objects/records/`, and `guild://objects/sha256/` before matching.
 - Malformed or ambiguous Guild URIs fail closed instead of being normalized or accepted through permissive prefix logic.
 
+### MCP server surface
+
+- `guild-mcp-server` can be launched as a stdio MCP subprocess against a local Guild root.
+- The active public MCP tool surface is intentionally minimal: one tool, `guild.inspect`.
+- `tools/list` publishes honest input and output schemas derived from the existing Guild-facing types.
+- `tools/call` for `guild.inspect` executes through the same `GuildMcpFacade -> registry -> runner -> Wasmtime` path as the direct Rust façade.
+- Successful MCP tool results include `structuredContent`, a text compatibility block, and resource links to the persisted execution record and emitted evidence records.
+- Unsuccessful inspect executions that reached a real resolved execution attempt are surfaced as MCP tool errors with preserved persisted execution record identity instead of opaque protocol crashes.
+- MCP `resources/read` exposes execution records, evidence-record payloads, and digest-addressed blobs through the same local resource backend Guild already used internally.
+- MCP `resources/templates/list` now exposes canonical Guild URI templates for execution records, evidence records, and raw blobs.
+- MCP `resources/list` remains intentionally narrow and honest by listing only a bounded recent view of execution records.
+
 ### Example flows
 
 Canonical local proof commands:
@@ -124,6 +140,7 @@ cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_composite_local
 cargo run -p guild-mcp --example signed_import_failures_local
+cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
 What they prove:
@@ -135,6 +152,7 @@ What they prove:
 - `export_import_local`: install `hello-inspect` into registry A, generate a local publisher identity, export a signed installed bundle, trust that publisher in fresh registry B, import, resolve by `RequestedSkillRef`, and execute without rebuilding
 - `export_import_composite_local`: export `hello-composite` together with its installed dependency closure as a signed bundle, trust the publisher in fresh registry B, and execute the composite plus child entirely from imported installed records
 - `signed_import_failures_local`: prove both untrusted-publisher rejection and tampered-bundle rejection before unsafe executable state is installed
+- `mcp_stdio_local`: launch `guild-mcp-server` as a subprocess, initialize over stdio JSON-RPC, list tools, call `guild.inspect`, and read back the returned execution/evidence URIs through MCP resources
 
 Each command uses its own cleaned subdirectory under `target/dev-local-registry/`, so repeated local runs stay deterministic and do not overwrite another proof flow's stored execution ids.
 
@@ -147,7 +165,7 @@ Still intentionally missing or narrow:
 - no remote registry or publication flow
 - no remote signatures, transparency logs, or trust/publication metadata beyond the local offline trust store
 - no full policy engine beyond explicit caller-provided grants
-- no subscriptions, notifications, or change streams for resources
+- no MCP subscriptions, list-changed notifications, or HTTP transport
 - no search, indexing, or query layer over stored executions/evidence
 - no arbitrary filesystem or non-Guild URI reads from guests
 - no guest-side write/update resource API beyond evidence emission
@@ -180,6 +198,7 @@ The clean next milestones after integrity hardening are:
 4. Prepare for richer artifact reuse
    - build on the current execution/evidence resource model before adding any search or subscription surface
    - keep MCP and guest reads on the same backend
+   - keep the public MCP tool surface small rather than drifting into one-tool-per-skill sprawl
 
 5. Only then widen outward
    - policy evaluation
@@ -205,6 +224,7 @@ cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_composite_local
 cargo run -p guild-mcp --example signed_import_failures_local
+cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
 Regression coverage now includes:
@@ -237,6 +257,9 @@ Regression coverage now includes:
 - unsupported capability families failing before execution in the active inspect slice
 - durable provenance timestamps on successful, failed, rejected, and child records
 - shared backend consistency between MCP resource reads and guest resource reads
+- real stdio MCP initialize/tools/resources flows against a subprocess server
+- MCP tool-error semantics preserving persisted execution receipts instead of collapsing them into raw protocol failures
+- bounded recent execution resource listing and canonical Guild URI resource templates
 - resource-aware explain skill execution against stored successful, failed, and rejected artifacts
 - documented primitive and composite portability proof flows using separate registry A / bundle / registry B roots
 - documented negative trust proof flow for untrusted and tampered signed bundles

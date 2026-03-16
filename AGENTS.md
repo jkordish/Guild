@@ -79,7 +79,7 @@ These are not suggestions.
 - `crates/guild-manifest`: manifest model
 - `crates/guild-runner`: runtime abstraction and execution boundary
 - `crates/guild-registry`: publication, lookup, resolution model
-- `crates/guild-mcp`: MCP-facing names and facade concepts
+- `crates/guild-mcp`: MCP-facing names, stdio server, and facade concepts
 - `crates/guild-sdk-rust`: authoring trait for Rust skills
 - `wit/`: platform ABI contract
 - `docs/adr/`: accepted and proposed architectural decisions
@@ -104,6 +104,7 @@ The repository now has a real local inspect-only path:
 - evidence emitted through the Wasm boundary persists as content-addressed blobs plus host-issued per-emission evidence records
 - `read-resource` authorization uses canonical parsed Guild URI scopes rather than loose raw string prefix checks
 - `guild.inspect` in `guild-mcp` rides that same path
+- `guild-mcp-server` now exposes that same inspect/runtime/resource model over real stdio MCP
 - installed skills can be exported as signed portable bundles, verified against a local trust store, and imported into fresh Guild roots without rebuilding
 
 Preferred local proof commands:
@@ -116,6 +117,7 @@ cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_composite_local
 cargo run -p guild-mcp --example signed_import_failures_local
+cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
 Those commands are the canonical local install workflows: they build the example source skills, install them into command-specific cleaned subdirectories under `target/dev-local-registry/`, resolve them, and execute them. The source manifests no longer require manual artifact digest updates.

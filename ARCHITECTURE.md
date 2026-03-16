@@ -37,6 +37,7 @@ A practical Guild implementation contains the following subsystems:
 6. Resource Backend
 7. Policy Engine
 8. Inspect / Explain Skill Layer
+9. MCP Server Facade
 
 ### 2.1 Registry / Resolver
 
@@ -70,7 +71,11 @@ Responsible for authorization decisions against skill refs, executable identitie
 
 Responsible for reading durable execution and evidence artifacts and producing grounded summaries or explanations.
 
-### 2.9 Current repository mapping
+### 2.9 MCP Server Facade
+
+Responsible for exposing a small honest MCP surface over the existing Guild runtime and resource backend without duplicating execution logic.
+
+### 2.10 Current repository mapping
 
 The current repository maps this architecture onto a small Rust workspace:
 
@@ -78,7 +83,7 @@ The current repository maps this architecture onto a small Rust workspace:
 - `crates/guild-manifest`: manifest model for source and installed skill metadata
 - `crates/guild-registry`: local installer, local registry, bundle export and import, and Guild resource persistence
 - `crates/guild-runner`: execution orchestration, capability evaluation, and runtime adapter boundary
-- `crates/guild-mcp`: MCP-facing facade and proof examples
+- `crates/guild-mcp`: MCP-facing facade, stdio MCP server, and proof examples
 - `crates/guild-sdk-rust`: guest authoring support for Rust skills
 - `wit/guild-skill-v1.wit`: guest and host ABI contract
 - `examples/skills/`: runnable source skills used to prove the vertical slice
@@ -250,6 +255,8 @@ Anything that changes durable system state or reaches outside the guest boundary
 The current repository uses a Wasmtime-backed Wasm component adapter for the working slice. Primitive, explain, and composite example skills execute through `wit/guild-skill-v1.wit`, where the current host-facing operation names are `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`, and skill output or failure is returned from `skill.run` rather than emitted through separate host calls.
 
 The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution so the runtime surface stays honest.
+
+The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates.
 
 ## 7. Registry and Resolution Architecture
 
@@ -587,6 +594,7 @@ The current repository implements a real but intentionally narrow slice of this 
 - composite skills invoke declared child dependencies by alias through the same host boundary
 - supported capability families in the active inspect slice are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; unsupported families are rejected before execution
 - `guild.inspect` in `guild-mcp` rides that same registry, runner, and storage path
+- `guild-mcp-server` exposes that same path over stdio MCP with one public tool plus Guild execution and evidence resources
 
 What is still deferred in this repo:
 

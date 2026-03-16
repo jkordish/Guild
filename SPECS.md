@@ -176,6 +176,15 @@ This repository already implements a narrow local inspect-oriented slice of the 
 
 The current repository does not yet implement full `plan` mode, a general policy engine, or `apply` mode.
 
+The current repository now also exposes a real stdio MCP server surface over that same runtime:
+
+- stdio transport only in this milestone
+- one public tool, `guild.inspect`
+- bounded recent-execution `resources/list` plus `resources/read` and `resources/templates/list` for durable Guild URIs
+- no subscriptions, no list-changed notifications, and no HTTP transport in this milestone
+
+Unsuccessful `guild.inspect` executions that reached a real resolved execution attempt MUST be surfaced over MCP as tool execution errors while preserving the persisted execution record and receipt URI.
+
 ## 10. Identity and Resolution
 
 ### 9.1 Requested skill identity
@@ -257,6 +266,30 @@ Guests MUST NOT implicitly inherit unrestricted host filesystem, process, networ
 ### 11.3 Host mediation
 
 Sensitive operations MUST flow through host-defined interfaces.
+
+### 12.4 MCP Integration
+
+#### 12.4.1 MCP role
+
+Guild MAY expose its local runtime and durable resource model through MCP, but that MCP layer MUST remain a façade over the existing Guild runtime boundary rather than a second execution engine.
+
+#### 12.4.2 Transport scope
+
+The current repository implements MCP over stdio only. Streamable HTTP, subscriptions, and list-changed notifications are not part of the current milestone and MUST NOT be advertised unless actually implemented.
+
+#### 12.4.3 Tool surface
+
+The public MCP tool surface SHOULD remain small and stable. The current repository surface is one primary tool, `guild.inspect`, rather than one top-level tool per installed skill.
+
+#### 12.4.4 MCP resources
+
+Guild durable execution and evidence artifacts MAY be exposed through MCP resources, but resource URIs, resource contents, and linkage metadata remain host-owned Guild concepts. MCP resource access does not replace Guild runtime capability enforcement inside guest execution.
+
+#### 12.4.5 Tool error semantics
+
+Malformed protocol requests, unknown methods, and invalid tool arguments SHOULD use protocol error semantics.
+
+Business or runtime failures from a real `guild.inspect` execution attempt SHOULD use MCP tool-result error semantics and preserve the persisted Guild execution receipt or record rather than collapsing that information into an opaque protocol error.
 
 ### 11.4 Runtime portability
 

@@ -291,6 +291,63 @@ impl LocalRegistry {
         &self.installed
     }
 
+    pub fn list_recent_execution_records(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<ExecutionRecord>, RegistryError> {
+        let mut entries: Vec<_> = fs::read_dir(executions_root(&self.root))
+            .map_err(|error| {
+                RegistryError::new(
+                    "execution-list-read-failed",
+                    "failed to read the local execution store",
+                )
+                .with_detail(error.to_string())
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                RegistryError::new(
+                    "execution-list-read-failed",
+                    "failed to read execution store entry",
+                )
+                .with_detail(error.to_string())
+            })?;
+
+        entries.retain(|entry| {
+            entry
+                .file_type()
+                .map(|kind| kind.is_file())
+                .unwrap_or(false)
+                && entry
+                    .path()
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    == Some("json")
+        });
+        entries.sort_by(|left, right| right.file_name().cmp(&left.file_name()));
+
+        entries
+            .into_iter()
+            .take(limit)
+            .map(|entry| {
+                let bytes = fs::read_to_string(entry.path()).map_err(|error| {
+                    RegistryError::new(
+                        "execution-list-entry-read-failed",
+                        "failed to read execution record while listing recent executions",
+                    )
+                    .with_detail(error.to_string())
+                })?;
+
+                serde_json::from_str(&bytes).map_err(|error| {
+                    RegistryError::new(
+                        "execution-list-entry-parse-failed",
+                        "failed to parse execution record while listing recent executions",
+                    )
+                    .with_detail(error.to_string())
+                })
+            })
+            .collect()
+    }
+
     pub fn trust_publisher(
         root: impl AsRef<Path>,
         publisher: &TrustedPublisherRecord,

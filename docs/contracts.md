@@ -13,6 +13,7 @@ Current contract highlights worth knowing before you follow older notes:
 - requested same-version multi-digest resolution now fails closed as ambiguous
 - the active Wasm inspect slice only supports `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
 - `read-resource` scopes are canonical Guild URI roots, not permissive raw string prefixes
+- `guild-mcp-server` now exposes one honest stdio MCP tool (`guild.inspect`) plus Guild URI resources and templates
 
 Read next:
 
