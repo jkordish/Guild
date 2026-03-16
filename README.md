@@ -33,12 +33,15 @@ Useful local proof commands:
 ```bash
 make test
 cargo run -p guild-mcp --example inspect_local
+cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
+cargo run -p guild-mcp --example explain_execution_tree_local
+cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
-Additional examples cover composite execution, durable rejected executions, composite portability, and tampered or untrusted bundle rejection.
+Additional examples cover composite execution, persisted execution-tree explanation, durable rejected executions, composite portability, and tampered or untrusted bundle rejection.
 
 ## MCP Server
 

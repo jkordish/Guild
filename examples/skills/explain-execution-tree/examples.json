@@ -1,0 +1,8 @@
+[
+  {
+    "execution_uri": "guild://executions/example-root",
+    "max_depth": 4,
+    "max_nodes": 32,
+    "include_evidence_resources": true
+  }
+]

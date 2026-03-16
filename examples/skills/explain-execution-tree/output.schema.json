@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExplainExecutionTreeOutput",
+  "type": "object",
+  "properties": {
+    "target_execution_uri": {
+      "type": "string"
+    },
+    "root_execution_id": {
+      "type": "string"
+    },
+    "root_execution_uri": {
+      "type": "string"
+    },
+    "root_resolved_skill": {
+      "type": "object"
+    },
+    "root_status": {
+      "type": "string"
+    },
+    "root_output_summary": {
+      "type": ["string", "null"]
+    },
+    "root_termination": {
+      "type": ["object", "null"]
+    },
+    "child_execution_count": {
+      "type": "integer"
+    },
+    "descendant_execution_count": {
+      "type": "integer"
+    },
+    "nodes_visited": {
+      "type": "integer"
+    },
+    "max_depth_walked": {
+      "type": "integer"
+    },
+    "traversal_truncated": {
+      "type": "boolean"
+    },
+    "status_counts": {
+      "type": "object"
+    },
+    "termination_summaries": {
+      "type": "array"
+    },
+    "denial_summaries": {
+      "type": "array"
+    },
+    "lineage_warnings": {
+      "type": "array"
+    },
+    "executions": {
+      "type": "array"
+    },
+    "evidence_summary": {
+      "type": "object"
+    },
+    "granted_capabilities": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "target_execution_uri",
+    "root_execution_id",
+    "root_execution_uri",
+    "root_resolved_skill",
+    "root_status",
+    "root_output_summary",
+    "root_termination",
+    "child_execution_count",
+    "descendant_execution_count",
+    "nodes_visited",
+    "max_depth_walked",
+    "traversal_truncated",
+    "status_counts",
+    "termination_summaries",
+    "denial_summaries",
+    "lineage_warnings",
+    "executions",
+    "evidence_summary",
+    "granted_capabilities"
+  ],
+  "additionalProperties": false
+}

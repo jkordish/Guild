@@ -256,6 +256,8 @@ The current repository uses a Wasmtime-backed Wasm component adapter for the wor
 
 The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution so the runtime surface stays honest.
 
+The current example skills now include single-record and execution-tree explanation over stored Guild resources. Those examples deepen inspect usefulness by consuming persisted execution lineage and bounded evidence metadata through the existing host-mediated resource path rather than by widening the runtime surface.
+
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates.
 
 ## 7. Registry and Resolution Architecture
@@ -594,6 +596,7 @@ The current repository implements a real but intentionally narrow slice of this 
 - successful, failed, and rejected resolved executions persist as durable execution records with host-minted IDs and host-stamped timestamps
 - evidence persists as durable local objects with separate blob and evidence-record identity and is readable through the same backend used by guest `read-resource`
 - composite skills invoke declared child dependencies by alias through the same host boundary
+- resource-aware inspect skills can explain stored execution trees by walking persisted child lineage and bounded evidence descriptors through existing Guild execution and object-record URIs
 - supported capability families in the active inspect slice are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; unsupported families are rejected before execution
 - `guild.inspect` in `guild-mcp` rides that same registry, runner, and storage path
 - `guild-mcp-server` exposes that same path over stdio MCP with one public tool plus Guild execution and evidence resources

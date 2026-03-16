@@ -1,0 +1,6 @@
+{
+  "execution_uri": "__TARGET_EXECUTION_URI__",
+  "max_depth": 4,
+  "max_nodes": 32,
+  "include_evidence_resources": true
+}

@@ -22,6 +22,15 @@ The files at `docs/contracts.md` and `docs/architecture.md` are compatibility wr
 - `WORKING_MEMORY.md` is the timestamped short-term task log and is safe to prune or rewrite later.
 - When work is in progress, create timestamped entries in `WORKING_MEMORY.md` as you go so short-horizon context does not get lost between edits.
 
+## Research workflow
+
+- Prefer loaded MCP servers before web search whenever they can answer the question.
+- Use local repo docs and code first for Guild-specific truth, then use MCP servers for external library, platform, or ecosystem context.
+- Use Context7 first for library/framework/package documentation and API usage patterns.
+- Use the relevant domain MCP next when available, for example OpenAI docs MCP for OpenAI product questions or GitHub MCP for repository and PR context.
+- Web search is allowed only when the loaded MCP servers do not have what you need, or when you need extra clarification or current external context after checking them.
+- Do not jump straight to browser search when Context7 or another loaded MCP server can answer the question well enough.
+
 ## What this repo is optimizing for
 
 - portable skills
@@ -111,6 +120,7 @@ The repository now has a real local inspect-only path:
 - `read-resource` authorization uses canonical parsed Guild URI scopes rather than loose raw string prefix checks
 - `guild.inspect` in `guild-mcp` rides that same path
 - `guild-mcp-server` now exposes that same inspect/runtime/resource model over real stdio MCP
+- a resource-aware `explain-execution-tree` skill can walk stored parent/child execution lineage with bounded traversal and optional evidence descriptors through the same host-mediated path
 - installed skills can be exported as signed portable bundles, verified against a local trust store, and imported into fresh Guild roots without rebuilding
 
 Preferred local proof commands:
@@ -119,6 +129,7 @@ Preferred local proof commands:
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
+cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_composite_local
@@ -127,7 +138,7 @@ cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
 Those commands are the canonical local install workflows: they build the example source skills, install them into command-specific cleaned subdirectories under `target/dev-local-registry/`, resolve them, and execute them. The source manifests no longer require manual artifact digest updates.
-They also prove the storage layer by reading back persisted execution and evidence resources, `explain_execution_local` proves that a Wasm guest can consume those same Guild URIs through a host-mediated `read-resource` capability, and `explain_failure_local` proves that unsuccessful resolved executions now persist durable host-owned records that can be explained after the fact.
+They also prove the storage layer by reading back persisted execution and evidence resources, `explain_execution_local` proves that a Wasm guest can consume those same Guild URIs through a host-mediated `read-resource` capability, `explain_execution_tree_local` proves that a resource-aware inspect skill can walk a persisted parent/child execution tree deterministically, and `explain_failure_local` proves that unsuccessful resolved executions now persist durable host-owned records that can be explained after the fact.
 `export_import_local` and `export_import_composite_local` now prove signed bundle portability with an explicit local publisher identity plus local trust-store import verification, while `signed_import_failures_local` proves that untrusted or tampered bundles fail closed before installation.
 The current working capability families are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, all with typed constraints rather than ad hoc JSON matching. Caller request IDs are correlation only, not durable execution IDs, and `EvidenceRef` values now identify evidence-record URIs rather than raw blob digests.
 

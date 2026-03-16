@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExplainExecutionTreeInput",
+  "type": "object",
+  "properties": {
+    "execution_uri": {
+      "type": "string"
+    },
+    "max_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8
+    },
+    "max_nodes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 128
+    },
+    "include_evidence_resources": {
+      "type": "boolean"
+    }
+  },
+  "required": ["execution_uri"],
+  "additionalProperties": false
+}

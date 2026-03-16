@@ -1,0 +1,119 @@
+{
+  "summary": "Execution tree rooted at __TARGET_EXECUTION_URI__ visited 2 node(s): 2 succeeded, 0 failed, 0 rejected, 1 evidence record(s).",
+  "structured": {
+    "target_execution_uri": "__TARGET_EXECUTION_URI__",
+    "root_execution_id": "__ROOT_EXECUTION_ID__",
+    "root_execution_uri": "__TARGET_EXECUTION_URI__",
+    "root_resolved_skill": {
+      "key": {
+        "namespace": "example",
+        "name": "hello-composite"
+      },
+      "version": "0.1.0",
+      "digest": "__ROOT_SKILL_DIGEST__"
+    },
+    "root_status": "succeeded",
+    "root_output_summary": "Hello, Ada. Composite inspect is working.",
+    "root_termination": null,
+    "child_execution_count": 1,
+    "descendant_execution_count": 1,
+    "nodes_visited": 2,
+    "max_depth_walked": 1,
+    "traversal_truncated": false,
+    "status_counts": {
+      "succeeded": 2,
+      "failed": 0,
+      "partial": 0,
+      "rejected": 0
+    },
+    "termination_summaries": [],
+    "denial_summaries": [],
+    "lineage_warnings": [],
+    "executions": [
+      {
+        "depth": 0,
+        "alias_from_parent": null,
+        "execution_uri": "__TARGET_EXECUTION_URI__",
+        "execution_id": "__ROOT_EXECUTION_ID__",
+        "parent_execution_id": null,
+        "resolved_skill": {
+          "key": {
+            "namespace": "example",
+            "name": "hello-composite"
+          },
+          "version": "0.1.0",
+          "digest": "__ROOT_SKILL_DIGEST__"
+        },
+        "status": "succeeded",
+        "output_summary": "Hello, Ada. Composite inspect is working.",
+        "child_execution_count": 1,
+        "evidence_count": 0,
+        "termination": null
+      },
+      {
+        "depth": 1,
+        "alias_from_parent": "hello",
+        "execution_uri": "__CHILD_EXECUTION_URI__",
+        "execution_id": "__CHILD_EXECUTION_ID__",
+        "parent_execution_id": "__ROOT_EXECUTION_ID__",
+        "resolved_skill": {
+          "key": {
+            "namespace": "example",
+            "name": "hello-inspect"
+          },
+          "version": "0.1.0",
+          "digest": "__CHILD_SKILL_DIGEST__"
+        },
+        "status": "succeeded",
+        "output_summary": "Hello, Ada. Guild inspect is working.",
+        "child_execution_count": 0,
+        "evidence_count": 1,
+        "termination": null
+      }
+    ],
+    "evidence_summary": {
+      "total": 1,
+      "by_mime_type": {
+        "application/json": 1
+      },
+      "by_audience": {
+        "user": 1
+      },
+      "by_redaction": {
+        "none": 1
+      },
+      "notable_evidence_uris": [
+        "__TARGET_EVIDENCE_URI__"
+      ],
+      "resource_descriptors": [
+        {
+          "uri": "__TARGET_EVIDENCE_URI__",
+          "mime_type": "application/json",
+          "sha256": "__TARGET_EVIDENCE_DIGEST__",
+          "readable": true
+        }
+      ]
+    },
+    "granted_capabilities": {
+      "grants": [
+        {
+          "id": "read-resource",
+          "access": "read",
+          "constraints": {
+            "resource_kinds": [
+              "execution",
+              "object"
+            ],
+            "uri_prefixes": [
+              "guild://executions/",
+              "guild://objects/records/"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

@@ -64,6 +64,7 @@ What this means in practice:
 - Wired MCP resource reads to the same local execution/evidence backend.
 - Implemented guest-side `read-resource` with explicit `read-resource` capability enforcement.
 - Added a new inspect-only `explain-execution` skill that reads stored execution/evidence resources and returns a structured report.
+- Added a new inspect-only `explain-execution-tree` skill that walks persisted execution lineage with bounded traversal and summarizes evidence across the tree without inlining payloads.
 - Made resolved execution attempts durable on success, failure, and rejection with host-owned termination metadata.
 - Added persisted execution receipts on top-level failure/rejection so callers can immediately address the stored execution URI.
 - Replaced loose capability constraint handling with typed constraints plus one shared host-side evaluator.
@@ -160,6 +161,7 @@ Canonical local proof commands:
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
+cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_composite_local
@@ -172,6 +174,7 @@ What they prove:
 - `inspect_local`: install `hello-inspect`, execute it, read back stored execution + evidence
 - `inspect_composite_local`: install `hello-inspect`, install `hello-composite`, execute composite inspect, read back parent + child + child evidence
 - `explain_execution_local`: install `hello-inspect`, produce a stored execution URI, install `explain-execution`, then run a resource-aware skill against that stored execution through the Wasm host boundary
+- `explain_execution_tree_local`: install `hello-inspect` and `hello-composite`, produce a stored parent/child execution tree, install `explain-execution-tree`, then walk that stored lineage through the same host-mediated resource path
 - `explain_failure_local`: trigger a persisted rejected execution, capture its receipt URI, then run `explain-execution` against that stored unsuccessful record
 - `export_import_local`: install `hello-inspect` into registry A, generate a local publisher identity, export a signed installed bundle, trust that publisher in fresh registry B, import, resolve by `RequestedSkillRef`, and execute without rebuilding
 - `export_import_composite_local`: export `hello-composite` together with its installed dependency closure as a signed bundle, trust the publisher in fresh registry B, and execute the composite plus child entirely from imported installed records
@@ -207,15 +210,11 @@ Current sharp edges worth remembering:
 
 The clean next milestones after integrity hardening are:
 
-1. Improve resource-aware skills
-   - add one more explain/debug skill that consumes stored execution trees more deeply
-   - keep it inspect-only and deterministic
-
-2. Expand capability enforcement deliberately
+1. Expand capability enforcement deliberately
    - add more typed families only when there is a real host operation behind them
    - keep nested grant reduction conservative and explicit
 
-3. Build on portability
+2. Build on portability
    - treat installed bundles as the local transport unit future publication can build on
    - keep import/export focused on installed executable state instead of source packages
 
@@ -245,6 +244,7 @@ cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -W 
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
+cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_composite_local
