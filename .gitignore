@@ -10,3 +10,4 @@ Cargo.lock
 dist/
 examples/skills/hello-inspect/component.wasm
 */target/*
+**/target/
