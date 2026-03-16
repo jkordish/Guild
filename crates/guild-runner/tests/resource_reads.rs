@@ -283,112 +283,105 @@ fn write_json(path: &Path, value: &Value) {
     fs::write(path, serde_json::to_vec_pretty(value).unwrap()).unwrap();
 }
 
-fn write_temp_resource_composite_skill(root: &Path) -> PathBuf {
-    let workspace_root = root.join("workspace");
-    let source_root = workspace_root.join("examples/skills/resource-composite");
-    fs::create_dir_all(source_root.join("skill-rust/src")).unwrap();
-    copy_dir_recursive(&repo_root().join("wit"), &workspace_root.join("wit"));
+fn resource_composite_manifest() -> Value {
+    json!({
+        "manifest_schema_version": "guild-manifest-v1",
+        "skill_api_version": "guild-skill-v1",
+        "key": {
+            "namespace": "example",
+            "name": "resource-composite"
+        },
+        "version": "0.1.0",
+        "display_name": "Resource Composite",
+        "description": "A test composite skill that delegates to explain-execution.",
+        "runtime": {
+            "kind": "wasm-component",
+            "entrypoint": "guild-skill",
+            "guest_abi_version": "guild-skill-v1"
+        },
+        "interface": {
+            "input_schema_uri": "./input.schema.json",
+            "output_schema_uri": "./output.schema.json",
+            "examples_uri": null
+        },
+        "behavior": {
+            "category": "explain",
+            "mutability": "read-only",
+            "idempotent": true,
+            "open_world": false,
+            "freshness": "deterministic",
+            "modes": {
+                "supported": ["inspect"],
+                "apply_requires_approval": false,
+                "apply_requires_idempotency_key": false
+            }
+        },
+        "capabilities": [
+            {
+                "id": "invoke-skill",
+                "access": "invoke",
+                "required": true,
+                "constraints": {
+                    "aliases": ["report"]
+                }
+            }
+        ],
+        "dependencies": [
+            {
+                "alias": "report",
+                "skill": {
+                    "key": {
+                        "namespace": "example",
+                        "name": "explain-execution"
+                    },
+                    "version_req": "^0.1"
+                }
+            }
+        ],
+        "publisher": {
+            "id": "local.example",
+            "display_name": "Local Example",
+            "homepage": null
+        },
+        "package": {
+            "visibility": "private",
+            "trust_tier": "local",
+            "sbom_uri": null,
+            "signature_uri": null
+        },
+        "build": {
+            "kind": "cargo-wasm-component",
+            "cargo_manifest_path": "./skill-rust/Cargo.toml",
+            "target": "wasm32-wasip2",
+            "profile": "release"
+        },
+        "tests": []
+    })
+}
 
-    write_json(
-        &source_root.join("manifest.json"),
-        &json!({
-            "manifest_schema_version": "guild-manifest-v1",
-            "skill_api_version": "guild-skill-v1",
-            "key": {
-                "namespace": "example",
-                "name": "resource-composite"
-            },
-            "version": "0.1.0",
-            "display_name": "Resource Composite",
-            "description": "A test composite skill that delegates to explain-execution.",
-            "runtime": {
-                "kind": "wasm-component",
-                "entrypoint": "guild-skill",
-                "guest_abi_version": "guild-skill-v1"
-            },
-            "interface": {
-                "input_schema_uri": "./input.schema.json",
-                "output_schema_uri": "./output.schema.json",
-                "examples_uri": null
-            },
-            "behavior": {
-                "category": "explain",
-                "mutability": "read-only",
-                "idempotent": true,
-                "open_world": false,
-                "freshness": "deterministic",
-                "modes": {
-                    "supported": ["inspect"],
-                    "apply_requires_approval": false,
-                    "apply_requires_idempotency_key": false
-                }
-            },
-            "capabilities": [
-                {
-                    "id": "invoke-skill",
-                    "access": "invoke",
-                    "required": true,
-                    "constraints": {
-                        "aliases": ["report"]
-                    }
-                }
-            ],
-            "dependencies": [
-                {
-                    "alias": "report",
-                    "skill": {
-                        "key": {
-                            "namespace": "example",
-                            "name": "explain-execution"
-                        },
-                        "version_req": "^0.1"
-                    }
-                }
-            ],
-            "publisher": {
-                "id": "local.example",
-                "display_name": "Local Example",
-                "homepage": null
-            },
-            "package": {
-                "visibility": "private",
-                "trust_tier": "local",
-                "sbom_uri": null,
-                "signature_uri": null
-            },
-            "build": {
-                "kind": "cargo-wasm-component",
-                "cargo_manifest_path": "./skill-rust/Cargo.toml",
-                "target": "wasm32-wasip2",
-                "profile": "release"
-            },
-            "tests": []
-        }),
-    );
-    write_json(
-        &source_root.join("input.schema.json"),
-        &json!({
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ResourceCompositeInput",
-            "type": "object",
-            "properties": {
-                "execution_uri": { "type": "string" }
-            },
-            "required": ["execution_uri"],
-            "additionalProperties": false
-        }),
-    );
-    write_json(
-        &source_root.join("output.schema.json"),
-        &json!({
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ResourceCompositeOutput",
-            "type": "object"
-        }),
-    );
-    fs::write(
-        source_root.join("skill-rust/Cargo.toml"),
-        r#"[package]
+fn resource_composite_input_schema() -> Value {
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ResourceCompositeInput",
+        "type": "object",
+        "properties": {
+            "execution_uri": { "type": "string" }
+        },
+        "required": ["execution_uri"],
+        "additionalProperties": false
+    })
+}
+
+fn resource_composite_output_schema() -> Value {
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ResourceCompositeOutput",
+        "type": "object"
+    })
+}
+
+fn resource_composite_cargo_toml() -> &'static str {
+    r#"[package]
 name = "guild-example-resource-composite"
 version = "0.1.0"
 edition = "2021"
@@ -401,12 +394,11 @@ crate-type = ["cdylib"]
 [dependencies]
 serde_json = "1"
 wit-bindgen = "0.53.1"
-"#,
-    )
-    .unwrap();
-    fs::write(
-        source_root.join("skill-rust/src/lib.rs"),
-        r#"use serde_json::{json, Value};
+"#
+}
+
+fn resource_composite_guest_source() -> &'static str {
+    r#"use serde_json::{json, Value};
 use wit_bindgen::generate;
 
 generate!({
@@ -464,7 +456,35 @@ impl Guest for ResourceComposite {
 }
 
 export!(ResourceComposite with_types_in self);
-"#,
+"#
+}
+
+fn write_temp_resource_composite_skill(root: &Path) -> PathBuf {
+    let workspace_root = root.join("workspace");
+    let source_root = workspace_root.join("examples/skills/resource-composite");
+    fs::create_dir_all(source_root.join("skill-rust/src")).unwrap();
+    copy_dir_recursive(&repo_root().join("wit"), &workspace_root.join("wit"));
+
+    write_json(
+        &source_root.join("manifest.json"),
+        &resource_composite_manifest(),
+    );
+    write_json(
+        &source_root.join("input.schema.json"),
+        &resource_composite_input_schema(),
+    );
+    write_json(
+        &source_root.join("output.schema.json"),
+        &resource_composite_output_schema(),
+    );
+    fs::write(
+        source_root.join("skill-rust/Cargo.toml"),
+        resource_composite_cargo_toml(),
+    )
+    .unwrap();
+    fs::write(
+        source_root.join("skill-rust/src/lib.rs"),
+        resource_composite_guest_source(),
     )
     .unwrap();
 

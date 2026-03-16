@@ -85,7 +85,7 @@ impl McpHarness {
     fn initialize(&mut self) -> InitializeResult {
         let response = self.request(
             "initialize",
-            json!({
+            &json!({
                 "protocolVersion": PROTOCOL_VERSION_2025_11_25,
                 "capabilities": {},
                 "clientInfo": {
@@ -96,11 +96,11 @@ impl McpHarness {
         );
         let result: InitializeResult =
             serde_json::from_value(response["result"].clone()).expect("initialize result parses");
-        self.notify("notifications/initialized", json!({}));
+        self.notify("notifications/initialized", &json!({}));
         result
     }
 
-    fn request(&mut self, method: &str, params: Value) -> Value {
+    fn request(&mut self, method: &str, params: &Value) -> Value {
         let id = self.next_id;
         self.next_id += 1;
         let request = json!({
@@ -113,7 +113,7 @@ impl McpHarness {
         self.read_message()
     }
 
-    fn notify(&mut self, method: &str, params: Value) {
+    fn notify(&mut self, method: &str, params: &Value) {
         let request = json!({
             "jsonrpc": "2.0",
             "method": method,
@@ -143,7 +143,7 @@ impl Drop for McpHarness {
     }
 }
 
-fn parse_result<T: DeserializeOwned>(response: Value) -> T {
+fn parse_result<T: DeserializeOwned>(response: &Value) -> T {
     serde_json::from_value(response["result"].clone()).expect("response result parses")
 }
 
@@ -157,7 +157,7 @@ fn parse_structured_record(result: &CallToolResult) -> ExecutionRecord {
     .expect("structured content is an execution record")
 }
 
-fn inspect_request(skill_name: &str, input: Value, grants: Value) -> Value {
+fn inspect_request(skill_name: &str, input: &Value, grants: &Value) -> Value {
     json!({
         "name": "guild.inspect",
         "arguments": {
@@ -208,7 +208,7 @@ fn initialize_negotiates_to_latest_supported_protocol_version() {
     let mut harness = McpHarness::spawn();
     let response = harness.request(
         "initialize",
-        json!({
+        &json!({
             "protocolVersion": "2025-11-05",
             "capabilities": {},
             "clientInfo": {
@@ -217,7 +217,7 @@ fn initialize_negotiates_to_latest_supported_protocol_version() {
             }
         }),
     );
-    let initialized: InitializeResult = parse_result(response);
+    let initialized: InitializeResult = parse_result(&response);
 
     assert_eq!(initialized.protocol_version, PROTOCOL_VERSION_2025_11_25);
 }
@@ -227,7 +227,8 @@ fn tools_list_returns_only_guild_inspect() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
 
-    let result: ListToolsResult = parse_result(harness.request("tools/list", json!({})));
+    let tools_response = harness.request("tools/list", &json!({}));
+    let result: ListToolsResult = parse_result(&tools_response);
     assert_eq!(result.tools.len(), 1);
     assert_eq!(result.tools[0].name, "guild.inspect");
     assert!(result.tools[0].input_schema.is_object());
@@ -241,13 +242,13 @@ fn guild_inspect_success_returns_structured_content_text_and_resource_links() {
 
     let response = harness.request(
         "tools/call",
-        inspect_request(
+        &inspect_request(
             "hello-inspect",
-            json!({ "name": "Ada" }),
-            json!([emit_evidence_grant_json()]),
+            &json!({ "name": "Ada" }),
+            &json!([emit_evidence_grant_json()]),
         ),
     );
-    let result: CallToolResult = parse_result(response);
+    let result: CallToolResult = parse_result(&response);
     let record = parse_structured_record(&result);
 
     assert_eq!(result.is_error, None);
@@ -273,16 +274,16 @@ fn guild_inspect_rejection_returns_tool_error_with_persisted_receipt_record() {
 
     let response = harness.request(
         "tools/call",
-        inspect_request(
+        &inspect_request(
             "explain-execution",
-            json!({
+            &json!({
                 "execution_uri": "guild://executions/not-used",
                 "include_first_evidence": false
             }),
-            json!([]),
+            &json!([]),
         ),
     );
-    let result: CallToolResult = parse_result(response);
+    let result: CallToolResult = parse_result(&response);
     let record = parse_structured_record(&result);
 
     assert_eq!(result.is_error, Some(true));
@@ -305,21 +306,23 @@ fn resources_read_returns_execution_and_evidence_content() {
 
     let response = harness.request(
         "tools/call",
-        inspect_request(
+        &inspect_request(
             "hello-inspect",
-            json!({ "name": "Ada" }),
-            json!([emit_evidence_grant_json()]),
+            &json!({ "name": "Ada" }),
+            &json!([emit_evidence_grant_json()]),
         ),
     );
-    let result: CallToolResult = parse_result(response);
+    let result: CallToolResult = parse_result(&response);
     let record = parse_structured_record(&result);
 
-    let execution: ReadResourceResult =
-        parse_result(harness.request("resources/read", json!({ "uri": record.receipt.uri })));
-    let evidence: ReadResourceResult = parse_result(harness.request(
+    let execution_response =
+        harness.request("resources/read", &json!({ "uri": record.receipt.uri }));
+    let execution: ReadResourceResult = parse_result(&execution_response);
+    let evidence_response = harness.request(
         "resources/read",
-        json!({ "uri": record.emitted_evidence[0].uri }),
-    ));
+        &json!({ "uri": record.emitted_evidence[0].uri }),
+    );
+    let evidence: ReadResourceResult = parse_result(&evidence_response);
 
     assert!(matches!(
         &execution.contents[0],
@@ -338,18 +341,19 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
 
     let response = harness.request(
         "tools/call",
-        inspect_request(
+        &inspect_request(
             "hello-inspect",
-            json!({ "name": "Ada" }),
-            json!([emit_evidence_grant_json()]),
+            &json!({ "name": "Ada" }),
+            &json!([emit_evidence_grant_json()]),
         ),
     );
-    let result: CallToolResult = parse_result(response);
+    let result: CallToolResult = parse_result(&response);
     let record = parse_structured_record(&result);
 
-    let templates: ListResourceTemplatesResult =
-        parse_result(harness.request("resources/templates/list", json!({})));
-    let resources: ListResourcesResult = parse_result(harness.request("resources/list", json!({})));
+    let templates_response = harness.request("resources/templates/list", &json!({}));
+    let templates: ListResourceTemplatesResult = parse_result(&templates_response);
+    let resources_response = harness.request("resources/list", &json!({}));
+    let resources: ListResourcesResult = parse_result(&resources_response);
 
     assert_eq!(templates.resource_templates.len(), 3);
     assert!(templates
@@ -375,7 +379,10 @@ fn malformed_resource_uri_fails_with_protocol_error_data() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
 
-    let response = harness.request("resources/read", json!({ "uri": "guild://executions/%GG" }));
+    let response = harness.request(
+        "resources/read",
+        &json!({ "uri": "guild://executions/%GG" }),
+    );
     assert!(response.get("error").is_some());
     assert_eq!(response["error"]["code"], -32602);
     assert_eq!(
@@ -391,7 +398,7 @@ fn missing_resource_fails_with_server_error_data() {
 
     let response = harness.request(
         "resources/read",
-        json!({ "uri": "guild://executions/does-not-exist" }),
+        &json!({ "uri": "guild://executions/does-not-exist" }),
     );
     assert!(response.get("error").is_some());
     assert_eq!(response["error"]["code"], -32000);
@@ -406,7 +413,8 @@ fn inspect_tool_schema_accepts_requested_skill_refs() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
 
-    let result: ListToolsResult = parse_result(harness.request("tools/list", json!({})));
+    let tools_response = harness.request("tools/list", &json!({}));
+    let result: ListToolsResult = parse_result(&tools_response);
     let schema = result.tools[0].input_schema.clone();
 
     let requested_ref = serde_json::to_value(RequestedSkillRef {

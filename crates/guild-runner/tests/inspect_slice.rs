@@ -295,7 +295,7 @@ fn runner_executes_example_skill_and_wraps_execution_record() {
         record
             .emitted_evidence
             .iter()
-            .map(|evidence| evidence.evidence_ref())
+            .map(guild_types::EvidenceRecord::evidence_ref)
             .collect::<Vec<_>>(),
         output.evidence
     );
@@ -455,17 +455,17 @@ fn guest_cannot_emit_evidence_without_returning_host_issued_refs() {
         .replace("evidence: vec![evidence],", "evidence: Vec::new(),");
     fs::write(&guest_source, guest).unwrap();
 
-    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
-    let installed = installer.install(&source_root).unwrap();
+    let source_installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    let installed_skill = source_installer.install(&source_root).unwrap();
     let registry = LocalRegistry::load(&registry_root).unwrap();
     let runner = build_runner();
 
     let error = runner
         .execute(
             &registry,
-            &installed,
+            &installed_skill,
             &envelope_for(
-                &installed,
+                &installed_skill,
                 "exec-invalid-evidence",
                 "trace-invalid-evidence",
                 json!({"name": "Ada"}),

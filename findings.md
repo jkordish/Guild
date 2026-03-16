@@ -25,6 +25,7 @@ What is materially real today:
 - local source installs are staged and atomic instead of destructive pre-delete operations
 - durable execution records now carry host-stamped start and finish timestamps
 - signed bundle import now verifies local trust, signature validity, and bundled digests before installation
+- the stricter workspace pedantic/cargo/future-not-send Clippy pass is now clean across code, examples, and test harnesses
 
 The trust boundary remains intact:
 
@@ -65,6 +66,7 @@ The trust boundary remains intact:
 - Mapped unsuccessful inspect executions to MCP tool errors with `isError: true` while preserving persisted execution receipt and record information.
 - Raised crate-level lint strictness across the workspace to `clippy::all`, `clippy::pedantic`, `clippy::cargo`, and `clippy::perf`, then resolved the resulting warnings with API docs, `#[must_use]`, safer numeric conversions, smaller helper boundaries, and more explicit error handling.
 - Added honest crate package metadata for the local workspace crates so `clippy::cargo` checks now pass on descriptions, repository/readme linkage, keywords, and categories.
+- Followed through on the stricter test/example pass by cleaning the remaining `clippy::pedantic`, `clippy::cargo`, and `clippy::future_not_send` warnings in the MCP stdio harnesses and registry/runner test fixtures instead of suppressing them.
 - Kept two intentionally narrow Clippy exceptions:
   - `clippy::multiple_crate_versions` remains allowed at crate roots because the active Wasmtime/Cranelift dependency graph currently pulls incompatible `hashbrown` major lines upstream.
   - `clippy::struct_excessive_bools` remains allowed only for the MCP `ToolAnnotations` wire struct because it mirrors the external MCP protocol shape directly.
@@ -222,6 +224,7 @@ Current proof and validation commands:
 ```bash
 cargo fmt --all
 cargo test --workspace
+cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -W clippy::cargo -W clippy::future_not_send
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local

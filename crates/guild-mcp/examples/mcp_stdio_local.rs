@@ -88,7 +88,7 @@ impl McpClient {
     fn initialize(&mut self) -> Result<InitializeResult, Box<dyn std::error::Error>> {
         let response = self.request(
             "initialize",
-            json!({
+            &json!({
                 "protocolVersion": PROTOCOL_VERSION_2025_11_25,
                 "capabilities": {},
                 "clientInfo": {
@@ -97,15 +97,15 @@ impl McpClient {
                 }
             }),
         )?;
-        let initialized: InitializeResult = parse_result(response)?;
-        self.notify("notifications/initialized", json!({}))?;
+        let initialized: InitializeResult = parse_result(&response)?;
+        self.notify("notifications/initialized", &json!({}))?;
         Ok(initialized)
     }
 
     fn request(
         &mut self,
         method: &str,
-        params: Value,
+        params: &Value,
     ) -> Result<Value, Box<dyn std::error::Error>> {
         let id = self.next_id;
         self.next_id += 1;
@@ -119,7 +119,7 @@ impl McpClient {
         self.read_message()
     }
 
-    fn notify(&mut self, method: &str, params: Value) -> Result<(), Box<dyn std::error::Error>> {
+    fn notify(&mut self, method: &str, params: &Value) -> Result<(), Box<dyn std::error::Error>> {
         let request = json!({
             "jsonrpc": "2.0",
             "method": method,
@@ -152,7 +152,7 @@ impl Drop for McpClient {
     }
 }
 
-fn parse_result<T: DeserializeOwned>(response: Value) -> Result<T, Box<dyn std::error::Error>> {
+fn parse_result<T: DeserializeOwned>(response: &Value) -> Result<T, Box<dyn std::error::Error>> {
     if let Some(error) = response.get("error") {
         return Err(format!("MCP error: {}", serde_json::to_string_pretty(error)?).into());
     }
@@ -187,7 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         initialized.server_info.name, initialized.protocol_version
     );
 
-    let tools: ListToolsResult = parse_result(client.request("tools/list", json!({}))?)?;
+    let tools: ListToolsResult = parse_result(&client.request("tools/list", &json!({}))?)?;
     println!(
         "tools: {}",
         tools
@@ -198,9 +198,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .join(", ")
     );
 
-    let inspect_result: CallToolResult = parse_result(client.request(
+    let inspect_result: CallToolResult = parse_result(&client.request(
         "tools/call",
-        json!({
+        &json!({
             "name": "guild.inspect",
             "arguments": {
                 "skill": RequestedSkillRef {
@@ -231,7 +231,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let execution_resource: ReadResourceResult =
-        parse_result(client.request("resources/read", json!({ "uri": record.receipt.uri }))?)?;
+        parse_result(&client.request("resources/read", &json!({ "uri": record.receipt.uri }))?)?;
     println!(
         "execution resource contents: {} item(s)",
         execution_resource.contents.len()
@@ -239,7 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(first) = record.emitted_evidence.first() {
         let evidence_resource: ReadResourceResult =
-            parse_result(client.request("resources/read", json!({ "uri": first.uri }))?)?;
+            parse_result(&client.request("resources/read", &json!({ "uri": first.uri }))?)?;
         println!(
             "evidence resource contents: {} item(s)",
             evidence_resource.contents.len()

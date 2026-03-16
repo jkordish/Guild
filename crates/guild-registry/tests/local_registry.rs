@@ -135,21 +135,26 @@ fn primitive_bundle_export_contains_expected_installed_record() {
     let temp = TempFixtureDir::new();
     let registry_root = temp.path().join("registry-a");
     let bundle_root = temp.path().join("bundle");
-    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
-    let installed = installer.install(example_source_dir()).unwrap();
-    let identity = publisher_identity(&installed, &temp.path().join("publisher.json"));
+    let source_installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
     let registry = LocalRegistry::load(&registry_root).unwrap();
 
     let bundle = registry
-        .export_bundle(&installed.resolved_ref, false, &bundle_root, &identity)
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
         .unwrap();
     let stored_bundle = bundle_json(&bundle_root);
 
     assert_eq!(bundle, stored_bundle);
     assert_eq!(bundle.format_version, "guild-installed-bundle-v2");
-    assert_eq!(bundle.root_skill, installed.resolved_ref);
+    assert_eq!(bundle.root_skill, installed_skill.resolved_ref);
     assert!(!bundle.includes_dependency_closure);
-    assert_eq!(bundle.publisher, installed.manifest.publisher);
+    assert_eq!(bundle.publisher, installed_skill.manifest.publisher);
     assert_eq!(bundle.skills.len(), 1);
     assert_eq!(bundle.skills[0].resolved_ref, bundle.root_skill);
     assert!(bundle_root.join(&bundle.skills[0].install_dir).exists());
@@ -173,13 +178,18 @@ fn signed_bundle_export_verifies_against_local_publisher_identity() {
     let temp = TempFixtureDir::new();
     let registry_root = temp.path().join("registry-a");
     let bundle_root = temp.path().join("bundle");
-    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
-    let installed = installer.install(example_source_dir()).unwrap();
-    let identity = publisher_identity(&installed, &temp.path().join("publisher.json"));
+    let source_installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
     let registry = LocalRegistry::load(&registry_root).unwrap();
 
     registry
-        .export_bundle(&installed.resolved_ref, false, &bundle_root, &identity)
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
         .unwrap();
 
     let bundle_bytes = fs::read(bundle_root.join("bundle.json")).unwrap();
@@ -206,13 +216,18 @@ fn primitive_bundle_import_resolves_digest_pinned_skill_in_fresh_registry() {
     let registry_a = temp.path().join("registry-a");
     let bundle_root = temp.path().join("bundle");
     let registry_b = temp.path().join("registry-b");
-    let installer = LocalSourceInstaller::new(&registry_a).unwrap();
-    let installed = installer.install(example_source_dir()).unwrap();
-    let identity = publisher_identity(&installed, &temp.path().join("publisher.json"));
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
     let registry = LocalRegistry::load(&registry_a).unwrap();
 
     registry
-        .export_bundle(&installed.resolved_ref, false, &bundle_root, &identity)
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
         .unwrap();
     LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
     LocalRegistry::import_bundle(&registry_b, &bundle_root).unwrap();
@@ -221,10 +236,10 @@ fn primitive_bundle_import_resolves_digest_pinned_skill_in_fresh_registry() {
         .unwrap()
         .resolve(&requested_hello_inspect())
         .unwrap();
-    assert_eq!(imported.resolved_ref, installed.resolved_ref);
+    assert_eq!(imported.resolved_ref, installed_skill.resolved_ref);
     assert_eq!(
         imported.manifest.package.artifact_digest,
-        installed.manifest.package.artifact_digest
+        installed_skill.manifest.package.artifact_digest
     );
     assert!(imported.artifact_path.exists());
     let verification = imported
@@ -322,13 +337,18 @@ fn bundle_import_fails_for_untrusted_signed_bundle() {
     let registry_a = temp.path().join("registry-a");
     let bundle_root = temp.path().join("bundle");
     let registry_b = temp.path().join("registry-b");
-    let installer = LocalSourceInstaller::new(&registry_a).unwrap();
-    let installed = installer.install(example_source_dir()).unwrap();
-    let identity = publisher_identity(&installed, &temp.path().join("publisher.json"));
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
     let registry = LocalRegistry::load(&registry_a).unwrap();
 
     registry
-        .export_bundle(&installed.resolved_ref, false, &bundle_root, &identity)
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
         .unwrap();
 
     let error = LocalRegistry::import_bundle(&registry_b, &bundle_root).unwrap_err();
@@ -342,19 +362,24 @@ fn bundle_import_fails_on_tampered_content_even_when_signature_is_trusted() {
     let registry_a = temp.path().join("registry-a");
     let bundle_root = temp.path().join("bundle");
     let registry_b = temp.path().join("registry-b");
-    let installer = LocalSourceInstaller::new(&registry_a).unwrap();
-    let installed = installer.install(example_source_dir()).unwrap();
-    let identity = publisher_identity(&installed, &temp.path().join("publisher.json"));
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
     let registry = LocalRegistry::load(&registry_a).unwrap();
 
     registry
-        .export_bundle(&installed.resolved_ref, false, &bundle_root, &identity)
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
         .unwrap();
     LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
     fs::write(
         bundle_root
             .join("installed/example/hello-inspect/0.1.0")
-            .join(installed.resolved_ref.digest.replace(':', "-"))
+            .join(installed_skill.resolved_ref.digest.replace(':', "-"))
             .join("component.wasm"),
         b"tampered artifact",
     )
@@ -371,19 +396,24 @@ fn bundle_import_fails_when_required_content_is_missing() {
     let registry_a = temp.path().join("registry-a");
     let bundle_root = temp.path().join("bundle");
     let registry_b = temp.path().join("registry-b");
-    let installer = LocalSourceInstaller::new(&registry_a).unwrap();
-    let installed = installer.install(example_source_dir()).unwrap();
-    let identity = publisher_identity(&installed, &temp.path().join("publisher.json"));
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
     let registry = LocalRegistry::load(&registry_a).unwrap();
 
     registry
-        .export_bundle(&installed.resolved_ref, false, &bundle_root, &identity)
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
         .unwrap();
     LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
     fs::remove_file(
         bundle_root
             .join("installed/example/hello-inspect/0.1.0")
-            .join(installed.resolved_ref.digest.replace(':', "-"))
+            .join(installed_skill.resolved_ref.digest.replace(':', "-"))
             .join("input.schema.json"),
     )
     .unwrap();
@@ -398,13 +428,18 @@ fn bundle_import_fails_when_signature_file_is_missing() {
     let registry_a = temp.path().join("registry-a");
     let bundle_root = temp.path().join("bundle");
     let registry_b = temp.path().join("registry-b");
-    let installer = LocalSourceInstaller::new(&registry_a).unwrap();
-    let installed = installer.install(example_source_dir()).unwrap();
-    let identity = publisher_identity(&installed, &temp.path().join("publisher.json"));
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
     let registry = LocalRegistry::load(&registry_a).unwrap();
 
     registry
-        .export_bundle(&installed.resolved_ref, false, &bundle_root, &identity)
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
         .unwrap();
     LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
     fs::remove_file(bundle_root.join("bundle.signature.json")).unwrap();
@@ -528,10 +563,10 @@ fn failed_source_reinstall_preserves_existing_working_digest() {
 #[test]
 fn missing_staged_artifact_fails_closed() {
     let temp = TempFixtureDir::new();
-    let installer = LocalSourceInstaller::new(temp.path()).unwrap();
-    let installed = installer.install(example_source_dir()).unwrap();
+    let source_installer = LocalSourceInstaller::new(temp.path()).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
 
-    fs::remove_file(&installed.artifact_path).unwrap();
+    fs::remove_file(&installed_skill.artifact_path).unwrap();
 
     let error = LocalRegistry::load(temp.path()).unwrap_err();
     assert_eq!(error.code, "artifact-missing");

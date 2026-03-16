@@ -256,7 +256,7 @@ fn composite_skill_invokes_child_and_records_host_owned_metadata() {
         stored_child
             .emitted_evidence
             .iter()
-            .map(|evidence| evidence.evidence_ref())
+            .map(guild_types::EvidenceRecord::evidence_ref)
             .collect::<Vec<_>>(),
         stored_child_output.evidence
     );
@@ -348,9 +348,9 @@ fn undeclared_dependency_alias_is_rejected() {
 #[test]
 fn child_capabilities_must_be_satisfied_by_parent_grants() {
     let temp = TempFixtureDir::new();
-    let installer = LocalSourceInstaller::new(temp.path()).unwrap();
-    let primitive = installer.install(primitive_source_dir()).unwrap();
-    installer.install(composite_source_dir()).unwrap();
+    let source_installer = LocalSourceInstaller::new(temp.path()).unwrap();
+    let primitive = source_installer.install(primitive_source_dir()).unwrap();
+    source_installer.install(composite_source_dir()).unwrap();
 
     let mut manifest: SkillManifest =
         serde_json::from_str(&fs::read_to_string(&primitive.manifest_path).unwrap()).unwrap();
@@ -365,14 +365,14 @@ fn child_capabilities_must_be_satisfied_by_parent_grants() {
     .unwrap();
 
     let registry = LocalRegistry::load(temp.path()).unwrap();
-    let installed = registry.resolve(&requested_composite()).unwrap();
+    let composite_skill = registry.resolve(&requested_composite()).unwrap();
     let runner = build_runner();
     let error = runner
         .execute(
             &registry,
-            &installed,
+            &composite_skill,
             &request_for(
-                &installed,
+                &composite_skill,
                 CapabilityGrantSet {
                     grants: vec![invoke_hello_grant(&["hello"]), emit_evidence_grant()],
                 },
@@ -428,15 +428,15 @@ fn unsupported_capability_grants_are_rejected_before_execution() {
 #[test]
 fn child_runtime_failures_persist_parent_and_child_execution_records() {
     let temp = TempFixtureDir::new();
-    let installer = LocalSourceInstaller::new(temp.path()).unwrap();
-    installer.install(primitive_source_dir()).unwrap();
-    installer.install(composite_source_dir()).unwrap();
+    let source_installer = LocalSourceInstaller::new(temp.path()).unwrap();
+    source_installer.install(primitive_source_dir()).unwrap();
+    source_installer.install(composite_source_dir()).unwrap();
 
     let registry = LocalRegistry::load(temp.path()).unwrap();
-    let installed = registry.resolve(&requested_composite()).unwrap();
+    let composite_skill = registry.resolve(&requested_composite()).unwrap();
     let runner = build_runner();
     let mut request = request_for(
-        &installed,
+        &composite_skill,
         CapabilityGrantSet {
             grants: vec![invoke_hello_grant(&["hello"]), emit_evidence_grant()],
         },
@@ -444,7 +444,9 @@ fn child_runtime_failures_persist_parent_and_child_execution_records() {
     );
     request.request.request_id = unique_id("request-composite-child-failed");
     request.request.trace_id = unique_id("trace-composite-child-failed");
-    let error = runner.execute(&registry, &installed, &request).unwrap_err();
+    let error = runner
+        .execute(&registry, &composite_skill, &request)
+        .unwrap_err();
 
     assert_eq!(error.code, "child-invocation-failed");
     let parent_receipt = error.receipt.expect("failed parent execution is persisted");

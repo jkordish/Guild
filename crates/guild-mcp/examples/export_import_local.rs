@@ -63,14 +63,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base_root = base_root();
     reset_root(&base_root)?;
 
-    let installer = LocalSourceInstaller::new(registry_a_root())?;
-    let installed = installer.install(example_source_dir())?;
-    let identity = LocalPublisherIdentity::generate(installed.manifest.publisher.clone())?;
+    let source_installer = LocalSourceInstaller::new(registry_a_root())?;
+    let installed_skill = source_installer.install(example_source_dir())?;
+    let identity = LocalPublisherIdentity::generate(installed_skill.manifest.publisher.clone())?;
     identity.save(publisher_identity_path())?;
     let identity = LocalPublisherIdentity::load(publisher_identity_path())?;
     let registry_a = LocalRegistry::load(registry_a_root())?;
-    let bundle =
-        registry_a.export_bundle(&installed.resolved_ref, false, bundle_root(), &identity)?;
+    let bundle = registry_a.export_bundle(
+        &installed_skill.resolved_ref,
+        false,
+        bundle_root(),
+        &identity,
+    )?;
 
     LocalRegistry::trust_publisher(registry_b_root(), &identity.trusted_record())?;
     let imported = LocalRegistry::import_bundle(registry_b_root(), bundle_root())?;
@@ -92,7 +96,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     ))?;
 
-    println!("exported root digest: {}", installed.resolved_ref.digest);
+    println!(
+        "exported root digest: {}",
+        installed_skill.resolved_ref.digest
+    );
     println!("publisher: {}", identity.publisher.id);
     println!(
         "publisher identity: {}",
@@ -105,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "imported digest: {}",
         imported
             .iter()
-            .find(|skill| skill.resolved_ref == installed.resolved_ref)
+            .find(|skill| skill.resolved_ref == installed_skill.resolved_ref)
             .expect("imported root skill present")
             .resolved_ref
             .digest

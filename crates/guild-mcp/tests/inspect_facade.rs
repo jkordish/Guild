@@ -404,12 +404,17 @@ fn imported_primitive_bundle_executes_without_source_workspace() {
     copy_dir_recursive(&example_source_dir(), &source_root);
     copy_dir_recursive(&wit_dir(), &workspace_root.join("wit"));
 
-    let installer = LocalSourceInstaller::new(&registry_a).unwrap();
-    let installed = installer.install(&source_root).unwrap();
-    let identity = publisher_identity(&installed, &temp.path().join("publisher.json"));
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(&source_root).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
     let registry = LocalRegistry::load(&registry_a).unwrap();
     registry
-        .export_bundle(&installed.resolved_ref, false, &bundle_root, &identity)
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
         .unwrap();
 
     fs::remove_dir_all(&workspace_root).unwrap();
@@ -444,7 +449,7 @@ fn imported_primitive_bundle_executes_without_source_workspace() {
     );
     assert_eq!(
         response.structured_content.provenance.resolved_skill.digest,
-        installed.resolved_ref.digest
+        installed_skill.resolved_ref.digest
     );
     assert_eq!(
         facade
@@ -462,9 +467,9 @@ fn imported_composite_bundle_executes_through_normal_nested_path() {
     let bundle_root = temp.path().join("bundle");
     let registry_b = temp.path().join("registry-b");
 
-    let installer = LocalSourceInstaller::new(&registry_a).unwrap();
-    let primitive = installer.install(example_source_dir()).unwrap();
-    let composite = installer.install(composite_source_dir()).unwrap();
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let primitive = source_installer.install(example_source_dir()).unwrap();
+    let composite = source_installer.install(composite_source_dir()).unwrap();
     let identity = publisher_identity(&composite, &temp.path().join("publisher.json"));
     let registry = LocalRegistry::load(&registry_a).unwrap();
     registry

@@ -34,8 +34,8 @@ fn reset_registry_root(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry_root = local_registry_root();
     reset_registry_root(&registry_root)?;
-    let installer = LocalSourceInstaller::new(&registry_root)?;
-    let installed = installer.install(example_source_dir())?;
+    let source_installer = LocalSourceInstaller::new(&registry_root)?;
+    let installed_skill = source_installer.install(example_source_dir())?;
 
     let registry = LocalRegistry::load(&registry_root)?;
     let facade = GuildMcpFacade::new(registry, WasmtimeRuntimeAdapter::new()?);
@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     ))?;
 
-    println!("installed {}", installed.resolved_ref.digest);
+    println!("installed {}", installed_skill.resolved_ref.digest);
     println!("{}", response.summary);
     println!(
         "{}",
