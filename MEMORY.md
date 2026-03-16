@@ -35,6 +35,23 @@ The trust boundary remains intact:
 - skills return `SkillOutput`
 - the host owns durable execution identity, `ExecutionRecord`, evidence storage, URIs, timestamps, denial classification, and child execution metadata
 
+## Status Snapshot
+
+Where the repository is now:
+
+- Guild has completed a real local inspect-first vertical slice, not just a type skeleton.
+- Phase 1 of the roadmap is materially done: local install, resolve, execute, persist, evidence, and `guild.inspect` all work end to end.
+- Parts of Phase 2 are already real: composite execution, alias-scoped child invocation, and durable child lineage are working.
+- Parts of Phase 3 are already real: signed installed bundles, local publisher identity, local trust-store verification, and fail-closed import checks are implemented.
+- The integrity-hardening pass is complete for the current inspect-only substrate: host-minted execution IDs, create-only execution persistence, split evidence record identity, ambiguity rejection, atomic installs, unified host-owned denials, honest inspect capability surface, canonical Guild URI authz, and host-stamped timestamps are all in place.
+- Guild now also has a real stdio MCP server surface over that same runtime and storage path, with one honest public tool (`guild.inspect`) plus durable Guild resources.
+
+What this means in practice:
+
+- Guild is already a credible local-first execution fabric for inspect-mode skills.
+- The current public surface is intentionally narrow, but it is real, test-backed, and contract-shaped rather than demo glue.
+- The remaining work is mostly about broadening capability carefully and filling in deferred modes and distribution concerns, not proving the core architecture exists.
+
 ## What We Have Done
 
 - Established a clean execution boundary between `RequestedSkillRef` and `ResolvedSkillRef`.

@@ -304,12 +304,12 @@ Export produces a portable bundle including:
 
 - executable payload
 - resolved identity metadata
-- optional signatures or provenance metadata
-- compatibility constraints
+- bundled file digests
+- in the current local signed flow, a detached signature envelope
 
 ### 8.3 Import path
 
-Import validates the bundle, verifies integrity, and installs it into the local Guild root.
+Import validates the bundle, verifies signature, trust, and bundled file integrity, and installs it into the local Guild root.
 
 ### 8.4 Root portability
 
@@ -501,28 +501,30 @@ Rejected operations should be durable enough to support later audit.
 ## 15. Example Logical Layout of a Guild Root
 
 ```text
-.guild/
-  config/
-    policy/
-    runtime/
-    registry/
-  artifacts/
-    installed/
-    bundles/
+<guild-root>/
+  installed/
+    <namespace>/<name>/<version>/<digest-dir>/
+      manifest.json
+      component.wasm
+      ...
+      verification.json   # imported installs only
   executions/
-    by-id/
-    indexes/
-  evidence/
-    objects/
-    indexes/
-  registry/
-    requested/
-    resolved/
-  cache/
-  temp/
+    <execution-id>.json
+  objects/
+    sha256/
+      <digest-hex>/
+        payload
+        blob.json
+    records/
+      <evidence-record-id>.json
+  trust/
+    publishers/
+      <publisher-id>.json
+  .source-install-staging/
+  .bundle-import-staging/
 ```
 
-This is illustrative, not normative. The important thing is that the root has clear homes for artifacts, records, evidence, and resolver metadata.
+This is illustrative, not normative. The current local registry root keeps installed executable state, execution records, evidence storage, and trusted publisher records under one root. Portable bundle directories themselves are caller-chosen export/import locations outside that root in the current milestone.
 
 ## 16. Sequence Sketch
 

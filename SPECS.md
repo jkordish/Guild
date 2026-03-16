@@ -398,7 +398,7 @@ A minimally useful `ExecutionRecord` MUST contain:
 - outcome class
 - status summary or failure classification
 - granted capability slice or reference thereto
-- evidence references read or produced
+- evidence references produced, and any persisted read-attribution metadata if the implementation records reads durably
 - policy decision metadata sufficient for audit
 
 The start and terminal timestamps in durable execution records MUST be host-stamped rather than guest-authored placeholders.
@@ -419,7 +419,9 @@ An `EvidenceRef` SHOULD identify an evidence record for a single emission event 
 
 ### 15.3 Evidence linkage
 
-The system SHOULD preserve which executions read or produced each evidence object.
+The system SHOULD preserve which executions produced each evidence object.
+
+Implementations MAY additionally preserve durable read attribution. The current repository does not yet persist a read-set in `ExecutionRecord`.
 
 ### 15.4 Shared read backend
 

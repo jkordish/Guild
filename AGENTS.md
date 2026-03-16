@@ -16,6 +16,12 @@ Read these first and treat them as the current human-facing source of truth:
 
 The files at `docs/contracts.md` and `docs/architecture.md` are compatibility wrappers kept for stable links.
 
+## Tracking files
+
+- `MEMORY.md` is the durable repo state / final tracking / conclusions file worth carrying forward.
+- `WORKING_MEMORY.md` is the timestamped short-term task log and is safe to prune or rewrite later.
+- When work is in progress, create timestamped entries in `WORKING_MEMORY.md` as you go so short-horizon context does not get lost between edits.
+
 ## What this repo is optimizing for
 
 - portable skills
