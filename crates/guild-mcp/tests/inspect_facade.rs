@@ -938,6 +938,74 @@ fn imported_primitive_bundle_executes_without_source_workspace() {
 }
 
 #[test]
+fn imported_primitive_oci_layout_executes_without_source_workspace() {
+    let temp = TempFixtureDir::new("guild-portable-primitive-oci");
+    let workspace_root = temp.path().join("workspace");
+    let source_root = workspace_root.join("examples/skills/hello-inspect");
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_b = temp.path().join("registry-b");
+
+    copy_dir_recursive(&example_source_dir(), &source_root);
+    copy_dir_recursive(&wit_dir(), &workspace_root.join("wit"));
+
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(&source_root).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    registry
+        .export_oci_layout(
+            &installed_skill.resolved_ref,
+            false,
+            &layout_root,
+            &identity,
+        )
+        .unwrap();
+
+    fs::remove_dir_all(&workspace_root).unwrap();
+
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap();
+    let facade = GuildMcpFacade::new(
+        LocalRegistry::load(&registry_b).unwrap(),
+        WasmtimeRuntimeAdapter::new().unwrap(),
+    );
+    let response = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![emit_evidence_grant()],
+            },
+        ))
+        .unwrap();
+
+    assert_eq!(
+        response.structured_content.status,
+        ExecutionStatus::Succeeded
+    );
+    assert_eq!(
+        response.structured_content.provenance.resolved_skill.digest,
+        installed_skill.resolved_ref.digest
+    );
+    assert_eq!(
+        facade
+            .read_resource(&response.structured_content.receipt.uri)
+            .unwrap()
+            .mime_type,
+        "application/json"
+    );
+}
+
+#[test]
 fn imported_composite_bundle_executes_through_normal_nested_path() {
     let temp = TempFixtureDir::new("guild-portable-composite");
     let registry_a = temp.path().join("registry-a");
@@ -957,6 +1025,54 @@ fn imported_composite_bundle_executes_through_normal_nested_path() {
 
     LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
     LocalRegistry::import_bundle(&registry_b, &bundle_root).unwrap();
+    let facade = GuildMcpFacade::new(
+        LocalRegistry::load(&registry_b).unwrap(),
+        WasmtimeRuntimeAdapter::new().unwrap(),
+    );
+    let response = facade.inspect(composite_request()).unwrap();
+
+    assert_eq!(
+        response.structured_content.status,
+        ExecutionStatus::Succeeded
+    );
+    assert_eq!(
+        response.structured_content.provenance.resolved_skill.digest,
+        composite.resolved_ref.digest
+    );
+    assert_eq!(response.structured_content.child_executions.len(), 1);
+    assert_eq!(
+        response.structured_content.child_executions[0]
+            .provenance
+            .resolved_skill
+            .digest,
+        primitive.resolved_ref.digest
+    );
+    let child_resource = facade
+        .read_resource(&response.structured_content.child_executions[0].uri)
+        .unwrap();
+    assert_eq!(child_resource.mime_type, "application/json");
+}
+
+#[test]
+fn imported_composite_oci_layout_executes_through_normal_nested_path() {
+    let temp = TempFixtureDir::new("guild-portable-composite-oci");
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_b = temp.path().join("registry-b");
+
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let primitive = source_installer.install(example_source_dir()).unwrap();
+    let composite = source_installer.install(composite_source_dir()).unwrap();
+    let identity = publisher_identity(&composite, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    registry
+        .export_oci_layout(&composite.resolved_ref, true, &layout_root, &identity)
+        .unwrap();
+
+    fs::remove_dir_all(&registry_a).unwrap();
+
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap();
     let facade = GuildMcpFacade::new(
         LocalRegistry::load(&registry_b).unwrap(),
         WasmtimeRuntimeAdapter::new().unwrap(),

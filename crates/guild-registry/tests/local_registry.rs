@@ -44,6 +44,28 @@ fn bundle_signature(bundle_root: &Path) -> BundleSignatureEnvelope {
         .unwrap()
 }
 
+fn oci_blob_path(layout_root: &Path, digest: &str) -> PathBuf {
+    layout_root
+        .join("blobs/sha256")
+        .join(digest.strip_prefix("sha256:").unwrap())
+}
+
+fn oci_index(layout_root: &Path) -> serde_json::Value {
+    serde_json::from_str(&fs::read_to_string(layout_root.join("index.json")).unwrap()).unwrap()
+}
+
+fn oci_root_manifest(layout_root: &Path) -> serde_json::Value {
+    let index = oci_index(layout_root);
+    let digest = index["manifests"][0]["digest"].as_str().unwrap();
+    serde_json::from_str(&fs::read_to_string(oci_blob_path(layout_root, digest)).unwrap()).unwrap()
+}
+
+fn oci_bundle_json(layout_root: &Path) -> InstalledSkillBundle {
+    let manifest = oci_root_manifest(layout_root);
+    let digest = manifest["config"]["digest"].as_str().unwrap();
+    serde_json::from_str(&fs::read_to_string(oci_blob_path(layout_root, digest)).unwrap()).unwrap()
+}
+
 fn publisher_identity(installed: &InstalledSkill, path: &Path) -> LocalPublisherIdentity {
     let identity = LocalPublisherIdentity::generate(installed.manifest.publisher.clone()).unwrap();
     identity.save(path).unwrap();
@@ -195,6 +217,68 @@ fn primitive_bundle_export_contains_expected_installed_record() {
 }
 
 #[test]
+fn primitive_oci_export_contains_expected_installed_record() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let source_installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_root).unwrap();
+
+    let bundle = registry
+        .export_oci_layout(
+            &installed_skill.resolved_ref,
+            false,
+            &layout_root,
+            &identity,
+        )
+        .unwrap();
+    let stored_bundle = oci_bundle_json(&layout_root);
+    let index = oci_index(&layout_root);
+    let manifest = oci_root_manifest(&layout_root);
+
+    assert_eq!(bundle, stored_bundle);
+    assert_eq!(
+        fs::read_to_string(layout_root.join("oci-layout")).unwrap(),
+        "{\n  \"imageLayoutVersion\": \"1.0.0\"\n}"
+    );
+    assert_eq!(
+        index["manifests"][0]["annotations"]["org.opencontainers.image.title"]
+            .as_str()
+            .unwrap(),
+        "example/hello-inspect:0.1.0"
+    );
+    assert_eq!(
+        index["manifests"][0]["annotations"]["dev.guild.root-skill.digest"]
+            .as_str()
+            .unwrap(),
+        installed_skill.resolved_ref.digest
+    );
+    assert_eq!(
+        manifest["artifactType"].as_str().unwrap(),
+        "application/vnd.guild.installed-bundle.oci.v1"
+    );
+    assert_eq!(
+        manifest["config"]["mediaType"].as_str().unwrap(),
+        "application/vnd.guild.installed-bundle.v2+json"
+    );
+    assert_eq!(
+        manifest["layers"][0]["mediaType"].as_str().unwrap(),
+        "application/vnd.guild.installed-bundle.signature.v1+json"
+    );
+    assert!(manifest["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |layer| layer["annotations"]["org.opencontainers.image.title"]
+                .as_str()
+                .is_some_and(|title| title.ends_with("/component.wasm"))
+        ));
+}
+
+#[test]
 fn signed_bundle_export_verifies_against_local_publisher_identity() {
     let temp = TempFixtureDir::new();
     let registry_root = temp.path().join("registry-a");
@@ -229,6 +313,45 @@ fn signed_bundle_export_verifies_against_local_publisher_identity() {
     let signature = Signature::from_bytes(&signature_bytes);
     verifying_key.verify(&bundle_bytes, &signature).unwrap();
     assert_eq!(envelope.publisher_id, identity.publisher.id);
+}
+
+#[test]
+fn primitive_oci_import_resolves_digest_pinned_skill_in_fresh_registry() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+
+    registry
+        .export_oci_layout(
+            &installed_skill.resolved_ref,
+            false,
+            &layout_root,
+            &identity,
+        )
+        .unwrap();
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap();
+
+    let imported = LocalRegistry::load(&registry_b)
+        .unwrap()
+        .resolve(&requested_hello_inspect())
+        .unwrap();
+    assert_eq!(imported.resolved_ref, installed_skill.resolved_ref);
+    assert_eq!(
+        imported.manifest.package.artifact_digest,
+        installed_skill.manifest.package.artifact_digest
+    );
+    assert!(imported.artifact_path.exists());
+    let verification = imported
+        .verification
+        .expect("imported skills carry verification metadata");
+    assert_eq!(verification.status, VerificationStatus::Verified);
+    assert_eq!(verification.publisher.id, identity.publisher.id);
 }
 
 #[test]
@@ -309,6 +432,59 @@ fn composite_bundle_export_includes_dependency_closure() {
 }
 
 #[test]
+fn composite_oci_export_includes_dependency_closure() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    let primitive = installer.install(example_source_dir()).unwrap();
+    let composite = installer.install(composite_source_dir()).unwrap();
+    let identity = publisher_identity(&composite, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_root).unwrap();
+
+    let bundle = registry
+        .export_oci_layout(&composite.resolved_ref, true, &layout_root, &identity)
+        .unwrap();
+    let manifest = oci_root_manifest(&layout_root);
+
+    assert!(bundle.includes_dependency_closure);
+    assert_eq!(bundle.root_skill, composite.resolved_ref);
+    assert_eq!(bundle.publisher, composite.manifest.publisher);
+    assert_eq!(bundle.skills.len(), 2);
+    assert!(bundle
+        .skills
+        .iter()
+        .any(|entry| entry.resolved_ref == composite.resolved_ref));
+    assert!(bundle
+        .skills
+        .iter()
+        .any(|entry| entry.resolved_ref == primitive.resolved_ref));
+    assert_eq!(composite.manifest.dependencies[0].alias, "hello");
+    assert_eq!(
+        composite.manifest.dependencies[0].skill,
+        primitive.resolved_ref
+    );
+    assert!(manifest["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |layer| layer["annotations"]["org.opencontainers.image.title"]
+                .as_str()
+                .is_some_and(|title| title.contains("hello-composite"))
+        ));
+    assert!(manifest["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |layer| layer["annotations"]["org.opencontainers.image.title"]
+                .as_str()
+                .is_some_and(|title| title.contains("hello-inspect"))
+        ));
+}
+
+#[test]
 fn composite_bundle_import_preserves_dependency_resolution() {
     let temp = TempFixtureDir::new();
     let registry_a = temp.path().join("registry-a");
@@ -325,6 +501,50 @@ fn composite_bundle_import_preserves_dependency_resolution() {
         .unwrap();
     LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
     LocalRegistry::import_bundle(&registry_b, &bundle_root).unwrap();
+
+    let imported_registry = LocalRegistry::load(&registry_b).unwrap();
+    let imported_composite = imported_registry
+        .resolve(&requested_hello_composite())
+        .unwrap();
+    assert_eq!(imported_composite.resolved_ref, composite.resolved_ref);
+    assert_eq!(
+        imported_composite.manifest.dependencies[0].skill,
+        primitive.resolved_ref
+    );
+    assert_eq!(
+        imported_registry
+            .resolve_exact(&imported_composite.manifest.dependencies[0].skill)
+            .unwrap()
+            .resolved_ref,
+        primitive.resolved_ref
+    );
+    assert_eq!(
+        imported_composite
+            .verification
+            .expect("verified import metadata present")
+            .publisher
+            .id,
+        identity.publisher.id
+    );
+}
+
+#[test]
+fn composite_oci_import_preserves_dependency_resolution() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_b = temp.path().join("registry-b");
+    let installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let primitive = installer.install(example_source_dir()).unwrap();
+    let composite = installer.install(composite_source_dir()).unwrap();
+    let identity = publisher_identity(&composite, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+
+    registry
+        .export_oci_layout(&composite.resolved_ref, true, &layout_root, &identity)
+        .unwrap();
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap();
 
     let imported_registry = LocalRegistry::load(&registry_b).unwrap();
     let imported_composite = imported_registry
@@ -378,6 +598,31 @@ fn bundle_import_fails_for_untrusted_signed_bundle() {
 }
 
 #[test]
+fn oci_import_fails_for_untrusted_signed_bundle() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+
+    registry
+        .export_oci_layout(
+            &installed_skill.resolved_ref,
+            false,
+            &layout_root,
+            &identity,
+        )
+        .unwrap();
+
+    let error = LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap_err();
+    assert_eq!(error.code, "bundle-publisher-untrusted");
+    assert!(!registry_b.join("installed").join("example").exists());
+}
+
+#[test]
 fn bundle_import_fails_on_tampered_content_even_when_signature_is_trusted() {
     let temp = TempFixtureDir::new();
     let registry_a = temp.path().join("registry-a");
@@ -408,6 +653,67 @@ fn bundle_import_fails_on_tampered_content_even_when_signature_is_trusted() {
 
     let error = LocalRegistry::import_bundle(&registry_b, &bundle_root).unwrap_err();
     assert_eq!(error.code, "artifact-digest-mismatch");
+    assert!(!registry_b.join("installed").join("example").exists());
+}
+
+#[test]
+fn oci_import_fails_on_tampered_content_even_when_signature_is_trusted() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+
+    registry
+        .export_oci_layout(
+            &installed_skill.resolved_ref,
+            false,
+            &layout_root,
+            &identity,
+        )
+        .unwrap();
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    fs::write(
+        oci_blob_path(
+            &layout_root,
+            &installed_skill.manifest.package.artifact_digest,
+        ),
+        b"tampered artifact",
+    )
+    .unwrap();
+
+    let error = LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap_err();
+    assert_eq!(error.code, "oci-layout-blob-size-mismatch");
+    assert!(!registry_b.join("installed").join("example").exists());
+}
+
+#[test]
+fn oci_import_fails_when_layout_index_is_missing() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+
+    registry
+        .export_oci_layout(
+            &installed_skill.resolved_ref,
+            false,
+            &layout_root,
+            &identity,
+        )
+        .unwrap();
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    fs::remove_file(layout_root.join("index.json")).unwrap();
+
+    let error = LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap_err();
+    assert_eq!(error.code, "oci-layout-index-missing");
     assert!(!registry_b.join("installed").join("example").exists());
 }
 

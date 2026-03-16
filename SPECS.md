@@ -168,6 +168,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - evidence persists as durable host-owned objects behind host-issued per-emission `EvidenceRef` values plus host-loadable `EvidenceRecord` metadata
 - evidence payload blobs remain content-addressed by digest and distinct from evidence-record identity
 - signed local bundle export and import verifies trust, signature, and bundled file digests before installation
+- local OCI image layout transport maps those same signed installed-bundle semantics onto OCI descriptors and blobs without changing execution identity or trust rules
 - composite skills invoke declared child dependencies by alias through the host boundary
 - local source installs stage and validate before an atomic move into place
 - requested resolution fails closed if a single key and version maps to multiple installed digests
@@ -235,9 +236,16 @@ Install flows MUST NOT require destructive pre-deletion of existing installed st
 
 Guild SHOULD support exporting installed artifacts as portable bundles.
 
+The current repository supports two local transport mappings for installed executable state:
+
+- a native signed installed-bundle directory
+- an OCI image layout that carries the same signed installed-bundle semantics as OCI blobs and descriptors
+
 ### 10.3 Import
 
 Guild SHOULD support importing bundles into a fresh Guild root while preserving executable identity.
+
+Import from any supported transport mapping MUST reconstruct normal installed executable state under the target Guild root without requiring source trees or local rebuilds.
 
 ### 10.4 Integrity verification
 
@@ -246,6 +254,8 @@ Imported artifacts MUST be integrity-verifiable. Verification failure MUST preve
 ### 10.5 Host authority on import
 
 The host MAY accept, reject, quarantine, or reclassify imported bundles. Import does not imply trust.
+
+OCI image layout transport MUST NOT bypass the host's trust or signature verification rules. If OCI image layout is supported, its import path MUST still verify layout structure, bundled digests, and the current host-owned signature and publisher-trust metadata before installation.
 
 ### 10.6 Installed execution source
 
@@ -582,7 +592,7 @@ If composite skills are supported, durable parent-child linkage is also REQUIRED
 
 Future specs or ADRs SHOULD define:
 
-- bundle manifest format
+- remote publication and registry mapping for installed bundles
 - signatures and provenance chains
 - execution and evidence query model
 - retention and garbage collection

@@ -48,7 +48,9 @@ Run the signed portable bundle proof for the primitive skill:
 
 ```bash
 cargo run -p guild-mcp --example export_import_local
+cargo run -p guild-mcp --example export_import_oci_local
 cargo run -p guild-mcp --example signed_import_failures_local
+cargo run -p guild-mcp --example signed_import_oci_failures_local
 ```
 
 That command:
@@ -71,10 +73,25 @@ The stored execution URI is host-issued. Any caller-supplied request ID is prese
 6. resolves `hello-inspect` by `RequestedSkillRef` in registry B
 7. executes it through the normal Wasmtime-backed path without rebuilding
 
+`export_import_oci_local` proves the same portability contract through a local OCI image layout instead of the native bundle directory:
+
+1. installs `hello-inspect` into registry A
+2. generates a local publisher identity
+3. exports the installed signed bundle payload as an OCI image layout
+4. trusts that publisher in fresh registry B
+5. imports the verified OCI layout into registry B
+6. resolves `hello-inspect` by `RequestedSkillRef` in registry B
+7. executes it through the normal Wasmtime-backed path without rebuilding
+
 `signed_import_failures_local` proves the negative path:
 
 1. an untrusted signed bundle is rejected before installation
 2. a tampered signed bundle is rejected even after the publisher is trusted
+
+`signed_import_oci_failures_local` proves the same local fail-closed behavior for OCI image layout import:
+
+1. an untrusted OCI-carried signed bundle is rejected before installation
+2. a tampered OCI blob is rejected even after the publisher is trusted
 
 The normal happy path grants:
 

@@ -16,6 +16,7 @@ Current contract highlights worth knowing before you follow older notes:
 - `http-request` is now a real bounded host capability behind `guild.inspect`, not a separate MCP tool
 - caller-requested capabilities are now local policy input; the host decides the final granted set before execution
 - `guild-mcp-server` now exposes one honest stdio MCP tool (`guild.inspect`) plus Guild URI resources and templates
+- installed-state portability now has two local transport shapes: the native signed bundle directory and an OCI image layout mapping over the same signed payload
 
 Read next:
 

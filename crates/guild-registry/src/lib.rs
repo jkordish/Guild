@@ -31,6 +31,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
+mod oci_layout;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct InstalledSkill {
     pub manifest: SkillManifest,
@@ -39,6 +41,21 @@ pub struct InstalledSkill {
     pub artifact_path: PathBuf,
     pub root_dir: PathBuf,
     pub verification: Option<InstalledVerificationRecord>,
+}
+
+#[derive(Debug, Clone)]
+struct PortableBundleFile {
+    relative_path: String,
+    source_path: PathBuf,
+    sha256: String,
+}
+
+#[derive(Debug, Clone)]
+struct SignedBundlePayload {
+    bundle: InstalledSkillBundle,
+    bundle_bytes: Vec<u8>,
+    signature: BundleSignatureEnvelope,
+    files: Vec<PortableBundleFile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -462,54 +479,30 @@ impl LocalRegistry {
         bundle_root: impl AsRef<Path>,
         signer: &LocalPublisherIdentity,
     ) -> Result<InstalledSkillBundle, RegistryError> {
-        let root = self.resolve_exact(root).map_err(|error| {
-            RegistryError::new(
-                "bundle-root-skill-not-found",
-                "failed to resolve the installed root skill for bundle export",
-            )
-            .with_detail(serde_json::json!({
-                "root_skill": root,
-                "cause": {
-                    "code": error.code,
-                    "message": error.message,
-                    "detail": error.detail,
-                }
-            }))
-        })?;
-        let bundled_skills = self.collect_bundle_skills(&root, include_dependencies)?;
-        ensure_bundle_publisher_matches_signer(&bundled_skills, signer)?;
+        let payload = self.build_signed_bundle_payload(root, include_dependencies, signer)?;
         let bundle_root = prepare_bundle_root(bundle_root)?;
-        let mut entries = Vec::with_capacity(bundled_skills.len());
-        let mut files = Vec::new();
+        write_portable_bundle_files(&bundle_root, &payload.files)?;
+        write_bytes(&bundle_index_path(&bundle_root), &payload.bundle_bytes)?;
+        write_json(&bundle_signature_path(&bundle_root), &payload.signature)?;
+        Ok(payload.bundle)
+    }
 
-        for installed in &bundled_skills {
-            let install_dir = installed_relative_dir(&self.root, installed)?;
-            let bundle_install_dir = bundle_root.join(&install_dir);
-            files.extend(copy_installed_dir_for_bundle(
-                &installed.root_dir,
-                &bundle_install_dir,
-                &install_dir,
-            )?);
-            entries.push(InstalledBundleSkillEntry {
-                resolved_ref: installed.resolved_ref.clone(),
-                install_dir: path_string(&install_dir)?,
-            });
-        }
-        files.sort_by(|left, right| left.path.cmp(&right.path));
-
-        let bundle = InstalledSkillBundle {
-            format_version: BUNDLE_FORMAT_VERSION.into(),
-            root_skill: root.resolved_ref,
-            includes_dependency_closure: include_dependencies,
-            publisher: signer.publisher.clone(),
-            skills: entries,
-            files,
-        };
-        let bundle_bytes = json_bytes(&bundle)?;
-        write_bytes(&bundle_index_path(&bundle_root), &bundle_bytes)?;
-        let envelope = sign_bundle_payload(signer, &bundle_bytes)?;
-        write_json(&bundle_signature_path(&bundle_root), &envelope)?;
-        Ok(bundle)
+    /// Export an installed skill, and optionally its dependency closure, as a local OCI image layout.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the root skill cannot be resolved, installed files
+    /// cannot be staged into the layout, or the OCI layout cannot be written.
+    pub fn export_oci_layout(
+        &self,
+        root: &ResolvedSkillRef,
+        include_dependencies: bool,
+        layout_root: impl AsRef<Path>,
+        signer: &LocalPublisherIdentity,
+    ) -> Result<InstalledSkillBundle, RegistryError> {
+        let payload = self.build_signed_bundle_payload(root, include_dependencies, signer)?;
+        oci_layout::export_oci_layout(&payload, layout_root)?;
+        Ok(payload.bundle)
     }
 
     /// Import a signed installed-skill bundle into a local registry root.
@@ -629,6 +622,19 @@ impl LocalRegistry {
         }
     }
 
+    /// Import a local OCI image layout that carries a signed installed-skill bundle.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the layout is malformed, trust or signature
+    /// verification fails, or installation checks fail.
+    pub fn import_oci_layout(
+        root: impl AsRef<Path>,
+        layout_root: impl AsRef<Path>,
+    ) -> Result<Vec<InstalledSkill>, RegistryError> {
+        oci_layout::import_oci_layout(root.as_ref(), layout_root.as_ref())
+    }
+
     fn collect_bundle_skills(
         &self,
         root: &InstalledSkill,
@@ -671,6 +677,68 @@ impl LocalRegistry {
         bundled.sort_by_key(bundle_skill_sort_key);
 
         Ok(bundled)
+    }
+
+    fn build_signed_bundle_payload(
+        &self,
+        root: &ResolvedSkillRef,
+        include_dependencies: bool,
+        signer: &LocalPublisherIdentity,
+    ) -> Result<SignedBundlePayload, RegistryError> {
+        let root = self.resolve_exact(root).map_err(|error| {
+            RegistryError::new(
+                "bundle-root-skill-not-found",
+                "failed to resolve the installed root skill for bundle export",
+            )
+            .with_detail(serde_json::json!({
+                "root_skill": root,
+                "cause": {
+                    "code": error.code,
+                    "message": error.message,
+                    "detail": error.detail,
+                }
+            }))
+        })?;
+        let bundled_skills = self.collect_bundle_skills(&root, include_dependencies)?;
+        ensure_bundle_publisher_matches_signer(&bundled_skills, signer)?;
+        let mut entries = Vec::with_capacity(bundled_skills.len());
+        let mut files = Vec::new();
+
+        for installed in &bundled_skills {
+            let install_dir = installed_relative_dir(&self.root, installed)?;
+            files.extend(collect_installed_dir_for_bundle(
+                &installed.root_dir,
+                &install_dir,
+            )?);
+            entries.push(InstalledBundleSkillEntry {
+                resolved_ref: installed.resolved_ref.clone(),
+                install_dir: path_string(&install_dir)?,
+            });
+        }
+        files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+
+        let bundle = InstalledSkillBundle {
+            format_version: BUNDLE_FORMAT_VERSION.into(),
+            root_skill: root.resolved_ref,
+            includes_dependency_closure: include_dependencies,
+            publisher: signer.publisher.clone(),
+            skills: entries,
+            files: files
+                .iter()
+                .map(|file| BundleFileEntry {
+                    path: file.relative_path.clone(),
+                    sha256: file.sha256.clone(),
+                })
+                .collect(),
+        };
+        let bundle_bytes = json_bytes(&bundle)?;
+        let signature = sign_bundle_payload(signer, &bundle_bytes)?;
+        Ok(SignedBundlePayload {
+            bundle,
+            bundle_bytes,
+            signature,
+            files,
+        })
     }
 
     fn load_manifest(path: &Path) -> Result<InstalledSkill, RegistryError> {
@@ -2885,19 +2953,10 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), RegistryE
     Ok(())
 }
 
-fn copy_installed_dir_for_bundle(
+fn collect_installed_dir_for_bundle(
     source: &Path,
-    destination: &Path,
     install_dir_relative: &Path,
-) -> Result<Vec<BundleFileEntry>, RegistryError> {
-    fs::create_dir_all(destination).map_err(|error| {
-        RegistryError::new(
-            "bundle-dir-create-failed",
-            "failed to create bundled installed directory",
-        )
-        .with_detail(error.to_string())
-    })?;
-
+) -> Result<Vec<PortableBundleFile>, RegistryError> {
     let mut files = Vec::new();
     for entry in WalkDir::new(source).sort_by_file_name() {
         let entry = entry.map_err(|error| {
@@ -2920,15 +2979,7 @@ fn copy_installed_dir_for_bundle(
             continue;
         }
 
-        let destination_path = destination.join(relative);
         if entry.file_type().is_dir() {
-            fs::create_dir_all(&destination_path).map_err(|error| {
-                RegistryError::new(
-                    "bundle-dir-create-failed",
-                    "failed to create bundled installed subdirectory",
-                )
-                .with_detail(error.to_string())
-            })?;
             continue;
         }
 
@@ -2936,7 +2987,25 @@ fn copy_installed_dir_for_bundle(
             continue;
         }
 
-        if let Some(parent) = destination_path.parent() {
+        let relative_bundle_path = install_dir_relative.join(relative);
+        files.push(PortableBundleFile {
+            relative_path: path_string(&relative_bundle_path)?,
+            source_path: path.to_path_buf(),
+            sha256: sha256_file(path)?,
+        });
+    }
+
+    Ok(files)
+}
+
+fn write_portable_bundle_files(
+    bundle_root: &Path,
+    files: &[PortableBundleFile],
+) -> Result<(), RegistryError> {
+    for file in files {
+        let relative = bundle_file_relative_from_str(&file.relative_path)?;
+        let destination = bundle_root.join(relative);
+        if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent).map_err(|error| {
                 RegistryError::new(
                     "bundle-dir-create-failed",
@@ -2946,26 +3015,20 @@ fn copy_installed_dir_for_bundle(
             })?;
         }
 
-        fs::copy(path, &destination_path).map_err(|error| {
+        fs::copy(&file.source_path, &destination).map_err(|error| {
             RegistryError::new(
                 "bundle-file-copy-failed",
                 "failed to copy installed content into the portable bundle",
             )
             .with_detail(serde_json::json!({
-                "source": path.display().to_string(),
-                "destination": destination_path.display().to_string(),
+                "source": file.source_path.display().to_string(),
+                "destination": destination.display().to_string(),
                 "cause": error.to_string(),
             }))
         })?;
-
-        let relative_bundle_path = install_dir_relative.join(relative);
-        files.push(BundleFileEntry {
-            path: path_string(&relative_bundle_path)?,
-            sha256: sha256_file(path)?,
-        });
     }
 
-    Ok(files)
+    Ok(())
 }
 
 fn ensure_bundle_publisher_matches_signer(
@@ -2991,7 +3054,7 @@ fn ensure_bundle_publisher_matches_signer(
 
 fn read_bundle_signature(bundle_root: &Path) -> Result<BundleSignatureEnvelope, RegistryError> {
     let path = bundle_signature_path(bundle_root);
-    let contents = fs::read_to_string(&path).map_err(|error| {
+    let bytes = fs::read(&path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             RegistryError::new(
                 "bundle-signature-missing",
@@ -3006,7 +3069,11 @@ fn read_bundle_signature(bundle_root: &Path) -> Result<BundleSignatureEnvelope, 
             .with_detail(error.to_string())
         }
     })?;
-    let signature: BundleSignatureEnvelope = serde_json::from_str(&contents).map_err(|error| {
+    parse_bundle_signature_bytes(&bytes)
+}
+
+fn parse_bundle_signature_bytes(bytes: &[u8]) -> Result<BundleSignatureEnvelope, RegistryError> {
+    let signature: BundleSignatureEnvelope = serde_json::from_slice(bytes).map_err(|error| {
         RegistryError::new(
             "bundle-signature-parse-failed",
             "failed to parse bundle signature metadata",

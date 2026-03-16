@@ -312,17 +312,24 @@ Export produces a portable bundle including:
 - bundled file digests
 - in the current local signed flow, a detached signature envelope
 
+The current repository supports two local packaging shapes for that same installed-state payload:
+
+- a native signed installed-bundle directory
+- an OCI image layout whose root manifest points at the same signed bundle index plus the bundled installed files as OCI blobs
+
 ### 8.3 Import path
 
 Import validates the bundle, verifies signature, trust, and bundled file integrity, and installs it into the local Guild root.
+
+When the OCI image layout mapping is used, the importer first validates OCI layout structure plus descriptor digests and sizes, then reconstructs the same signed installed-bundle payload and runs the existing trust/signature/import verification flow before installation.
 
 ### 8.4 Root portability
 
 Two different Guild roots should be able to agree on artifact identity for the same bundle, even if their local storage layout differs.
 
-### 8.5 Current repository bundle flow
+### 8.5 Current repository portability flow
 
-The working bundle flow is built from installed executable state rather than source directories. Import verifies signature, trust, and bundled file digests before installation and writes host-owned verification metadata alongside imported installed records.
+The working portability flow is built from installed executable state rather than source directories. The native signed-bundle directory remains the canonical signed transport unit. OCI image layout is an additional local transport mapping over that same signed payload. Import verifies trust, signature, and bundled file digests before installation and writes host-owned verification metadata alongside imported installed records.
 
 ## 9. Execution Store Design
 
@@ -544,9 +551,10 @@ The default local profile keeps current example flows working by allowing only c
       <publisher-id>.json
   .source-install-staging/
   .bundle-import-staging/
+  .oci-layout-import-staging/
 ```
 
-This is illustrative, not normative. The current local registry root keeps installed executable state, execution records, evidence storage, and trusted publisher records under one root. Portable bundle directories themselves are caller-chosen export/import locations outside that root in the current milestone.
+This is illustrative, not normative. The current local registry root keeps installed executable state, execution records, evidence storage, and trusted publisher records under one root. Native signed-bundle directories and OCI image layout directories are caller-chosen export/import locations outside that root in the current milestone.
 
 ## 16. Sequence Sketch
 
