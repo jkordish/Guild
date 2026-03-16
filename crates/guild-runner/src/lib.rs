@@ -14,16 +14,18 @@ use guild_manifest::SkillManifest;
 use guild_registry::{execution_resource_uri, InstalledSkill, RegistryError, SkillRegistry};
 use guild_sdk_rust::GuildSkill;
 use guild_types::{
-    host_now_utc, mint_host_execution_id, CapabilityAccess, CapabilityConstraints,
-    CapabilityGrantSet, CapabilityId, CapabilityRequirement, ChildExecutionRecord, Diagnostic,
-    Effect, EmitEvidenceConstraints, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
-    EvidenceRef, ExecutionContext, ExecutionMetrics, ExecutionMode, ExecutionPhase,
-    ExecutionReceipt, ExecutionRecord, ExecutionStatus, GrantedCapability, GuildResourceScope,
-    GuildResourceUri, HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
-    InvokeDependencyConstraints, LogConstraints, Mutability, PolicyDecision, PolicyDecisionOutcome,
-    Provenance, ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope,
-    ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError,
-    SkillOutput, TerminationDetail,
+    host_now_utc, mint_host_execution_id, CallerRequest, CapabilityAccess, CapabilityConstraints,
+    CapabilityGrantSet, CapabilityId, CapabilityRequirement, CapabilitySelector,
+    ChildExecutionRecord, Diagnostic, Effect, EmitEvidenceConstraints, EvidenceAudience,
+    EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionContext, ExecutionMetrics,
+    ExecutionMode, ExecutionPhase, ExecutionReceipt, ExecutionRecord, ExecutionStatus,
+    GrantedCapability, GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequest,
+    HttpRequestConstraints, HttpResponse, HttpScheme, InvokeDependencyConstraints,
+    LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints, Mutability, PolicyDecision,
+    PolicyDecisionOutcome, PolicyReason, PolicyRule, PolicyRuleEffect, Provenance,
+    ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope, ResolvedSkillRef,
+    ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError, SkillOutput,
+    TerminationDetail,
 };
 use http::header::CONTENT_TYPE;
 use http::Request;
@@ -251,10 +253,68 @@ struct ParsedHttpRequest {
     path: String,
 }
 
+#[derive(Debug, Clone)]
+struct PolicyEvaluationResult {
+    granted_capabilities: CapabilityGrantSet,
+    decision: PolicyDecision,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct HttpExecutionPolicy {
     timeout: Duration,
     max_response_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum HttpGrantDenialKind {
+    Method,
+    Scheme,
+    Host,
+    Port,
+    Path,
+    Timeout,
+}
+
+const HTTP_DENIAL_METHOD: u8 = 1 << 0;
+const HTTP_DENIAL_SCHEME: u8 = 1 << 1;
+const HTTP_DENIAL_HOST: u8 = 1 << 2;
+const HTTP_DENIAL_PORT: u8 = 1 << 3;
+const HTTP_DENIAL_PATH: u8 = 1 << 4;
+const HTTP_DENIAL_TIMEOUT: u8 = 1 << 5;
+
+#[derive(Debug, Default, Clone, Copy)]
+struct HttpGrantState {
+    authorized_timeout_ms: Option<u64>,
+    authorized_response_bytes: Option<u64>,
+    denial_mask: u8,
+}
+
+impl HttpGrantState {
+    fn authorize(&mut self, timeout_ms: u64, response_bytes: u64) {
+        self.authorized_timeout_ms = Some(
+            self.authorized_timeout_ms
+                .map_or(timeout_ms, |current| current.max(timeout_ms)),
+        );
+        self.authorized_response_bytes = Some(
+            self.authorized_response_bytes
+                .map_or(response_bytes, |current| current.max(response_bytes)),
+        );
+    }
+
+    fn note_denial(&mut self, denial: HttpGrantDenialKind) {
+        self.denial_mask |= match denial {
+            HttpGrantDenialKind::Method => HTTP_DENIAL_METHOD,
+            HttpGrantDenialKind::Scheme => HTTP_DENIAL_SCHEME,
+            HttpGrantDenialKind::Host => HTTP_DENIAL_HOST,
+            HttpGrantDenialKind::Port => HTTP_DENIAL_PORT,
+            HttpGrantDenialKind::Path => HTTP_DENIAL_PATH,
+            HttpGrantDenialKind::Timeout => HTTP_DENIAL_TIMEOUT,
+        };
+    }
+
+    fn saw_denial(&self, denial_mask: u8) -> bool {
+        self.denial_mask & denial_mask != 0
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -834,6 +894,41 @@ where
         &self.runtime
     }
 
+    /// Resolve caller intent into a host-owned execution envelope using local policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if local policy cannot be loaded or requested capability
+    /// input cannot be evaluated safely.
+    pub fn authorize_execution<R>(
+        &self,
+        registry: &R,
+        installed: &InstalledSkill,
+        request: CallerRequest,
+        parent_execution_id: Option<String>,
+    ) -> Result<ResolvedExecutionEnvelope, ExecutionError>
+    where
+        R: SkillRegistry + ?Sized,
+    {
+        let policy = registry.load_policy_config().map_err(|error| {
+            ExecutionError::from(error)
+                .with_phase(ExecutionPhase::Grant)
+                .with_detail(serde_json::json!({
+                    "resolved_skill": installed.resolved_ref,
+                }))
+        })?;
+        let declared_surface = declared_capability_surface(registry, installed)?;
+        let evaluation = Self::evaluate_policy(installed, &request, &declared_surface, &policy);
+
+        Ok(ResolvedExecutionEnvelope {
+            request,
+            resolved_skill: installed.resolved_ref.clone(),
+            granted_capabilities: evaluation.granted_capabilities,
+            policy_decision: evaluation.decision,
+            parent_execution_id,
+        })
+    }
+
     /// Execute a resolved installed skill through the configured runtime adapter.
     ///
     /// # Errors
@@ -944,6 +1039,7 @@ where
         self.validate_runtime(installed)?;
         self.validate_runtime_surface(installed, &envelope.granted_capabilities)?;
         Self::validate_resolved_ref(installed, envelope)?;
+        Self::validate_policy_decision(envelope)?;
         Self::validate_grants(installed, &envelope.granted_capabilities)
     }
 
@@ -963,6 +1059,115 @@ where
             now_utc: Some(now_utc.to_owned()),
             budget: envelope.request.budget.clone(),
             granted_capabilities: envelope.granted_capabilities.clone(),
+        }
+    }
+
+    fn validate_policy_decision(
+        envelope: &ResolvedExecutionEnvelope,
+    ) -> Result<(), ExecutionError> {
+        if envelope.policy_decision.outcome == PolicyDecisionOutcome::Rejected {
+            return Err(ExecutionError::new(
+                "policy-denied",
+                envelope.policy_decision.summary.clone(),
+            )
+            .with_detail(serde_json::json!({
+                "reasons": envelope.policy_decision.reasons,
+                "detail": envelope.policy_decision.detail,
+            }))
+            .with_phase(ExecutionPhase::Grant));
+        }
+
+        Ok(())
+    }
+
+    fn evaluate_policy(
+        installed: &InstalledSkill,
+        request: &CallerRequest,
+        declared_surface: &[CapabilityRequirement],
+        policy: &LocalPolicyConfig,
+    ) -> PolicyEvaluationResult {
+        let invalid_requested = invalid_capability_grants(&request.requested_capabilities);
+        if !invalid_requested.is_empty() {
+            let reasons = vec![PolicyReason {
+                code: "policy-requested-capability-invalid".into(),
+                message: "caller requested invalid capability constraints".into(),
+                detail: Some(serde_json::json!({ "invalid": invalid_requested })),
+            }];
+            return PolicyEvaluationResult {
+                granted_capabilities: CapabilityGrantSet::default(),
+                decision: PolicyDecision {
+                    outcome: PolicyDecisionOutcome::Rejected,
+                    summary: "local policy rejected invalid requested capabilities".into(),
+                    reasons: reasons.clone(),
+                    detail: Some(serde_json::json!({ "invalid": invalid_requested })),
+                },
+            };
+        }
+
+        let mut reasons = Vec::new();
+        let mut granted = match policy.default_action {
+            LocalPolicyDefaultAction::AllowRequestedDeclared => {
+                clamp_requested_capabilities_to_manifest(
+                    &request.requested_capabilities,
+                    declared_surface,
+                    &mut reasons,
+                )
+            }
+        };
+
+        granted = apply_verified_publisher_policy(
+            installed,
+            &granted,
+            &policy.verified_publishers_required_for,
+            &mut reasons,
+        );
+
+        for rule in &policy.rules {
+            if policy_rule_matches(rule, request, installed) {
+                granted = apply_policy_rule(rule, &granted, &mut reasons);
+            }
+        }
+
+        let missing = missing_required_capabilities(installed, &granted);
+        if !missing.is_empty() {
+            reasons.push(PolicyReason {
+                code: "policy-required-capability-missing".into(),
+                message: "local policy did not grant all required capabilities".into(),
+                detail: Some(serde_json::json!({ "missing": missing })),
+            });
+            return PolicyEvaluationResult {
+                granted_capabilities: granted,
+                decision: PolicyDecision {
+                    outcome: PolicyDecisionOutcome::Rejected,
+                    summary: "local policy denied one or more required capabilities".into(),
+                    reasons,
+                    detail: Some(serde_json::json!({ "missing": missing })),
+                },
+            };
+        }
+
+        let outcome = if reasons.is_empty() {
+            PolicyDecisionOutcome::Allowed
+        } else {
+            PolicyDecisionOutcome::Reduced
+        };
+        let summary = match outcome {
+            PolicyDecisionOutcome::Allowed => "local policy granted requested capabilities",
+            PolicyDecisionOutcome::Reduced => {
+                "local policy reduced requested capabilities before execution"
+            }
+            PolicyDecisionOutcome::Rejected => "local policy denied execution before guest start",
+        }
+        .into();
+
+        PolicyEvaluationResult {
+            granted_capabilities: granted,
+            decision: PolicyDecision {
+                outcome,
+                summary,
+                reasons,
+                detail: None,
+            },
         }
     }
 
@@ -1210,9 +1415,15 @@ where
         error: &ExecutionError,
     ) -> PolicyDecision {
         match status_from_error(error) {
+            ExecutionStatus::Rejected
+                if envelope.policy_decision.outcome == PolicyDecisionOutcome::Rejected =>
+            {
+                envelope.policy_decision.clone()
+            }
             ExecutionStatus::Rejected => PolicyDecision {
                 outcome: PolicyDecisionOutcome::Rejected,
                 summary: error.message.clone(),
+                reasons: Vec::new(),
                 detail: error.detail.as_deref().cloned(),
             },
             _ => envelope.policy_decision.clone(),
@@ -1349,14 +1560,24 @@ where
             &context.granted_capabilities,
         )
         .map_err(|denial| Box::new(ChildInvocationError::denied(denial)))?;
-        let child_request = build_child_request(
-            context,
-            sequence,
-            alias,
-            input,
-            &child_installed,
-            child_grants,
-        );
+        let child_request =
+            build_child_caller_request(context, sequence, input, &child_installed, child_grants);
+        let child_request = self
+            .runner
+            .authorize_execution(
+                &self.registry,
+                &child_installed,
+                child_request,
+                Some(context.execution_id.clone()),
+            )
+            .map_err(|error| {
+                Box::new(ChildInvocationError::without_record(SkillError {
+                    code: error.code,
+                    message: error.message,
+                    retryable: error.retryable,
+                    detail: error.detail.map(|detail| *detail),
+                }))
+            })?;
 
         let record = match self
             .runner
@@ -1451,6 +1672,385 @@ fn find_declared_dependency<'a>(
         .map_err(|error| Box::new(ChildInvocationError::without_record(error)))
 }
 
+fn declared_capability_surface<R>(
+    registry: &R,
+    installed: &InstalledSkill,
+) -> Result<Vec<CapabilityRequirement>, ExecutionError>
+where
+    R: SkillRegistry + ?Sized,
+{
+    let mut surface = installed.manifest.capabilities.clone();
+    let mut visited = vec![installed.resolved_ref.digest.clone()];
+    collect_declared_capability_surface(registry, installed, &mut visited, &mut surface)?;
+    Ok(surface)
+}
+
+fn collect_declared_capability_surface<R>(
+    registry: &R,
+    installed: &InstalledSkill,
+    visited: &mut Vec<String>,
+    surface: &mut Vec<CapabilityRequirement>,
+) -> Result<(), ExecutionError>
+where
+    R: SkillRegistry + ?Sized,
+{
+    for dependency in &installed.manifest.dependencies {
+        if visited
+            .iter()
+            .any(|digest| digest == &dependency.skill.digest)
+        {
+            continue;
+        }
+
+        let child = registry.resolve_exact(&dependency.skill).map_err(|error| {
+            ExecutionError::from(error)
+                .with_phase(ExecutionPhase::Validation)
+                .with_detail(serde_json::json!({
+                    "alias": dependency.alias,
+                    "dependency": dependency.skill,
+                }))
+        })?;
+
+        visited.push(child.resolved_ref.digest.clone());
+        surface.extend(child.manifest.capabilities.clone());
+        collect_declared_capability_surface(registry, &child, visited, surface)?;
+    }
+
+    Ok(())
+}
+
+fn invalid_capability_grants(grants: &CapabilityGrantSet) -> Vec<Value> {
+    grants
+        .grants
+        .iter()
+        .enumerate()
+        .flat_map(|(index, grant)| {
+            grant.validate().into_iter().map(move |message| {
+                serde_json::json!({
+                    "index": index,
+                    "id": grant.id,
+                    "access": grant.access,
+                    "constraints": grant.constraints,
+                    "message": message,
+                })
+            })
+        })
+        .collect()
+}
+
+fn clamp_requested_capabilities_to_manifest(
+    requested: &CapabilityGrantSet,
+    declared: &[CapabilityRequirement],
+    reasons: &mut Vec<PolicyReason>,
+) -> CapabilityGrantSet {
+    let mut grants = Vec::new();
+
+    for grant in &requested.grants {
+        let mut reduced = Vec::new();
+        let mut matched = false;
+
+        for requirement in declared
+            .iter()
+            .filter(|requirement| requirement.id == grant.id && requirement.access == grant.access)
+        {
+            matched = true;
+            if let Some(reduced_grant) = reduce_grant_to_requirement(grant, requirement) {
+                push_unique_grant(&mut reduced, reduced_grant);
+            }
+        }
+
+        if reduced.is_empty() {
+            let reason = if matched {
+                PolicyReason {
+                    code: "policy-requested-capability-outside-manifest".into(),
+                    message: "caller requested capability constraints outside the skill manifest declaration".into(),
+                    detail: Some(serde_json::json!({
+                        "requested": grant,
+                    })),
+                }
+            } else {
+                PolicyReason {
+                    code: "policy-requested-capability-undeclared".into(),
+                    message: "caller requested a capability family the skill did not declare"
+                        .into(),
+                    detail: Some(serde_json::json!({
+                        "requested": grant,
+                    })),
+                }
+            };
+            reasons.push(reason);
+            continue;
+        }
+
+        if reduced.len() != 1 || reduced[0] != *grant {
+            reasons.push(PolicyReason {
+                code: "policy-requested-capability-reduced".into(),
+                message:
+                    "caller requested capability was reduced to the skill-declared manifest surface"
+                        .into(),
+                detail: Some(serde_json::json!({
+                    "requested": grant,
+                    "granted": reduced,
+                })),
+            });
+        }
+
+        for reduced_grant in reduced {
+            push_unique_grant(&mut grants, reduced_grant);
+        }
+    }
+
+    CapabilityGrantSet { grants }
+}
+
+fn apply_verified_publisher_policy(
+    installed: &InstalledSkill,
+    grants: &CapabilityGrantSet,
+    selectors: &[CapabilitySelector],
+    reasons: &mut Vec<PolicyReason>,
+) -> CapabilityGrantSet {
+    if selectors.is_empty() || installed.verification.is_some() {
+        return grants.clone();
+    }
+
+    let mut filtered = Vec::new();
+
+    for grant in &grants.grants {
+        if selectors.iter().any(|selector| selector.matches(grant)) {
+            reasons.push(PolicyReason {
+                code: "policy-verified-publisher-required".into(),
+                message:
+                    "local policy requires a verified imported publisher before granting this capability"
+                        .into(),
+                detail: Some(serde_json::json!({
+                    "grant": grant,
+                    "publisher_id": installed.manifest.publisher.id,
+                    "trust_tier": installed.manifest.package.trust_tier,
+                })),
+            });
+            continue;
+        }
+
+        push_unique_grant(&mut filtered, grant.clone());
+    }
+
+    CapabilityGrantSet { grants: filtered }
+}
+
+fn policy_rule_matches(
+    rule: &PolicyRule,
+    request: &CallerRequest,
+    installed: &InstalledSkill,
+) -> bool {
+    if let Some(actor_ids) = &rule.actor_ids {
+        if !actor_ids
+            .iter()
+            .any(|actor_id| actor_id == &request.actor_id)
+        {
+            return false;
+        }
+    }
+
+    if let Some(tenant_ids) = &rule.tenant_ids {
+        if !tenant_ids
+            .iter()
+            .any(|tenant_id| tenant_id == &request.tenant_id)
+        {
+            return false;
+        }
+    }
+
+    if let Some(skills) = &rule.skills {
+        if !skills.iter().any(|skill| skill == &installed.manifest.key) {
+            return false;
+        }
+    }
+
+    if let Some(publisher_ids) = &rule.publisher_ids {
+        if !publisher_ids
+            .iter()
+            .any(|publisher_id| publisher_id == &installed.manifest.publisher.id)
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn apply_policy_rule(
+    rule: &PolicyRule,
+    grants: &CapabilityGrantSet,
+    reasons: &mut Vec<PolicyReason>,
+) -> CapabilityGrantSet {
+    match rule.effect {
+        PolicyRuleEffect::Deny => apply_policy_deny_rule(rule, grants, reasons),
+        PolicyRuleEffect::Cap => apply_policy_cap_rule(rule, grants, reasons),
+    }
+}
+
+fn apply_policy_deny_rule(
+    rule: &PolicyRule,
+    grants: &CapabilityGrantSet,
+    reasons: &mut Vec<PolicyReason>,
+) -> CapabilityGrantSet {
+    let mut filtered = Vec::new();
+
+    for grant in &grants.grants {
+        if let Some(rule_grant) = rule
+            .capabilities
+            .grants
+            .iter()
+            .find(|rule_grant| policy_grant_matches(rule_grant, grant))
+        {
+            reasons.push(PolicyReason {
+                code: "policy-rule-deny".into(),
+                message: "local policy rule denied a requested capability grant".into(),
+                detail: Some(serde_json::json!({
+                    "rule": rule.name,
+                    "grant": grant,
+                    "rule_grant": rule_grant,
+                })),
+            });
+            continue;
+        }
+
+        push_unique_grant(&mut filtered, grant.clone());
+    }
+
+    CapabilityGrantSet { grants: filtered }
+}
+
+fn apply_policy_cap_rule(
+    rule: &PolicyRule,
+    grants: &CapabilityGrantSet,
+    reasons: &mut Vec<PolicyReason>,
+) -> CapabilityGrantSet {
+    let mut filtered = Vec::new();
+
+    for grant in &grants.grants {
+        let matching: Vec<_> = rule
+            .capabilities
+            .grants
+            .iter()
+            .filter(|rule_grant| rule_grant.id == grant.id && rule_grant.access == grant.access)
+            .collect();
+
+        if matching.is_empty() {
+            push_unique_grant(&mut filtered, grant.clone());
+            continue;
+        }
+
+        let mut reduced = Some(grant.clone());
+        for rule_grant in matching {
+            reduced = reduced.and_then(|current| reduce_grant_to_cap(rule_grant, &current));
+        }
+
+        match reduced {
+            Some(reduced_grant) => {
+                if reduced_grant != *grant {
+                    reasons.push(PolicyReason {
+                        code: "policy-rule-cap".into(),
+                        message: "local policy rule reduced a requested capability grant".into(),
+                        detail: Some(serde_json::json!({
+                            "rule": rule.name,
+                            "requested": grant,
+                            "granted": reduced_grant,
+                        })),
+                    });
+                }
+                push_unique_grant(&mut filtered, reduced_grant);
+            }
+            None => reasons.push(PolicyReason {
+                code: "policy-rule-cap".into(),
+                message: "local policy rule removed a requested capability grant".into(),
+                detail: Some(serde_json::json!({
+                    "rule": rule.name,
+                    "requested": grant,
+                })),
+            }),
+        }
+    }
+
+    CapabilityGrantSet { grants: filtered }
+}
+
+fn missing_required_capabilities(
+    installed: &InstalledSkill,
+    grants: &CapabilityGrantSet,
+) -> Vec<Value> {
+    installed
+        .manifest
+        .capabilities
+        .iter()
+        .filter(|requirement| requirement.required)
+        .filter(|requirement| !CapabilityEvaluator::grants_cover_requirement(grants, requirement))
+        .map(|requirement| {
+            serde_json::json!({
+                "id": requirement.id,
+                "access": requirement.access,
+                "constraints": requirement.constraints,
+            })
+        })
+        .collect()
+}
+
+fn reduce_grant_to_requirement(
+    grant: &GrantedCapability,
+    requirement: &CapabilityRequirement,
+) -> Option<GrantedCapability> {
+    if grant.id != requirement.id || grant.access != requirement.access {
+        return None;
+    }
+
+    let constraints = reduce_child_constraints(grant, requirement).ok()?;
+    Some(GrantedCapability {
+        id: grant.id.clone(),
+        access: grant.access.clone(),
+        constraints,
+    })
+}
+
+fn reduce_grant_to_cap(
+    cap: &GrantedCapability,
+    grant: &GrantedCapability,
+) -> Option<GrantedCapability> {
+    if cap.id != grant.id || cap.access != grant.access {
+        return None;
+    }
+
+    let requirement = CapabilityRequirement {
+        id: grant.id.clone(),
+        access: grant.access.clone(),
+        constraints: grant.constraints.clone(),
+        required: false,
+    };
+    let constraints = reduce_child_constraints(cap, &requirement).ok()?;
+
+    Some(GrantedCapability {
+        id: grant.id.clone(),
+        access: grant.access.clone(),
+        constraints,
+    })
+}
+
+fn policy_grant_matches(rule_grant: &GrantedCapability, grant: &GrantedCapability) -> bool {
+    let requirement = CapabilityRequirement {
+        id: grant.id.clone(),
+        access: grant.access.clone(),
+        constraints: grant.constraints.clone(),
+        required: false,
+    };
+
+    CapabilityEvaluator::grant_covers_requirement(rule_grant, &requirement)
+}
+
+fn push_unique_grant(grants: &mut Vec<GrantedCapability>, grant: GrantedCapability) {
+    if !grants.contains(&grant) {
+        grants.push(grant);
+    }
+}
+
 fn load_child_installed<R>(
     registry: &R,
     dependency: &guild_manifest::InstalledDependencySpec,
@@ -1479,35 +2079,24 @@ where
         .map_err(|error| Box::new(ChildInvocationError::without_record(error)))
 }
 
-fn build_child_request(
+fn build_child_caller_request(
     context: &ExecutionContext,
     sequence: u16,
-    alias: &str,
     input: &Value,
     child_installed: &InstalledSkill,
     child_grants: CapabilityGrantSet,
-) -> ResolvedExecutionEnvelope {
-    ResolvedExecutionEnvelope {
-        request: guild_types::CallerRequest {
-            request_id: format!("{}:child:{sequence}", context.execution_id),
-            skill: exact_requested_skill_ref(&child_installed.resolved_ref),
-            tenant_id: context.tenant_id.clone(),
-            actor_id: "skill".into(),
-            mode: context.mode.clone(),
-            input: input.clone(),
-            budget: derive_child_budget(&context.budget),
-            requested_capabilities: child_grants.clone(),
-            idempotency_key: None,
-            trace_id: context.trace_id.clone(),
-        },
-        resolved_skill: child_installed.resolved_ref.clone(),
-        granted_capabilities: child_grants,
-        policy_decision: PolicyDecision {
-            outcome: PolicyDecisionOutcome::Allowed,
-            summary: "dependency invocation allowed".into(),
-            detail: Some(serde_json::json!({ "alias": alias })),
-        },
-        parent_execution_id: Some(context.execution_id.clone()),
+) -> CallerRequest {
+    guild_types::CallerRequest {
+        request_id: format!("{}:child:{sequence}", context.execution_id),
+        skill: exact_requested_skill_ref(&child_installed.resolved_ref),
+        tenant_id: context.tenant_id.clone(),
+        actor_id: "skill".into(),
+        mode: context.mode.clone(),
+        input: input.clone(),
+        budget: derive_child_budget(&context.budget),
+        requested_capabilities: child_grants,
+        idempotency_key: None,
+        trace_id: context.trace_id.clone(),
     }
 }
 
@@ -1722,7 +2311,7 @@ fn execute_http_request(
 ) -> Result<HttpResponse, SkillError> {
     let parsed_request = parse_http_request(request).map_err(CapabilityDenial::into_skill_error)?;
     let http_request = Request::builder()
-        .method(http_method(request.method.clone()))
+        .method(http_method(&request.method))
         .uri(request.url.as_str())
         .body(empty_http_body())
         .map_err(|error| SkillError {
@@ -1743,7 +2332,7 @@ fn execute_http_request(
             between_bytes_timeout: timeout,
         },
     ))
-    .map_err(|error| skill_error_from_wasi_http_error(error, request, max_response_bytes))?;
+    .map_err(|error| skill_error_from_wasi_http_error(&error, request, max_response_bytes))?;
 
     let between_bytes_timeout = response.between_bytes_timeout;
     let worker = response.worker;
@@ -1785,7 +2374,7 @@ fn execute_http_request(
 
         Ok::<Vec<u8>, WasiHttpErrorCode>(bytes)
     })
-    .map_err(|error| skill_error_from_wasi_http_error(error, request, max_response_bytes))?;
+    .map_err(|error| skill_error_from_wasi_http_error(&error, request, max_response_bytes))?;
 
     Ok(HttpResponse {
         url: request.url.clone(),
@@ -1801,7 +2390,7 @@ fn empty_http_body() -> HyperOutgoingBody {
         .boxed_unsync()
 }
 
-fn http_method(method: HttpMethod) -> http::Method {
+fn http_method(method: &HttpMethod) -> http::Method {
     match method {
         HttpMethod::Get => http::Method::GET,
         HttpMethod::Head => http::Method::HEAD,
@@ -1809,11 +2398,11 @@ fn http_method(method: HttpMethod) -> http::Method {
 }
 
 fn skill_error_from_wasi_http_error(
-    error: WasiHttpErrorCode,
+    error: &WasiHttpErrorCode,
     request: &HttpRequest,
     max_response_bytes: u64,
 ) -> SkillError {
-    let (code, message, retryable) = match &error {
+    let (code, message, retryable) = match error {
         WasiHttpErrorCode::ConnectionTimeout
         | WasiHttpErrorCode::ConnectionReadTimeout
         | WasiHttpErrorCode::HttpResponseTimeout => (
@@ -1942,169 +2531,38 @@ impl CapabilityEvaluator {
             Self::matching_grants(grants, &CapabilityId::HttpRequest, &CapabilityAccess::Read);
 
         if matching.is_empty() {
-            return Err(CapabilityDenial {
-                code: "http-request-not-granted".into(),
-                message: "http-request was not granted for this execution".into(),
-                detail: serde_json::json!({
-                    "url": request.url,
-                    "method": request.method,
-                }),
-            });
+            return Err(http_request_not_granted_denial(request));
         }
 
         if used_network_requests >= budget.max_network_requests {
-            return Err(CapabilityDenial {
-                code: "http-request-budget-exhausted".into(),
-                message: "execution budget does not allow additional outbound HTTP requests".into(),
-                detail: serde_json::json!({
-                    "url": request.url,
-                    "used_network_requests": used_network_requests,
-                    "max_network_requests": budget.max_network_requests,
-                }),
-            });
+            return Err(http_request_budget_denial(
+                request,
+                used_network_requests,
+                budget.max_network_requests,
+            ));
         }
 
-        let mut saw_method_denial = false;
-        let mut saw_scheme_denial = false;
-        let mut saw_host_denial = false;
-        let mut saw_port_denial = false;
-        let mut saw_path_denial = false;
-        let mut saw_timeout_denial = false;
-        let mut authorized_timeout_ms: Option<u64> = None;
-        let mut authorized_response_bytes: Option<u64> = None;
+        let mut state = HttpGrantState::default();
 
         for grant in matching {
             let CapabilityConstraints::HttpRequest(constraints) = &grant.constraints else {
                 if matches!(grant.constraints, CapabilityConstraints::None(_)) {
-                    let timeout_ms =
-                        effective_timeout_ms(request.timeout_ms, None, budget.max_millis);
-                    let response_bytes = effective_response_bytes(None, budget.max_output_bytes);
-                    authorized_timeout_ms = Some(
-                        authorized_timeout_ms.map_or(timeout_ms, |current| current.max(timeout_ms)),
-                    );
-                    authorized_response_bytes = Some(
-                        authorized_response_bytes
-                            .map_or(response_bytes, |current| current.max(response_bytes)),
-                    );
+                    authorize_unconstrained_http_grant(&mut state, request, budget);
                     continue;
                 }
                 continue;
             };
 
-            if !matches_http_method(constraints.allowed_methods.as_ref(), &request.method) {
-                saw_method_denial = true;
-                continue;
-            }
-
-            if !matches_http_scheme(constraints.allowed_schemes.as_ref(), &parsed_request.scheme) {
-                saw_scheme_denial = true;
-                continue;
-            }
-
-            if !matches_http_host(constraints.allowed_hosts.as_ref(), &parsed_request.host) {
-                saw_host_denial = true;
-                continue;
-            }
-
-            if !matches_http_port(constraints.allowed_ports.as_ref(), parsed_request.port) {
-                saw_port_denial = true;
-                continue;
-            }
-
-            if !matches_http_path(
-                constraints.allowed_path_prefixes.as_ref(),
-                &parsed_request.path,
-            ) {
-                saw_path_denial = true;
-                continue;
-            }
-
-            if let Some(request_timeout_ms) = request.timeout_ms {
-                if let Some(grant_timeout_ms) = constraints.max_timeout_ms {
-                    if request_timeout_ms > grant_timeout_ms {
-                        saw_timeout_denial = true;
-                        continue;
-                    }
-                }
-            }
-
-            let timeout_ms = effective_timeout_ms(
-                request.timeout_ms,
-                constraints.max_timeout_ms,
-                budget.max_millis,
-            );
-            let response_bytes =
-                effective_response_bytes(constraints.max_response_bytes, budget.max_output_bytes);
-            authorized_timeout_ms =
-                Some(authorized_timeout_ms.map_or(timeout_ms, |current| current.max(timeout_ms)));
-            authorized_response_bytes = Some(
-                authorized_response_bytes
-                    .map_or(response_bytes, |current| current.max(response_bytes)),
+            evaluate_http_request_constraints(
+                &mut state,
+                constraints,
+                request,
+                parsed_request,
+                budget,
             );
         }
 
-        match (authorized_timeout_ms, authorized_response_bytes) {
-            (Some(timeout_ms), Some(max_response_bytes)) => Ok(HttpExecutionPolicy {
-                timeout: Duration::from_millis(timeout_ms),
-                max_response_bytes,
-            }),
-            _ if saw_timeout_denial => Err(CapabilityDenial {
-                code: "http-request-timeout-not-granted".into(),
-                message: "http-request timeout exceeded the granted max_timeout_ms limit".into(),
-                detail: serde_json::json!({
-                    "url": request.url,
-                    "requested_timeout_ms": request.timeout_ms,
-                }),
-            }),
-            _ if saw_path_denial => Err(CapabilityDenial {
-                code: "http-request-path-not-granted".into(),
-                message: "http-request path was not granted for this execution".into(),
-                detail: serde_json::json!({
-                    "url": request.url,
-                    "path": parsed_request.path,
-                }),
-            }),
-            _ if saw_port_denial => Err(CapabilityDenial {
-                code: "http-request-port-not-granted".into(),
-                message: "http-request port was not granted for this execution".into(),
-                detail: serde_json::json!({
-                    "url": request.url,
-                    "port": parsed_request.port,
-                }),
-            }),
-            _ if saw_host_denial => Err(CapabilityDenial {
-                code: "http-request-host-not-granted".into(),
-                message: "http-request host was not granted for this execution".into(),
-                detail: serde_json::json!({
-                    "url": request.url,
-                    "host": parsed_request.host,
-                }),
-            }),
-            _ if saw_scheme_denial => Err(CapabilityDenial {
-                code: "http-request-scheme-not-granted".into(),
-                message: "http-request scheme was not granted for this execution".into(),
-                detail: serde_json::json!({
-                    "url": request.url,
-                    "scheme": parsed_request.scheme,
-                }),
-            }),
-            _ if saw_method_denial => Err(CapabilityDenial {
-                code: "http-request-method-not-granted".into(),
-                message: "http-request method was not granted for this execution".into(),
-                detail: serde_json::json!({
-                    "url": request.url,
-                    "method": request.method,
-                }),
-            }),
-            _ => Err(CapabilityDenial {
-                code: "http-request-not-granted".into(),
-                message: "http-request was not granted for this execution".into(),
-                detail: serde_json::json!({
-                    "url": request.url,
-                    "method": request.method,
-                }),
-            }),
-        }
+        finalize_http_request_authorization(state, request, parsed_request)
     }
 
     fn matching_grants<'a>(
@@ -2526,11 +2984,10 @@ fn reduce_child_http_request_constraints(
             }),
         })?
         .into_option();
-    let max_response_bytes = reduce_required_max_bytes(
-        parent.max_response_bytes,
-        required.max_response_bytes,
-    )
-    .ok_or_else(|| CapabilityDenial {
+    let max_response_bytes =
+        reduce_required_max_bytes(parent.max_response_bytes, required.max_response_bytes)
+            .ok_or_else(|| {
+                CapabilityDenial {
         code: "child-capability-mismatch".into(),
         message: "child http-request max_response_bytes could not be reduced from the parent grant"
             .into(),
@@ -2538,8 +2995,9 @@ fn reduce_child_http_request_constraints(
             "parent_constraints": parent,
             "required_constraints": required,
         }),
-    })?
-    .into_option();
+    }
+            })?
+            .into_option();
 
     Ok(HttpRequestConstraints {
         allowed_schemes,
@@ -2985,9 +3443,10 @@ fn reduce_required_max_bytes(
 fn is_supported_wasm_inspect_capability(id: &CapabilityId, access: &CapabilityAccess) -> bool {
     matches!(
         (id, access),
-        (CapabilityId::HttpRequest, CapabilityAccess::Read)
-            | (CapabilityId::ReadResource, CapabilityAccess::Read)
-            | (CapabilityId::InvokeSkill, CapabilityAccess::Invoke)
+        (
+            CapabilityId::HttpRequest | CapabilityId::ReadResource,
+            CapabilityAccess::Read
+        ) | (CapabilityId::InvokeSkill, CapabilityAccess::Invoke)
             | (
                 CapabilityId::EmitEvidence | CapabilityId::LogWrite,
                 CapabilityAccess::Write
@@ -3528,6 +3987,160 @@ fn severity_label(severity: &Severity) -> &'static str {
         Severity::Info => "info",
         Severity::Warn => "warn",
         Severity::Error => "error",
+    }
+}
+
+fn http_request_not_granted_denial(request: &HttpRequest) -> CapabilityDenial {
+    CapabilityDenial {
+        code: "http-request-not-granted".into(),
+        message: "http-request was not granted for this execution".into(),
+        detail: serde_json::json!({
+            "url": request.url,
+            "method": request.method,
+        }),
+    }
+}
+
+fn http_request_budget_denial(
+    request: &HttpRequest,
+    used_network_requests: u32,
+    max_network_requests: u32,
+) -> CapabilityDenial {
+    CapabilityDenial {
+        code: "http-request-budget-exhausted".into(),
+        message: "execution budget does not allow additional outbound HTTP requests".into(),
+        detail: serde_json::json!({
+            "url": request.url,
+            "used_network_requests": used_network_requests,
+            "max_network_requests": max_network_requests,
+        }),
+    }
+}
+
+fn authorize_unconstrained_http_grant(
+    state: &mut HttpGrantState,
+    request: &HttpRequest,
+    budget: &guild_types::Budget,
+) {
+    state.authorize(
+        effective_timeout_ms(request.timeout_ms, None, budget.max_millis),
+        effective_response_bytes(None, budget.max_output_bytes),
+    );
+}
+
+fn evaluate_http_request_constraints(
+    state: &mut HttpGrantState,
+    constraints: &HttpRequestConstraints,
+    request: &HttpRequest,
+    parsed_request: &ParsedHttpRequest,
+    budget: &guild_types::Budget,
+) {
+    if !matches_http_method(constraints.allowed_methods.as_ref(), &request.method) {
+        state.note_denial(HttpGrantDenialKind::Method);
+        return;
+    }
+
+    if !matches_http_scheme(constraints.allowed_schemes.as_ref(), &parsed_request.scheme) {
+        state.note_denial(HttpGrantDenialKind::Scheme);
+        return;
+    }
+
+    if !matches_http_host(constraints.allowed_hosts.as_ref(), &parsed_request.host) {
+        state.note_denial(HttpGrantDenialKind::Host);
+        return;
+    }
+
+    if !matches_http_port(constraints.allowed_ports.as_ref(), parsed_request.port) {
+        state.note_denial(HttpGrantDenialKind::Port);
+        return;
+    }
+
+    if !matches_http_path(
+        constraints.allowed_path_prefixes.as_ref(),
+        &parsed_request.path,
+    ) {
+        state.note_denial(HttpGrantDenialKind::Path);
+        return;
+    }
+
+    if request.timeout_ms.is_some_and(|request_timeout_ms| {
+        constraints
+            .max_timeout_ms
+            .is_some_and(|grant_timeout_ms| request_timeout_ms > grant_timeout_ms)
+    }) {
+        state.note_denial(HttpGrantDenialKind::Timeout);
+        return;
+    }
+
+    state.authorize(
+        effective_timeout_ms(
+            request.timeout_ms,
+            constraints.max_timeout_ms,
+            budget.max_millis,
+        ),
+        effective_response_bytes(constraints.max_response_bytes, budget.max_output_bytes),
+    );
+}
+
+fn finalize_http_request_authorization(
+    state: HttpGrantState,
+    request: &HttpRequest,
+    parsed_request: &ParsedHttpRequest,
+) -> Result<HttpExecutionPolicy, CapabilityDenial> {
+    match (state.authorized_timeout_ms, state.authorized_response_bytes) {
+        (Some(timeout_ms), Some(max_response_bytes)) => Ok(HttpExecutionPolicy {
+            timeout: Duration::from_millis(timeout_ms),
+            max_response_bytes,
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_TIMEOUT) => Err(CapabilityDenial {
+            code: "http-request-timeout-not-granted".into(),
+            message: "http-request timeout exceeded the granted max_timeout_ms limit".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "requested_timeout_ms": request.timeout_ms,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_PATH) => Err(CapabilityDenial {
+            code: "http-request-path-not-granted".into(),
+            message: "http-request path was not granted for this execution".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "path": parsed_request.path,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_PORT) => Err(CapabilityDenial {
+            code: "http-request-port-not-granted".into(),
+            message: "http-request port was not granted for this execution".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "port": parsed_request.port,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_HOST) => Err(CapabilityDenial {
+            code: "http-request-host-not-granted".into(),
+            message: "http-request host was not granted for this execution".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_SCHEME) => Err(CapabilityDenial {
+            code: "http-request-scheme-not-granted".into(),
+            message: "http-request scheme was not granted for this execution".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "scheme": parsed_request.scheme,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_METHOD) => Err(CapabilityDenial {
+            code: "http-request-method-not-granted".into(),
+            message: "http-request method was not granted for this execution".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "method": request.method,
+            }),
+        }),
+        _ => Err(http_request_not_granted_denial(request)),
     }
 }
 

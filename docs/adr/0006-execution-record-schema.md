@@ -77,6 +77,7 @@ The current status model for the active inspect substrate is:
 `PolicyDecision` is host-owned durable metadata:
 
 - allowed requests retain the host policy decision from the execution envelope
+- reduced requests retain the host policy decision together with reduction reasons
 - rejected attempts persist a host-owned rejected `PolicyDecision`
 - guests do not author durable denial classification
 

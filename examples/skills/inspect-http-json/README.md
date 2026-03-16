@@ -11,7 +11,8 @@ It:
 - returns a structured summary plus selected JSON Pointer fields
 
 It does not expose ambient network access. Real authority still comes from the
-host-owned execution grant passed to `guild.inspect`.
+host-owned execution grant passed to `guild.inspect`, and that grant is now
+decided by local host policy rather than by caller intent alone.
 
 Use the documented local proof flow in the repository README or:
 

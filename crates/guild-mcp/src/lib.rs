@@ -13,8 +13,7 @@ use guild_registry::{RegistryError, SkillRegistry};
 use guild_runner::{ExecutionError, Runner, RuntimeAdapter};
 use guild_types::{
     Budget, CallerRequest, CapabilityGrantSet, ExecutionMode, ExecutionReceipt, ExecutionRecord,
-    PolicyDecision, PolicyDecisionOutcome, RequestedSkillRef, ResolvedExecutionEnvelope,
-    ResourceReadResult,
+    RequestedSkillRef, ResourceReadResult,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -202,8 +201,10 @@ where
     /// Returns an error if resolution, execution, or durable record loading fails.
     pub fn inspect(&self, request: InspectRequest) -> Result<InspectResponse, McpError> {
         let installed = self.registry.resolve(&request.skill)?;
-        let execution_request = ResolvedExecutionEnvelope {
-            request: CallerRequest {
+        let execution_request = self.runner.authorize_execution(
+            &self.registry,
+            &installed,
+            CallerRequest {
                 request_id: request.request_id,
                 skill: request.skill,
                 tenant_id: request.tenant_id,
@@ -211,19 +212,12 @@ where
                 mode: ExecutionMode::Inspect,
                 input: request.input,
                 budget: request.budget,
-                requested_capabilities: request.grants.clone(),
+                requested_capabilities: request.grants,
                 idempotency_key: None,
                 trace_id: request.trace_id,
             },
-            resolved_skill: installed.resolved_ref.clone(),
-            granted_capabilities: request.grants,
-            policy_decision: PolicyDecision {
-                outcome: PolicyDecisionOutcome::Allowed,
-                summary: "inspect request allowed".into(),
-                detail: None,
-            },
-            parent_execution_id: None,
-        };
+            None,
+        )?;
 
         let record = self
             .runner

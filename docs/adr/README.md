@@ -11,16 +11,15 @@ Guild uses ADRs to record platform-shaping decisions and to queue the next contr
 - `0005-capability-schema-and-active-inspect-profile.md` - accepted typed capability model and honest active inspect capability surface
 - `0006-execution-record-schema.md` - accepted durable execution record shape, receipt model, persisted-attempt boundary, and child lineage rules
 - `0007-evidence-record-schema.md` - accepted split between blob identity and per-emission evidence-record identity
+- `0008-local-policy-evaluator.md` - accepted local host-owned policy evaluation, `policy.json` profile shape, and separation between requested and granted capabilities
 
 ## Backlog
 
 The next ADRs should focus on still-deferred platform shape:
 
-1. Policy model
-   Define what Guild means by host policy beyond the current caller-grant plus validation model.
-2. Retention and query surfaces
+1. Retention and query surfaces
    Define retention, indexing, and query expectations for execution and evidence stores.
-3. Remote publication and trust
+2. Remote publication and trust
    Define remote bundle publication, trust distribution, and any transparency or signing integration.
 
 ## Working Rule

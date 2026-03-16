@@ -93,7 +93,8 @@ fn execution_request(
         granted_capabilities: grants,
         policy_decision: PolicyDecision {
             outcome: PolicyDecisionOutcome::Allowed,
-            summary: "test request allowed".into(),
+            summary: "local policy granted requested capabilities".into(),
+            reasons: Vec::new(),
             detail: None,
         },
         parent_execution_id: None,
@@ -206,6 +207,7 @@ fn copy_dir_recursive(source: &Path, destination: &Path) {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn write_http_composite_fixture(root: &Path) -> PathBuf {
     let source_dir = root.join("examples/skills/http-composite-forwarder");
     fs::create_dir_all(source_dir.join("skill-rust/src")).unwrap();
@@ -407,7 +409,7 @@ fn http_happy_path_executes_through_real_host_path() {
         }),
         CapabilityGrantSet {
             grants: vec![http_grant(
-                server.host(),
+                http_test_server::HttpTestServer::host(),
                 server.port(),
                 "/json",
                 &[HttpMethod::Get],
@@ -478,7 +480,7 @@ fn unauthorized_method_is_rejected_by_host_owned_http_denial() {
         json!({ "url": server.json_url(), "method": "head" }),
         CapabilityGrantSet {
             grants: vec![http_grant(
-                server.host(),
+                http_test_server::HttpTestServer::host(),
                 server.port(),
                 "/json",
                 &[HttpMethod::Get],
@@ -507,12 +509,16 @@ fn unauthorized_scheme_is_rejected_by_host_owned_http_denial() {
         &registry,
         &runner,
         json!({
-            "url": format!("https://{}:{}/json", server.host(), server.port()),
+            "url": format!(
+                "https://{}:{}/json",
+                http_test_server::HttpTestServer::host(),
+                server.port()
+            ),
             "method": "get",
         }),
         CapabilityGrantSet {
             grants: vec![http_grant(
-                server.host(),
+                http_test_server::HttpTestServer::host(),
                 server.port(),
                 "/json",
                 &[HttpMethod::Get],
@@ -543,7 +549,7 @@ fn unauthorized_port_is_rejected_by_host_owned_http_denial() {
         json!({ "url": server.json_url(), "method": "get" }),
         CapabilityGrantSet {
             grants: vec![http_grant(
-                server.host(),
+                http_test_server::HttpTestServer::host(),
                 server.port().saturating_add(1),
                 "/json",
                 &[HttpMethod::Get],
@@ -574,7 +580,7 @@ fn unauthorized_path_is_rejected_by_host_owned_http_denial() {
         json!({ "url": server.json_url(), "method": "get" }),
         CapabilityGrantSet {
             grants: vec![http_grant(
-                server.host(),
+                http_test_server::HttpTestServer::host(),
                 server.port(),
                 "/other",
                 &[HttpMethod::Get],
@@ -605,7 +611,7 @@ fn oversized_http_response_fails_with_explicit_host_bound() {
         json!({ "url": server.large_json_url(), "method": "get" }),
         CapabilityGrantSet {
             grants: vec![http_grant(
-                server.host(),
+                http_test_server::HttpTestServer::host(),
                 server.port(),
                 "/large",
                 &[HttpMethod::Get],
@@ -641,7 +647,7 @@ fn slow_http_response_times_out_with_explicit_host_bound() {
         }),
         CapabilityGrantSet {
             grants: vec![http_grant(
-                server.host(),
+                http_test_server::HttpTestServer::host(),
                 server.port(),
                 "/slow",
                 &[HttpMethod::Get],
@@ -703,7 +709,7 @@ fn composite_child_cannot_expand_parent_http_authority() {
                             ),
                         },
                         http_grant(
-                            server.host(),
+                            http_test_server::HttpTestServer::host(),
                             server.port(),
                             "/blocked",
                             &[HttpMethod::Get],

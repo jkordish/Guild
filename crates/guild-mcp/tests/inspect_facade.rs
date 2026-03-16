@@ -7,11 +7,11 @@ use guild_mcp::{GuildMcpFacade, InspectRequest};
 use guild_registry::{InstalledSkill, LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller};
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
-    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
+    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId, CapabilitySelector,
     EmitEvidenceConstraints, EvidenceAudience, ExecutionStatus, GrantedCapability, HttpMethod,
-    HttpRequestConstraints, HttpScheme, InvokeDependencyConstraints, LogConstraints,
-    ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResourceKind, Severity, SkillKey,
-    VersionRequirement,
+    HttpRequestConstraints, HttpScheme, InvokeDependencyConstraints, LocalPolicyConfig,
+    LogConstraints, PolicyDecisionOutcome, PolicyRule, PolicyRuleEffect, ReadResourceConstraints,
+    RedactionClass, RequestedSkillRef, ResourceKind, Severity, SkillKey, VersionRequirement,
 };
 
 #[path = "../../../test-support/http_test_server.rs"]
@@ -101,6 +101,13 @@ fn composite_request() -> InspectRequest {
 fn build_facade() -> GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter> {
     let registry = LocalRegistry::load(prepared_registry_root()).unwrap();
     GuildMcpFacade::new(registry, WasmtimeRuntimeAdapter::new().unwrap())
+}
+
+fn build_facade_for_root(root: &Path) -> GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter> {
+    GuildMcpFacade::new(
+        LocalRegistry::load(root).unwrap(),
+        WasmtimeRuntimeAdapter::new().unwrap(),
+    )
 }
 
 fn explain_request(uri: &str) -> InspectRequest {
@@ -228,6 +235,43 @@ fn copy_dir_recursive(source: &Path, destination: &Path) {
     }
 }
 
+fn write_policy(root: &Path, policy: &LocalPolicyConfig) {
+    fs::create_dir_all(root).unwrap();
+    fs::write(
+        root.join("policy.json"),
+        serde_json::to_vec_pretty(policy).unwrap(),
+    )
+    .unwrap();
+}
+
+fn deny_emit_evidence_for_actor_policy(actor_id: &str) -> LocalPolicyConfig {
+    LocalPolicyConfig {
+        rules: vec![PolicyRule {
+            name: Some("deny-hello-evidence".into()),
+            actor_ids: Some(vec![actor_id.into()]),
+            tenant_ids: None,
+            skills: Some(vec![SkillKey {
+                namespace: "example".into(),
+                name: "hello-inspect".into(),
+            }]),
+            publisher_ids: None,
+            effect: PolicyRuleEffect::Deny,
+            capabilities: CapabilityGrantSet {
+                grants: vec![GrantedCapability {
+                    id: CapabilityId::EmitEvidence,
+                    access: CapabilityAccess::Write,
+                    constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
+                        max_bytes: None,
+                        audiences: None,
+                        redactions: None,
+                    }),
+                }],
+            },
+        }],
+        ..LocalPolicyConfig::default()
+    }
+}
+
 #[test]
 fn guild_inspect_uses_real_registry_and_runner_path() {
     let facade = build_facade();
@@ -322,7 +366,7 @@ fn guild_inspect_executes_http_skill_through_real_host_path() {
             "actor-1",
             CapabilityGrantSet {
                 grants: vec![http_grant(
-                    server.host(),
+                    http_test_server::HttpTestServer::host(),
                     server.port(),
                     "/json",
                     HttpMethod::Get,
@@ -342,6 +386,225 @@ fn guild_inspect_executes_http_skill_through_real_host_path() {
         output.structured["selected_fields"][0]["value"],
         serde_json::json!("deterministic")
     );
+}
+
+#[test]
+fn local_policy_reduces_requested_capabilities_before_execution() {
+    let temp = TempFixtureDir::new("guild-policy-reduced");
+    let registry_root = temp.path().join("registry");
+    LocalSourceInstaller::new(&registry_root)
+        .unwrap()
+        .install(example_source_dir())
+        .unwrap();
+
+    let facade = build_facade_for_root(&registry_root);
+    let response = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![
+                    emit_evidence_grant(),
+                    log_info_grant(),
+                    http_grant("example.com", 80, "/", HttpMethod::Get),
+                ],
+            },
+        ))
+        .unwrap();
+
+    assert_eq!(
+        response.structured_content.policy_decision.outcome,
+        PolicyDecisionOutcome::Reduced
+    );
+    assert!(response
+        .structured_content
+        .granted_capabilities
+        .grants
+        .iter()
+        .all(|grant| grant.id != CapabilityId::HttpRequest));
+    assert!(response
+        .structured_content
+        .request
+        .requested_capabilities
+        .grants
+        .iter()
+        .any(|grant| grant.id == CapabilityId::HttpRequest));
+}
+
+#[test]
+fn local_policy_denial_persists_host_owned_rejection() {
+    let temp = TempFixtureDir::new("guild-policy-denied");
+    let registry_root = temp.path().join("registry");
+    LocalSourceInstaller::new(&registry_root)
+        .unwrap()
+        .install(example_source_dir())
+        .unwrap();
+    write_policy(
+        &registry_root,
+        &deny_emit_evidence_for_actor_policy("actor-blocked"),
+    );
+
+    let facade = build_facade_for_root(&registry_root);
+    let error = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-blocked",
+            CapabilityGrantSet {
+                grants: vec![emit_evidence_grant()],
+            },
+        ))
+        .unwrap_err();
+
+    assert_eq!(error.code, "policy-denied");
+    let receipt = error.receipt.expect("policy denial persists a receipt");
+    let record: guild_types::ExecutionRecord =
+        serde_json::from_slice(&facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(
+        record.policy_decision.outcome,
+        PolicyDecisionOutcome::Rejected
+    );
+    assert!(record
+        .policy_decision
+        .reasons
+        .iter()
+        .any(|reason| reason.code == "policy-rule-deny"));
+    assert!(record
+        .policy_decision
+        .reasons
+        .iter()
+        .any(|reason| reason.code == "policy-required-capability-missing"));
+    assert!(record.granted_capabilities.grants.is_empty());
+}
+
+#[allow(clippy::too_many_lines)]
+#[test]
+fn local_policy_can_require_verified_publishers_for_http() {
+    let server = http_test_server::HttpTestServer::start();
+    let temp = TempFixtureDir::new("guild-policy-verified-http");
+    let registry_a = temp.path().join("registry-a");
+    let registry_verified = temp.path().join("registry-verified");
+    let registry_local = temp.path().join("registry-local");
+    let bundle_root = temp.path().join("bundle");
+
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(http_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    registry
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
+        .unwrap();
+
+    LocalRegistry::trust_publisher(&registry_verified, &identity.trusted_record()).unwrap();
+    LocalRegistry::import_bundle(&registry_verified, &bundle_root).unwrap();
+    LocalSourceInstaller::new(&registry_local)
+        .unwrap()
+        .install(http_source_dir())
+        .unwrap();
+
+    let policy = LocalPolicyConfig {
+        verified_publishers_required_for: vec![CapabilitySelector {
+            id: CapabilityId::HttpRequest,
+            access: CapabilityAccess::Read,
+        }],
+        ..LocalPolicyConfig::default()
+    };
+    write_policy(&registry_verified, &policy);
+    write_policy(&registry_local, &policy);
+
+    let verified_facade = build_facade_for_root(&registry_verified);
+    let verified = verified_facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "get",
+                "json_pointers": ["/message"],
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant(
+                    http_test_server::HttpTestServer::host(),
+                    server.port(),
+                    "/json",
+                    HttpMethod::Get,
+                )],
+            },
+        ))
+        .unwrap();
+    assert_eq!(
+        verified.structured_content.policy_decision.outcome,
+        PolicyDecisionOutcome::Allowed
+    );
+
+    let local_facade = build_facade_for_root(&registry_local);
+    let denied = local_facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "get",
+                "json_pointers": ["/message"],
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant(
+                    http_test_server::HttpTestServer::host(),
+                    server.port(),
+                    "/json",
+                    HttpMethod::Get,
+                )],
+            },
+        ))
+        .unwrap_err();
+
+    assert_eq!(denied.code, "policy-denied");
+    let receipt = denied
+        .receipt
+        .expect("trust-aware policy denial persists a receipt");
+    let record: guild_types::ExecutionRecord =
+        serde_json::from_slice(&local_facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+    assert!(record
+        .policy_decision
+        .reasons
+        .iter()
+        .any(|reason| reason.code == "policy-verified-publisher-required"));
 }
 
 #[test]
@@ -449,6 +712,105 @@ fn explain_skill_can_summarize_persisted_http_denials() {
 }
 
 #[test]
+fn explain_skill_can_summarize_persisted_policy_denials() {
+    let temp = TempFixtureDir::new("guild-policy-explain-denial");
+    let registry_root = temp.path().join("registry");
+    LocalSourceInstaller::new(&registry_root)
+        .unwrap()
+        .install(example_source_dir())
+        .unwrap();
+    LocalSourceInstaller::new(&registry_root)
+        .unwrap()
+        .install(explain_source_dir())
+        .unwrap();
+    write_policy(
+        &registry_root,
+        &deny_emit_evidence_for_actor_policy("actor-blocked"),
+    );
+
+    let facade = build_facade_for_root(&registry_root);
+    let denied = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-blocked",
+            CapabilityGrantSet {
+                grants: vec![emit_evidence_grant()],
+            },
+        ))
+        .unwrap_err();
+
+    let receipt = denied.receipt.expect("policy denial persists a receipt");
+    let explained = facade.inspect(explain_request(&receipt.uri)).unwrap();
+    let explained_output = explained.structured_content.output.as_ref().unwrap();
+
+    assert_eq!(explained_output.structured["target_status"], "rejected");
+    assert_eq!(
+        explained_output.structured["termination"]["code"],
+        "policy-denied"
+    );
+    assert_eq!(
+        explained_output.structured["policy_decision"]["outcome"],
+        "rejected"
+    );
+}
+
+#[test]
+fn local_policy_can_further_reduce_child_grants_without_widening() {
+    let temp = TempFixtureDir::new("guild-policy-child");
+    let registry_root = temp.path().join("registry");
+    LocalSourceInstaller::new(&registry_root)
+        .unwrap()
+        .install(example_source_dir())
+        .unwrap();
+    LocalSourceInstaller::new(&registry_root)
+        .unwrap()
+        .install(composite_source_dir())
+        .unwrap();
+    write_policy(
+        &registry_root,
+        &deny_emit_evidence_for_actor_policy("skill"),
+    );
+
+    let facade = build_facade_for_root(&registry_root);
+    let error = facade.inspect(composite_request()).unwrap_err();
+
+    assert_eq!(error.code, "child-invocation-failed");
+    let receipt = error.receipt.expect("composite failure persists a receipt");
+    let parent: guild_types::ExecutionRecord =
+        serde_json::from_slice(&facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+
+    assert_eq!(parent.status, ExecutionStatus::Failed);
+    assert_eq!(parent.child_executions.len(), 1);
+    assert!(parent
+        .granted_capabilities
+        .grants
+        .iter()
+        .any(|grant| grant.id == CapabilityId::EmitEvidence));
+    assert_eq!(
+        parent.child_executions[0].policy_decision.outcome,
+        PolicyDecisionOutcome::Rejected
+    );
+    assert!(parent.child_executions[0]
+        .policy_decision
+        .reasons
+        .iter()
+        .any(|reason| reason.code == "policy-rule-deny"));
+    assert!(parent.child_executions[0]
+        .granted_capabilities
+        .grants
+        .iter()
+        .all(|grant| grant.id != CapabilityId::EmitEvidence));
+}
+
+#[test]
 fn mcp_can_read_persisted_rejected_execution_resources() {
     let facade = build_facade();
     let error = facade
@@ -470,7 +832,7 @@ fn mcp_can_read_persisted_rejected_execution_resources() {
         ))
         .unwrap_err();
 
-    assert_eq!(error.code, "capability-mismatch");
+    assert_eq!(error.code, "policy-denied");
     let receipt = error.receipt.expect("rejected execution exposes a receipt");
     let resource = facade.read_resource(&receipt.uri).unwrap();
     let record: guild_types::ExecutionRecord = serde_json::from_slice(&resource.bytes).unwrap();

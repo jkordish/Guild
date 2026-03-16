@@ -15,6 +15,9 @@
     "target_skill": {
       "type": "object"
     },
+    "policy_decision": {
+      "type": "object"
+    },
     "stored_summary": {
       "type": ["string", "null"]
     },
@@ -45,6 +48,7 @@
     "execution_resource",
     "target_status",
     "target_skill",
+    "policy_decision",
     "stored_summary",
     "termination",
     "evidence_count",

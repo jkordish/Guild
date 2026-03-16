@@ -29,7 +29,7 @@ impl HttpTestServer {
             .expect("local HTTP test server exposes local addr");
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = Arc::clone(&shutdown);
-        let handle = thread::spawn(move || serve(listener, thread_shutdown));
+        let handle = thread::spawn(move || serve(&listener, &thread_shutdown));
 
         Self {
             addr,
@@ -38,7 +38,7 @@ impl HttpTestServer {
         }
     }
 
-    pub fn host(&self) -> &'static str {
+    pub fn host() -> &'static str {
         "127.0.0.1"
     }
 
@@ -47,7 +47,7 @@ impl HttpTestServer {
     }
 
     pub fn base_url(&self) -> String {
-        format!("http://{}:{}", self.host(), self.port())
+        format!("http://{}:{}", Self::host(), self.port())
     }
 
     pub fn url(&self, path: &str) -> String {
@@ -85,7 +85,7 @@ pub fn slow_response_ms() -> u64 {
     SLOW_RESPONSE_MS
 }
 
-fn serve(listener: TcpListener, shutdown: Arc<AtomicBool>) {
+fn serve(listener: &TcpListener, shutdown: &AtomicBool) {
     while !shutdown.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, _)) => {

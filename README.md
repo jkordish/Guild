@@ -24,7 +24,7 @@ The current repository proves a narrow but real path:
 
 1. build and install a source skill into local installed state
 2. resolve a `RequestedSkillRef` to a digest-pinned executable artifact
-3. execute it through the Wasm runtime with explicit granted capabilities
+3. execute it through the Wasm runtime with host-decided granted capabilities
 4. persist `ExecutionRecord` and `EvidenceRef` artifacts under local Guild URIs
 5. optionally export the installed skill as a signed portable bundle and import it into a fresh Guild root
 
@@ -34,15 +34,18 @@ Useful local proof commands:
 make test
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_http_json_local
+cargo run -p guild-mcp --example inspect_policy_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example export_import_local
+cargo run -p guild-mcp --example export_import_composite_local
+cargo run -p guild-mcp --example signed_import_failures_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
-Additional examples cover bounded local HTTP inspection, composite execution, persisted execution-tree explanation, durable rejected executions, composite portability, and tampered or untrusted bundle rejection.
+Additional examples cover bounded local HTTP inspection, host-owned policy reduction and denial, composite execution, persisted execution-tree explanation, durable rejected executions, composite portability, and tampered or untrusted bundle rejection.
 
 ### HTTP Proof Flow
 
@@ -55,6 +58,18 @@ cargo run -p guild-mcp --example inspect_http_json_local
 ```
 
 That example starts a deterministic local HTTP server, installs the primitive `inspect-http-json` skill, grants it bounded outbound HTTP authority through `guild.inspect`, prints the successful stored execution, then runs a denied host-mismatch request and prints the persisted rejected execution. The public MCP surface does not change; HTTP is exercised through `guild.inspect`, not a new MCP tool.
+
+### Policy Proof Flow
+
+Guild now also has a real local host-owned policy evaluator.
+
+The canonical local proof command is:
+
+```bash
+cargo run -p guild-mcp --example inspect_policy_local
+```
+
+That example writes a local `policy.json` into its isolated Guild root, installs `hello-inspect`, shows a successful execution where policy reduces caller-requested capabilities before guest start, then runs a second execution that policy rejects because the actor is not allowed to receive the skill's required `emit-evidence` grant. The persisted execution record retains both the caller-requested capability set and the smaller host-granted set together with host-owned policy reasons.
 
 ## MCP Server
 
@@ -86,6 +101,8 @@ The current inspect slice is intentionally strict about a few things:
 - the active Wasm inspect slice only supports `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; broader typed families are rejected before execution
 - `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
 - `http-request` is host-mediated, typed, bounded, and fail-closed; method, scheme, host, port, path, timeout, and response-size checks stay host-owned
+- caller-requested capabilities are policy input, not final authority; a local `policy.json` plus host-owned defaults decide the granted capability set before execution
+- policy reductions and rejections persist as host-owned execution metadata and stay visible to explain/debug flows
 - durable execution records now carry host-stamped start and finish timestamps
 - the stdio MCP server exposes only `guild.inspect` plus honest Guild resource reads; HTTP transports and subscriptions remain deferred
 
@@ -145,6 +162,7 @@ What is real today:
 - Wasmtime-backed Wasm component execution
 - real host-mediated outbound HTTP execution through the Wasmtime runtime path
 - typed capability enforcement for the implemented host imports
+- local file-backed policy evaluation that can allow, reduce, or reject caller-requested capabilities before execution
 - host-minted durable execution IDs with create-only execution persistence
 - durable execution persistence with host-stamped timestamps
 - split evidence blob and evidence-record persistence
@@ -155,7 +173,8 @@ What is real today:
 
 What is still deferred:
 
-- general policy evaluation beyond explicit caller-provided grants
+- remote or distributed policy beyond the local host-owned evaluator
+- a broader policy language beyond the current typed local `policy.json` profile
 - full `plan` mode
 - `apply` mode
 - remote registries, publication flows, and transparency infrastructure

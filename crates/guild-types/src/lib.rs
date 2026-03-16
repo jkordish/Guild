@@ -884,6 +884,19 @@ pub struct CapabilityGrantSet {
     pub grants: Vec<GrantedCapability>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct CapabilitySelector {
+    pub id: CapabilityId,
+    pub access: CapabilityAccess,
+}
+
+impl CapabilitySelector {
+    #[must_use]
+    pub fn matches(&self, grant: &GrantedCapability) -> bool {
+        self.id == grant.id && self.access == grant.access
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct Budget {
     pub max_millis: u64,
@@ -934,8 +947,162 @@ pub struct CallerRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+pub enum LocalPolicyFormatVersion {
+    GuildLocalPolicyV1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalPolicyDefaultAction {
+    AllowRequestedDeclared,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PolicyRuleEffect {
+    Deny,
+    Cap,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct PolicyReason {
+    pub code: String,
+    pub message: String,
+    pub detail: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct PolicyRule {
+    pub name: Option<String>,
+    #[serde(default)]
+    pub actor_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub tenant_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub skills: Option<Vec<SkillKey>>,
+    #[serde(default)]
+    pub publisher_ids: Option<Vec<String>>,
+    pub effect: PolicyRuleEffect,
+    #[serde(default)]
+    pub capabilities: CapabilityGrantSet,
+}
+
+impl PolicyRule {
+    #[must_use]
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        if let Some(name) = &self.name {
+            if name.trim().is_empty() {
+                errors.push("policy rule names must not be empty when provided".into());
+            }
+        }
+
+        if let Some(actor_ids) = &self.actor_ids {
+            if actor_ids.is_empty() {
+                errors.push("policy rule actor_ids must not be empty when provided".into());
+            }
+
+            if actor_ids.iter().any(|actor| actor.trim().is_empty()) {
+                errors.push("policy rule actor_ids must not contain empty values".into());
+            }
+        }
+
+        if let Some(tenant_ids) = &self.tenant_ids {
+            if tenant_ids.is_empty() {
+                errors.push("policy rule tenant_ids must not be empty when provided".into());
+            }
+
+            if tenant_ids.iter().any(|tenant| tenant.trim().is_empty()) {
+                errors.push("policy rule tenant_ids must not contain empty values".into());
+            }
+        }
+
+        if let Some(skills) = &self.skills {
+            if skills.is_empty() {
+                errors.push("policy rule skills must not be empty when provided".into());
+            }
+
+            if skills
+                .iter()
+                .any(|skill| skill.namespace.trim().is_empty() || skill.name.trim().is_empty())
+            {
+                errors.push(
+                    "policy rule skills must not contain empty namespace or name values".into(),
+                );
+            }
+        }
+
+        if let Some(publisher_ids) = &self.publisher_ids {
+            if publisher_ids.is_empty() {
+                errors.push("policy rule publisher_ids must not be empty when provided".into());
+            }
+
+            if publisher_ids
+                .iter()
+                .any(|publisher| publisher.trim().is_empty())
+            {
+                errors.push("policy rule publisher_ids must not contain empty values".into());
+            }
+        }
+
+        if self.capabilities.grants.is_empty() {
+            errors.push("policy rules must declare at least one capability ceiling".into());
+        }
+
+        for (index, grant) in self.capabilities.grants.iter().enumerate() {
+            for message in grant.validate() {
+                errors.push(format!("policy rule capability grant {index}: {message}"));
+            }
+        }
+
+        errors
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct LocalPolicyConfig {
+    #[serde(default = "default_local_policy_format_version")]
+    pub format_version: LocalPolicyFormatVersion,
+    #[serde(default = "default_local_policy_action")]
+    pub default_action: LocalPolicyDefaultAction,
+    #[serde(default)]
+    pub rules: Vec<PolicyRule>,
+    #[serde(default)]
+    pub verified_publishers_required_for: Vec<CapabilitySelector>,
+}
+
+impl Default for LocalPolicyConfig {
+    fn default() -> Self {
+        Self {
+            format_version: default_local_policy_format_version(),
+            default_action: default_local_policy_action(),
+            rules: Vec::new(),
+            verified_publishers_required_for: Vec::new(),
+        }
+    }
+}
+
+impl LocalPolicyConfig {
+    #[must_use]
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        for (index, rule) in self.rules.iter().enumerate() {
+            for message in rule.validate() {
+                errors.push(format!("policy rules[{index}]: {message}"));
+            }
+        }
+
+        errors
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub enum PolicyDecisionOutcome {
     Allowed,
+    Reduced,
     Rejected,
 }
 
@@ -943,6 +1110,8 @@ pub enum PolicyDecisionOutcome {
 pub struct PolicyDecision {
     pub outcome: PolicyDecisionOutcome,
     pub summary: String,
+    #[serde(default)]
+    pub reasons: Vec<PolicyReason>,
     pub detail: Option<Value>,
 }
 
@@ -1217,6 +1386,14 @@ fn capability_access_label(access: &CapabilityAccess) -> &'static str {
         CapabilityAccess::Write => "write",
         CapabilityAccess::Invoke => "invoke",
     }
+}
+
+fn default_local_policy_format_version() -> LocalPolicyFormatVersion {
+    LocalPolicyFormatVersion::GuildLocalPolicyV1
+}
+
+fn default_local_policy_action() -> LocalPolicyDefaultAction {
+    LocalPolicyDefaultAction::AllowRequestedDeclared
 }
 
 fn string_schema(format: Option<&str>, description: Option<&str>) -> Schema {

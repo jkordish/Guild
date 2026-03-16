@@ -149,7 +149,8 @@ fn execution_request(
         granted_capabilities: grants,
         policy_decision: PolicyDecision {
             outcome: PolicyDecisionOutcome::Allowed,
-            summary: "test request allowed".into(),
+            summary: "local policy granted requested capabilities".into(),
+            reasons: Vec::new(),
             detail: None,
         },
         parent_execution_id: None,
@@ -895,6 +896,7 @@ fn explain_skill_summarizes_rejected_execution_records_without_output() {
     assert_eq!(explain_output.structured["evidence_count"], 0);
 }
 
+#[allow(clippy::too_many_lines)]
 #[test]
 fn explain_tree_skill_reports_composite_execution_tree() {
     let registry = load_registry();
@@ -1135,6 +1137,7 @@ fn explain_tree_skill_detects_revisited_execution_uris() {
             "policy_decision": {
                 "outcome": "allowed",
                 "summary": "synthetic loop for test",
+                "reasons": [],
                 "detail": null
             },
             "termination": null,

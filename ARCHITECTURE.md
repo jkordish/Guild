@@ -491,17 +491,34 @@ Policy should be enforced at:
 A policy decision may consider:
 
 - caller identity or caller class
+- tenant identity
 - requested skill ref
 - resolved skill ref
 - artifact digest
+- caller-requested capabilities
+- skill-declared required capabilities
 - capability family
 - resource identity
 - evidence identity
+- installed verification metadata
 - environment or root configuration
 
 ### 14.3 Durable denials
 
 Rejected operations should be durable enough to support later audit.
+
+### 14.4 Current repository policy shape
+
+The current repository now uses a small local-first policy layer instead of treating caller intent as the final grant:
+
+- `guild.inspect` still accepts caller-requested capabilities
+- the host loads an optional `policy.json` from the Guild root or falls back to a built-in default profile
+- the runner evaluates policy before execution and produces a host-owned `PolicyDecision`
+- policy outcomes are `allowed`, `reduced`, or `rejected`
+- reductions and denials carry host-owned reason codes and survive into durable execution records
+- child execution starts from the parent-derived subset and is then re-evaluated by the same host policy path, so policy can narrow but never widen authority
+
+The default local profile keeps current example flows working by allowing only caller-requested grants that fit the declared capability surface of the resolved local dependency tree. Local rules then reduce or deny from that starting point. Optional trust-aware rules can require verified imported publishers before risky families such as `http-request` are granted.
 
 ## 15. Example Logical Layout of a Guild Root
 
@@ -595,7 +612,7 @@ The current repository implements a real but intentionally narrow slice of this 
 - the local registry resolves only against installed executable state
 - requested resolution fails closed on same-version multi-digest ambiguity
 - the runtime host executes Wasm components through Wasmtime
-- explicit caller-provided grants are enforced through typed capability evaluation
+- caller-requested grants flow through a host-owned local policy evaluator before typed capability enforcement
 - successful, failed, and rejected resolved executions persist as durable execution records with host-minted IDs and host-stamped timestamps
 - evidence persists as durable local objects with separate blob and evidence-record identity and is readable through the same backend used by guest `read-resource`
 - composite skills invoke declared child dependencies by alias through the same host boundary
@@ -606,7 +623,8 @@ The current repository implements a real but intentionally narrow slice of this 
 
 What is still deferred in this repo:
 
-- a general policy engine beyond explicit grants
+- remote or distributed policy evaluation
+- a broader policy language beyond the current local typed profile
 - full `plan` execution
 - `apply` mode
 - remote registry and publication infrastructure
@@ -631,7 +649,7 @@ Phase 2
 Phase 3
 
 - signatures and provenance
-- richer policy engine
+- richer local policy profiles
 - ecosystem distribution and trust tiers
 - retention/governance controls
 

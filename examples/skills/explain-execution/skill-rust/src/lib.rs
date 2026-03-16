@@ -70,6 +70,10 @@ impl Guest for ExplainExecution {
                     .pointer("/resolved_skill")
                     .cloned()
                     .unwrap_or(Value::Null),
+                "policy_decision": execution_record
+                    .get("policy_decision")
+                    .cloned()
+                    .unwrap_or(Value::Null),
                 "stored_summary": execution_record.pointer("/output/summary").cloned().unwrap_or(Value::Null),
                 "termination": execution_record
                     .get("termination")

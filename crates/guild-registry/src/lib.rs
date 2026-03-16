@@ -20,9 +20,9 @@ use guild_manifest::{
 };
 use guild_types::{
     mint_host_evidence_record_id, CapabilityId, EvidenceBlobRecord, EvidenceEmissionRequest,
-    EvidenceRecord, EvidenceRef, ExecutionRecord, GuildResourceUri, RequestedSkillRef,
-    ResolvedSkillRef, ResourceReadResult, SkillCategory, GUILD_EXECUTION_URI_PREFIX,
-    GUILD_OBJECT_BLOB_URI_PREFIX, GUILD_OBJECT_RECORD_URI_PREFIX,
+    EvidenceRecord, EvidenceRef, ExecutionRecord, GuildResourceUri, LocalPolicyConfig,
+    RequestedSkillRef, ResolvedSkillRef, ResourceReadResult, SkillCategory,
+    GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX, GUILD_OBJECT_RECORD_URI_PREFIX,
 };
 use rand_core::OsRng;
 use schemars::JsonSchema;
@@ -300,6 +300,14 @@ pub trait SkillRegistry {
     /// Returns an error if the resource URI is invalid, missing, or cannot be
     /// materialized.
     fn read_resource(&self, uri: &str) -> Result<ResourceReadResult, RegistryError>;
+
+    /// Load the local host policy configuration for this Guild root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the local policy file cannot be read, parsed, or
+    /// validated.
+    fn load_policy_config(&self) -> Result<LocalPolicyConfig, RegistryError>;
 }
 
 #[derive(Debug, Clone)]
@@ -1029,6 +1037,48 @@ impl SkillRegistry for LocalRegistry {
             GuildResourceUri::ObjectBlob { digest_hex } => {
                 read_blob_object(&self.root, uri, &digest_hex)
             }
+        }
+    }
+
+    fn load_policy_config(&self) -> Result<LocalPolicyConfig, RegistryError> {
+        let path = policy_path(&self.root);
+        if !path.exists() {
+            return Ok(LocalPolicyConfig::default());
+        }
+
+        let contents = fs::read_to_string(&path).map_err(|error| {
+            RegistryError::new(
+                "policy-read-failed",
+                "failed to read local policy configuration",
+            )
+            .with_detail(serde_json::json!({
+                "path": path.display().to_string(),
+                "cause": error.to_string(),
+            }))
+        })?;
+
+        let config: LocalPolicyConfig = serde_json::from_str(&contents).map_err(|error| {
+            RegistryError::new(
+                "policy-parse-failed",
+                "failed to parse local policy configuration",
+            )
+            .with_detail(serde_json::json!({
+                "path": path.display().to_string(),
+                "cause": error.to_string(),
+            }))
+        })?;
+
+        let validation = config.validate();
+        if validation.is_empty() {
+            Ok(config)
+        } else {
+            Err(
+                RegistryError::new("policy-invalid", "local policy configuration was invalid")
+                    .with_detail(serde_json::json!({
+                        "path": path.display().to_string(),
+                        "errors": validation,
+                    })),
+            )
         }
     }
 }
@@ -1991,6 +2041,10 @@ fn import_staging_root(root: &Path) -> PathBuf {
 
 fn source_install_staging_root(root: &Path) -> PathBuf {
     root.join(".source-install-staging")
+}
+
+fn policy_path(root: &Path) -> PathBuf {
+    root.join("policy.json")
 }
 
 fn install_staging_suffix() -> String {

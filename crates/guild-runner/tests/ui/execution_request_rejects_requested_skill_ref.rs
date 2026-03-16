@@ -31,6 +31,7 @@ fn main() {
         policy_decision: PolicyDecision {
             outcome: PolicyDecisionOutcome::Allowed,
             summary: "allowed".into(),
+            reasons: Vec::new(),
             detail: None,
         },
         parent_execution_id: None,

@@ -114,7 +114,7 @@ Costs and current limits:
 
 - the current inspect surface is intentionally smaller than the shared contract vocabulary
 - adding a new capability family now requires real host behavior, typed constraints, and explicit documentation
-- callers can request capabilities, but Guild does not yet claim a richer standalone policy engine beyond host validation of the granted slice
+- callers can request capabilities, but the final granted slice is now decided by the host-owned local policy evaluator described in ADR 0008 rather than by caller intent alone
 
 ## Explicit invariants
 

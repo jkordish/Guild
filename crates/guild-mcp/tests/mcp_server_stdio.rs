@@ -11,8 +11,8 @@ use guild_mcp::protocol::{
 use guild_registry::LocalSourceInstaller;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
-    EvidenceAudience, ExecutionRecord, ExecutionStatus, GrantedCapability, RedactionClass,
-    RequestedSkillRef, SkillKey, VersionRequirement,
+    EvidenceAudience, ExecutionRecord, ExecutionStatus, GrantedCapability, PolicyDecisionOutcome,
+    RedactionClass, RequestedSkillRef, SkillKey, VersionRequirement,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
@@ -289,9 +289,10 @@ fn guild_inspect_rejection_returns_tool_error_with_persisted_receipt_record() {
     assert_eq!(result.is_error, Some(true));
     assert_eq!(record.status, ExecutionStatus::Rejected);
     assert!(record.output.is_none());
+    assert_eq!(record.termination.as_ref().unwrap().code, "policy-denied");
     assert_eq!(
-        record.termination.as_ref().unwrap().code,
-        "capability-mismatch"
+        record.policy_decision.outcome,
+        PolicyDecisionOutcome::Rejected
     );
     assert!(result.content.iter().any(|block| matches!(
         block,

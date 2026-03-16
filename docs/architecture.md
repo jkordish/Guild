@@ -13,6 +13,7 @@ Current architecture highlights worth knowing before you follow older notes:
 - source installs stage and move atomically instead of pre-deleting installed state
 - unsupported capability families are rejected before execution in the active inspect slice
 - bounded `http-request` execution is now part of that active inspect slice through the same Wasmtime runtime path
+- caller-requested capabilities now flow through a local host-owned policy evaluator before execution starts
 - read-resource auth uses canonical parsed Guild URI scopes
 - `guild-mcp-server` is now a real stdio MCP façade over the same inspect/runtime/resource path
 

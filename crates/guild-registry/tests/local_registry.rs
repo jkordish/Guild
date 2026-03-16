@@ -10,8 +10,8 @@ use guild_registry::{
     LocalRegistry, LocalSourceInstaller, SkillRegistry, VerificationStatus,
 };
 use guild_types::{
-    EvidenceAudience, EvidenceEmissionRequest, RedactionClass, RequestedSkillRef, SkillKey,
-    VersionRequirement,
+    EvidenceAudience, EvidenceEmissionRequest, LocalPolicyConfig, RedactionClass,
+    RequestedSkillRef, SkillKey, VersionRequirement,
 };
 
 fn repo_root() -> PathBuf {
@@ -86,6 +86,27 @@ fn requested_hello_composite() -> RequestedSkillRef {
         },
         version_req: VersionRequirement::parse("^0.1").unwrap(),
     }
+}
+
+#[test]
+fn load_policy_config_defaults_when_policy_file_is_missing() {
+    let temp = TempFixtureDir::new();
+    let registry = LocalRegistry::load(temp.path()).unwrap();
+
+    let policy = registry.load_policy_config().unwrap();
+
+    assert_eq!(policy, LocalPolicyConfig::default());
+}
+
+#[test]
+fn load_policy_config_fails_closed_when_policy_file_is_invalid() {
+    let temp = TempFixtureDir::new();
+    fs::write(temp.path().join("policy.json"), "{ not valid json").unwrap();
+
+    let registry = LocalRegistry::load(temp.path()).unwrap();
+    let error = registry.load_policy_config().unwrap_err();
+
+    assert_eq!(error.code, "policy-parse-failed");
 }
 
 struct TempFixtureDir {

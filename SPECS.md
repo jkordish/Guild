@@ -107,7 +107,7 @@ A typed, host-defined permission set granted to a guest for a particular executi
 
 ### 5.14 PolicyDecision
 
-A host-owned authorization result describing whether execution was allowed or rejected.
+A host-owned authorization result describing whether execution was allowed, reduced, or rejected.
 
 ### 5.15 Host
 
@@ -172,9 +172,11 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - local source installs stage and validate before an atomic move into place
 - requested resolution fails closed if a single key and version maps to multiple installed digests
 - supported typed capability families in the active Wasm inspect slice are currently `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- caller-requested capabilities are evaluated through a host-owned local policy layer before execution
+- the current repository loads an optional `policy.json` from the Guild root and otherwise uses a built-in default local policy profile
 - unsupported capability families present elsewhere in shared contracts are rejected before execution in the active inspect slice
 
-The current repository does not yet implement full `plan` mode, a general policy engine, or `apply` mode.
+The current repository does not yet implement full `plan` mode, remote or distributed policy, or `apply` mode.
 
 The current repository now also exposes a real stdio MCP server surface over that same runtime:
 
@@ -303,7 +305,9 @@ Capability grants SHOULD be represented as typed capability slices rather than v
 
 ### 12.2 Least privilege
 
-The host MUST grant only the capabilities required for the execution.
+The host MUST grant only the capabilities needed for the execution after applying host-owned policy.
+
+Caller-requested capabilities are policy input, not final authority. The host MAY reduce or reject caller intent before guest execution begins.
 
 ### 12.3 Capability families
 
@@ -499,7 +503,25 @@ Policy MAY be expressed against:
 - resource access
 - evidence access
 
-### 18.3 Durable denial record
+### 18.3 Policy inputs and outputs
+
+A policy evaluator SHOULD be able to consider at least:
+
+- caller identity such as `actor_id`
+- tenant identity such as `tenant_id`
+- the target skill identity
+- caller-requested capabilities
+- manifest-declared required capabilities
+- installed verification or trust metadata when available
+
+A host policy decision SHOULD distinguish:
+
+- the caller-requested capability set
+- the final granted capability set
+- an outcome of allowed, reduced, or rejected
+- host-owned reason codes sufficient for later explanation
+
+### 18.4 Durable denial record
 
 Policy rejection SHOULD produce a durable record suitable for later inspection and audit.
 
@@ -507,7 +529,9 @@ In the current repository, authorization denials across runner checks and suppor
 
 For supported runtime-side HTTP failures after authorization, the current repository distinguishes host-owned authorization rejections from bounded transport/runtime failures such as timeout or oversized response bodies. Those latter failures persist as unsuccessful executions without being reclassified as capability denials.
 
-### 18.4 Safety precedence
+The current repository uses a local file-backed `policy.json` profile plus a built-in default. Missing policy configuration falls back to the built-in profile, but unreadable or invalid policy configuration MUST fail closed before execution.
+
+### 18.5 Safety precedence
 
 When policy conflicts with convenience, the host MUST prefer policy.
 

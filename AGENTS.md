@@ -113,8 +113,9 @@ The repository now has a real local inspect-only path:
 - the runner builds `ExecutionContext` with explicit grants
 - primitive and composite example skills execute through the Wasmtime-backed Wasm runtime adapter
 - composite skills invoke declared child dependencies by alias through the host boundary
+- caller-requested capabilities now flow through a local host-owned policy evaluator before they become granted capabilities
 - supported capability families now use typed constraints enforced by one shared host-side evaluator
-- only the active inspect-slice capability families `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are actually executable; unsupported families fail before execution
+- the active inspect-slice capability families `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are actually executable; unsupported families fail before execution
 - resolved execution attempts persist under local Guild URIs on success, failure, and rejection with host-minted durable IDs and host-stamped timestamps
 - evidence emitted through the Wasm boundary persists as content-addressed blobs plus host-issued per-emission evidence records
 - `read-resource` authorization uses canonical parsed Guild URI scopes rather than loose raw string prefix checks
@@ -127,6 +128,8 @@ Preferred local proof commands:
 
 ```bash
 cargo run -p guild-mcp --example inspect_local
+cargo run -p guild-mcp --example inspect_http_json_local
+cargo run -p guild-mcp --example inspect_policy_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
@@ -140,7 +143,7 @@ cargo run -p guild-mcp --example mcp_stdio_local
 Those commands are the canonical local install workflows: they build the example source skills, install them into command-specific cleaned subdirectories under `target/dev-local-registry/`, resolve them, and execute them. The source manifests no longer require manual artifact digest updates.
 They also prove the storage layer by reading back persisted execution and evidence resources, `explain_execution_local` proves that a Wasm guest can consume those same Guild URIs through a host-mediated `read-resource` capability, `explain_execution_tree_local` proves that a resource-aware inspect skill can walk a persisted parent/child execution tree deterministically, and `explain_failure_local` proves that unsuccessful resolved executions now persist durable host-owned records that can be explained after the fact.
 `export_import_local` and `export_import_composite_local` now prove signed bundle portability with an explicit local publisher identity plus local trust-store import verification, while `signed_import_failures_local` proves that untrusted or tampered bundles fail closed before installation.
-The current working capability families are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, all with typed constraints rather than ad hoc JSON matching. Caller request IDs are correlation only, not durable execution IDs, and `EvidenceRef` values now identify evidence-record URIs rather than raw blob digests.
+`inspect_http_json_local` proves the bounded `http-request` host capability, and `inspect_policy_local` proves that a local `policy.json` can reduce or deny caller-requested capabilities before guest execution. The current working capability families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, all with typed constraints rather than ad hoc JSON matching. Caller request IDs are correlation only, not durable execution IDs, and `EvidenceRef` values now identify evidence-record URIs rather than raw blob digests.
 
 ## Change rules
 

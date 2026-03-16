@@ -38,7 +38,7 @@ Applies to: shared Rust types, manifests, runtime translation, examples, and con
 | Skill output | Guest-authored `SkillOutput` may be embedded inside `ExecutionRecord` as a payload snapshot without changing record ownership. |
 | Evidence record | `EvidenceRecord` stores URI, content identity, mime type, size, audience, redaction, freshness, and producer metadata when available. |
 | Evidence handle | `EvidenceRef` remains the guest-visible handle returned through WIT and stored in guest output. |
-| Policy decision | `PolicyDecision` records allow or reject outcome plus durable rationale metadata. |
+| Policy decision | `PolicyDecision` records allowed, reduced, or rejected outcome plus durable rationale metadata. |
 
 ## Manifest version axes
 

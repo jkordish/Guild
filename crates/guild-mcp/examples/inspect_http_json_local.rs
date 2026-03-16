@@ -80,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "actor-dev",
         CapabilityGrantSet {
             grants: vec![http_grant(
-                server.host(),
+                http_test_server::HttpTestServer::host(),
                 server.port(),
                 "/json",
                 HttpMethod::Get,

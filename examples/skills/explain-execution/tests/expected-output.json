@@ -16,6 +16,12 @@
       "version": "0.1.0",
       "digest": "__TARGET_SKILL_DIGEST__"
     },
+    "policy_decision": {
+      "outcome": "allowed",
+      "summary": "local policy granted requested capabilities",
+      "reasons": [],
+      "detail": null
+    },
     "stored_summary": "Hello, Ada. Guild inspect is working.",
     "termination": null,
     "evidence_count": 1,

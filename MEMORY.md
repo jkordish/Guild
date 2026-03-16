@@ -164,6 +164,7 @@ Canonical local proof commands:
 ```bash
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_http_json_local
+cargo run -p guild-mcp --example inspect_policy_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
@@ -178,6 +179,7 @@ What they prove:
 
 - `inspect_local`: install `hello-inspect`, execute it, read back stored execution + evidence
 - `inspect_http_json_local`: start a deterministic local HTTP server, install `inspect-http-json`, run one bounded allowed request through `guild.inspect`, then run one denied host-mismatch request and read back both persisted execution records
+- `inspect_policy_local`: write a local `policy.json`, install `hello-inspect`, show one execution where policy reduces caller-requested capabilities before guest start, then show one persisted host-owned rejection when policy denies a required capability
 - `inspect_composite_local`: install `hello-inspect`, install `hello-composite`, execute composite inspect, read back parent + child + child evidence
 - `explain_execution_local`: install `hello-inspect`, produce a stored execution URI, install `explain-execution`, then run a resource-aware skill against that stored execution through the Wasm host boundary
 - `explain_execution_tree_local`: install `hello-inspect` and `hello-composite`, produce a stored parent/child execution tree, install `explain-execution-tree`, then walk that stored lineage through the same host-mediated resource path
@@ -197,7 +199,8 @@ Still intentionally missing or narrow:
 - `apply` remains globally gated off
 - no remote registry or publication flow
 - no remote signatures, transparency logs, or trust/publication metadata beyond the local offline trust store
-- no full policy engine beyond explicit caller-provided grants
+- no remote or distributed policy beyond the local host-owned evaluator
+- no broad policy language beyond the current typed local `policy.json` profile
 - no MCP subscriptions, list-changed notifications, or HTTP transport
 - no search, indexing, or query layer over stored executions/evidence
 - no arbitrary filesystem or non-Guild URI reads from guests
@@ -206,7 +209,7 @@ Still intentionally missing or narrow:
 
 Current sharp edges worth remembering:
 
-- capability hardening is still intentionally narrow to the currently implemented capability families, not a general policy language
+- capability hardening and policy remain intentionally narrow to the currently implemented capability families and the current local rule model, not a general enterprise policy language
 - the local store is honest and useful, but still not a broader storage platform
 - pre-resolution request/lookup failures are still not persisted in this milestone
 - persistence failures themselves still surface as direct errors; Guild does not yet write provisional/in-progress records
@@ -230,7 +233,7 @@ The clean next milestones after integrity hardening are:
    - keep the public MCP tool surface small rather than drifting into one-tool-per-skill sprawl
 
 5. Only then widen outward
-   - policy evaluation
+   - richer local policy profiles and trust tiers
    - remote registries/publication
    - eventually `plan`
    - much later, carefully gated `apply`
@@ -248,6 +251,8 @@ cargo fmt --all
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -W clippy::cargo -W clippy::future_not_send
 cargo run -p guild-mcp --example inspect_local
+cargo run -p guild-mcp --example inspect_http_json_local
+cargo run -p guild-mcp --example inspect_policy_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local

@@ -108,7 +108,8 @@ fn envelope_for(
         granted_capabilities: grants,
         policy_decision: PolicyDecision {
             outcome: PolicyDecisionOutcome::Allowed,
-            summary: "test request allowed".into(),
+            summary: "local policy granted requested capabilities".into(),
+            reasons: Vec::new(),
             detail: None,
         },
         parent_execution_id: None,

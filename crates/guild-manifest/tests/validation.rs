@@ -276,7 +276,7 @@ fn capability_validation_rejects_wrong_family_and_empty_scopes() {
             access: CapabilityAccess::Read,
             constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
                 allowed_schemes: Some(Vec::new()),
-                allowed_hosts: Some(vec!["".into()]),
+                allowed_hosts: Some(vec![String::new()]),
                 allowed_ports: Some(vec![0]),
                 allowed_methods: Some(vec![HttpMethod::Get]),
                 allowed_path_prefixes: Some(vec!["json".into()]),
