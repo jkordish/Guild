@@ -2,9 +2,18 @@
 name = "guild-manifest"
 version.workspace = true
 edition.workspace = true
+description = "Manifest model for Guild source and installed skills"
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 guild-types = { path = "../guild-types" }
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
+
+[lints]
+workspace = true

@@ -160,7 +160,7 @@ fn run_hello_inspect(
         .execute(
             registry,
             &installed,
-            execution_request(
+            &execution_request(
                 &installed,
                 unique_id("hello-inspect"),
                 json!({ "name": "Ada" }),
@@ -181,7 +181,7 @@ fn run_failed_hello_inspect(
         .execute(
             registry,
             &installed,
-            execution_request(
+            &execution_request(
                 &installed,
                 unique_id("hello-inspect-failed"),
                 json!({ "name": "Ada", "emit_log": true }),
@@ -208,7 +208,7 @@ fn run_rejected_explain_execution(
         .execute(
             registry,
             &installed,
-            execution_request(
+            &execution_request(
                 &installed,
                 unique_id("explain-execution-rejected"),
                 json!({
@@ -238,7 +238,7 @@ fn run_explain_execution(
     runner.execute(
         registry,
         &installed,
-        execution_request(
+        &execution_request(
             &installed,
             unique_id("explain-execution"),
             json!({
@@ -704,7 +704,7 @@ fn explain_skill_reports_child_execution_linkage_for_composites() {
         .execute(
             &registry,
             &installed,
-            execution_request(
+            &execution_request(
                 &installed,
                 unique_id("hello-composite"),
                 json!({ "name": "Ada" }),
@@ -817,7 +817,7 @@ fn nested_child_resource_reads_cannot_expand_parent_scope() {
         .execute(
             &registry,
             &composite,
-            execution_request(
+            &execution_request(
                 &composite,
                 unique_id("resource-composite"),
                 json!({ "execution_uri": hello_record.receipt.uri }),

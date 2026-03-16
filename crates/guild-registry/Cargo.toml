@@ -2,6 +2,12 @@
 name = "guild-registry"
 version.workspace = true
 edition.workspace = true
+description = "Local installation, resolution, bundle, and resource persistence for Guild"
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 base64.workspace = true
@@ -14,3 +20,6 @@ serde_json.workspace = true
 schemars.workspace = true
 sha2.workspace = true
 walkdir.workspace = true
+
+[lints]
+workspace = true

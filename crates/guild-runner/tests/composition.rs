@@ -178,7 +178,7 @@ fn composite_skill_invokes_child_and_records_host_owned_metadata() {
         .execute(
             &registry,
             &installed,
-            request_for(
+            &request_for(
                 &installed,
                 CapabilityGrantSet {
                     grants: vec![
@@ -293,7 +293,7 @@ fn composite_fixture_expected_output_matches_real_execution() {
         .execute(
             &registry,
             &installed,
-            request_for(
+            &request_for(
                 &installed,
                 CapabilityGrantSet {
                     grants: vec![invoke_hello_grant(&["hello"]), emit_evidence_grant()],
@@ -321,7 +321,7 @@ fn undeclared_dependency_alias_is_rejected() {
         .execute(
             &registry,
             &installed,
-            request_for(
+            &request_for(
                 &installed,
                 CapabilityGrantSet {
                     grants: vec![invoke_hello_grant(&["hello", "ghost"])],
@@ -371,7 +371,7 @@ fn child_capabilities_must_be_satisfied_by_parent_grants() {
         .execute(
             &registry,
             &installed,
-            request_for(
+            &request_for(
                 &installed,
                 CapabilityGrantSet {
                     grants: vec![invoke_hello_grant(&["hello"]), emit_evidence_grant()],
@@ -393,7 +393,7 @@ fn unsupported_capability_grants_are_rejected_before_execution() {
         .execute(
             &registry,
             &installed,
-            request_for(
+            &request_for(
                 &installed,
                 CapabilityGrantSet {
                     grants: vec![
@@ -444,7 +444,7 @@ fn child_runtime_failures_persist_parent_and_child_execution_records() {
     );
     request.request.request_id = unique_id("request-composite-child-failed");
     request.request.trace_id = unique_id("trace-composite-child-failed");
-    let error = runner.execute(&registry, &installed, request).unwrap_err();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
 
     assert_eq!(error.code, "child-invocation-failed");
     let parent_receipt = error.receipt.expect("failed parent execution is persisted");
@@ -493,6 +493,6 @@ fn child_execution_budget_is_decremented_and_exhaustion_fails_closed() {
     request.resolved_skill = installed.resolved_ref.clone();
     request.request.budget.max_child_executions = 0;
 
-    let error = runner.execute(&registry, &installed, request).unwrap_err();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
     assert_eq!(error.code, "child-budget-exhausted");
 }

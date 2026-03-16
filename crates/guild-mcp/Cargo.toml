@@ -2,6 +2,12 @@
 name = "guild-mcp"
 version.workspace = true
 edition.workspace = true
+description = "Small MCP facade and stdio server over the Guild runtime"
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [[bin]]
 name = "guild-mcp-server"
@@ -15,3 +21,6 @@ guild-types = { path = "../guild-types" }
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
+
+[lints]
+workspace = true

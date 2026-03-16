@@ -1,3 +1,6 @@
+#![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::perf)]
+#![allow(clippy::multiple_crate_versions)]
+
 //! Execution boundary and runtime abstraction for Guild.
 
 use std::collections::HashMap;
@@ -39,6 +42,12 @@ mod bindings {
 pub trait RuntimeAdapter: Send + Sync {
     fn kind(&self) -> RuntimeKind;
 
+    /// Execute an installed skill with a host-issued context and host boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns a runtime failure when the runtime cannot load or execute the
+    /// installed artifact successfully.
     fn execute(
         &self,
         installed: &InstalledSkill,
@@ -49,6 +58,12 @@ pub trait RuntimeAdapter: Send + Sync {
 }
 
 pub trait RuntimeHost: Send + Sync {
+    /// Invoke a declared child dependency under the host's execution rules.
+    ///
+    /// # Errors
+    ///
+    /// Returns a child invocation error when the child cannot be invoked,
+    /// authorized, or completed successfully.
     fn invoke_dependency(
         &self,
         parent: &InstalledSkill,
@@ -56,14 +71,24 @@ pub trait RuntimeHost: Send + Sync {
         sequence: u16,
         alias: &str,
         input: &Value,
-    ) -> Result<ChildInvocationOutcome, ChildInvocationError>;
+    ) -> Result<ChildInvocationOutcome, Box<ChildInvocationError>>;
 
+    /// Persist guest-emitted evidence through the host-owned evidence store.
+    ///
+    /// # Errors
+    ///
+    /// Returns a skill error when the evidence cannot be accepted or persisted.
     fn emit_evidence(
         &self,
         execution_id: &str,
         request: &EvidenceEmissionRequest,
     ) -> Result<EvidenceRef, SkillError>;
 
+    /// Read a Guild resource through the host-owned resource backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns a skill error when the URI is invalid, unauthorized, or missing.
     fn read_resource(&self, uri: &str) -> Result<ResourceReadResult, SkillError>;
 }
 
@@ -78,6 +103,7 @@ pub struct ExecutionError {
 }
 
 impl ExecutionError {
+    #[must_use]
     pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
@@ -89,21 +115,25 @@ impl ExecutionError {
         }
     }
 
+    #[must_use]
     pub fn with_detail(mut self, detail: impl Into<Value>) -> Self {
         self.detail = Some(Box::new(detail.into()));
         self
     }
 
+    #[must_use]
     pub fn with_phase(mut self, phase: ExecutionPhase) -> Self {
         self.phase = Some(phase);
         self
     }
 
+    #[must_use]
     pub fn with_retryable(mut self, retryable: bool) -> Self {
         self.retryable = retryable;
         self
     }
 
+    #[must_use]
     pub fn with_receipt(mut self, receipt: ExecutionReceipt) -> Self {
         self.receipt = Some(Box::new(receipt));
         self
@@ -202,6 +232,7 @@ pub struct InProcessRuntimeAdapter {
 }
 
 impl InProcessRuntimeAdapter {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -310,6 +341,11 @@ pub struct WasmtimeRuntimeAdapter {
 }
 
 impl WasmtimeRuntimeAdapter {
+    /// Construct the Wasmtime-backed Guild runtime adapter.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Wasmtime engine cannot be initialized.
     pub fn new() -> Result<Self, ExecutionError> {
         let mut config = Config::new();
         config.wasm_component_model(true);
@@ -545,7 +581,7 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
             self.grants(),
             &CapabilityOperation::EmitEvidence { request: &request },
         ) {
-            return Err(capability_denial_trap(denial));
+            return Err(capability_denial_trap(&denial));
         }
 
         match self
@@ -569,7 +605,7 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
         if let Err(denial) =
             CapabilityEvaluator::authorize(self.grants(), &CapabilityOperation::Log { level })
         {
-            return Err(capability_denial_trap(denial));
+            return Err(capability_denial_trap(&denial));
         }
 
         let _ = message;
@@ -583,13 +619,14 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
         let parsed_uri = match GuildResourceUri::parse(&uri) {
             Ok(parsed_uri) => parsed_uri,
             Err(error) => {
-                return Err(capability_denial_trap(CapabilityDenial {
+                let denial = CapabilityDenial {
                     code: "resource-uri-invalid".into(),
                     message: error.to_string(),
                     detail: serde_json::json!({
                         "uri": uri,
                     }),
-                }));
+                };
+                return Err(capability_denial_trap(&denial));
             }
         };
 
@@ -600,7 +637,7 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
                 parsed_uri: &parsed_uri,
             },
         ) {
-            return Err(capability_denial_trap(denial));
+            return Err(capability_denial_trap(&denial));
         }
 
         match self.host.read_resource(&uri) {
@@ -647,7 +684,7 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
             }
         };
 
-        let sequence = self.child_executions.len() as u16 + 1;
+        let sequence = next_child_sequence(self.child_executions.len())?;
         match self.host.invoke_dependency(
             &self.installed,
             &self.execution,
@@ -660,8 +697,9 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
                 Ok(Ok(to_wit_skill_output(&outcome.output)))
             }
             Err(error) => {
+                let error = *error;
                 if let Some(denial) = error.denial {
-                    return Err(capability_denial_trap(denial));
+                    return Err(capability_denial_trap(&denial));
                 }
                 if let Some(record) = error.record {
                     self.child_executions.push(*record);
@@ -702,23 +740,40 @@ pub struct Runner<A> {
     runtime: A,
 }
 
+struct UnsuccessfulAttemptContext<'a> {
+    installed: &'a InstalledSkill,
+    envelope: &'a ResolvedExecutionEnvelope,
+    execution_id: &'a str,
+    started_at_utc: &'a str,
+    duration_ms: u64,
+}
+
 impl<A> Runner<A>
 where
     A: RuntimeAdapter,
 {
+    #[must_use]
     pub fn new(runtime: A) -> Self {
         Self { runtime }
     }
 
+    #[must_use]
     pub fn runtime(&self) -> &A {
         &self.runtime
     }
 
+    /// Execute a resolved installed skill through the configured runtime adapter.
+    ///
+    /// # Errors
+    ///
+    /// Returns an execution error if validation, runtime execution, or durable
+    /// persistence fails. Unsuccessful attempts that reached the host execution
+    /// path still persist durable execution records before the error is returned.
     pub fn execute<R>(
         &self,
         registry: &R,
         installed: &InstalledSkill,
-        envelope: ResolvedExecutionEnvelope,
+        envelope: &ResolvedExecutionEnvelope,
     ) -> Result<ExecutionRecord, ExecutionError>
     where
         A: Clone + 'static,
@@ -727,88 +782,25 @@ where
         let started = Instant::now();
         let execution_id = mint_host_execution_id();
         let started_at_utc = host_now_utc();
+        let unsuccessful = |duration_ms| UnsuccessfulAttemptContext {
+            installed,
+            envelope,
+            execution_id: &execution_id,
+            started_at_utc: &started_at_utc,
+            duration_ms,
+        };
 
-        if let Err(error) = Self::validate_manifest(&installed.manifest) {
+        if let Err(error) = self.validate_execution(installed, envelope) {
             return Err(Self::persist_unsuccessful_attempt(
                 registry,
-                installed,
-                &envelope,
-                &execution_id,
-                &started_at_utc,
-                duration_ms(started.elapsed()),
+                &unsuccessful(duration_ms(started.elapsed())),
                 error,
                 Vec::new(),
-                Vec::new(),
-            ));
-        }
-        if let Err(error) = Self::validate_request(&installed.manifest, &envelope) {
-            return Err(Self::persist_unsuccessful_attempt(
-                registry,
-                installed,
-                &envelope,
-                &execution_id,
-                &started_at_utc,
-                duration_ms(started.elapsed()),
-                error,
-                Vec::new(),
-                Vec::new(),
-            ));
-        }
-        if let Err(error) = self.validate_runtime(installed) {
-            return Err(Self::persist_unsuccessful_attempt(
-                registry,
-                installed,
-                &envelope,
-                &execution_id,
-                &started_at_utc,
-                duration_ms(started.elapsed()),
-                error,
-                Vec::new(),
-                Vec::new(),
-            ));
-        }
-        if let Err(error) = self.validate_runtime_surface(installed, &envelope.granted_capabilities)
-        {
-            return Err(Self::persist_unsuccessful_attempt(
-                registry,
-                installed,
-                &envelope,
-                &execution_id,
-                &started_at_utc,
-                duration_ms(started.elapsed()),
-                error,
-                Vec::new(),
-                Vec::new(),
-            ));
-        }
-        if let Err(error) = self.validate_resolved_ref(installed, &envelope) {
-            return Err(Self::persist_unsuccessful_attempt(
-                registry,
-                installed,
-                &envelope,
-                &execution_id,
-                &started_at_utc,
-                duration_ms(started.elapsed()),
-                error,
-                Vec::new(),
-                Vec::new(),
-            ));
-        }
-        if let Err(error) = self.validate_grants(installed, &envelope.granted_capabilities) {
-            return Err(Self::persist_unsuccessful_attempt(
-                registry,
-                installed,
-                &envelope,
-                &execution_id,
-                &started_at_utc,
-                duration_ms(started.elapsed()),
-                error,
-                Vec::new(),
-                Vec::new(),
+                &[],
             ));
         }
 
-        let context = Self::build_context(&envelope, &execution_id, &started_at_utc);
+        let context = Self::build_context(envelope, &execution_id, &started_at_utc);
         let runtime_host: Arc<dyn RuntimeHost> = Arc::new(RunnerRuntimeHost {
             runner: self.clone(),
             registry: registry.clone(),
@@ -822,14 +814,10 @@ where
                 Err(failure) => {
                     return Err(Self::persist_unsuccessful_attempt(
                         registry,
-                        installed,
-                        &envelope,
-                        &execution_id,
-                        &started_at_utc,
-                        duration_ms(started.elapsed()),
+                        &unsuccessful(duration_ms(started.elapsed())),
                         *failure.error,
                         failure.child_executions,
-                        failure.emitted_evidence,
+                        &failure.emitted_evidence,
                     ));
                 }
             };
@@ -854,12 +842,12 @@ where
             emitted_evidence: Self::load_evidence_records(registry, &outcome.emitted_evidence)?,
             metrics: ExecutionMetrics {
                 duration_ms,
-                child_executions: outcome.child_executions.len() as u16,
+                child_executions: saturating_u16_len(outcome.child_executions.len()),
                 ..ExecutionMetrics::default()
             },
             provenance: Self::build_provenance(
                 installed,
-                &envelope,
+                envelope,
                 &started_at_utc,
                 &finished_at_utc,
             ),
@@ -871,6 +859,20 @@ where
         Ok(record)
     }
 
+    fn validate_execution(
+        &self,
+        installed: &InstalledSkill,
+        envelope: &ResolvedExecutionEnvelope,
+    ) -> Result<(), ExecutionError> {
+        Self::validate_manifest(&installed.manifest)?;
+        Self::validate_request(&installed.manifest, envelope)?;
+        self.validate_runtime(installed)?;
+        self.validate_runtime_surface(installed, &envelope.granted_capabilities)?;
+        Self::validate_resolved_ref(installed, envelope)?;
+        Self::validate_grants(installed, &envelope.granted_capabilities)
+    }
+
+    #[must_use]
     pub fn build_context(
         envelope: &ResolvedExecutionEnvelope,
         execution_id: &str,
@@ -889,6 +891,12 @@ where
         }
     }
 
+    /// Validate a resolved execution request against the installed manifest.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the manifest, requested mode, or global mode policy
+    /// rejects the execution request.
     pub fn validate_request(
         manifest: &SkillManifest,
         envelope: &ResolvedExecutionEnvelope,
@@ -998,7 +1006,6 @@ where
     }
 
     fn validate_resolved_ref(
-        &self,
         installed: &InstalledSkill,
         envelope: &ResolvedExecutionEnvelope,
     ) -> Result<(), ExecutionError> {
@@ -1018,7 +1025,6 @@ where
     }
 
     fn validate_grants(
-        &self,
         installed: &InstalledSkill,
         grants: &CapabilityGrantSet,
     ) -> Result<(), ExecutionError> {
@@ -1162,42 +1168,45 @@ where
 
     fn persist_unsuccessful_attempt<R>(
         registry: &R,
-        installed: &InstalledSkill,
-        envelope: &ResolvedExecutionEnvelope,
-        execution_id: &str,
-        started_at_utc: &str,
-        duration_ms: u64,
+        context: &UnsuccessfulAttemptContext<'_>,
         error: ExecutionError,
         child_executions: Vec<ChildExecutionRecord>,
-        emitted_evidence: Vec<EvidenceRef>,
+        emitted_evidence: &[EvidenceRef],
     ) -> ExecutionError
     where
         R: SkillRegistry + ?Sized,
     {
         let status = status_from_error(&error);
         let finished_at_utc = host_now_utc();
-        let receipt = Self::build_receipt(execution_id, &envelope.request.trace_id, status.clone());
+        let receipt = Self::build_receipt(
+            context.execution_id,
+            &context.envelope.request.trace_id,
+            status.clone(),
+        );
         let record = ExecutionRecord {
             receipt,
-            request: envelope.request.clone(),
-            policy_decision: Self::policy_decision_for_unsuccessful_attempt(envelope, &error),
-            resolved_skill: envelope.resolved_skill.clone(),
-            parent_execution_id: envelope.parent_execution_id.clone(),
+            request: context.envelope.request.clone(),
+            policy_decision: Self::policy_decision_for_unsuccessful_attempt(
+                context.envelope,
+                &error,
+            ),
+            resolved_skill: context.envelope.resolved_skill.clone(),
+            parent_execution_id: context.envelope.parent_execution_id.clone(),
             status,
             output: None,
             termination: Some(termination_from_error(&error)),
-            granted_capabilities: envelope.granted_capabilities.clone(),
-            emitted_evidence: Self::load_evidence_records(registry, &emitted_evidence)
+            granted_capabilities: context.envelope.granted_capabilities.clone(),
+            emitted_evidence: Self::load_evidence_records(registry, emitted_evidence)
                 .unwrap_or_default(),
             metrics: ExecutionMetrics {
-                duration_ms,
-                child_executions: child_executions.len() as u16,
+                duration_ms: context.duration_ms,
+                child_executions: saturating_u16_len(child_executions.len()),
                 ..ExecutionMetrics::default()
             },
             provenance: Self::build_provenance(
-                installed,
-                envelope,
-                started_at_utc,
+                context.installed,
+                context.envelope,
+                context.started_at_utc,
                 &finished_at_utc,
             ),
             child_executions,
@@ -1237,111 +1246,55 @@ where
         sequence: u16,
         alias: &str,
         input: &Value,
-    ) -> Result<ChildInvocationOutcome, ChildInvocationError> {
-        let dependency = parent
-            .manifest
-            .dependencies
-            .iter()
-            .find(|dependency| dependency.alias == alias)
-            .ok_or_else(|| SkillError {
-                code: "dependency-not-declared".into(),
-                message: format!("dependency alias `{alias}` is not declared by the skill"),
-                retryable: false,
-                detail: Some(serde_json::json!({ "alias": alias })),
-            })
-            .map_err(ChildInvocationError::without_record)?;
+    ) -> Result<ChildInvocationOutcome, Box<ChildInvocationError>> {
+        let dependency = find_declared_dependency(parent, alias)?;
 
         if let Err(denial) = CapabilityEvaluator::authorize(
             &context.granted_capabilities,
             &CapabilityOperation::InvokeDependency { alias },
         ) {
-            return Err(ChildInvocationError::denied(denial));
+            return Err(Box::new(ChildInvocationError::denied(denial)));
         }
 
         if context.budget.max_child_executions == 0 {
-            return Err(ChildInvocationError::without_record(SkillError {
+            return Err(Box::new(ChildInvocationError::without_record(SkillError {
                 code: "child-budget-exhausted".into(),
                 message: "execution budget does not allow additional child invocations".into(),
                 retryable: false,
                 detail: Some(serde_json::json!({ "alias": alias })),
-            }));
+            })));
         }
 
-        let child_installed = self
-            .registry
-            .resolve_exact(&dependency.skill)
-            .map_err(|error| SkillError {
-                code: "dependency-resolution-failed".into(),
-                message: "declared dependency could not be loaded as an installed executable skill"
-                    .into(),
-                retryable: false,
-                detail: Some(serde_json::json!({
-                    "alias": alias,
-                    "dependency": dependency.skill,
-                    "cause": {
-                        "code": error.code,
-                        "message": error.message,
-                        "detail": error.detail,
-                    }
-                })),
-            })
-            .map_err(ChildInvocationError::without_record)?;
+        let child_installed = load_child_installed(&self.registry, dependency, alias)?;
 
         let child_grants = CapabilityEvaluator::derive_child_grants(
             &child_installed.manifest.capabilities,
             &context.granted_capabilities,
         )
-        .map_err(ChildInvocationError::denied)?;
-        let child_request = ResolvedExecutionEnvelope {
-            request: guild_types::CallerRequest {
-                request_id: format!("{}:child:{sequence}", context.execution_id),
-                skill: exact_requested_skill_ref(&child_installed.resolved_ref),
-                tenant_id: context.tenant_id.clone(),
-                actor_id: "skill".into(),
-                mode: context.mode.clone(),
-                input: input.clone(),
-                budget: derive_child_budget(&context.budget),
-                requested_capabilities: child_grants.clone(),
-                idempotency_key: None,
-                trace_id: context.trace_id.clone(),
-            },
-            resolved_skill: child_installed.resolved_ref.clone(),
-            granted_capabilities: child_grants,
-            policy_decision: PolicyDecision {
-                outcome: PolicyDecisionOutcome::Allowed,
-                summary: "dependency invocation allowed".into(),
-                detail: Some(serde_json::json!({ "alias": alias })),
-            },
-            parent_execution_id: Some(context.execution_id.clone()),
-        };
+        .map_err(|denial| Box::new(ChildInvocationError::denied(denial)))?;
+        let child_request = build_child_request(
+            context,
+            sequence,
+            alias,
+            input,
+            &child_installed,
+            child_grants,
+        );
 
         let record = match self
             .runner
-            .execute(&self.registry, &child_installed, child_request)
+            .execute(&self.registry, &child_installed, &child_request)
         {
             Ok(record) => record,
             Err(error) => {
-                let child_record = error
-                    .receipt
-                    .as_ref()
-                    .and_then(|receipt| {
-                        self.registry
-                            .load_execution_record(&receipt.execution_id)
-                            .ok()
-                    })
-                    .map(|record| {
-                        child_execution_record_from_execution_record(
-                            alias,
-                            &context.execution_id,
-                            &record,
-                        )
-                    });
+                let child_record =
+                    load_child_failure_record(&self.registry, alias, &context.execution_id, &error);
 
-                return Err(ChildInvocationError {
-                    skill_error: child_execution_error_to_skill_error(alias, error),
-                    record: child_record.map(Box::new),
+                return Err(Box::new(ChildInvocationError {
+                    skill_error: child_execution_error_to_skill_error(alias, &error),
+                    record: child_record,
                     denial: None,
-                });
+                }));
             }
         };
 
@@ -1394,14 +1347,126 @@ where
     }
 }
 
+fn find_declared_dependency<'a>(
+    parent: &'a InstalledSkill,
+    alias: &str,
+) -> Result<&'a guild_manifest::InstalledDependencySpec, Box<ChildInvocationError>> {
+    parent
+        .manifest
+        .dependencies
+        .iter()
+        .find(|dependency| dependency.alias == alias)
+        .ok_or_else(|| SkillError {
+            code: "dependency-not-declared".into(),
+            message: format!("dependency alias `{alias}` is not declared by the skill"),
+            retryable: false,
+            detail: Some(serde_json::json!({ "alias": alias })),
+        })
+        .map_err(|error| Box::new(ChildInvocationError::without_record(error)))
+}
+
+fn load_child_installed<R>(
+    registry: &R,
+    dependency: &guild_manifest::InstalledDependencySpec,
+    alias: &str,
+) -> Result<InstalledSkill, Box<ChildInvocationError>>
+where
+    R: SkillRegistry + ?Sized,
+{
+    registry
+        .resolve_exact(&dependency.skill)
+        .map_err(|error| SkillError {
+            code: "dependency-resolution-failed".into(),
+            message: "declared dependency could not be loaded as an installed executable skill"
+                .into(),
+            retryable: false,
+            detail: Some(serde_json::json!({
+                "alias": alias,
+                "dependency": dependency.skill,
+                "cause": {
+                    "code": error.code,
+                    "message": error.message,
+                    "detail": error.detail,
+                }
+            })),
+        })
+        .map_err(|error| Box::new(ChildInvocationError::without_record(error)))
+}
+
+fn build_child_request(
+    context: &ExecutionContext,
+    sequence: u16,
+    alias: &str,
+    input: &Value,
+    child_installed: &InstalledSkill,
+    child_grants: CapabilityGrantSet,
+) -> ResolvedExecutionEnvelope {
+    ResolvedExecutionEnvelope {
+        request: guild_types::CallerRequest {
+            request_id: format!("{}:child:{sequence}", context.execution_id),
+            skill: exact_requested_skill_ref(&child_installed.resolved_ref),
+            tenant_id: context.tenant_id.clone(),
+            actor_id: "skill".into(),
+            mode: context.mode.clone(),
+            input: input.clone(),
+            budget: derive_child_budget(&context.budget),
+            requested_capabilities: child_grants.clone(),
+            idempotency_key: None,
+            trace_id: context.trace_id.clone(),
+        },
+        resolved_skill: child_installed.resolved_ref.clone(),
+        granted_capabilities: child_grants,
+        policy_decision: PolicyDecision {
+            outcome: PolicyDecisionOutcome::Allowed,
+            summary: "dependency invocation allowed".into(),
+            detail: Some(serde_json::json!({ "alias": alias })),
+        },
+        parent_execution_id: Some(context.execution_id.clone()),
+    }
+}
+
+fn load_child_failure_record<R>(
+    registry: &R,
+    alias: &str,
+    parent_execution_id: &str,
+    error: &ExecutionError,
+) -> Option<Box<ChildExecutionRecord>>
+where
+    R: SkillRegistry + ?Sized,
+{
+    error
+        .receipt
+        .as_ref()
+        .and_then(|receipt| registry.load_execution_record(&receipt.execution_id).ok())
+        .map(|record| {
+            Box::new(child_execution_record_from_execution_record(
+                alias,
+                parent_execution_id,
+                &record,
+            ))
+        })
+}
+
 fn derive_child_budget(parent: &guild_types::Budget) -> guild_types::Budget {
     let mut budget = parent.clone();
     budget.max_child_executions = budget.max_child_executions.saturating_sub(1);
     budget
 }
 
+fn next_child_sequence(current_children: usize) -> wasmtime::Result<u16> {
+    let current = u16::try_from(current_children)
+        .map_err(|_| wasmtime::Error::msg("child execution sequence exceeded u16 range"))?;
+    current
+        .checked_add(1)
+        .ok_or_else(|| wasmtime::Error::msg("child execution sequence exceeded u16 range"))
+}
+
+fn saturating_u16_len(len: usize) -> u16 {
+    u16::try_from(len).unwrap_or(u16::MAX)
+}
+
 fn duration_ms(duration: std::time::Duration) -> u64 {
-    duration.as_millis().min(u64::MAX as u128) as u64
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 fn status_from_error(error: &ExecutionError) -> ExecutionStatus {
@@ -1455,7 +1520,7 @@ fn exact_requested_skill_ref(skill: &ResolvedSkillRef) -> guild_types::Requested
     }
 }
 
-fn child_execution_error_to_skill_error(alias: &str, error: ExecutionError) -> SkillError {
+fn child_execution_error_to_skill_error(alias: &str, error: &ExecutionError) -> SkillError {
     let detail = serde_json::json!({
         "alias": alias,
         "cause": {
@@ -1537,7 +1602,7 @@ impl CapabilityEvaluator {
         }
 
         match (&grant.constraints, &requirement.constraints) {
-            (CapabilityConstraints::None(_), _) => true,
+            (CapabilityConstraints::None(_), _) | (_, CapabilityConstraints::None(_)) => true,
             (
                 CapabilityConstraints::ReadResource(grant),
                 CapabilityConstraints::ReadResource(required),
@@ -1553,7 +1618,6 @@ impl CapabilityEvaluator {
             (CapabilityConstraints::Log(grant), CapabilityConstraints::Log(required)) => {
                 log_covers(grant, required)
             }
-            (_, CapabilityConstraints::None(_)) => true,
             _ => false,
         }
     }
@@ -1564,255 +1628,269 @@ impl CapabilityEvaluator {
     ) -> Result<(), CapabilityDenial> {
         match operation {
             CapabilityOperation::ReadResource { uri, parsed_uri } => {
-                let kind = parsed_uri.kind();
-                let matching = grants
-                    .grants
-                    .iter()
-                    .filter(|grant| {
-                        grant.id == CapabilityId::ReadResource
-                            && grant.access == CapabilityAccess::Read
-                    })
-                    .collect::<Vec<_>>();
-
-                if matching.is_empty() {
-                    return Err(CapabilityDenial {
-                        code: "read-resource-not-granted".into(),
-                        message: format!("resource URI `{uri}` was not granted for read access"),
-                        detail: serde_json::json!({
-                            "uri": uri,
-                            "resource_kind": kind,
-                        }),
-                    });
-                }
-
-                let kind_allowed = matching.iter().any(|grant| match &grant.constraints {
-                    CapabilityConstraints::None(_) => true,
-                    CapabilityConstraints::ReadResource(constraints) => constraints
-                        .resource_kinds
-                        .as_ref()
-                        .is_none_or(|kinds| kinds.contains(&kind)),
-                    _ => false,
-                });
-
-                if !kind_allowed {
-                    return Err(CapabilityDenial {
-                        code: "read-resource-kind-denied".into(),
-                        message: format!(
-                            "resource kind `{}` was not granted for read access",
-                            resource_kind_label(&kind)
-                        ),
-                        detail: serde_json::json!({
-                            "uri": uri,
-                            "resource_kind": kind,
-                        }),
-                    });
-                }
-
-                let scope_allowed = matching.iter().any(|grant| match &grant.constraints {
-                    CapabilityConstraints::None(_) => true,
-                    CapabilityConstraints::ReadResource(constraints) => {
-                        constraints.uri_prefixes.as_ref().is_none_or(|prefixes| {
-                            prefixes.iter().any(|prefix| {
-                                GuildResourceScope::parse(prefix)
-                                    .is_ok_and(|scope| scope.matches(parsed_uri))
-                            })
-                        })
-                    }
-                    _ => false,
-                });
-
-                if scope_allowed {
-                    Ok(())
-                } else {
-                    Err(CapabilityDenial {
-                        code: "read-resource-not-granted".into(),
-                        message: format!("resource URI `{uri}` was not granted for read access"),
-                        detail: serde_json::json!({
-                            "uri": uri,
-                            "resource_kind": kind,
-                        }),
-                    })
-                }
+                Self::authorize_read_resource(grants, uri, parsed_uri)
             }
             CapabilityOperation::InvokeDependency { alias } => {
-                let matching = grants
-                    .grants
-                    .iter()
-                    .filter(|grant| {
-                        grant.id == CapabilityId::InvokeSkill
-                            && grant.access == CapabilityAccess::Invoke
-                    })
-                    .collect::<Vec<_>>();
-
-                if matching.is_empty() {
-                    return Err(CapabilityDenial {
-                        code: "dependency-invoke-not-granted".into(),
-                        message: format!(
-                            "dependency alias `{alias}` was not granted for invocation"
-                        ),
-                        detail: serde_json::json!({ "alias": alias }),
-                    });
-                }
-
-                let allowed = matching.iter().any(|grant| match &grant.constraints {
-                    CapabilityConstraints::None(_) => true,
-                    CapabilityConstraints::InvokeDependency(constraints) => constraints
-                        .aliases
-                        .as_ref()
-                        .is_none_or(|aliases| aliases.iter().any(|candidate| candidate == alias)),
-                    _ => false,
-                });
-
-                if allowed {
-                    Ok(())
-                } else {
-                    Err(CapabilityDenial {
-                        code: "dependency-invoke-not-granted".into(),
-                        message: format!(
-                            "dependency alias `{alias}` was not granted for invocation"
-                        ),
-                        detail: serde_json::json!({ "alias": alias }),
-                    })
-                }
+                Self::authorize_invoke_dependency(grants, alias)
             }
             CapabilityOperation::EmitEvidence { request } => {
-                let matching = grants
-                    .grants
-                    .iter()
-                    .filter(|grant| {
-                        grant.id == CapabilityId::EmitEvidence
-                            && grant.access == CapabilityAccess::Write
+                Self::authorize_emit_evidence(grants, request)
+            }
+            CapabilityOperation::Log { level } => Self::authorize_log(grants, level),
+        }
+    }
+
+    fn matching_grants<'a>(
+        grants: &'a CapabilityGrantSet,
+        id: &CapabilityId,
+        access: &CapabilityAccess,
+    ) -> Vec<&'a GrantedCapability> {
+        grants
+            .grants
+            .iter()
+            .filter(|grant| grant.id == *id && grant.access == *access)
+            .collect()
+    }
+
+    fn authorize_read_resource(
+        grants: &CapabilityGrantSet,
+        uri: &str,
+        parsed_uri: &GuildResourceUri,
+    ) -> Result<(), CapabilityDenial> {
+        let kind = parsed_uri.kind();
+        let matching =
+            Self::matching_grants(grants, &CapabilityId::ReadResource, &CapabilityAccess::Read);
+
+        if matching.is_empty() {
+            return Err(CapabilityDenial {
+                code: "read-resource-not-granted".into(),
+                message: format!("resource URI `{uri}` was not granted for read access"),
+                detail: serde_json::json!({
+                    "uri": uri,
+                    "resource_kind": kind,
+                }),
+            });
+        }
+
+        let kind_allowed = matching.iter().any(|grant| match &grant.constraints {
+            CapabilityConstraints::None(_) => true,
+            CapabilityConstraints::ReadResource(constraints) => constraints
+                .resource_kinds
+                .as_ref()
+                .is_none_or(|kinds| kinds.contains(&kind)),
+            _ => false,
+        });
+
+        if !kind_allowed {
+            return Err(CapabilityDenial {
+                code: "read-resource-kind-denied".into(),
+                message: format!(
+                    "resource kind `{}` was not granted for read access",
+                    resource_kind_label(&kind)
+                ),
+                detail: serde_json::json!({
+                    "uri": uri,
+                    "resource_kind": kind,
+                }),
+            });
+        }
+
+        let scope_allowed = matching.iter().any(|grant| match &grant.constraints {
+            CapabilityConstraints::None(_) => true,
+            CapabilityConstraints::ReadResource(constraints) => {
+                constraints.uri_prefixes.as_ref().is_none_or(|prefixes| {
+                    prefixes.iter().any(|prefix| {
+                        GuildResourceScope::parse(prefix)
+                            .is_ok_and(|scope| scope.matches(parsed_uri))
                     })
-                    .collect::<Vec<_>>();
+                })
+            }
+            _ => false,
+        });
 
-                if matching.is_empty() {
-                    return Err(CapabilityDenial {
-                        code: "emit-evidence-not-granted".into(),
-                        message: "evidence emission was not granted for this execution".into(),
-                        detail: serde_json::json!({
-                            "mime_type": request.mime_type,
-                            "payload_bytes": request.payload.len(),
-                            "audience": request.audience,
-                            "redaction": request.redaction,
-                        }),
-                    });
-                }
+        if scope_allowed {
+            Ok(())
+        } else {
+            Err(CapabilityDenial {
+                code: "read-resource-not-granted".into(),
+                message: format!("resource URI `{uri}` was not granted for read access"),
+                detail: serde_json::json!({
+                    "uri": uri,
+                    "resource_kind": kind,
+                }),
+            })
+        }
+    }
 
-                let mut saw_size_denial = false;
-                let mut saw_audience_denial = false;
-                let mut saw_redaction_denial = false;
+    fn authorize_invoke_dependency(
+        grants: &CapabilityGrantSet,
+        alias: &str,
+    ) -> Result<(), CapabilityDenial> {
+        let matching = Self::matching_grants(
+            grants,
+            &CapabilityId::InvokeSkill,
+            &CapabilityAccess::Invoke,
+        );
 
-                for grant in matching {
-                    let CapabilityConstraints::EmitEvidence(constraints) = &grant.constraints
-                    else {
-                        if matches!(grant.constraints, CapabilityConstraints::None(_)) {
-                            return Ok(());
-                        }
-                        continue;
-                    };
+        if matching.is_empty() {
+            return Err(CapabilityDenial {
+                code: "dependency-invoke-not-granted".into(),
+                message: format!("dependency alias `{alias}` was not granted for invocation"),
+                detail: serde_json::json!({ "alias": alias }),
+            });
+        }
 
-                    if let Some(max_bytes) = constraints.max_bytes {
-                        if request.payload.len() as u64 > max_bytes {
-                            saw_size_denial = true;
-                            continue;
-                        }
-                    }
+        let allowed = matching.iter().any(|grant| match &grant.constraints {
+            CapabilityConstraints::None(_) => true,
+            CapabilityConstraints::InvokeDependency(constraints) => constraints
+                .aliases
+                .as_ref()
+                .is_none_or(|aliases| aliases.iter().any(|candidate| candidate == alias)),
+            _ => false,
+        });
 
-                    if let Some(audiences) = &constraints.audiences {
-                        if !audiences.contains(&request.audience) {
-                            saw_audience_denial = true;
-                            continue;
-                        }
-                    }
+        if allowed {
+            Ok(())
+        } else {
+            Err(CapabilityDenial {
+                code: "dependency-invoke-not-granted".into(),
+                message: format!("dependency alias `{alias}` was not granted for invocation"),
+                detail: serde_json::json!({ "alias": alias }),
+            })
+        }
+    }
 
-                    if let Some(redactions) = &constraints.redactions {
-                        if !redactions.contains(&request.redaction) {
-                            saw_redaction_denial = true;
-                            continue;
-                        }
-                    }
+    fn authorize_emit_evidence(
+        grants: &CapabilityGrantSet,
+        request: &EvidenceEmissionRequest,
+    ) -> Result<(), CapabilityDenial> {
+        let matching = Self::matching_grants(
+            grants,
+            &CapabilityId::EmitEvidence,
+            &CapabilityAccess::Write,
+        );
+        let payload_bytes = u64::try_from(request.payload.len()).unwrap_or(u64::MAX);
 
+        if matching.is_empty() {
+            return Err(Self::emit_evidence_not_granted(request, payload_bytes));
+        }
+
+        let mut saw_size_denial = false;
+        let mut saw_audience_denial = false;
+        let mut saw_redaction_denial = false;
+
+        for grant in matching {
+            let CapabilityConstraints::EmitEvidence(constraints) = &grant.constraints else {
+                if matches!(grant.constraints, CapabilityConstraints::None(_)) {
                     return Ok(());
                 }
+                continue;
+            };
 
-                if saw_size_denial {
-                    Err(CapabilityDenial {
-                        code: "emit-evidence-too-large".into(),
-                        message: "evidence payload exceeded the granted max_bytes limit".into(),
-                        detail: serde_json::json!({
-                            "payload_bytes": request.payload.len(),
-                        }),
-                    })
-                } else if saw_audience_denial {
-                    Err(CapabilityDenial {
-                        code: "emit-evidence-audience-not-granted".into(),
-                        message: "evidence audience was not granted for this execution".into(),
-                        detail: serde_json::json!({
-                            "audience": request.audience,
-                        }),
-                    })
-                } else if saw_redaction_denial {
-                    Err(CapabilityDenial {
-                        code: "emit-evidence-redaction-not-granted".into(),
-                        message: "evidence redaction class was not granted for this execution"
-                            .into(),
-                        detail: serde_json::json!({
-                            "redaction": request.redaction,
-                        }),
-                    })
-                } else {
-                    Err(CapabilityDenial {
-                        code: "emit-evidence-not-granted".into(),
-                        message: "evidence emission was not granted for this execution".into(),
-                        detail: serde_json::json!({
-                            "mime_type": request.mime_type,
-                            "payload_bytes": request.payload.len(),
-                            "audience": request.audience,
-                            "redaction": request.redaction,
-                        }),
-                    })
+            if let Some(max_bytes) = constraints.max_bytes {
+                if payload_bytes > max_bytes {
+                    saw_size_denial = true;
+                    continue;
                 }
             }
-            CapabilityOperation::Log { level } => {
-                let matching = grants
-                    .grants
-                    .iter()
-                    .filter(|grant| {
-                        grant.id == CapabilityId::LogWrite
-                            && grant.access == CapabilityAccess::Write
-                    })
-                    .collect::<Vec<_>>();
 
-                if matching.is_empty() {
-                    return Err(CapabilityDenial {
-                        code: "log-write-not-granted".into(),
-                        message: "log-write was not granted for this execution".into(),
-                        detail: serde_json::json!({ "level": level }),
-                    });
-                }
-
-                let allowed = matching.iter().any(|grant| match &grant.constraints {
-                    CapabilityConstraints::None(_) => true,
-                    CapabilityConstraints::Log(constraints) => constraints
-                        .levels
-                        .as_ref()
-                        .is_none_or(|levels| levels.contains(level)),
-                    _ => false,
-                });
-
-                if allowed {
-                    Ok(())
-                } else {
-                    Err(CapabilityDenial {
-                        code: "log-level-not-granted".into(),
-                        message: format!(
-                            "log level `{}` was not granted for this execution",
-                            severity_label(level)
-                        ),
-                        detail: serde_json::json!({ "level": level }),
-                    })
+            if let Some(audiences) = &constraints.audiences {
+                if !audiences.contains(&request.audience) {
+                    saw_audience_denial = true;
+                    continue;
                 }
             }
+
+            if let Some(redactions) = &constraints.redactions {
+                if !redactions.contains(&request.redaction) {
+                    saw_redaction_denial = true;
+                    continue;
+                }
+            }
+
+            return Ok(());
+        }
+
+        if saw_size_denial {
+            Err(CapabilityDenial {
+                code: "emit-evidence-too-large".into(),
+                message: "evidence payload exceeded the granted max_bytes limit".into(),
+                detail: serde_json::json!({
+                    "payload_bytes": payload_bytes,
+                }),
+            })
+        } else if saw_audience_denial {
+            Err(CapabilityDenial {
+                code: "emit-evidence-audience-not-granted".into(),
+                message: "evidence audience was not granted for this execution".into(),
+                detail: serde_json::json!({
+                    "audience": request.audience,
+                }),
+            })
+        } else if saw_redaction_denial {
+            Err(CapabilityDenial {
+                code: "emit-evidence-redaction-not-granted".into(),
+                message: "evidence redaction class was not granted for this execution".into(),
+                detail: serde_json::json!({
+                    "redaction": request.redaction,
+                }),
+            })
+        } else {
+            Err(Self::emit_evidence_not_granted(request, payload_bytes))
+        }
+    }
+
+    fn emit_evidence_not_granted(
+        request: &EvidenceEmissionRequest,
+        payload_bytes: u64,
+    ) -> CapabilityDenial {
+        CapabilityDenial {
+            code: "emit-evidence-not-granted".into(),
+            message: "evidence emission was not granted for this execution".into(),
+            detail: serde_json::json!({
+                "mime_type": request.mime_type,
+                "payload_bytes": payload_bytes,
+                "audience": request.audience,
+                "redaction": request.redaction,
+            }),
+        }
+    }
+
+    fn authorize_log(
+        grants: &CapabilityGrantSet,
+        level: &Severity,
+    ) -> Result<(), CapabilityDenial> {
+        let matching =
+            Self::matching_grants(grants, &CapabilityId::LogWrite, &CapabilityAccess::Write);
+
+        if matching.is_empty() {
+            return Err(CapabilityDenial {
+                code: "log-write-not-granted".into(),
+                message: "log-write was not granted for this execution".into(),
+                detail: serde_json::json!({ "level": level }),
+            });
+        }
+
+        let allowed = matching.iter().any(|grant| match &grant.constraints {
+            CapabilityConstraints::None(_) => true,
+            CapabilityConstraints::Log(constraints) => constraints
+                .levels
+                .as_ref()
+                .is_none_or(|levels| levels.contains(level)),
+            _ => false,
+        });
+
+        if allowed {
+            Ok(())
+        } else {
+            Err(CapabilityDenial {
+                code: "log-level-not-granted".into(),
+                message: format!(
+                    "log level `{}` was not granted for this execution",
+                    severity_label(level)
+                ),
+                detail: serde_json::json!({ "level": level }),
+            })
         }
     }
 
@@ -1910,7 +1988,8 @@ fn reduce_child_read_resource_constraints(
             "parent_constraints": parent,
             "required_constraints": required,
         }),
-    })?;
+    })?
+    .into_option();
     let resource_kinds = reduce_required_enum_scope(
         parent.resource_kinds.as_ref(),
         required.resource_kinds.as_ref(),
@@ -1922,7 +2001,8 @@ fn reduce_child_read_resource_constraints(
             "parent_constraints": parent,
             "required_constraints": required,
         }),
-    })?;
+    })?
+    .into_option();
 
     Ok(ReadResourceConstraints {
         uri_prefixes,
@@ -1944,7 +2024,8 @@ fn reduce_child_invoke_dependency_constraints(
                     "parent_constraints": parent,
                     "required_constraints": required,
                 }),
-            })?;
+            })?
+            .into_option();
 
     Ok(InvokeDependencyConstraints { aliases })
 }
@@ -1963,7 +2044,8 @@ fn reduce_child_emit_evidence_constraints(
                     "parent_constraints": parent,
                     "required_constraints": required,
                 }),
-            })?;
+            })?
+            .into_option();
     let redactions =
         reduce_required_enum_scope(parent.redactions.as_ref(), required.redactions.as_ref())
             .ok_or_else(|| CapabilityDenial {
@@ -1974,19 +2056,18 @@ fn reduce_child_emit_evidence_constraints(
                     "parent_constraints": parent,
                     "required_constraints": required,
                 }),
-            })?;
-    let max_bytes =
-        reduce_required_max_bytes(parent.max_bytes, required.max_bytes).ok_or_else(|| {
-            CapabilityDenial {
-                code: "child-capability-mismatch".into(),
-                message: "child evidence max_bytes could not be reduced from the parent grant"
-                    .into(),
-                detail: serde_json::json!({
-                    "parent_constraints": parent,
-                    "required_constraints": required,
-                }),
-            }
-        })?;
+            })?
+            .into_option();
+    let max_bytes = reduce_required_max_bytes(parent.max_bytes, required.max_bytes)
+        .ok_or_else(|| CapabilityDenial {
+            code: "child-capability-mismatch".into(),
+            message: "child evidence max_bytes could not be reduced from the parent grant".into(),
+            detail: serde_json::json!({
+                "parent_constraints": parent,
+                "required_constraints": required,
+            }),
+        })?
+        .into_option();
 
     Ok(EmitEvidenceConstraints {
         max_bytes,
@@ -2007,7 +2088,8 @@ fn reduce_child_log_constraints(
                 "parent_constraints": parent,
                 "required_constraints": required,
             }),
-        })?;
+        })?
+        .into_option();
 
     Ok(LogConstraints { levels })
 }
@@ -2048,8 +2130,7 @@ fn string_scope_covers_exact(
     required: Option<&Vec<String>>,
 ) -> bool {
     match (granted, required) {
-        (_, None) => true,
-        (None, Some(_)) => true,
+        (_, None) | (None, Some(_)) => true,
         (Some(granted), Some(required)) => required
             .iter()
             .all(|value| granted.iter().any(|candidate| candidate == value)),
@@ -2058,8 +2139,7 @@ fn string_scope_covers_exact(
 
 fn resource_scope_covers(granted: Option<&Vec<String>>, required: Option<&Vec<String>>) -> bool {
     match (granted, required) {
-        (_, None) => true,
-        (None, Some(_)) => true,
+        (_, None) | (None, Some(_)) => true,
         (Some(granted), Some(required)) => {
             let Some(granted) = parse_resource_scopes(granted) else {
                 return false;
@@ -2077,8 +2157,7 @@ fn resource_scope_covers(granted: Option<&Vec<String>>, required: Option<&Vec<St
 
 fn enum_scope_covers<T: PartialEq>(granted: Option<&Vec<T>>, required: Option<&Vec<T>>) -> bool {
     match (granted, required) {
-        (_, None) => true,
-        (None, Some(_)) => true,
+        (_, None) | (None, Some(_)) => true,
         (Some(granted), Some(required)) => required
             .iter()
             .all(|value| granted.iter().any(|candidate| candidate == value)),
@@ -2087,20 +2166,33 @@ fn enum_scope_covers<T: PartialEq>(granted: Option<&Vec<T>>, required: Option<&V
 
 fn max_bytes_covers(granted: Option<u64>, required: Option<u64>) -> bool {
     match (granted, required) {
-        (_, None) => true,
-        (None, Some(_)) => true,
+        (_, None) | (None, Some(_)) => true,
         (Some(granted), Some(required)) => granted >= required,
+    }
+}
+
+enum ReducedConstraint<T> {
+    Unbounded,
+    Restricted(T),
+}
+
+impl<T> ReducedConstraint<T> {
+    fn into_option(self) -> Option<T> {
+        match self {
+            Self::Unbounded => None,
+            Self::Restricted(value) => Some(value),
+        }
     }
 }
 
 fn reduce_required_exact_string_scope(
     parent: Option<&Vec<String>>,
     required: Option<&Vec<String>>,
-) -> Option<Option<Vec<String>>> {
+) -> Option<ReducedConstraint<Vec<String>>> {
     match (parent, required) {
-        (None, None) => Some(None),
-        (Some(parent), None) => Some(Some(parent.clone())),
-        (None, Some(required)) => Some(Some(required.clone())),
+        (None, None) => Some(ReducedConstraint::Unbounded),
+        (Some(parent), None) => Some(ReducedConstraint::Restricted(parent.clone())),
+        (None, Some(required)) => Some(ReducedConstraint::Restricted(required.clone())),
         (Some(parent), Some(required)) => {
             let reduced = required
                 .iter()
@@ -2110,7 +2202,7 @@ fn reduce_required_exact_string_scope(
             if reduced.is_empty() {
                 None
             } else {
-                Some(Some(reduced))
+                Some(ReducedConstraint::Restricted(reduced))
             }
         }
     }
@@ -2119,11 +2211,15 @@ fn reduce_required_exact_string_scope(
 fn reduce_required_resource_scope(
     parent: Option<&Vec<String>>,
     required: Option<&Vec<String>>,
-) -> Option<Option<Vec<String>>> {
+) -> Option<ReducedConstraint<Vec<String>>> {
     match (parent, required) {
-        (None, None) => Some(None),
-        (Some(parent), None) => canonicalize_resource_scopes(parent).map(Some),
-        (None, Some(required)) => canonicalize_resource_scopes(required).map(Some),
+        (None, None) => Some(ReducedConstraint::Unbounded),
+        (Some(parent), None) => {
+            canonicalize_resource_scopes(parent).map(ReducedConstraint::Restricted)
+        }
+        (None, Some(required)) => {
+            canonicalize_resource_scopes(required).map(ReducedConstraint::Restricted)
+        }
         (Some(parent), Some(required)) => {
             let parent = parse_resource_scopes(parent)?;
             let required = parse_resource_scopes(required)?;
@@ -2135,7 +2231,7 @@ fn reduce_required_resource_scope(
             if reduced.is_empty() {
                 None
             } else {
-                Some(Some(reduced))
+                Some(ReducedConstraint::Restricted(reduced))
             }
         }
     }
@@ -2166,17 +2262,17 @@ fn parse_resource_scopes(scopes: &[String]) -> Option<Vec<GuildResourceScope>> {
 fn reduce_required_enum_scope<T: Clone + PartialEq>(
     parent: Option<&Vec<T>>,
     required: Option<&Vec<T>>,
-) -> Option<Option<Vec<T>>> {
+) -> Option<ReducedConstraint<Vec<T>>> {
     match (parent, required) {
-        (None, None) => Some(None),
-        (Some(parent), None) => Some(Some(parent.clone())),
-        (None, Some(required)) => Some(Some(required.clone())),
+        (None, None) => Some(ReducedConstraint::Unbounded),
+        (Some(parent), None) => Some(ReducedConstraint::Restricted(parent.clone())),
+        (None, Some(required)) => Some(ReducedConstraint::Restricted(required.clone())),
         (Some(parent), Some(required)) => {
             if required
                 .iter()
                 .all(|value| parent.iter().any(|candidate| candidate == value))
             {
-                Some(Some(required.clone()))
+                Some(ReducedConstraint::Restricted(required.clone()))
             } else {
                 None
             }
@@ -2184,12 +2280,17 @@ fn reduce_required_enum_scope<T: Clone + PartialEq>(
     }
 }
 
-fn reduce_required_max_bytes(parent: Option<u64>, required: Option<u64>) -> Option<Option<u64>> {
+fn reduce_required_max_bytes(
+    parent: Option<u64>,
+    required: Option<u64>,
+) -> Option<ReducedConstraint<u64>> {
     match (parent, required) {
-        (None, None) => Some(None),
-        (Some(parent), None) => Some(Some(parent)),
-        (None, Some(required)) => Some(Some(required)),
-        (Some(parent), Some(required)) if parent >= required => Some(Some(required)),
+        (None, None) => Some(ReducedConstraint::Unbounded),
+        (Some(parent), None) => Some(ReducedConstraint::Restricted(parent)),
+        (None, Some(required)) => Some(ReducedConstraint::Restricted(required)),
+        (Some(parent), Some(required)) if parent >= required => {
+            Some(ReducedConstraint::Restricted(required))
+        }
         _ => None,
     }
 }
@@ -2199,8 +2300,10 @@ fn is_supported_wasm_inspect_capability(id: &CapabilityId, access: &CapabilityAc
         (id, access),
         (CapabilityId::ReadResource, CapabilityAccess::Read)
             | (CapabilityId::InvokeSkill, CapabilityAccess::Invoke)
-            | (CapabilityId::EmitEvidence, CapabilityAccess::Write)
-            | (CapabilityId::LogWrite, CapabilityAccess::Write)
+            | (
+                CapabilityId::EmitEvidence | CapabilityId::LogWrite,
+                CapabilityAccess::Write
+            )
     )
 }
 
@@ -2215,7 +2318,7 @@ fn supported_wasm_inspect_capabilities() -> Vec<Value> {
 
 const CAPABILITY_DENIAL_TRAP_PREFIX: &str = "guild-capability-denial:";
 
-fn capability_denial_trap(denial: CapabilityDenial) -> wasmtime::Error {
+fn capability_denial_trap(denial: &CapabilityDenial) -> wasmtime::Error {
     let payload = serde_json::to_string(&denial).expect("capability denial serializes");
     wasmtime::Error::msg(format!("{CAPABILITY_DENIAL_TRAP_PREFIX}{payload}"))
 }

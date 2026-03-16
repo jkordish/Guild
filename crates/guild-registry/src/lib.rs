@@ -1,9 +1,14 @@
+#![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::perf)]
+#![allow(clippy::multiple_crate_versions)]
+
 //! Registry model for publishing and resolving Guild skills.
 
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -133,6 +138,7 @@ impl RegistryError {
         }
     }
 
+    #[must_use]
     pub fn with_detail(mut self, detail: impl Into<Value>) -> Self {
         self.detail = Some(detail.into());
         self
@@ -148,6 +154,11 @@ impl fmt::Display for RegistryError {
 impl std::error::Error for RegistryError {}
 
 impl LocalPublisherIdentity {
+    /// Generate a fresh local signing identity for a publisher.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if local signing material cannot be generated.
     pub fn generate(publisher: PublisherRef) -> Result<Self, RegistryError> {
         let signing_key = SigningKey::generate(&mut OsRng);
         Ok(Self {
@@ -158,6 +169,12 @@ impl LocalPublisherIdentity {
         })
     }
 
+    /// Load a local publisher identity from disk and validate its keypair.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read, parsed, or contains an
+    /// invalid signing keypair.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, RegistryError> {
         let path = path.as_ref();
         let contents = fs::read_to_string(path).map_err(|error| {
@@ -179,10 +196,16 @@ impl LocalPublisherIdentity {
         Ok(identity)
     }
 
+    /// Persist a local publisher identity to disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the identity cannot be serialized or written.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), RegistryError> {
         write_json(path.as_ref(), self)
     }
 
+    #[must_use]
     pub fn trusted_record(&self) -> TrustedPublisherRecord {
         TrustedPublisherRecord {
             publisher: self.publisher.clone(),
@@ -219,24 +242,63 @@ impl LocalPublisherIdentity {
 }
 
 pub trait SkillRegistry {
+    /// Resolve a human-facing requested skill reference to installed executable state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the requested skill cannot be resolved from installed
+    /// local state.
     fn resolve(&self, skill: &RequestedSkillRef) -> Result<InstalledSkill, RegistryError>;
 
+    /// Resolve an exact digest-pinned skill reference to installed executable state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the exact resolved skill does not exist in installed
+    /// local state.
     fn resolve_exact(&self, skill: &ResolvedSkillRef) -> Result<InstalledSkill, RegistryError>;
 
     fn search(&self, query: &SearchQuery) -> Vec<SearchResult>;
 
+    /// Persist a host-owned execution record.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the durable execution record cannot be written.
     fn persist_execution_record(&self, record: &ExecutionRecord) -> Result<(), RegistryError>;
 
+    /// Load a host-owned execution record by durable execution identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the execution record does not exist or cannot be read.
     fn load_execution_record(&self, execution_id: &str) -> Result<ExecutionRecord, RegistryError>;
 
+    /// Persist an emitted evidence payload and return its host-issued evidence reference.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the evidence blob or evidence record cannot be stored.
     fn store_evidence(
         &self,
         produced_by_execution: &str,
         request: &EvidenceEmissionRequest,
     ) -> Result<EvidenceRef, RegistryError>;
 
+    /// Load an evidence record by its host-issued Guild URI.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the evidence record URI is invalid or the record cannot
+    /// be loaded.
     fn load_evidence_record(&self, uri: &str) -> Result<EvidenceRecord, RegistryError>;
 
+    /// Read a Guild execution or evidence resource through the local resource backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resource URI is invalid, missing, or cannot be
+    /// materialized.
     fn read_resource(&self, uri: &str) -> Result<ResourceReadResult, RegistryError>;
 }
 
@@ -252,6 +314,12 @@ pub struct LocalSourceInstaller {
 }
 
 impl LocalRegistry {
+    /// Load the local registry view rooted at a Guild registry directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry layout is invalid or installed manifests
+    /// cannot be loaded and validated.
     pub fn load(root: impl AsRef<Path>) -> Result<Self, RegistryError> {
         let root = root.as_ref();
         if let Some(error) = detect_source_skill_root(root)? {
@@ -283,14 +351,21 @@ impl LocalRegistry {
         Ok(Self { root, installed })
     }
 
+    #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
     }
 
+    #[must_use]
     pub fn installed(&self) -> &[InstalledSkill] {
         &self.installed
     }
 
+    /// List recent persisted execution records from the local execution store.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the execution store cannot be listed or parsed.
     pub fn list_recent_execution_records(
         &self,
         limit: usize,
@@ -323,7 +398,7 @@ impl LocalRegistry {
                     .and_then(|extension| extension.to_str())
                     == Some("json")
         });
-        entries.sort_by(|left, right| right.file_name().cmp(&left.file_name()));
+        entries.sort_by_key(|entry| Reverse(entry.file_name()));
 
         entries
             .into_iter()
@@ -348,6 +423,12 @@ impl LocalRegistry {
             .collect()
     }
 
+    /// Trust a publisher record in the local Guild trust store.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the trust store cannot be prepared, the publisher
+    /// record is invalid, or the trusted record cannot be written.
     pub fn trust_publisher(
         root: impl AsRef<Path>,
         publisher: &TrustedPublisherRecord,
@@ -360,6 +441,12 @@ impl LocalRegistry {
         )
     }
 
+    /// Export an installed skill, and optionally its dependency closure, as a signed bundle.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the root skill cannot be resolved, bundled files cannot
+    /// be copied, or the bundle cannot be signed and written.
     pub fn export_bundle(
         &self,
         root: &ResolvedSkillRef,
@@ -417,6 +504,12 @@ impl LocalRegistry {
         Ok(bundle)
     }
 
+    /// Import a signed installed-skill bundle into a local registry root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bundle fails trust, signature, validation, or file
+    /// installation checks.
     pub fn import_bundle(
         root: impl AsRef<Path>,
         bundle_root: impl AsRef<Path>,
@@ -463,7 +556,13 @@ impl LocalRegistry {
                 let validated_skill = validated
                     .iter()
                     .find(|candidate| candidate.entry.resolved_ref == entry.resolved_ref)
-                    .expect("validated bundle contains every indexed skill");
+                    .ok_or_else(|| {
+                        RegistryError::new(
+                            "bundle-validation-incomplete",
+                            "bundle validation did not retain every indexed skill entry",
+                        )
+                        .with_detail(serde_json::json!({ "resolved_ref": entry.resolved_ref }))
+                    })?;
                 let install_dir = bundle_install_dir_relative(&validated_skill.entry)?;
                 let target_dir = root.join(&install_dir);
                 let staged_dir = staging_root.join(&install_dir);
@@ -518,8 +617,7 @@ impl LocalRegistry {
 
         match (staged_result, cleanup_result) {
             (Ok(imported), Ok(())) => Ok(imported),
-            (Err(error), _) => Err(error),
-            (Ok(_), Err(error)) => Err(error),
+            (Err(error), _) | (Ok(_), Err(error)) => Err(error),
         }
     }
 
@@ -847,84 +945,7 @@ impl SkillRegistry for LocalRegistry {
             ));
         }
 
-        let digest_hex = sha256_bytes(&request.payload);
-        let digest_label = format!("sha256:{digest_hex}");
-        let blob_uri = object_resource_uri(&digest_hex);
-        let blob_dir = object_blob_path(&self.root, &digest_hex);
-        let payload_path = blob_dir.join("payload");
-        let blob_metadata_path = blob_dir.join("blob.json");
-
-        fs::create_dir_all(&blob_dir).map_err(|error| {
-            RegistryError::new(
-                "object-store-create-failed",
-                "failed to create object store directory",
-            )
-            .with_detail(error.to_string())
-        })?;
-
-        match (payload_path.exists(), blob_metadata_path.exists()) {
-            (false, false) => {
-                fs::write(&payload_path, &request.payload).map_err(|error| {
-                    RegistryError::new(
-                        "object-payload-write-failed",
-                        "failed to persist evidence payload",
-                    )
-                    .with_detail(error.to_string())
-                })?;
-
-                write_json(
-                    &blob_metadata_path,
-                    &EvidenceBlobRecord {
-                        uri: blob_uri.clone(),
-                        sha256: digest_label.clone(),
-                        size_bytes: request.payload.len() as u64,
-                    },
-                )?;
-            }
-            (true, true) => {
-                let metadata: EvidenceBlobRecord = serde_json::from_str(
-                    &fs::read_to_string(&blob_metadata_path).map_err(|error| {
-                        RegistryError::new(
-                            "object-metadata-read-failed",
-                            "failed to read stored object metadata",
-                        )
-                        .with_detail(error.to_string())
-                    })?,
-                )
-                .map_err(|error| {
-                    RegistryError::new(
-                        "object-metadata-parse-failed",
-                        "failed to parse stored object metadata",
-                    )
-                    .with_detail(error.to_string())
-                })?;
-
-                if metadata.uri != blob_uri
-                    || metadata.sha256 != digest_label
-                    || metadata.size_bytes != request.payload.len() as u64
-                {
-                    return Err(RegistryError::new(
-                        "object-metadata-conflict",
-                        "stored object metadata conflicted with the evidence payload digest",
-                    )
-                    .with_detail(serde_json::json!({
-                        "uri": blob_uri,
-                        "sha256": digest_label,
-                    })));
-                }
-            }
-            _ => {
-                return Err(RegistryError::new(
-                    "object-store-invalid",
-                    "evidence blob storage was partially populated and failed closed",
-                )
-                .with_detail(serde_json::json!({
-                    "uri": blob_uri,
-                    "payload_exists": payload_path.exists(),
-                    "metadata_exists": blob_metadata_path.exists(),
-                })));
-            }
-        }
+        let (blob_uri, digest_label) = ensure_evidence_blob(&self.root, request)?;
 
         let evidence_record_id = mint_host_evidence_record_id();
         let record_uri = evidence_record_resource_uri(&evidence_record_id);
@@ -1002,125 +1023,271 @@ impl SkillRegistry for LocalRegistry {
         match parse_guild_uri(uri)? {
             GuildResourceUri::Execution { execution_id } => {
                 let record = self.load_execution_record(&execution_id)?;
-                let bytes = serde_json::to_vec_pretty(&record).map_err(|error| {
-                    RegistryError::new(
-                        "execution-serialize-failed",
-                        "failed to serialize stored execution record",
-                    )
-                    .with_detail(error.to_string())
-                })?;
-                Ok(ResourceReadResult {
-                    uri: uri.to_owned(),
-                    mime_type: "application/json".into(),
-                    sha256: Some(format!("sha256:{}", sha256_bytes(&bytes))),
-                    bytes,
-                })
+                read_execution_resource(&record, uri)
             }
-            GuildResourceUri::ObjectRecord { evidence_record_id } => {
-                let record = self.load_evidence_record(uri)?;
-                let GuildResourceUri::ObjectBlob { digest_hex } =
-                    parse_guild_uri(&record.blob_uri)?
-                else {
-                    return Err(RegistryError::new(
-                        "object-metadata-invalid",
-                        "evidence record referenced an invalid blob URI",
-                    )
-                    .with_detail(serde_json::json!({
-                        "uri": uri,
-                        "blob_uri": record.blob_uri,
-                        "evidence_record_id": evidence_record_id,
-                    })));
-                };
-                let payload_path = object_blob_path(&self.root, &digest_hex).join("payload");
-                let bytes = fs::read(&payload_path).map_err(|error| {
-                    if error.kind() == std::io::ErrorKind::NotFound {
-                        RegistryError::new(
-                            "object-not-found",
-                            "evidence object was not found in the local object store",
-                        )
-                        .with_detail(serde_json::json!({
-                            "uri": uri,
-                            "blob_uri": record.blob_uri,
-                            "path": payload_path.display().to_string(),
-                        }))
-                    } else {
-                        RegistryError::new(
-                            "object-read-failed",
-                            "failed to read evidence object payload",
-                        )
-                        .with_detail(error.to_string())
-                    }
-                })?;
-
-                Ok(ResourceReadResult {
-                    uri: uri.to_owned(),
-                    mime_type: record.mime_type,
-                    sha256: Some(record.sha256),
-                    bytes,
-                })
-            }
+            GuildResourceUri::ObjectRecord { .. } => read_record_backed_object(&self.root, uri),
             GuildResourceUri::ObjectBlob { digest_hex } => {
-                let object_dir = object_blob_path(&self.root, &digest_hex);
-                let payload_path = object_dir.join("payload");
-                let metadata_path = object_dir.join("blob.json");
-
-                let bytes = fs::read(&payload_path).map_err(|error| {
-                    if error.kind() == std::io::ErrorKind::NotFound {
-                        RegistryError::new(
-                            "object-not-found",
-                            "evidence object was not found in the local object store",
-                        )
-                        .with_detail(serde_json::json!({
-                            "uri": uri,
-                            "path": payload_path.display().to_string(),
-                        }))
-                    } else {
-                        RegistryError::new(
-                            "object-read-failed",
-                            "failed to read evidence object payload",
-                        )
-                        .with_detail(error.to_string())
-                    }
-                })?;
-
-                let metadata: EvidenceBlobRecord =
-                    serde_json::from_str(&fs::read_to_string(&metadata_path).map_err(|error| {
-                        RegistryError::new(
-                            "object-metadata-read-failed",
-                            "failed to read evidence object metadata",
-                        )
-                        .with_detail(error.to_string())
-                    })?)
-                    .map_err(|error| {
-                        RegistryError::new(
-                            "object-metadata-parse-failed",
-                            "failed to parse evidence object metadata",
-                        )
-                        .with_detail(error.to_string())
-                    })?;
-
-                Ok(ResourceReadResult {
-                    uri: uri.to_owned(),
-                    mime_type: "application/octet-stream".into(),
-                    sha256: Some(metadata.sha256),
-                    bytes,
-                })
+                read_blob_object(&self.root, uri, &digest_hex)
             }
         }
     }
 }
 
+fn ensure_evidence_blob(
+    root: &Path,
+    request: &EvidenceEmissionRequest,
+) -> Result<(String, String), RegistryError> {
+    let digest_hex = sha256_bytes(&request.payload);
+    let digest_label = format!("sha256:{digest_hex}");
+    let blob_uri = object_resource_uri(&digest_hex);
+    let blob_dir = object_blob_path(root, &digest_hex);
+    let payload_path = blob_dir.join("payload");
+    let blob_metadata_path = blob_dir.join("blob.json");
+
+    fs::create_dir_all(&blob_dir).map_err(|error| {
+        RegistryError::new(
+            "object-store-create-failed",
+            "failed to create object store directory",
+        )
+        .with_detail(error.to_string())
+    })?;
+
+    match (payload_path.exists(), blob_metadata_path.exists()) {
+        (false, false) => {
+            fs::write(&payload_path, &request.payload).map_err(|error| {
+                RegistryError::new(
+                    "object-payload-write-failed",
+                    "failed to persist evidence payload",
+                )
+                .with_detail(error.to_string())
+            })?;
+
+            write_json(
+                &blob_metadata_path,
+                &EvidenceBlobRecord {
+                    uri: blob_uri.clone(),
+                    sha256: digest_label.clone(),
+                    size_bytes: request.payload.len() as u64,
+                },
+            )?;
+        }
+        (true, true) => {
+            let metadata = read_blob_metadata(&blob_metadata_path)?;
+
+            if metadata.uri != blob_uri
+                || metadata.sha256 != digest_label
+                || metadata.size_bytes != request.payload.len() as u64
+            {
+                return Err(RegistryError::new(
+                    "object-metadata-conflict",
+                    "stored object metadata conflicted with the evidence payload digest",
+                )
+                .with_detail(serde_json::json!({
+                    "uri": blob_uri,
+                    "sha256": digest_label,
+                })));
+            }
+        }
+        _ => {
+            return Err(RegistryError::new(
+                "object-store-invalid",
+                "evidence blob storage was partially populated and failed closed",
+            )
+            .with_detail(serde_json::json!({
+                "uri": blob_uri,
+                "payload_exists": payload_path.exists(),
+                "metadata_exists": blob_metadata_path.exists(),
+            })));
+        }
+    }
+
+    Ok((blob_uri, digest_label))
+}
+
+fn read_execution_resource(
+    record: &ExecutionRecord,
+    uri: &str,
+) -> Result<ResourceReadResult, RegistryError> {
+    let bytes = serde_json::to_vec_pretty(record).map_err(|error| {
+        RegistryError::new(
+            "execution-serialize-failed",
+            "failed to serialize stored execution record",
+        )
+        .with_detail(error.to_string())
+    })?;
+    Ok(ResourceReadResult {
+        uri: uri.to_owned(),
+        mime_type: "application/json".into(),
+        sha256: Some(format!("sha256:{}", sha256_bytes(&bytes))),
+        bytes,
+    })
+}
+
+fn read_record_backed_object(root: &Path, uri: &str) -> Result<ResourceReadResult, RegistryError> {
+    let record = load_evidence_record_from_root(root, uri)?;
+    let GuildResourceUri::ObjectRecord { evidence_record_id } = parse_guild_uri(uri)? else {
+        return Err(RegistryError::new(
+            "resource-kind-mismatch",
+            "evidence records are only available for Guild evidence-record URIs",
+        )
+        .with_detail(serde_json::json!({ "uri": uri })));
+    };
+    let GuildResourceUri::ObjectBlob { digest_hex } = parse_guild_uri(&record.blob_uri)? else {
+        return Err(RegistryError::new(
+            "object-metadata-invalid",
+            "evidence record referenced an invalid blob URI",
+        )
+        .with_detail(serde_json::json!({
+            "uri": uri,
+            "blob_uri": record.blob_uri,
+            "evidence_record_id": evidence_record_id,
+        })));
+    };
+    let payload_path = object_blob_path(root, &digest_hex).join("payload");
+    let bytes = read_object_payload(
+        &payload_path,
+        "object-not-found",
+        serde_json::json!({
+            "uri": uri,
+            "blob_uri": record.blob_uri,
+            "path": payload_path.display().to_string(),
+        }),
+    )?;
+
+    Ok(ResourceReadResult {
+        uri: uri.to_owned(),
+        mime_type: record.mime_type,
+        sha256: Some(record.sha256),
+        bytes,
+    })
+}
+
+fn read_blob_object(
+    root: &Path,
+    uri: &str,
+    digest_hex: &str,
+) -> Result<ResourceReadResult, RegistryError> {
+    let object_dir = object_blob_path(root, digest_hex);
+    let payload_path = object_dir.join("payload");
+    let metadata_path = object_dir.join("blob.json");
+    let bytes = read_object_payload(
+        &payload_path,
+        "object-not-found",
+        serde_json::json!({
+            "uri": uri,
+            "path": payload_path.display().to_string(),
+        }),
+    )?;
+    let metadata = read_blob_metadata(&metadata_path)?;
+
+    Ok(ResourceReadResult {
+        uri: uri.to_owned(),
+        mime_type: "application/octet-stream".into(),
+        sha256: Some(metadata.sha256),
+        bytes,
+    })
+}
+
+fn load_evidence_record_from_root(root: &Path, uri: &str) -> Result<EvidenceRecord, RegistryError> {
+    let GuildResourceUri::ObjectRecord { evidence_record_id } = parse_guild_uri(uri)? else {
+        return Err(RegistryError::new(
+            "resource-kind-mismatch",
+            "evidence records are only available for Guild evidence-record URIs",
+        )
+        .with_detail(serde_json::json!({ "uri": uri })));
+    };
+
+    let metadata_path = evidence_record_path(root, &evidence_record_id);
+    let contents = fs::read_to_string(&metadata_path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            RegistryError::new(
+                "object-not-found",
+                "evidence record was not found in the local object store",
+            )
+            .with_detail(serde_json::json!({
+                "uri": uri,
+                "path": metadata_path.display().to_string(),
+            }))
+        } else {
+            RegistryError::new(
+                "object-metadata-read-failed",
+                "failed to read evidence record metadata",
+            )
+            .with_detail(error.to_string())
+        }
+    })?;
+
+    serde_json::from_str(&contents).map_err(|error| {
+        RegistryError::new(
+            "object-metadata-parse-failed",
+            "failed to parse evidence record metadata",
+        )
+        .with_detail(error.to_string())
+    })
+}
+
+fn read_object_payload(
+    payload_path: &Path,
+    not_found_code: &'static str,
+    not_found_detail: Value,
+) -> Result<Vec<u8>, RegistryError> {
+    fs::read(payload_path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            RegistryError::new(
+                not_found_code,
+                "evidence object was not found in the local object store",
+            )
+            .with_detail(not_found_detail)
+        } else {
+            RegistryError::new(
+                "object-read-failed",
+                "failed to read evidence object payload",
+            )
+            .with_detail(error.to_string())
+        }
+    })
+}
+
+fn read_blob_metadata(metadata_path: &Path) -> Result<EvidenceBlobRecord, RegistryError> {
+    serde_json::from_str(&fs::read_to_string(metadata_path).map_err(|error| {
+        RegistryError::new(
+            "object-metadata-read-failed",
+            "failed to read evidence object metadata",
+        )
+        .with_detail(error.to_string())
+    })?)
+    .map_err(|error| {
+        RegistryError::new(
+            "object-metadata-parse-failed",
+            "failed to parse evidence object metadata",
+        )
+        .with_detail(error.to_string())
+    })
+}
+
 impl LocalSourceInstaller {
+    /// Construct a source installer rooted at a local Guild registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry root cannot be created or validated.
     pub fn new(root: impl AsRef<Path>) -> Result<Self, RegistryError> {
         Ok(Self {
             root: ensure_registry_layout(root)?,
         })
     }
 
+    #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
     }
 
+    /// Build, validate, and atomically install a source skill into local installed state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the source manifest, dependency resolution, build,
+    /// staging, or atomic move into installed state fails.
     pub fn install(&self, source_dir: impl AsRef<Path>) -> Result<InstalledSkill, RegistryError> {
         let source_dir = open_existing_directory(source_dir)?;
         let source_manifest_path = source_dir.join("manifest.json");
@@ -1134,46 +1301,15 @@ impl LocalSourceInstaller {
         let digest = sha256_file(&built_artifact)?;
         let install_root = install_root_for(&self.root, &source_manifest);
         let install_dir = install_root.join(digest_dir(&digest));
-        let staging_root = source_install_staging_root(&self.root);
-        fs::create_dir_all(&staging_root).map_err(|error| {
-            RegistryError::new(
-                "install-staging-create-failed",
-                "failed to create source install staging directory",
-            )
-            .with_detail(error.to_string())
-        })?;
-        let staging_dir = staging_root.join(format!(
-            "{}-{}",
-            digest_dir(&digest),
-            install_staging_suffix()
-        ));
-        fs::create_dir_all(&staging_dir).map_err(|error| {
-            RegistryError::new(
-                "install-staging-create-failed",
-                "failed to create staged install directory",
-            )
-            .with_detail(error.to_string())
-        })?;
-
-        let staged_result = (|| -> Result<InstalledSkill, RegistryError> {
-            let staged_artifact = staging_dir.join("component.wasm");
-            fs::copy(&built_artifact, &staged_artifact).map_err(|error| {
-                RegistryError::new("artifact-stage-failed", "failed to stage built artifact")
-                    .with_detail(error.to_string())
-            })?;
-
-            stage_support_files(&source_dir, &staging_dir, &source_manifest)?;
-
-            let installed_manifest = source_manifest.into_installed(
-                "./component.wasm",
-                digest.clone(),
-                installed_dependencies,
-            );
-            let installed_manifest_path = staging_dir.join("manifest.json");
-            write_json(&installed_manifest_path, &installed_manifest)?;
-
-            LocalRegistry::load_manifest(&installed_manifest_path)
-        })();
+        let staging_dir = create_install_staging_dir(&self.root, &digest)?;
+        let staged_result = stage_install_contents(
+            &source_dir,
+            &staging_dir,
+            source_manifest,
+            installed_dependencies,
+            &built_artifact,
+            &digest,
+        );
 
         let staged = match staged_result {
             Ok(staged) => staged,
@@ -1183,62 +1319,135 @@ impl LocalSourceInstaller {
             }
         };
 
-        if install_dir.exists() {
-            let existing = LocalRegistry::load_manifest(&install_dir.join("manifest.json"))
-                .map_err(|error| {
-                    RegistryError::new(
-                        "install-target-invalid",
-                        "existing installed digest directory was invalid",
-                    )
-                    .with_detail(serde_json::json!({
-                        "install_dir": install_dir.display().to_string(),
-                        "cause": {
-                            "code": error.code,
-                            "message": error.message,
-                            "detail": error.detail,
-                        }
-                    }))
-                })?;
+        if let Some(existing) = reusable_existing_install(&install_dir, &staged)? {
             let _ = cleanup_install_staging_dir(&staging_dir);
-            if existing.resolved_ref == staged.resolved_ref && existing.manifest == staged.manifest
-            {
-                return Ok(existing);
-            }
-            return Err(RegistryError::new(
-                "install-target-conflict",
-                "existing installed digest directory conflicted with the staged install",
-            )
-            .with_detail(serde_json::json!({
-                "install_dir": install_dir.display().to_string(),
-                "resolved_ref": staged.resolved_ref,
-            })));
+            return Ok(existing);
         }
 
-        if let Some(parent) = install_dir.parent() {
-            fs::create_dir_all(parent).map_err(|error| {
-                RegistryError::new(
-                    "install-root-create-failed",
-                    "failed to create install directory",
-                )
-                .with_detail(error.to_string())
-            })?;
-        }
-
-        fs::rename(&staging_dir, &install_dir).map_err(|error| {
-            RegistryError::new(
-                "install-move-failed",
-                "failed to move the staged install into the local registry",
-            )
-            .with_detail(serde_json::json!({
-                "from": staging_dir.display().to_string(),
-                "to": install_dir.display().to_string(),
-                "cause": error.to_string(),
-            }))
-        })?;
+        ensure_install_parent(&install_dir)?;
+        move_staged_install(&staging_dir, &install_dir)?;
         let _ = cleanup_install_staging_dir(&staging_dir);
 
         LocalRegistry::load_manifest(&install_dir.join("manifest.json"))
     }
+}
+
+fn create_install_staging_dir(root: &Path, digest: &str) -> Result<PathBuf, RegistryError> {
+    let staging_root = source_install_staging_root(root);
+    fs::create_dir_all(&staging_root).map_err(|error| {
+        RegistryError::new(
+            "install-staging-create-failed",
+            "failed to create source install staging directory",
+        )
+        .with_detail(error.to_string())
+    })?;
+
+    let staging_dir = staging_root.join(format!(
+        "{}-{}",
+        digest_dir(digest),
+        install_staging_suffix()
+    ));
+    fs::create_dir_all(&staging_dir).map_err(|error| {
+        RegistryError::new(
+            "install-staging-create-failed",
+            "failed to create staged install directory",
+        )
+        .with_detail(error.to_string())
+    })?;
+    Ok(staging_dir)
+}
+
+fn stage_install_contents(
+    source_dir: &Path,
+    staging_dir: &Path,
+    source_manifest: SourceSkillManifest,
+    installed_dependencies: Vec<InstalledDependencySpec>,
+    built_artifact: &Path,
+    digest: &str,
+) -> Result<InstalledSkill, RegistryError> {
+    let staged_artifact = staging_dir.join("component.wasm");
+    fs::copy(built_artifact, &staged_artifact).map_err(|error| {
+        RegistryError::new("artifact-stage-failed", "failed to stage built artifact")
+            .with_detail(error.to_string())
+    })?;
+
+    stage_support_files(source_dir, staging_dir, &source_manifest)?;
+
+    let installed_manifest = source_manifest.into_installed(
+        "./component.wasm",
+        digest.to_owned(),
+        installed_dependencies,
+    );
+    let installed_manifest_path = staging_dir.join("manifest.json");
+    write_json(&installed_manifest_path, &installed_manifest)?;
+
+    LocalRegistry::load_manifest(&installed_manifest_path)
+}
+
+fn reusable_existing_install(
+    install_dir: &Path,
+    staged: &InstalledSkill,
+) -> Result<Option<InstalledSkill>, RegistryError> {
+    if !install_dir.exists() {
+        return Ok(None);
+    }
+
+    let existing =
+        LocalRegistry::load_manifest(&install_dir.join("manifest.json")).map_err(|error| {
+            RegistryError::new(
+                "install-target-invalid",
+                "existing installed digest directory was invalid",
+            )
+            .with_detail(serde_json::json!({
+                "install_dir": install_dir.display().to_string(),
+                "cause": {
+                    "code": error.code,
+                    "message": error.message,
+                    "detail": error.detail,
+                }
+            }))
+        })?;
+
+    if existing.resolved_ref == staged.resolved_ref && existing.manifest == staged.manifest {
+        return Ok(Some(existing));
+    }
+
+    Err(RegistryError::new(
+        "install-target-conflict",
+        "existing installed digest directory conflicted with the staged install",
+    )
+    .with_detail(serde_json::json!({
+        "install_dir": install_dir.display().to_string(),
+        "resolved_ref": staged.resolved_ref,
+    })))
+}
+
+fn ensure_install_parent(install_dir: &Path) -> Result<(), RegistryError> {
+    if let Some(parent) = install_dir.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            RegistryError::new(
+                "install-root-create-failed",
+                "failed to create install directory",
+            )
+            .with_detail(error.to_string())
+        })?;
+    }
+
+    Ok(())
+}
+
+fn move_staged_install(staging_dir: &Path, install_dir: &Path) -> Result<(), RegistryError> {
+    fs::rename(staging_dir, install_dir).map_err(|error| {
+        RegistryError::new(
+            "install-move-failed",
+            "failed to move the staged install into the local registry",
+        )
+        .with_detail(serde_json::json!({
+            "from": staging_dir.display().to_string(),
+            "to": install_dir.display().to_string(),
+            "cause": error.to_string(),
+        }))
+    })
 }
 
 fn resolve_source_dependencies(
@@ -1554,7 +1763,10 @@ fn find_built_wasm_artifact(
                 continue;
             };
 
-            if filename.ends_with(".wasm") {
+            if Path::new(filename)
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("wasm"))
+            {
                 artifact = Some(PathBuf::from(filename));
             }
         }
@@ -1742,7 +1954,6 @@ fn write_json_new<T: Serialize>(
             }
         })?;
 
-    use std::io::Write as _;
     let mut file = file;
     file.write_all(&bytes).map_err(|error| {
         RegistryError::new("json-write-failed", "failed to write JSON file")
@@ -1832,6 +2043,7 @@ fn execution_path(root: &Path, execution_id: &str) -> PathBuf {
     executions_root(root).join(format!("{}.json", percent_encode_component(execution_id)))
 }
 
+#[must_use]
 pub fn execution_resource_uri(execution_id: &str) -> String {
     format!(
         "{}{}",
@@ -1844,6 +2056,7 @@ fn object_blob_path(root: &Path, digest_hex: &str) -> PathBuf {
     object_blobs_root(root).join(digest_hex)
 }
 
+#[must_use]
 pub fn object_resource_uri(digest_hex: &str) -> String {
     format!("{GUILD_OBJECT_BLOB_URI_PREFIX}{digest_hex}")
 }
@@ -1855,6 +2068,7 @@ fn evidence_record_path(root: &Path, evidence_record_id: &str) -> PathBuf {
     ))
 }
 
+#[must_use]
 pub fn evidence_record_resource_uri(evidence_record_id: &str) -> String {
     format!(
         "{}{}",
@@ -1877,7 +2091,9 @@ fn percent_encode_component(input: &str) -> String {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
                 encoded.push(byte as char);
             }
-            _ => encoded.push_str(&format!("%{byte:02X}")),
+            _ => {
+                write!(&mut encoded, "%{byte:02X}").expect("writing into a String cannot fail");
+            }
         }
     }
 
@@ -2039,6 +2255,18 @@ fn validate_bundle(
     bundle: &InstalledSkillBundle,
 ) -> Result<Vec<ValidatedBundleSkill>, RegistryError> {
     validate_bundle_index_shape(bundle)?;
+    let validated = validate_bundle_skill_entries(bundle_root, bundle)?;
+    validate_bundle_root_and_dependency_closure(bundle, &validated)?;
+    let listed_paths = validate_listed_bundle_files(bundle_root, bundle)?;
+    let actual_files = collect_actual_bundle_files(bundle_root, &validated)?;
+    validate_bundle_file_set_alignment(&listed_paths, &actual_files)?;
+    Ok(validated)
+}
+
+fn validate_bundle_skill_entries(
+    bundle_root: &Path,
+    bundle: &InstalledSkillBundle,
+) -> Result<Vec<ValidatedBundleSkill>, RegistryError> {
     let mut seen_refs = HashSet::new();
     let mut seen_dirs = HashSet::new();
     let mut validated = Vec::with_capacity(bundle.skills.len());
@@ -2097,10 +2325,17 @@ fn validate_bundle(
         });
     }
 
-    let mut by_ref = HashMap::new();
-    for skill in &validated {
-        by_ref.insert(skill.installed.resolved_ref.clone(), skill);
-    }
+    Ok(validated)
+}
+
+fn validate_bundle_root_and_dependency_closure(
+    bundle: &InstalledSkillBundle,
+    validated: &[ValidatedBundleSkill],
+) -> Result<(), RegistryError> {
+    let by_ref: HashMap<_, _> = validated
+        .iter()
+        .map(|skill| (skill.installed.resolved_ref.clone(), skill))
+        .collect();
 
     if !by_ref.contains_key(&bundle.root_skill) {
         return Err(RegistryError::new(
@@ -2110,36 +2345,51 @@ fn validate_bundle(
         .with_detail(serde_json::json!({ "root_skill": bundle.root_skill })));
     }
 
-    if bundle.includes_dependency_closure {
-        let mut stack = vec![bundle.root_skill.clone()];
-        let mut walked = HashSet::new();
+    if !bundle.includes_dependency_closure {
+        return Ok(());
+    }
 
-        while let Some(skill_ref) = stack.pop() {
-            if !walked.insert(skill_ref.clone()) {
-                continue;
-            }
+    let mut stack = vec![bundle.root_skill.clone()];
+    let mut walked = HashSet::new();
+    while let Some(skill_ref) = stack.pop() {
+        if !walked.insert(skill_ref.clone()) {
+            continue;
+        }
 
-            let installed = by_ref.get(&skill_ref).expect("root presence was checked");
-            for dependency in &installed.installed.manifest.dependencies {
-                if !by_ref.contains_key(&dependency.skill) {
-                    return Err(RegistryError::new(
-                        "bundle-closure-incomplete",
-                        "bundle declared dependency closure but omitted a required installed dependency",
-                    )
-                    .with_detail(serde_json::json!({
-                        "root_skill": bundle.root_skill,
-                        "dependency_alias": dependency.alias,
-                        "missing_dependency": dependency.skill,
-                    })));
-                }
-                stack.push(dependency.skill.clone());
+        let installed = by_ref.get(&skill_ref).ok_or_else(|| {
+            RegistryError::new(
+                "bundle-root-missing",
+                "bundle.json root_skill was not included in the bundled installed skills",
+            )
+            .with_detail(serde_json::json!({ "root_skill": bundle.root_skill }))
+        })?;
+        for dependency in &installed.installed.manifest.dependencies {
+            if !by_ref.contains_key(&dependency.skill) {
+                return Err(RegistryError::new(
+                    "bundle-closure-incomplete",
+                    "bundle declared dependency closure but omitted a required installed dependency",
+                )
+                .with_detail(serde_json::json!({
+                    "root_skill": bundle.root_skill,
+                    "dependency_alias": dependency.alias,
+                    "missing_dependency": dependency.skill,
+                })));
             }
+            stack.push(dependency.skill.clone());
         }
     }
 
-    let mut listed_files = HashMap::new();
+    Ok(())
+}
+
+fn validate_listed_bundle_files(
+    bundle_root: &Path,
+    bundle: &InstalledSkillBundle,
+) -> Result<HashSet<String>, RegistryError> {
+    let mut listed_paths = HashSet::new();
+
     for file in &bundle.files {
-        if listed_files.insert(file.path.clone(), file).is_some() {
+        if !listed_paths.insert(file.path.clone()) {
             return Err(RegistryError::new(
                 "bundle-index-invalid",
                 "bundle.json declared the same bundled file more than once",
@@ -2185,8 +2435,16 @@ fn validate_bundle(
         }
     }
 
+    Ok(listed_paths)
+}
+
+fn collect_actual_bundle_files(
+    bundle_root: &Path,
+    validated: &[ValidatedBundleSkill],
+) -> Result<HashSet<String>, RegistryError> {
     let mut actual_files = HashSet::new();
-    for skill in &validated {
+
+    for skill in validated {
         for entry in WalkDir::new(&skill.install_dir).sort_by_file_name() {
             let entry = entry.map_err(|error| {
                 RegistryError::new(
@@ -2213,8 +2471,14 @@ fn validate_bundle(
         }
     }
 
-    let listed_paths: HashSet<_> = bundle.files.iter().map(|file| file.path.clone()).collect();
-    if let Some(unexpected) = actual_files.difference(&listed_paths).next() {
+    Ok(actual_files)
+}
+
+fn validate_bundle_file_set_alignment(
+    listed_paths: &HashSet<String>,
+    actual_files: &HashSet<String>,
+) -> Result<(), RegistryError> {
+    if let Some(unexpected) = actual_files.difference(listed_paths).next() {
         return Err(RegistryError::new(
             "bundle-unexpected-content",
             "bundled installed content included a file that was not listed in bundle.json",
@@ -2222,7 +2486,7 @@ fn validate_bundle(
         .with_detail(unexpected.clone()));
     }
 
-    if let Some(orphaned) = listed_paths.difference(&actual_files).next() {
+    if let Some(orphaned) = listed_paths.difference(actual_files).next() {
         return Err(RegistryError::new(
             "bundle-index-invalid",
             "bundle.json listed a file that did not belong to a bundled installed skill directory",
@@ -2230,7 +2494,7 @@ fn validate_bundle(
         .with_detail(orphaned.clone()));
     }
 
-    Ok(validated)
+    Ok(())
 }
 
 fn validate_import_targets(
@@ -2506,7 +2770,7 @@ fn installed_relative_dir(
 }
 
 fn path_string(path: &Path) -> Result<String, RegistryError> {
-    path.to_str().map(|value| value.to_owned()).ok_or_else(|| {
+    path.to_str().map(str::to_owned).ok_or_else(|| {
         RegistryError::new(
             "path-not-utf8",
             "path could not be represented as UTF-8 in the local bundle format",

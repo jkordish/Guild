@@ -1,3 +1,6 @@
+#![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::perf)]
+#![allow(clippy::multiple_crate_versions)]
+
 //! Manifest model for published Guild skills.
 
 use guild_types::{
@@ -179,10 +182,12 @@ fn default_build_profile() -> BuildProfile {
 }
 
 impl ModePolicy {
+    #[must_use]
     pub fn supports(&self, mode: &ExecutionMode) -> bool {
         self.supported.iter().any(|candidate| candidate == mode)
     }
 
+    #[must_use]
     pub fn validate(&self) -> Vec<ManifestValidationError> {
         let mut errors = Vec::new();
 
@@ -213,6 +218,11 @@ impl ModePolicy {
 }
 
 impl SkillManifest {
+    /// Validate an installed manifest before it is accepted as executable state.
+    ///
+    /// # Errors
+    ///
+    /// Returns every manifest validation error found in the installed manifest.
     pub fn validate(&self) -> Result<(), Vec<ManifestValidationError>> {
         let mut errors = self.behavior.modes.validate();
         errors.extend(validate_installed_dependencies(&self.dependencies));
@@ -225,12 +235,18 @@ impl SkillManifest {
         }
     }
 
+    #[must_use]
     pub fn supports_mode(&self, mode: &ExecutionMode) -> bool {
         self.behavior.modes.supports(mode)
     }
 }
 
 impl SourceSkillManifest {
+    /// Validate a source manifest before build or install.
+    ///
+    /// # Errors
+    ///
+    /// Returns every manifest validation error found in the source manifest.
     pub fn validate(&self) -> Result<(), Vec<ManifestValidationError>> {
         let mut errors = self.behavior.modes.validate();
         errors.extend(validate_source_dependencies(&self.dependencies));

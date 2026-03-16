@@ -1,3 +1,6 @@
+#![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::perf)]
+#![allow(clippy::multiple_crate_versions)]
+
 //! Core shared data structures for Guild contracts.
 
 use std::fmt;
@@ -16,14 +19,24 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+/// Mint a host-owned durable execution identifier.
+#[must_use]
 pub fn mint_host_execution_id() -> String {
     Uuid::now_v7().to_string()
 }
 
+/// Mint a host-owned durable evidence-record identifier.
+#[must_use]
 pub fn mint_host_evidence_record_id() -> String {
     Uuid::now_v7().to_string()
 }
 
+/// Return the current host UTC timestamp formatted as RFC 3339.
+///
+/// # Panics
+///
+/// Panics if formatting a UTC timestamp as RFC 3339 unexpectedly fails.
+#[must_use]
 pub fn host_now_utc() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -40,10 +53,16 @@ pub struct SkillKey {
 pub struct SkillVersion(pub Version);
 
 impl SkillVersion {
+    /// Parse a semantic version string into a Guild skill version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `input` is not valid semantic version syntax.
     pub fn parse(input: &str) -> Result<Self, semver::Error> {
         Version::parse(input).map(Self)
     }
 
+    #[must_use]
     pub fn as_semver(&self) -> &Version {
         &self.0
     }
@@ -105,10 +124,16 @@ impl JsonSchema for SkillVersion {
 pub struct VersionRequirement(pub VersionReq);
 
 impl VersionRequirement {
+    /// Parse a semantic version requirement string into a Guild version requirement.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `input` is not valid semantic version requirement syntax.
     pub fn parse(input: &str) -> Result<Self, semver::Error> {
         VersionReq::parse(input).map(Self)
     }
 
+    #[must_use]
     pub fn as_semver(&self) -> &VersionReq {
         &self.0
     }
@@ -281,20 +306,26 @@ pub enum GuildResourceScope {
 }
 
 impl GuildResourceScope {
+    /// Parse an exact canonical Guild resource scope root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `scope` is not one of the supported canonical Guild
+    /// resource scope roots.
     pub fn parse(scope: &str) -> Result<Self, GuildResourceParseError> {
         match scope {
             GUILD_EXECUTION_URI_PREFIX => Ok(Self::Execution),
             GUILD_OBJECT_BLOB_URI_PREFIX => Ok(Self::ObjectBlob),
             GUILD_OBJECT_RECORD_URI_PREFIX => Ok(Self::ObjectRecord),
             _ => Err(GuildResourceParseError::new(format!(
-                "read-resource uri_prefixes must use canonical Guild scope roots: `{}`, `{}`, or `{}`",
-                GUILD_EXECUTION_URI_PREFIX,
-                GUILD_OBJECT_BLOB_URI_PREFIX,
-                GUILD_OBJECT_RECORD_URI_PREFIX
+                "read-resource uri_prefixes must use canonical Guild scope roots: \
+                 `{GUILD_EXECUTION_URI_PREFIX}`, `{GUILD_OBJECT_BLOB_URI_PREFIX}`, or \
+                 `{GUILD_OBJECT_RECORD_URI_PREFIX}`"
             ))),
         }
     }
 
+    #[must_use]
     pub fn kind(&self) -> ResourceKind {
         match self {
             Self::Execution => ResourceKind::Execution,
@@ -302,6 +333,7 @@ impl GuildResourceScope {
         }
     }
 
+    #[must_use]
     pub fn canonical_prefix(&self) -> &'static str {
         match self {
             Self::Execution => GUILD_EXECUTION_URI_PREFIX,
@@ -310,6 +342,7 @@ impl GuildResourceScope {
         }
     }
 
+    #[must_use]
     pub fn matches(&self, uri: &GuildResourceUri) -> bool {
         matches!(
             (self, uri),
@@ -328,6 +361,12 @@ pub enum GuildResourceUri {
 }
 
 impl GuildResourceUri {
+    /// Parse a concrete Guild resource URI.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `uri` is malformed, uses invalid percent encoding, or
+    /// does not match a supported local Guild resource kind.
     pub fn parse(uri: &str) -> Result<Self, GuildResourceParseError> {
         if let Some(encoded) = uri.strip_prefix(GUILD_EXECUTION_URI_PREFIX) {
             if encoded.is_empty() {
@@ -388,6 +427,7 @@ impl GuildResourceUri {
         ))
     }
 
+    #[must_use]
     pub fn kind(&self) -> ResourceKind {
         match self {
             Self::Execution { .. } => ResourceKind::Execution,
@@ -395,6 +435,7 @@ impl GuildResourceUri {
         }
     }
 
+    #[must_use]
     pub fn scope(&self) -> GuildResourceScope {
         match self {
             Self::Execution { .. } => GuildResourceScope::Execution,
@@ -410,6 +451,7 @@ pub struct GuildResourceParseError {
 }
 
 impl GuildResourceParseError {
+    #[must_use]
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -426,10 +468,12 @@ impl fmt::Display for GuildResourceParseError {
 impl std::error::Error for GuildResourceParseError {}
 
 impl ResourceKind {
+    #[must_use]
     pub fn from_uri(uri: &str) -> Option<Self> {
         GuildResourceUri::parse(uri).ok().map(|uri| uri.kind())
     }
 
+    #[must_use]
     pub fn from_uri_prefix(prefix: &str) -> Option<Self> {
         GuildResourceScope::parse(prefix)
             .ok()
@@ -492,10 +536,12 @@ impl Default for CapabilityConstraints {
 }
 
 impl CapabilityConstraints {
+    #[must_use]
     pub fn none() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn as_read_resource(&self) -> Option<&ReadResourceConstraints> {
         match self {
             Self::ReadResource(value) => Some(value),
@@ -503,6 +549,7 @@ impl CapabilityConstraints {
         }
     }
 
+    #[must_use]
     pub fn as_invoke_dependency(&self) -> Option<&InvokeDependencyConstraints> {
         match self {
             Self::InvokeDependency(value) => Some(value),
@@ -510,6 +557,7 @@ impl CapabilityConstraints {
         }
     }
 
+    #[must_use]
     pub fn as_emit_evidence(&self) -> Option<&EmitEvidenceConstraints> {
         match self {
             Self::EmitEvidence(value) => Some(value),
@@ -517,6 +565,7 @@ impl CapabilityConstraints {
         }
     }
 
+    #[must_use]
     pub fn as_log(&self) -> Option<&LogConstraints> {
         match self {
             Self::Log(value) => Some(value),
@@ -524,6 +573,7 @@ impl CapabilityConstraints {
         }
     }
 
+    #[must_use]
     pub fn matches_capability(&self, id: &CapabilityId, access: &CapabilityAccess) -> bool {
         matches!(
             (id, access, self),
@@ -551,6 +601,7 @@ impl CapabilityConstraints {
         )
     }
 
+    #[must_use]
     pub fn validate_for(&self, id: &CapabilityId, access: &CapabilityAccess) -> Vec<String> {
         let mut errors = Vec::new();
 
@@ -576,6 +627,7 @@ impl CapabilityConstraints {
 }
 
 impl ReadResourceConstraints {
+    #[must_use]
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
@@ -619,6 +671,7 @@ impl ReadResourceConstraints {
 }
 
 impl InvokeDependencyConstraints {
+    #[must_use]
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
@@ -639,6 +692,7 @@ impl InvokeDependencyConstraints {
 }
 
 impl EmitEvidenceConstraints {
+    #[must_use]
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
@@ -663,6 +717,7 @@ impl EmitEvidenceConstraints {
 }
 
 impl LogConstraints {
+    #[must_use]
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
@@ -686,6 +741,7 @@ pub struct CapabilityRequirement {
 }
 
 impl CapabilityRequirement {
+    #[must_use]
     pub fn validate(&self) -> Vec<String> {
         self.constraints.validate_for(&self.id, &self.access)
     }
@@ -700,6 +756,7 @@ pub struct GrantedCapability {
 }
 
 impl GrantedCapability {
+    #[must_use]
     pub fn validate(&self) -> Vec<String> {
         self.constraints.validate_for(&self.id, &self.access)
     }
@@ -942,6 +999,7 @@ pub struct EvidenceRecord {
 }
 
 impl EvidenceRecord {
+    #[must_use]
     pub fn evidence_ref(&self) -> EvidenceRef {
         EvidenceRef {
             uri: self.uri.clone(),

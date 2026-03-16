@@ -1,3 +1,6 @@
+#![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::perf)]
+#![allow(clippy::multiple_crate_versions)]
+
 //! MCP-facing names and façade concepts for Guild.
 //!
 //! The current working baseline is an inspect-only Rust façade that normalizes
@@ -184,6 +187,7 @@ where
     R: SkillRegistry + Clone + Send + Sync + 'static,
     A: RuntimeAdapter + Clone + 'static,
 {
+    #[must_use]
     pub fn new(registry: R, runtime: A) -> Self {
         Self {
             registry,
@@ -191,6 +195,11 @@ where
         }
     }
 
+    /// Resolve and execute a Guild skill in inspect mode through the shared runtime path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if resolution, execution, or durable record loading fails.
     pub fn inspect(&self, request: InspectRequest) -> Result<InspectResponse, McpError> {
         let installed = self.registry.resolve(&request.skill)?;
         let execution_request = ResolvedExecutionEnvelope {
@@ -218,28 +227,48 @@ where
 
         let record = self
             .runner
-            .execute(&self.registry, &installed, execution_request)?;
+            .execute(&self.registry, &installed, &execution_request)?;
+        let summary = record
+            .output
+            .as_ref()
+            .map(|output| output.summary.clone())
+            .ok_or_else(|| {
+                McpError::new(
+                    "inspect-record-missing-output",
+                    "successful inspect execution did not contain skill output",
+                )
+            })?;
         Ok(InspectResponse {
-            summary: record
-                .output
-                .as_ref()
-                .expect("successful execution records include skill output")
-                .summary
-                .clone(),
+            summary,
             structured_content: record,
         })
     }
 
+    /// Inspect a Guild skill using the MCP-facing inspect tool input shape.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying inspect request cannot be completed.
     pub fn inspect_tool(&self, request: InspectToolRequest) -> Result<InspectResponse, McpError> {
         self.inspect(request.into_inspect_request())
     }
 
+    /// Read a Guild execution or evidence resource through the shared local backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the resource URI is invalid, missing, or unreadable.
     pub fn read_resource(&self, uri: impl AsRef<str>) -> Result<ResourceReadResult, McpError> {
         self.registry
             .read_resource(uri.as_ref())
             .map_err(McpError::from)
     }
 
+    /// Load a persisted execution record by host-minted execution id.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the execution record cannot be loaded.
     pub fn load_execution_record(
         &self,
         execution_id: impl AsRef<str>,
@@ -249,6 +278,11 @@ where
             .map_err(McpError::from)
     }
 
+    /// The inspect-only milestone does not implement `guild.plan`.
+    ///
+    /// # Errors
+    ///
+    /// Always returns a not-implemented error in the current milestone.
     pub fn plan(&self) -> Result<(), McpError> {
         Err(McpError::new(
             "plan-not-implemented",
@@ -256,6 +290,11 @@ where
         ))
     }
 
+    /// The inspect-only milestone keeps `guild.apply` globally disabled.
+    ///
+    /// # Errors
+    ///
+    /// Always returns an apply-disabled error in the current milestone.
     pub fn apply(&self) -> Result<(), McpError> {
         Err(McpError::new(
             "apply-disabled",

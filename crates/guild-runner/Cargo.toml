@@ -2,6 +2,12 @@
 name = "guild-runner"
 version.workspace = true
 edition.workspace = true
+description = "Execution orchestration and runtime boundary for Guild skills"
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 guild-manifest = { path = "../guild-manifest" }
@@ -18,3 +24,6 @@ wasmtime-wasi.workspace = true
 [dev-dependencies]
 serde_json.workspace = true
 trybuild = "1"
+
+[lints]
+workspace = true

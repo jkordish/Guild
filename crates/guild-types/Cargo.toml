@@ -2,6 +2,12 @@
 name = "guild-types"
 version.workspace = true
 edition.workspace = true
+description = "Core contract types for Guild identities, execution, evidence, and capabilities"
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 serde.workspace = true
@@ -10,3 +16,6 @@ schemars.workspace = true
 semver.workspace = true
 time.workspace = true
 uuid.workspace = true
+
+[lints]
+workspace = true

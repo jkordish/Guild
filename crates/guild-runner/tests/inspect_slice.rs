@@ -247,7 +247,7 @@ fn runner_executes_example_skill_and_wraps_execution_record() {
     let registry = load_registry();
     let runner = build_runner();
 
-    let record = runner.execute(&registry, &installed, request).unwrap();
+    let record = runner.execute(&registry, &installed, &request).unwrap();
     let stored = registry
         .load_execution_record(&record.receipt.execution_id)
         .unwrap();
@@ -339,7 +339,7 @@ fn example_fixture_expected_output_matches_real_execution() {
         .execute(
             &registry,
             &installed,
-            envelope_for(
+            &envelope_for(
                 &installed,
                 "exec-2",
                 "trace-2",
@@ -376,7 +376,7 @@ fn emitted_evidence_is_deduped_by_digest_and_resources_are_readable() {
         .execute(
             &registry,
             &installed,
-            envelope_for(
+            &envelope_for(
                 &installed,
                 "exec-evidence-1",
                 "trace-evidence",
@@ -392,7 +392,7 @@ fn emitted_evidence_is_deduped_by_digest_and_resources_are_readable() {
         .execute(
             &registry,
             &installed,
-            envelope_for(
+            &envelope_for(
                 &installed,
                 "exec-evidence-2",
                 "trace-evidence",
@@ -464,7 +464,7 @@ fn guest_cannot_emit_evidence_without_returning_host_issued_refs() {
         .execute(
             &registry,
             &installed,
-            envelope_for(
+            &envelope_for(
                 &installed,
                 "exec-invalid-evidence",
                 "trace-invalid-evidence",
@@ -499,7 +499,7 @@ fn unsupported_plan_mode_fails_closed() {
     let registry = load_registry();
     let runner = build_runner();
 
-    let error = runner.execute(&registry, &installed, request).unwrap_err();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
     assert_eq!(error.code, "unsupported-mode");
     let receipt = error.receipt.expect("rejected execution is persisted");
     let stored = registry
@@ -535,7 +535,7 @@ fn apply_stays_globally_gated_even_if_manifest_declares_it() {
 
     let registry = load_registry();
     let runner = build_runner();
-    let error = runner.execute(&registry, &installed, request).unwrap_err();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
     assert_eq!(error.code, "apply-disabled");
     let receipt = error.receipt.expect("rejected execution is persisted");
     let stored = registry
@@ -561,7 +561,7 @@ fn missing_required_grant_is_rejected_before_execution() {
 
     let registry = load_registry();
     let runner = build_runner();
-    let error = runner.execute(&registry, &installed, request).unwrap_err();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
 
     assert_eq!(error.code, "capability-mismatch");
     let receipt = error.receipt.expect("rejected execution is persisted");
@@ -587,7 +587,7 @@ fn host_log_import_fails_closed_without_grant() {
         .execute(
             &registry,
             &installed,
-            envelope_for(
+            &envelope_for(
                 &installed,
                 "exec-3",
                 "trace-3",
@@ -642,10 +642,10 @@ fn caller_request_ids_do_not_control_durable_execution_ids_or_overwrite_records(
     );
 
     let first = runner
-        .execute(&registry, &installed, first_request)
+        .execute(&registry, &installed, &first_request)
         .unwrap();
     let second = runner
-        .execute(&registry, &installed, second_request)
+        .execute(&registry, &installed, &second_request)
         .unwrap();
 
     assert_eq!(first.request.request_id, second.request.request_id);
@@ -678,7 +678,7 @@ fn duplicate_execution_record_persistence_is_rejected() {
         .execute(
             &registry,
             &installed,
-            envelope_for(
+            &envelope_for(
                 &installed,
                 "duplicate-persist",
                 "trace-duplicate-persist",
@@ -711,7 +711,7 @@ fn emit_evidence_denials_are_host_owned_rejections() {
         .execute(
             &registry,
             &installed,
-            envelope_for(
+            &envelope_for(
                 &installed,
                 "emit-denied",
                 "trace-emit-denied",
@@ -747,7 +747,7 @@ fn unsupported_manifest_capabilities_are_rejected_before_execution() {
 
     let registry = load_registry();
     let runner = build_runner();
-    let error = runner.execute(&registry, &installed, request).unwrap_err();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
 
     assert_eq!(error.code, "unsupported-runtime-surface");
     let receipt = error

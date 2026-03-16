@@ -12,6 +12,11 @@ members = [
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
+license = "UNLICENSED"
+repository = "https://github.com/jkordish/Guild"
+readme = "README.md"
+keywords = ["guild", "mcp", "wasm", "skills", "runtime"]
+categories = ["development-tools", "wasm"]
 
 [workspace.dependencies]
 base64 = "0.22"
@@ -28,3 +33,9 @@ walkdir = "2"
 wasmtime = { version = "42.0.1", features = ["component-model"] }
 wasmtime-wasi = "42.0.1"
 wit-bindgen = "0.53.1"
+
+[workspace.lints.clippy]
+# Wasmtime and Cranelift currently pull two incompatible hashbrown major lines.
+# That duplication is upstream to this workspace, so keep the rest of
+# clippy::cargo strict while exempting this one non-actionable graph lint.
+multiple_crate_versions = "allow"

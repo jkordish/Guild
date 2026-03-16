@@ -1,3 +1,6 @@
+#![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::perf)]
+#![allow(clippy::multiple_crate_versions)]
+
 use std::env;
 use std::process::ExitCode;
 

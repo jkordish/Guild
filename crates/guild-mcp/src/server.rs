@@ -60,6 +60,11 @@ pub struct GuildMcpServer {
 }
 
 impl GuildMcpServer {
+    /// Load the Guild MCP stdio server against a local registry root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry or runtime adapter cannot be initialized.
     pub fn load(registry_root: impl AsRef<Path>) -> Result<Self, ServerStartupError> {
         let registry = LocalRegistry::load(registry_root)
             .map_err(McpError::from)
@@ -76,6 +81,12 @@ impl GuildMcpServer {
         })
     }
 
+    /// Resolve the registry root from CLI args or `GUILD_REGISTRY_ROOT`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the arguments are invalid or no registry root is
+    /// provided from either source.
     pub fn resolve_registry_root(
         args: impl IntoIterator<Item = String>,
         env_registry_root: Option<String>,
@@ -121,12 +132,22 @@ impl GuildMcpServer {
         Err(ServerStartupError::MissingRegistryRoot)
     }
 
+    /// Serve newline-delimited JSON-RPC over stdio.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if reading stdin or writing stdout fails.
     pub fn serve_stdio(&mut self) -> io::Result<()> {
         let stdin = io::stdin();
         let stdout = io::stdout();
         self.serve(stdin.lock(), stdout.lock())
     }
 
+    /// Serve newline-delimited JSON-RPC using the provided reader and writer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an I/O error if reading requests or writing responses fails.
     pub fn serve<R, W>(&mut self, mut reader: R, mut writer: W) -> io::Result<()>
     where
         R: BufRead,
@@ -197,15 +218,15 @@ impl GuildMcpServer {
         }
 
         if request.id.is_none() {
-            self.handle_notification(request);
+            self.handle_notification(&request);
             return None;
         }
 
         let id = request.id.expect("requests have ids");
-        Some(self.handle_request(id, request.method, request.params))
+        Some(self.handle_request(id, &request.method, request.params))
     }
 
-    fn handle_notification(&mut self, request: JsonRpcRequest) {
+    fn handle_notification(&mut self, request: &JsonRpcRequest) {
         if request.method == NOTIFICATION_INITIALIZED {
             if let SessionState::WaitingForInitialized { protocol_version } = &self.state {
                 self.state = SessionState::Ready {
@@ -215,7 +236,7 @@ impl GuildMcpServer {
         }
     }
 
-    fn handle_request(&mut self, id: Value, method: String, params: Option<Value>) -> Value {
+    fn handle_request(&mut self, id: Value, method: &str, params: Option<Value>) -> Value {
         if method != METHOD_INITIALIZE && method != METHOD_PING {
             match &self.state {
                 SessionState::PreInitialize | SessionState::WaitingForInitialized { .. } => {
@@ -230,14 +251,16 @@ impl GuildMcpServer {
             }
         }
 
-        match method.as_str() {
+        match method {
             METHOD_INITIALIZE => self.handle_initialize(id, params),
             METHOD_PING => success_response(id, json!({})),
-            METHOD_TOOLS_LIST => self.handle_tools_list(id, params),
+            METHOD_TOOLS_LIST => Self::handle_tools_list(id, params.as_ref()),
             METHOD_TOOLS_CALL => self.handle_tools_call(id, params),
-            METHOD_RESOURCES_LIST => self.handle_resources_list(id, params),
+            METHOD_RESOURCES_LIST => self.handle_resources_list(id, params.as_ref()),
             METHOD_RESOURCES_READ => self.handle_resources_read(id, params),
-            METHOD_RESOURCE_TEMPLATES_LIST => self.handle_resource_templates_list(id, params),
+            METHOD_RESOURCE_TEMPLATES_LIST => {
+                Self::handle_resource_templates_list(id, params.as_ref())
+            }
             _ => error_response(id, ERROR_METHOD_NOT_FOUND, "Method not found", None),
         }
     }
@@ -289,8 +312,8 @@ impl GuildMcpServer {
         )
     }
 
-    fn handle_tools_list(&mut self, id: Value, params: Option<Value>) -> Value {
-        if let Err(error) = reject_cursor(params.as_ref()) {
+    fn handle_tools_list(id: Value, params: Option<&Value>) -> Value {
+        if let Err(error) = reject_cursor(params) {
             return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
         }
 
@@ -336,7 +359,7 @@ impl GuildMcpServer {
 
         let arguments = params
             .arguments
-            .unwrap_or(Value::Object(Default::default()));
+            .unwrap_or(Value::Object(serde_json::Map::default()));
         let request = match serde_json::from_value::<InspectToolRequest>(arguments) {
             Ok(request) => request,
             Err(error) => {
@@ -393,8 +416,8 @@ impl GuildMcpServer {
         }
     }
 
-    fn handle_resources_list(&mut self, id: Value, params: Option<Value>) -> Value {
-        if let Err(error) = reject_cursor(params.as_ref()) {
+    fn handle_resources_list(&mut self, id: Value, params: Option<&Value>) -> Value {
+        if let Err(error) = reject_cursor(params) {
             return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
         }
 
@@ -450,8 +473,8 @@ impl GuildMcpServer {
         }
     }
 
-    fn handle_resource_templates_list(&mut self, id: Value, params: Option<Value>) -> Value {
-        if let Err(error) = reject_cursor(params.as_ref()) {
+    fn handle_resource_templates_list(id: Value, params: Option<&Value>) -> Value {
+        if let Err(error) = reject_cursor(params) {
             return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
         }
 
@@ -494,6 +517,7 @@ impl GuildMcpServer {
         )
     }
 
+    #[must_use]
     pub fn negotiated_protocol_version(&self) -> Option<&str> {
         match &self.state {
             SessionState::PreInitialize => None,
@@ -507,7 +531,7 @@ fn deserialize_params<T>(params: Option<Value>) -> Result<T, Value>
 where
     T: serde::de::DeserializeOwned,
 {
-    serde_json::from_value(params.unwrap_or(Value::Object(Default::default())))
+    serde_json::from_value(params.unwrap_or(Value::Object(serde_json::Map::default())))
         .map_err(|error| json!({ "detail": error.to_string() }))
 }
 

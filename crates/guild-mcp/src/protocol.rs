@@ -137,6 +137,7 @@ pub struct Tool {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ToolAnnotations {
     pub read_only_hint: bool,
     pub destructive_hint: bool,

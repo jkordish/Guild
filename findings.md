@@ -63,6 +63,11 @@ The trust boundary remains intact:
 - Added a real stdio MCP server entrypoint with honest initialize/capabilities, one public tool (`guild.inspect`), Guild URI resources, and resource templates.
 - Mapped successful inspect calls to MCP tool results with `structuredContent`, text compatibility output, and execution/evidence resource links.
 - Mapped unsuccessful inspect executions to MCP tool errors with `isError: true` while preserving persisted execution receipt and record information.
+- Raised crate-level lint strictness across the workspace to `clippy::all`, `clippy::pedantic`, `clippy::cargo`, and `clippy::perf`, then resolved the resulting warnings with API docs, `#[must_use]`, safer numeric conversions, smaller helper boundaries, and more explicit error handling.
+- Added honest crate package metadata for the local workspace crates so `clippy::cargo` checks now pass on descriptions, repository/readme linkage, keywords, and categories.
+- Kept two intentionally narrow Clippy exceptions:
+  - `clippy::multiple_crate_versions` remains allowed at crate roots because the active Wasmtime/Cranelift dependency graph currently pulls incompatible `hashbrown` major lines upstream.
+  - `clippy::struct_excessive_bools` remains allowed only for the MCP `ToolAnnotations` wire struct because it mirrors the external MCP protocol shape directly.
 
 ## Current Functionality
 
@@ -258,6 +263,7 @@ Regression coverage now includes:
 - durable provenance timestamps on successful, failed, rejected, and child records
 - shared backend consistency between MCP resource reads and guest resource reads
 - real stdio MCP initialize/tools/resources flows against a subprocess server
+- strict workspace lint verification via `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - MCP tool-error semantics preserving persisted execution receipts instead of collapsing them into raw protocol failures
 - bounded recent execution resource listing and canonical Guild URI resource templates
 - resource-aware explain skill execution against stored successful, failed, and rejected artifacts
