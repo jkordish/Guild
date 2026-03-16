@@ -150,6 +150,9 @@ fn execution_request(
         policy_decision: PolicyDecision {
             outcome: PolicyDecisionOutcome::Allowed,
             summary: "local policy granted requested capabilities".into(),
+            profile_name: "default".into(),
+            trust_tier: guild_types::LocalTrustTier::LocalDev,
+            verification_state: guild_types::InstalledVerificationState::LocalSource,
             reasons: Vec::new(),
             detail: None,
         },
@@ -690,6 +693,8 @@ fn explain_skill_reads_allowed_execution_and_evidence_resources() {
         Value::String(hello_record.provenance.resolved_skill.digest.clone());
     expected_output.structured["granted_capabilities"] =
         explain_output.structured["granted_capabilities"].clone();
+    expected_output.structured["policy_decision"] =
+        explain_output.structured["policy_decision"].clone();
 
     assert_eq!(explain_record.output, Some(expected_output));
 }
@@ -1137,6 +1142,9 @@ fn explain_tree_skill_detects_revisited_execution_uris() {
             "policy_decision": {
                 "outcome": "allowed",
                 "summary": "synthetic loop for test",
+                "profile_name": "default",
+                "trust_tier": "local-dev",
+                "verification_state": "local-source",
                 "reasons": [],
                 "detail": null
             },

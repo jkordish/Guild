@@ -86,6 +86,7 @@ What this means in practice:
 - Added a real stdio MCP server entrypoint with honest initialize/capabilities, one public tool (`guild.inspect`), Guild URI resources, and resource templates.
 - Added a real host-mediated `http-request` capability family with typed host enforcement and a Wasmtime-backed outbound HTTP path behind the existing Guild guest ABI.
 - Added the primitive `inspect-http-json` example skill plus a local deterministic HTTP proof flow and regression coverage for denial, timeout, response-size, and nested child-grant reduction behavior.
+- Extended the local policy proof flow so it now contrasts trusted vs restricted imported HTTP authority under named profiles and uses `explain-execution` to summarize the persisted host-owned denial.
 - Mapped successful inspect calls to MCP tool results with `structuredContent`, text compatibility output, and execution/evidence resource links.
 - Mapped unsuccessful inspect executions to MCP tool errors with `isError: true` while preserving persisted execution receipt and record information.
 - Raised crate-level lint strictness across the workspace to `clippy::all`, `clippy::pedantic`, `clippy::cargo`, and `clippy::perf`, then resolved the resulting warnings with API docs, `#[must_use]`, safer numeric conversions, smaller helper boundaries, and more explicit error handling.
@@ -187,7 +188,7 @@ What they prove:
 
 - `inspect_local`: install `hello-inspect`, execute it, read back stored execution + evidence
 - `inspect_http_json_local`: start a deterministic local HTTP server, install `inspect-http-json`, run one bounded allowed request through `guild.inspect`, then run one denied host-mismatch request and read back both persisted execution records
-- `inspect_policy_local`: write a local `policy.json`, install `hello-inspect`, show one execution where policy reduces caller-requested capabilities before guest start, then show one persisted host-owned rejection when policy denies a required capability
+- `inspect_policy_local`: export `inspect-http-json` as a signed bundle, import it into two fresh Guild roots with different local publisher trust tiers, select named profiles through local `policy.json`, show one trusted imported execution that keeps bounded HTTP, then show one persisted host-owned rejection for a restricted imported execution
 - `inspect_composite_local`: install `hello-inspect`, install `hello-composite`, execute composite inspect, read back parent + child + child evidence
 - `explain_execution_local`: install `hello-inspect`, produce a stored execution URI, install `explain-execution`, then run a resource-aware skill against that stored execution through the Wasm host boundary
 - `explain_execution_tree_local`: install `hello-inspect` and `hello-composite`, produce a stored parent/child execution tree, install `explain-execution-tree`, then walk that stored lineage through the same host-mediated resource path
@@ -211,7 +212,7 @@ Still intentionally missing or narrow:
 - no remote registry or publication flow
 - no remote signatures, transparency logs, or trust/publication metadata beyond the local offline trust store
 - no remote or distributed policy beyond the local host-owned evaluator
-- no broad policy language beyond the current typed local `policy.json` profile
+- no broad policy language beyond the current typed local `policy.json` profile model
 - no MCP subscriptions, list-changed notifications, or HTTP transport
 - no search, indexing, or query layer over stored executions/evidence
 - no arbitrary filesystem or non-Guild URI reads from guests

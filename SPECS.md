@@ -107,7 +107,9 @@ A typed, host-defined permission set granted to a guest for a particular executi
 
 ### 5.14 PolicyDecision
 
-A host-owned authorization result describing whether execution was allowed, reduced, or rejected.
+A host-owned authorization result describing whether execution was allowed,
+reduced, or rejected, together with the selected local policy profile and the
+host-owned trust metadata considered during grant evaluation.
 
 ### 5.15 Host
 
@@ -175,6 +177,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - supported typed capability families in the active Wasm inspect slice are currently `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
 - caller-requested capabilities are evaluated through a host-owned local policy layer before execution
 - the current repository loads an optional `policy.json` from the Guild root and otherwise uses a built-in default local policy profile
+- local policy now selects a named profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
 - unsupported capability families present elsewhere in shared contracts are rejected before execution in the active inspect slice
 
 The current repository does not yet implement full `plan` mode, remote or distributed policy, or `apply` mode.
@@ -529,6 +532,8 @@ A host policy decision SHOULD distinguish:
 - the caller-requested capability set
 - the final granted capability set
 - an outcome of allowed, reduced, or rejected
+- the policy profile used for the decision
+- the host-owned verification state and local trust tier considered
 - host-owned reason codes sufficient for later explanation
 
 ### 18.4 Durable denial record
@@ -539,7 +544,10 @@ In the current repository, authorization denials across runner checks and suppor
 
 For supported runtime-side HTTP failures after authorization, the current repository distinguishes host-owned authorization rejections from bounded transport/runtime failures such as timeout or oversized response bodies. Those latter failures persist as unsuccessful executions without being reclassified as capability denials.
 
-The current repository uses a local file-backed `policy.json` profile plus a built-in default. Missing policy configuration falls back to the built-in profile, but unreadable or invalid policy configuration MUST fail closed before execution.
+The current repository uses a local file-backed `policy.json` with named
+profiles plus a built-in default profile when the file is absent. Profile
+selection is host-owned, actor/tenant scoped, and fail-closed when configuration
+is unreadable, invalid, or ambiguous for a given execution.
 
 ### 18.5 Safety precedence
 

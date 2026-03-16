@@ -20,9 +20,10 @@ use guild_manifest::{
 };
 use guild_types::{
     mint_host_evidence_record_id, CapabilityId, EvidenceBlobRecord, EvidenceEmissionRequest,
-    EvidenceRecord, EvidenceRef, ExecutionRecord, GuildResourceUri, LocalPolicyConfig,
-    RequestedSkillRef, ResolvedSkillRef, ResourceReadResult, SkillCategory,
-    GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX, GUILD_OBJECT_RECORD_URI_PREFIX,
+    EvidenceRecord, EvidenceRef, ExecutionRecord, GuildResourceUri, InstalledVerificationState,
+    LocalPolicyConfig, LocalTrustTier, RequestedSkillRef, ResolvedSkillRef, ResourceReadResult,
+    SkillCategory, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
+    GUILD_OBJECT_RECORD_URI_PREFIX,
 };
 use rand_core::OsRng;
 use schemars::JsonSchema;
@@ -41,6 +42,13 @@ pub struct InstalledSkill {
     pub artifact_path: PathBuf,
     pub root_dir: PathBuf,
     pub verification: Option<InstalledVerificationRecord>,
+    pub trust: InstalledTrustMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct InstalledTrustMetadata {
+    pub verification_state: InstalledVerificationState,
+    pub trust_tier: LocalTrustTier,
 }
 
 #[derive(Debug, Clone)]
@@ -122,6 +130,8 @@ pub struct TrustedPublisherRecord {
     pub publisher: PublisherRef,
     pub scheme: SignatureScheme,
     pub public_key_base64: String,
+    #[serde(default = "default_trusted_publisher_trust_tier")]
+    pub trust_tier: LocalTrustTier,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -224,10 +234,16 @@ impl LocalPublisherIdentity {
 
     #[must_use]
     pub fn trusted_record(&self) -> TrustedPublisherRecord {
+        self.trusted_record_with_tier(LocalTrustTier::TrustedImported)
+    }
+
+    #[must_use]
+    pub fn trusted_record_with_tier(&self, trust_tier: LocalTrustTier) -> TrustedPublisherRecord {
         TrustedPublisherRecord {
             publisher: self.publisher.clone(),
             scheme: self.scheme.clone(),
             public_key_base64: self.public_key_base64.clone(),
+            trust_tier,
         }
     }
 
@@ -369,7 +385,7 @@ impl LocalRegistry {
                     continue;
                 }
 
-                installed.push(Self::load_manifest(entry.path())?);
+                installed.push(Self::load_manifest(&root, entry.path())?);
             }
         }
 
@@ -459,7 +475,7 @@ impl LocalRegistry {
         publisher: &TrustedPublisherRecord,
     ) -> Result<(), RegistryError> {
         ensure_registry_layout(root.as_ref())?;
-        trusted_publisher_verifying_key(publisher)?;
+        validate_trusted_publisher_record(publisher)?;
         write_json(
             &trusted_publisher_path(root.as_ref(), &publisher.publisher.id),
             publisher,
@@ -531,24 +547,7 @@ impl LocalRegistry {
             signature: signature.clone(),
         };
         validate_import_targets(&root, &validated, &verification)?;
-
-        let staging_root = import_staging_root(&root);
-        if staging_root.exists() {
-            fs::remove_dir_all(&staging_root).map_err(|error| {
-                RegistryError::new(
-                    "bundle-import-staging-cleanup-failed",
-                    "failed to remove previous bundle import staging directory",
-                )
-                .with_detail(error.to_string())
-            })?;
-        }
-        fs::create_dir_all(&staging_root).map_err(|error| {
-            RegistryError::new(
-                "bundle-import-staging-create-failed",
-                "failed to create bundle import staging directory",
-            )
-            .with_detail(error.to_string())
-        })?;
+        let staging_root = reset_import_staging_root(&root)?;
 
         let staged_result = (|| -> Result<Vec<InstalledSkill>, RegistryError> {
             let mut imported = Vec::with_capacity(bundle.skills.len());
@@ -579,9 +578,7 @@ impl LocalRegistry {
                 }
                 if target_dir.exists() {
                     write_json(&installed_verification_path(&target_dir), &verification)?;
-                    imported.push(LocalRegistry::load_manifest(
-                        &target_dir.join("manifest.json"),
-                    )?);
+                    imported.push(load_imported_bundle_skill(&root, &target_dir)?);
                 } else {
                     fs::rename(&staged_dir, &target_dir).map_err(|error| {
                         RegistryError::new(
@@ -595,26 +592,14 @@ impl LocalRegistry {
                         }))
                     })?;
                     write_json(&installed_verification_path(&target_dir), &verification)?;
-                    imported.push(LocalRegistry::load_manifest(
-                        &target_dir.join("manifest.json"),
-                    )?);
+                    imported.push(load_imported_bundle_skill(&root, &target_dir)?);
                 }
             }
 
             Ok(imported)
         })();
 
-        let cleanup_result = if staging_root.exists() {
-            fs::remove_dir_all(&staging_root).map_err(|error| {
-                RegistryError::new(
-                    "bundle-import-staging-cleanup-failed",
-                    "failed to clean bundle import staging directory",
-                )
-                .with_detail(error.to_string())
-            })
-        } else {
-            Ok(())
-        };
+        let cleanup_result = cleanup_import_staging_root(&staging_root);
 
         match (staged_result, cleanup_result) {
             (Ok(imported), Ok(())) => Ok(imported),
@@ -741,7 +726,7 @@ impl LocalRegistry {
         })
     }
 
-    fn load_manifest(path: &Path) -> Result<InstalledSkill, RegistryError> {
+    fn load_manifest(root: &Path, path: &Path) -> Result<InstalledSkill, RegistryError> {
         let manifest_path = path.to_path_buf();
         let root_dir = manifest_path
             .parent()
@@ -786,6 +771,7 @@ impl LocalRegistry {
         }
         validate_staged_support_files(&root_dir, &manifest)?;
         let verification = load_verification_record(&root_dir)?;
+        let trust = derive_installed_trust_metadata(root, verification.as_ref())?;
 
         Ok(InstalledSkill {
             resolved_ref: ResolvedSkillRef {
@@ -798,6 +784,7 @@ impl LocalRegistry {
             artifact_path,
             root_dir,
             verification,
+            trust,
         })
     }
 }
@@ -1446,7 +1433,7 @@ impl LocalSourceInstaller {
         move_staged_install(&staging_dir, &install_dir)?;
         let _ = cleanup_install_staging_dir(&staging_dir);
 
-        LocalRegistry::load_manifest(&install_dir.join("manifest.json"))
+        LocalRegistry::load_manifest(&self.root, &install_dir.join("manifest.json"))
     }
 }
 
@@ -1499,7 +1486,7 @@ fn stage_install_contents(
     let installed_manifest_path = staging_dir.join("manifest.json");
     write_json(&installed_manifest_path, &installed_manifest)?;
 
-    LocalRegistry::load_manifest(&installed_manifest_path)
+    LocalRegistry::load_manifest(staging_dir, &installed_manifest_path)
 }
 
 fn reusable_existing_install(
@@ -1510,8 +1497,8 @@ fn reusable_existing_install(
         return Ok(None);
     }
 
-    let existing =
-        LocalRegistry::load_manifest(&install_dir.join("manifest.json")).map_err(|error| {
+    let existing = LocalRegistry::load_manifest(install_dir, &install_dir.join("manifest.json"))
+        .map_err(|error| {
             RegistryError::new(
                 "install-target-invalid",
                 "existing installed digest directory was invalid",
@@ -2015,6 +2002,10 @@ fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
+fn default_trusted_publisher_trust_tier() -> LocalTrustTier {
+    LocalTrustTier::TrustedImported
+}
+
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), RegistryError> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| {
         RegistryError::new("json-serialize-failed", "failed to serialize JSON")
@@ -2105,6 +2096,40 @@ fn object_records_root(root: &Path) -> PathBuf {
 
 fn import_staging_root(root: &Path) -> PathBuf {
     root.join(".bundle-import-staging")
+}
+
+fn reset_import_staging_root(root: &Path) -> Result<PathBuf, RegistryError> {
+    let staging_root = import_staging_root(root);
+    cleanup_import_staging_root(&staging_root)?;
+    fs::create_dir_all(&staging_root).map_err(|error| {
+        RegistryError::new(
+            "bundle-import-staging-create-failed",
+            "failed to create bundle import staging directory",
+        )
+        .with_detail(error.to_string())
+    })?;
+    Ok(staging_root)
+}
+
+fn cleanup_import_staging_root(staging_root: &Path) -> Result<(), RegistryError> {
+    if !staging_root.exists() {
+        return Ok(());
+    }
+
+    fs::remove_dir_all(staging_root).map_err(|error| {
+        RegistryError::new(
+            "bundle-import-staging-cleanup-failed",
+            "failed to clean bundle import staging directory",
+        )
+        .with_detail(error.to_string())
+    })
+}
+
+fn load_imported_bundle_skill(
+    root: &Path,
+    target_dir: &Path,
+) -> Result<InstalledSkill, RegistryError> {
+    LocalRegistry::load_manifest(root, &target_dir.join("manifest.json"))
 }
 
 fn source_install_staging_root(root: &Path) -> PathBuf {
@@ -2415,7 +2440,8 @@ fn validate_bundle_skill_entries(
             .with_detail(install_dir_string));
         }
 
-        let installed = LocalRegistry::load_manifest(&install_dir.join("manifest.json"))?;
+        let installed =
+            LocalRegistry::load_manifest(bundle_root, &install_dir.join("manifest.json"))?;
         if installed.resolved_ref != entry.resolved_ref {
             return Err(RegistryError::new(
                 "bundle-entry-mismatch",
@@ -2666,7 +2692,7 @@ fn validate_import_targets(
             })));
         }
 
-        let installed = LocalRegistry::load_manifest(&target_dir.join("manifest.json")).map_err(
+        let installed = LocalRegistry::load_manifest(root, &target_dir.join("manifest.json")).map_err(
             |error| {
                 RegistryError::new(
                     "bundle-import-target-invalid",
@@ -3122,7 +3148,7 @@ fn load_trusted_publisher(
         )
         .with_detail(error.to_string())
     })?;
-    trusted_publisher_verifying_key(&publisher)?;
+    validate_trusted_publisher_record(&publisher)?;
     Ok(publisher)
 }
 
@@ -3212,6 +3238,24 @@ fn trusted_publisher_verifying_key(
             })
         }
     }
+}
+
+fn validate_trusted_publisher_record(
+    publisher: &TrustedPublisherRecord,
+) -> Result<(), RegistryError> {
+    if publisher.trust_tier == LocalTrustTier::LocalDev {
+        return Err(RegistryError::new(
+            "trusted-publisher-tier-invalid",
+            "trusted publisher records must use an imported trust tier",
+        )
+        .with_detail(serde_json::json!({
+            "publisher_id": publisher.publisher.id,
+            "trust_tier": publisher.trust_tier,
+        })));
+    }
+
+    trusted_publisher_verifying_key(publisher)?;
+    Ok(())
 }
 
 fn sign_bundle_payload(
@@ -3335,6 +3379,31 @@ fn load_verification_record(
     }
 
     Ok(Some(verification))
+}
+
+fn derive_installed_trust_metadata(
+    root: &Path,
+    verification: Option<&InstalledVerificationRecord>,
+) -> Result<InstalledTrustMetadata, RegistryError> {
+    match verification {
+        None => Ok(InstalledTrustMetadata {
+            verification_state: InstalledVerificationState::LocalSource,
+            trust_tier: LocalTrustTier::LocalDev,
+        }),
+        Some(verification) => match load_trusted_publisher(root, &verification.publisher.id) {
+            Ok(publisher) => Ok(InstalledTrustMetadata {
+                verification_state: InstalledVerificationState::VerifiedImport,
+                trust_tier: publisher.trust_tier,
+            }),
+            Err(error) if error.code == "bundle-publisher-untrusted" => {
+                Ok(InstalledTrustMetadata {
+                    verification_state: InstalledVerificationState::VerifiedImport,
+                    trust_tier: LocalTrustTier::Restricted,
+                })
+            }
+            Err(error) => Err(error),
+        },
+    }
 }
 
 fn validate_staged_support_files(

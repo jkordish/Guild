@@ -48,7 +48,7 @@ cargo run -p guild-mcp --example signed_import_oci_failures_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
-Additional examples cover bounded local HTTP inspection, host-owned policy reduction and denial, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, OCI image layout portability, and tampered or untrusted import rejection.
+Additional examples cover bounded local HTTP inspection, trust-tier-aware local policy profiles, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, OCI image layout portability, and tampered or untrusted import rejection.
 
 ### HTTP Proof Flow
 
@@ -64,7 +64,7 @@ That example starts a deterministic local HTTP server, installs the primitive `i
 
 ### Policy Proof Flow
 
-Guild now also has a real local host-owned policy evaluator.
+Guild now also has a real local host-owned policy evaluator with named profiles and host-owned local trust tiers.
 
 The canonical local proof command is:
 
@@ -72,7 +72,7 @@ The canonical local proof command is:
 cargo run -p guild-mcp --example inspect_policy_local
 ```
 
-That example writes a local `policy.json` into its isolated Guild root, installs `hello-inspect`, shows a successful execution where policy reduces caller-requested capabilities before guest start, then runs a second execution that policy rejects because the actor is not allowed to receive the skill's required `emit-evidence` grant. The persisted execution record retains both the caller-requested capability set and the smaller host-granted set together with host-owned policy reasons.
+That example installs `inspect-http-json`, exports it as a signed bundle, imports it into two fresh Guild roots with different publisher trust tiers, writes a local `policy.json` with named profiles plus a tenant binding, then proves two outcomes through the same `guild.inspect` surface: a trusted imported execution that keeps bounded HTTP authority and a restricted imported execution that is denied before guest start. It then runs `explain-execution` against the persisted denied execution URI to prove the denial remains host-owned, durable, and explainable through the same resource path. The persisted execution record retains the caller-requested capability set, the smaller host-granted set, the selected policy profile, the verification state, and the host-owned trust tier that influenced the decision.
 
 ## MCP Server
 
@@ -105,6 +105,7 @@ The current inspect slice is intentionally strict about a few things:
 - `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
 - `http-request` is host-mediated, typed, bounded, and fail-closed; method, scheme, host, port, path, timeout, and response-size checks stay host-owned
 - caller-requested capabilities are policy input, not final authority; a local `policy.json` plus host-owned defaults decide the granted capability set before execution
+- policy now selects a named local profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
 - policy reductions and rejections persist as host-owned execution metadata and stay visible to explain/debug flows
 - durable execution records now carry host-stamped start and finish timestamps
 - the stdio MCP server exposes only `guild.inspect` plus honest Guild resource reads; HTTP transports and subscriptions remain deferred
@@ -165,7 +166,7 @@ What is real today:
 - Wasmtime-backed Wasm component execution
 - real host-mediated outbound HTTP execution through the Wasmtime runtime path
 - typed capability enforcement for the implemented host imports
-- local file-backed policy evaluation that can allow, reduce, or reject caller-requested capabilities before execution
+- local file-backed policy evaluation with named profiles, actor/tenant bindings, and host-owned trust tiers that can allow, reduce, or reject caller-requested capabilities before execution
 - host-minted durable execution IDs with create-only execution persistence
 - durable execution persistence with host-stamped timestamps
 - split evidence blob and evidence-record persistence
@@ -178,7 +179,7 @@ What is real today:
 What is still deferred:
 
 - remote or distributed policy beyond the local host-owned evaluator
-- a broader policy language beyond the current typed local `policy.json` profile
+- a broader policy language beyond the current typed local `policy.json` profile model
 - full `plan` mode
 - `apply` mode
 - remote registries, publication flows, and transparency infrastructure

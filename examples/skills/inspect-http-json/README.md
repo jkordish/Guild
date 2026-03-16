@@ -19,3 +19,11 @@ Use the documented local proof flow in the repository README or:
 ```bash
 cargo run -p guild-mcp --example inspect_http_json_local
 ```
+
+For the trust-tier-aware local policy proof flow that imports the same skill
+under different host-owned trust tiers and profile selections, then explains
+the persisted denial through `explain-execution`, use:
+
+```bash
+cargo run -p guild-mcp --example inspect_policy_local
+```

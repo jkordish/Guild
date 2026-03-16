@@ -94,6 +94,9 @@ fn execution_request(
         policy_decision: PolicyDecision {
             outcome: PolicyDecisionOutcome::Allowed,
             summary: "local policy granted requested capabilities".into(),
+            profile_name: "default".into(),
+            trust_tier: guild_types::LocalTrustTier::LocalDev,
+            verification_state: guild_types::InstalledVerificationState::LocalSource,
             reasons: Vec::new(),
             detail: None,
         },

@@ -15,6 +15,7 @@ Current contract highlights worth knowing before you follow older notes:
 - `read-resource` scopes are canonical Guild URI roots, not permissive raw string prefixes
 - `http-request` is now a real bounded host capability behind `guild.inspect`, not a separate MCP tool
 - caller-requested capabilities are now local policy input; the host decides the final granted set before execution
+- local policy now selects named profiles by actor and/or tenant and records the host-owned trust tier and verification state used for the decision
 - `guild-mcp-server` now exposes one honest stdio MCP tool (`guild.inspect`) plus Guild URI resources and templates
 - installed-state portability now has two local transport shapes: the native signed bundle directory and an OCI image layout mapping over the same signed payload
 

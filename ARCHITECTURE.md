@@ -520,12 +520,14 @@ The current repository now uses a small local-first policy layer instead of trea
 
 - `guild.inspect` still accepts caller-requested capabilities
 - the host loads an optional `policy.json` from the Guild root or falls back to a built-in default profile
+- the host derives a local trust tier from installed verification state plus the local trusted publisher record
+- the host selects a named policy profile by actor and/or tenant before applying capability rules
 - the runner evaluates policy before execution and produces a host-owned `PolicyDecision`
 - policy outcomes are `allowed`, `reduced`, or `rejected`
 - reductions and denials carry host-owned reason codes and survive into durable execution records
 - child execution starts from the parent-derived subset and is then re-evaluated by the same host policy path, so policy can narrow but never widen authority
 
-The default local profile keeps current example flows working by allowing only caller-requested grants that fit the declared capability surface of the resolved local dependency tree. Local rules then reduce or deny from that starting point. Optional trust-aware rules can require verified imported publishers before risky families such as `http-request` are granted.
+The default local profile keeps current example flows working by allowing only caller-requested grants that fit the declared capability surface of the resolved local dependency tree. Named profiles then reduce or deny from that starting point using typed capability ceilings plus host-owned trust metadata. In the current repository, `http-request` is the primary higher-risk family used to prove trust-tier-aware reductions and denials.
 
 ## 15. Example Logical Layout of a Guild Root
 

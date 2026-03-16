@@ -948,7 +948,7 @@ pub struct CallerRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum LocalPolicyFormatVersion {
-    GuildLocalPolicyV1,
+    GuildLocalPolicyV2,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -959,9 +959,32 @@ pub enum LocalPolicyDefaultAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+pub enum LocalTrustTier {
+    LocalDev,
+    TrustedImported,
+    Restricted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum InstalledVerificationState {
+    LocalSource,
+    VerifiedImport,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub enum PolicyRuleEffect {
     Deny,
     Cap,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PolicyRuleTarget {
+    Any,
+    Requested,
+    Required,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -975,13 +998,15 @@ pub struct PolicyReason {
 pub struct PolicyRule {
     pub name: Option<String>,
     #[serde(default)]
-    pub actor_ids: Option<Vec<String>>,
-    #[serde(default)]
-    pub tenant_ids: Option<Vec<String>>,
-    #[serde(default)]
     pub skills: Option<Vec<SkillKey>>,
     #[serde(default)]
     pub publisher_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub trust_tiers: Option<Vec<LocalTrustTier>>,
+    #[serde(default)]
+    pub verification_states: Option<Vec<InstalledVerificationState>>,
+    #[serde(default = "default_policy_rule_target")]
+    pub applies_to: PolicyRuleTarget,
     pub effect: PolicyRuleEffect,
     #[serde(default)]
     pub capabilities: CapabilityGrantSet,
@@ -995,26 +1020,6 @@ impl PolicyRule {
         if let Some(name) = &self.name {
             if name.trim().is_empty() {
                 errors.push("policy rule names must not be empty when provided".into());
-            }
-        }
-
-        if let Some(actor_ids) = &self.actor_ids {
-            if actor_ids.is_empty() {
-                errors.push("policy rule actor_ids must not be empty when provided".into());
-            }
-
-            if actor_ids.iter().any(|actor| actor.trim().is_empty()) {
-                errors.push("policy rule actor_ids must not contain empty values".into());
-            }
-        }
-
-        if let Some(tenant_ids) = &self.tenant_ids {
-            if tenant_ids.is_empty() {
-                errors.push("policy rule tenant_ids must not be empty when provided".into());
-            }
-
-            if tenant_ids.iter().any(|tenant| tenant.trim().is_empty()) {
-                errors.push("policy rule tenant_ids must not contain empty values".into());
             }
         }
 
@@ -1046,6 +1051,19 @@ impl PolicyRule {
             }
         }
 
+        if let Some(trust_tiers) = &self.trust_tiers {
+            if trust_tiers.is_empty() {
+                errors.push("policy rule trust_tiers must not be empty when provided".into());
+            }
+        }
+
+        if let Some(verification_states) = &self.verification_states {
+            if verification_states.is_empty() {
+                errors
+                    .push("policy rule verification_states must not be empty when provided".into());
+            }
+        }
+
         if self.capabilities.grants.is_empty() {
             errors.push("policy rules must declare at least one capability ceiling".into());
         }
@@ -1061,24 +1079,110 @@ impl PolicyRule {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-pub struct LocalPolicyConfig {
-    #[serde(default = "default_local_policy_format_version")]
-    pub format_version: LocalPolicyFormatVersion,
+pub struct PolicyProfile {
+    pub name: String,
     #[serde(default = "default_local_policy_action")]
     pub default_action: LocalPolicyDefaultAction,
     #[serde(default)]
     pub rules: Vec<PolicyRule>,
+}
+
+impl PolicyProfile {
+    #[must_use]
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        if self.name.trim().is_empty() {
+            errors.push("policy profile names must not be empty".into());
+        }
+
+        for (index, rule) in self.rules.iter().enumerate() {
+            for message in rule.validate() {
+                errors.push(format!("policy profile rules[{index}]: {message}"));
+            }
+        }
+
+        errors
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct PolicyProfileBinding {
+    pub name: Option<String>,
     #[serde(default)]
-    pub verified_publishers_required_for: Vec<CapabilitySelector>,
+    pub actor_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub tenant_ids: Option<Vec<String>>,
+    pub profile: String,
+}
+
+impl PolicyProfileBinding {
+    #[must_use]
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        if let Some(name) = &self.name {
+            if name.trim().is_empty() {
+                errors.push("policy profile binding names must not be empty when provided".into());
+            }
+        }
+
+        if self.profile.trim().is_empty() {
+            errors.push("policy profile bindings must reference a non-empty profile".into());
+        }
+
+        if self.actor_ids.is_none() && self.tenant_ids.is_none() {
+            errors.push(
+                "policy profile bindings must declare at least one actor_ids or tenant_ids selector"
+                    .into(),
+            );
+        }
+
+        if let Some(actor_ids) = &self.actor_ids {
+            if actor_ids.is_empty() {
+                errors.push("policy profile binding actor_ids must not be empty".into());
+            }
+
+            if actor_ids.iter().any(|actor| actor.trim().is_empty()) {
+                errors
+                    .push("policy profile binding actor_ids must not contain empty values".into());
+            }
+        }
+
+        if let Some(tenant_ids) = &self.tenant_ids {
+            if tenant_ids.is_empty() {
+                errors.push("policy profile binding tenant_ids must not be empty".into());
+            }
+
+            if tenant_ids.iter().any(|tenant| tenant.trim().is_empty()) {
+                errors
+                    .push("policy profile binding tenant_ids must not contain empty values".into());
+            }
+        }
+
+        errors
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct LocalPolicyConfig {
+    #[serde(default = "default_local_policy_format_version")]
+    pub format_version: LocalPolicyFormatVersion,
+    #[serde(default)]
+    pub default_profile: String,
+    #[serde(default)]
+    pub profiles: Vec<PolicyProfile>,
+    #[serde(default)]
+    pub bindings: Vec<PolicyProfileBinding>,
 }
 
 impl Default for LocalPolicyConfig {
     fn default() -> Self {
         Self {
             format_version: default_local_policy_format_version(),
-            default_action: default_local_policy_action(),
-            rules: Vec::new(),
-            verified_publishers_required_for: Vec::new(),
+            default_profile: default_policy_profile_name(),
+            profiles: vec![default_policy_profile()],
+            bindings: Vec::new(),
         }
     }
 }
@@ -1088,9 +1192,51 @@ impl LocalPolicyConfig {
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        for (index, rule) in self.rules.iter().enumerate() {
-            for message in rule.validate() {
-                errors.push(format!("policy rules[{index}]: {message}"));
+        if self.default_profile.trim().is_empty() {
+            errors.push("local policy default_profile must not be empty".into());
+        }
+
+        if self.profiles.is_empty() {
+            errors.push("local policy must declare at least one profile".into());
+        }
+
+        let mut profile_names = std::collections::HashSet::new();
+        for (index, profile) in self.profiles.iter().enumerate() {
+            for message in profile.validate() {
+                errors.push(format!("policy profiles[{index}]: {message}"));
+            }
+
+            if !profile.name.trim().is_empty() && !profile_names.insert(profile.name.clone()) {
+                errors.push(format!(
+                    "policy profiles[{index}] reused duplicate profile name {}",
+                    profile.name
+                ));
+            }
+        }
+
+        if !self
+            .profiles
+            .iter()
+            .any(|profile| profile.name == self.default_profile)
+        {
+            errors.push("local policy default_profile must reference a declared profile".into());
+        }
+
+        for (index, binding) in self.bindings.iter().enumerate() {
+            for message in binding.validate() {
+                errors.push(format!("policy bindings[{index}]: {message}"));
+            }
+
+            if !binding.profile.trim().is_empty()
+                && !self
+                    .profiles
+                    .iter()
+                    .any(|profile| profile.name == binding.profile)
+            {
+                errors.push(format!(
+                    "policy bindings[{index}] referenced unknown profile {}",
+                    binding.profile
+                ));
             }
         }
 
@@ -1110,6 +1256,9 @@ pub enum PolicyDecisionOutcome {
 pub struct PolicyDecision {
     pub outcome: PolicyDecisionOutcome,
     pub summary: String,
+    pub profile_name: String,
+    pub trust_tier: LocalTrustTier,
+    pub verification_state: InstalledVerificationState,
     #[serde(default)]
     pub reasons: Vec<PolicyReason>,
     pub detail: Option<Value>,
@@ -1389,11 +1538,27 @@ fn capability_access_label(access: &CapabilityAccess) -> &'static str {
 }
 
 fn default_local_policy_format_version() -> LocalPolicyFormatVersion {
-    LocalPolicyFormatVersion::GuildLocalPolicyV1
+    LocalPolicyFormatVersion::GuildLocalPolicyV2
 }
 
 fn default_local_policy_action() -> LocalPolicyDefaultAction {
     LocalPolicyDefaultAction::AllowRequestedDeclared
+}
+
+fn default_policy_rule_target() -> PolicyRuleTarget {
+    PolicyRuleTarget::Any
+}
+
+fn default_policy_profile_name() -> String {
+    "default".into()
+}
+
+fn default_policy_profile() -> PolicyProfile {
+    PolicyProfile {
+        name: default_policy_profile_name(),
+        default_action: default_local_policy_action(),
+        rules: Vec::new(),
+    }
 }
 
 fn string_schema(format: Option<&str>, description: Option<&str>) -> Schema {

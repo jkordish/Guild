@@ -7,10 +7,11 @@ use guild_mcp::{GuildMcpFacade, InspectRequest};
 use guild_registry::{InstalledSkill, LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller};
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
-    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId, CapabilitySelector,
+    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
     EmitEvidenceConstraints, EvidenceAudience, ExecutionStatus, GrantedCapability, HttpMethod,
-    HttpRequestConstraints, HttpScheme, InvokeDependencyConstraints, LocalPolicyConfig,
-    LogConstraints, PolicyDecisionOutcome, PolicyRule, PolicyRuleEffect, ReadResourceConstraints,
+    HttpRequestConstraints, HttpScheme, InstalledVerificationState, InvokeDependencyConstraints,
+    LocalPolicyConfig, LocalTrustTier, LogConstraints, PolicyDecisionOutcome, PolicyProfile,
+    PolicyProfileBinding, PolicyRule, PolicyRuleEffect, PolicyRuleTarget, ReadResourceConstraints,
     RedactionClass, RequestedSkillRef, ResourceKind, Severity, SkillKey, VersionRequirement,
 };
 
@@ -246,27 +247,97 @@ fn write_policy(root: &Path, policy: &LocalPolicyConfig) {
 
 fn deny_emit_evidence_for_actor_policy(actor_id: &str) -> LocalPolicyConfig {
     LocalPolicyConfig {
-        rules: vec![PolicyRule {
-            name: Some("deny-hello-evidence".into()),
-            actor_ids: Some(vec![actor_id.into()]),
-            tenant_ids: None,
-            skills: Some(vec![SkillKey {
-                namespace: "example".into(),
-                name: "hello-inspect".into(),
-            }]),
-            publisher_ids: None,
-            effect: PolicyRuleEffect::Deny,
-            capabilities: CapabilityGrantSet {
-                grants: vec![GrantedCapability {
-                    id: CapabilityId::EmitEvidence,
-                    access: CapabilityAccess::Write,
-                    constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
-                        max_bytes: None,
-                        audiences: None,
-                        redactions: None,
-                    }),
+        profiles: vec![
+            PolicyProfile {
+                name: "default".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: Vec::new(),
+            },
+            PolicyProfile {
+                name: "blocked".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: vec![PolicyRule {
+                    name: Some("deny-hello-evidence".into()),
+                    skills: Some(vec![SkillKey {
+                        namespace: "example".into(),
+                        name: "hello-inspect".into(),
+                    }]),
+                    publisher_ids: None,
+                    trust_tiers: None,
+                    verification_states: None,
+                    applies_to: PolicyRuleTarget::Any,
+                    effect: PolicyRuleEffect::Deny,
+                    capabilities: CapabilityGrantSet {
+                        grants: vec![GrantedCapability {
+                            id: CapabilityId::EmitEvidence,
+                            access: CapabilityAccess::Write,
+                            constraints: CapabilityConstraints::EmitEvidence(
+                                EmitEvidenceConstraints {
+                                    max_bytes: None,
+                                    audiences: None,
+                                    redactions: None,
+                                },
+                            ),
+                        }],
+                    },
                 }],
             },
+        ],
+        bindings: vec![PolicyProfileBinding {
+            name: Some("blocked-actor".into()),
+            actor_ids: Some(vec![actor_id.into()]),
+            tenant_ids: None,
+            profile: "blocked".into(),
+        }],
+        ..LocalPolicyConfig::default()
+    }
+}
+
+fn deny_http_for_restricted_imports_policy() -> LocalPolicyConfig {
+    LocalPolicyConfig {
+        default_profile: "trusted-networked".into(),
+        profiles: vec![
+            PolicyProfile {
+                name: "trusted-networked".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: Vec::new(),
+            },
+            PolicyProfile {
+                name: "restricted-networked".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: vec![PolicyRule {
+                    name: Some("deny-restricted-http".into()),
+                    skills: None,
+                    publisher_ids: None,
+                    trust_tiers: Some(vec![LocalTrustTier::Restricted]),
+                    verification_states: Some(vec![InstalledVerificationState::VerifiedImport]),
+                    applies_to: PolicyRuleTarget::Any,
+                    effect: PolicyRuleEffect::Deny,
+                    capabilities: CapabilityGrantSet {
+                        grants: vec![GrantedCapability {
+                            id: CapabilityId::HttpRequest,
+                            access: CapabilityAccess::Read,
+                            constraints: CapabilityConstraints::HttpRequest(
+                                HttpRequestConstraints {
+                                    allowed_schemes: None,
+                                    allowed_hosts: None,
+                                    allowed_ports: None,
+                                    allowed_methods: None,
+                                    allowed_path_prefixes: None,
+                                    max_timeout_ms: None,
+                                    max_response_bytes: None,
+                                },
+                            ),
+                        }],
+                    },
+                }],
+            },
+        ],
+        bindings: vec![PolicyProfileBinding {
+            name: Some("restricted-tenant".into()),
+            actor_ids: None,
+            tenant_ids: Some(vec!["tenant-restricted".into()]),
+            profile: "restricted-networked".into(),
         }],
         ..LocalPolicyConfig::default()
     }
@@ -481,11 +552,16 @@ fn local_policy_denial_persists_host_owned_rejection() {
         record.policy_decision.outcome,
         PolicyDecisionOutcome::Rejected
     );
+    assert_eq!(record.policy_decision.profile_name, "blocked");
+    assert_eq!(
+        record.policy_decision.verification_state,
+        InstalledVerificationState::LocalSource
+    );
     assert!(record
         .policy_decision
         .reasons
         .iter()
-        .any(|reason| reason.code == "policy-rule-deny"));
+        .any(|reason| reason.code == "policy-profile-rule-deny"));
     assert!(record
         .policy_decision
         .reasons
@@ -496,12 +572,12 @@ fn local_policy_denial_persists_host_owned_rejection() {
 
 #[allow(clippy::too_many_lines)]
 #[test]
-fn local_policy_can_require_verified_publishers_for_http() {
+fn local_policy_can_vary_http_by_imported_trust_tier() {
     let server = http_test_server::HttpTestServer::start();
-    let temp = TempFixtureDir::new("guild-policy-verified-http");
+    let temp = TempFixtureDir::new("guild-policy-trust-tier-http");
     let registry_a = temp.path().join("registry-a");
-    let registry_verified = temp.path().join("registry-verified");
-    let registry_local = temp.path().join("registry-local");
+    let registry_trusted = temp.path().join("registry-trusted");
+    let registry_restricted = temp.path().join("registry-restricted");
     let bundle_root = temp.path().join("bundle");
 
     let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
@@ -517,25 +593,25 @@ fn local_policy_can_require_verified_publishers_for_http() {
         )
         .unwrap();
 
-    LocalRegistry::trust_publisher(&registry_verified, &identity.trusted_record()).unwrap();
-    LocalRegistry::import_bundle(&registry_verified, &bundle_root).unwrap();
-    LocalSourceInstaller::new(&registry_local)
-        .unwrap()
-        .install(http_source_dir())
-        .unwrap();
+    LocalRegistry::trust_publisher(
+        &registry_trusted,
+        &identity.trusted_record_with_tier(LocalTrustTier::TrustedImported),
+    )
+    .unwrap();
+    LocalRegistry::trust_publisher(
+        &registry_restricted,
+        &identity.trusted_record_with_tier(LocalTrustTier::Restricted),
+    )
+    .unwrap();
+    LocalRegistry::import_bundle(&registry_trusted, &bundle_root).unwrap();
+    LocalRegistry::import_bundle(&registry_restricted, &bundle_root).unwrap();
 
-    let policy = LocalPolicyConfig {
-        verified_publishers_required_for: vec![CapabilitySelector {
-            id: CapabilityId::HttpRequest,
-            access: CapabilityAccess::Read,
-        }],
-        ..LocalPolicyConfig::default()
-    };
-    write_policy(&registry_verified, &policy);
-    write_policy(&registry_local, &policy);
+    let policy = deny_http_for_restricted_imports_policy();
+    write_policy(&registry_trusted, &policy);
+    write_policy(&registry_restricted, &policy);
 
-    let verified_facade = build_facade_for_root(&registry_verified);
-    let verified = verified_facade
+    let trusted_facade = build_facade_for_root(&registry_trusted);
+    let trusted = trusted_facade
         .inspect(InspectRequest::new(
             RequestedSkillRef {
                 key: SkillKey {
@@ -562,12 +638,27 @@ fn local_policy_can_require_verified_publishers_for_http() {
         ))
         .unwrap();
     assert_eq!(
-        verified.structured_content.policy_decision.outcome,
+        trusted.structured_content.policy_decision.outcome,
         PolicyDecisionOutcome::Allowed
     );
+    assert_eq!(
+        trusted.structured_content.policy_decision.profile_name,
+        "trusted-networked"
+    );
+    assert_eq!(
+        trusted.structured_content.policy_decision.trust_tier,
+        LocalTrustTier::TrustedImported
+    );
+    assert_eq!(
+        trusted
+            .structured_content
+            .policy_decision
+            .verification_state,
+        InstalledVerificationState::VerifiedImport
+    );
 
-    let local_facade = build_facade_for_root(&registry_local);
-    let denied = local_facade
+    let restricted_facade = build_facade_for_root(&registry_restricted);
+    let denied = restricted_facade
         .inspect(InspectRequest::new(
             RequestedSkillRef {
                 key: SkillKey {
@@ -581,7 +672,7 @@ fn local_policy_can_require_verified_publishers_for_http() {
                 "method": "get",
                 "json_pointers": ["/message"],
             }),
-            "tenant-1",
+            "tenant-restricted",
             "actor-1",
             CapabilityGrantSet {
                 grants: vec![http_grant(
@@ -597,14 +688,24 @@ fn local_policy_can_require_verified_publishers_for_http() {
     assert_eq!(denied.code, "policy-denied");
     let receipt = denied
         .receipt
-        .expect("trust-aware policy denial persists a receipt");
+        .expect("trust-tier-aware policy denial persists a receipt");
     let record: guild_types::ExecutionRecord =
-        serde_json::from_slice(&local_facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+        serde_json::from_slice(&restricted_facade.read_resource(&receipt.uri).unwrap().bytes)
+            .unwrap();
+    assert_eq!(record.policy_decision.profile_name, "restricted-networked");
+    assert_eq!(
+        record.policy_decision.trust_tier,
+        LocalTrustTier::Restricted
+    );
+    assert_eq!(
+        record.policy_decision.verification_state,
+        InstalledVerificationState::VerifiedImport
+    );
     assert!(record
         .policy_decision
         .reasons
         .iter()
-        .any(|reason| reason.code == "policy-verified-publisher-required"));
+        .any(|reason| reason.code == "policy-profile-rule-deny"));
 }
 
 #[test]
@@ -802,7 +903,7 @@ fn local_policy_can_further_reduce_child_grants_without_widening() {
         .policy_decision
         .reasons
         .iter()
-        .any(|reason| reason.code == "policy-rule-deny"));
+        .any(|reason| reason.code == "policy-profile-rule-deny"));
     assert!(parent.child_executions[0]
         .granted_capabilities
         .grants

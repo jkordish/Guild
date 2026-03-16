@@ -52,15 +52,17 @@ The current repository uses one small local-first policy source:
 The current typed policy config is intentionally small:
 
 - `format_version`
-- `default_action`
-- `rules`
-- `verified_publishers_required_for`
+- `default_profile`
+- `profiles`
+- `bindings`
 
 Rules are also intentionally small:
 
-- exact-match selectors for `actor_ids`, `tenant_ids`, `skills`, and
-  `publisher_ids`
+- exact-match selectors for `skills`, `publisher_ids`, host-owned
+  `trust_tiers`, and host-owned `verification_states`
+- actor and tenant profile selection through named `bindings`
 - effects of either `deny` or `cap`
+- an `applies_to` target of `requested`, `required`, or `any`
 - typed capability ceilings expressed with the existing capability grant model
 
 This is not a general policy language. It is a local deterministic reduction
@@ -84,23 +86,24 @@ That means:
   while still remaining bounded by typed host evaluation
 - policy remains host-owned even when no custom `policy.json` is present
 
-## Trust-aware hook
+## Trust-aware execution metadata
 
-Installed verification metadata and trusted publisher identity may inform local
-policy.
+Installed verification metadata and trusted publisher identity now feed a
+derived host-owned local trust tier before execution.
 
-The current repository uses one narrow hook:
+The current repository uses these host-owned values:
 
-- `verified_publishers_required_for`
-
-If configured for a capability family, the host removes that family from the
-granted slice unless the installed skill carries verified import metadata from a
-trusted publisher.
+- `verification_state`
+- `trust_tier`
+- `profile_name`
 
 This keeps trust verification and policy decision separate:
 
 - verification answers "what trust metadata does this install carry?"
-- policy answers "given that metadata, what authority does the host allow now?"
+- trust-tier derivation answers "how does the host classify that install right
+  now?"
+- policy answers "given that metadata and the selected profile, what authority
+  does the host allow now?"
 
 ## Consequences
 

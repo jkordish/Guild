@@ -15,14 +15,14 @@ use guild_registry::{execution_resource_uri, InstalledSkill, RegistryError, Skil
 use guild_sdk_rust::GuildSkill;
 use guild_types::{
     host_now_utc, mint_host_execution_id, CallerRequest, CapabilityAccess, CapabilityConstraints,
-    CapabilityGrantSet, CapabilityId, CapabilityRequirement, CapabilitySelector,
-    ChildExecutionRecord, Diagnostic, Effect, EmitEvidenceConstraints, EvidenceAudience,
-    EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionContext, ExecutionMetrics,
-    ExecutionMode, ExecutionPhase, ExecutionReceipt, ExecutionRecord, ExecutionStatus,
-    GrantedCapability, GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequest,
-    HttpRequestConstraints, HttpResponse, HttpScheme, InvokeDependencyConstraints,
-    LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints, Mutability, PolicyDecision,
-    PolicyDecisionOutcome, PolicyReason, PolicyRule, PolicyRuleEffect, Provenance,
+    CapabilityGrantSet, CapabilityId, CapabilityRequirement, ChildExecutionRecord, Diagnostic,
+    Effect, EmitEvidenceConstraints, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
+    EvidenceRef, ExecutionContext, ExecutionMetrics, ExecutionMode, ExecutionPhase,
+    ExecutionReceipt, ExecutionRecord, ExecutionStatus, GrantedCapability, GuildResourceScope,
+    GuildResourceUri, HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
+    InvokeDependencyConstraints, LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints,
+    Mutability, PolicyDecision, PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding,
+    PolicyReason, PolicyRule, PolicyRuleEffect, PolicyRuleTarget, Provenance,
     ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope, ResolvedSkillRef,
     ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError, SkillOutput,
     TerminationDetail,
@@ -257,6 +257,12 @@ struct ParsedHttpRequest {
 struct PolicyEvaluationResult {
     granted_capabilities: CapabilityGrantSet,
     decision: PolicyDecision,
+}
+
+#[derive(Debug, Clone)]
+struct CandidateGrant {
+    grant: GrantedCapability,
+    covers_required: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1071,6 +1077,9 @@ where
                 envelope.policy_decision.summary.clone(),
             )
             .with_detail(serde_json::json!({
+                "profile_name": envelope.policy_decision.profile_name,
+                "trust_tier": envelope.policy_decision.trust_tier,
+                "verification_state": envelope.policy_decision.verification_state,
                 "reasons": envelope.policy_decision.reasons,
                 "detail": envelope.policy_decision.detail,
             }))
@@ -1086,6 +1095,24 @@ where
         declared_surface: &[CapabilityRequirement],
         policy: &LocalPolicyConfig,
     ) -> PolicyEvaluationResult {
+        let selection = match select_policy_profile(policy, request) {
+            Ok(selection) => selection,
+            Err(reason) => {
+                let reasons = vec![reason.clone()];
+                return rejected_policy_evaluation(
+                    installed,
+                    "ambiguous".into(),
+                    "local policy profile selection was ambiguous",
+                    reasons,
+                    Some(serde_json::json!({
+                        "actor_id": request.actor_id,
+                        "tenant_id": request.tenant_id,
+                    })),
+                    CapabilityGrantSet::default(),
+                );
+            }
+        };
+
         let invalid_requested = invalid_capability_grants(&request.requested_capabilities);
         if !invalid_requested.is_empty() {
             let reasons = vec![PolicyReason {
@@ -1093,19 +1120,18 @@ where
                 message: "caller requested invalid capability constraints".into(),
                 detail: Some(serde_json::json!({ "invalid": invalid_requested })),
             }];
-            return PolicyEvaluationResult {
-                granted_capabilities: CapabilityGrantSet::default(),
-                decision: PolicyDecision {
-                    outcome: PolicyDecisionOutcome::Rejected,
-                    summary: "local policy rejected invalid requested capabilities".into(),
-                    reasons: reasons.clone(),
-                    detail: Some(serde_json::json!({ "invalid": invalid_requested })),
-                },
-            };
+            return rejected_policy_evaluation(
+                installed,
+                selection.name.clone(),
+                "local policy rejected invalid requested capabilities",
+                reasons,
+                Some(serde_json::json!({ "invalid": invalid_requested })),
+                CapabilityGrantSet::default(),
+            );
         }
 
         let mut reasons = Vec::new();
-        let mut granted = match policy.default_action {
+        let granted = match selection.profile.default_action {
             LocalPolicyDefaultAction::AllowRequestedDeclared => {
                 clamp_requested_capabilities_to_manifest(
                     &request.requested_capabilities,
@@ -1115,60 +1141,39 @@ where
             }
         };
 
-        granted = apply_verified_publisher_policy(
-            installed,
-            &granted,
-            &policy.verified_publishers_required_for,
-            &mut reasons,
-        );
+        let mut granted = mark_required_grants(installed, &granted);
 
-        for rule in &policy.rules {
-            if policy_rule_matches(rule, request, installed) {
-                granted = apply_policy_rule(rule, &granted, &mut reasons);
+        for rule in &selection.profile.rules {
+            if policy_rule_matches(rule, installed) {
+                granted =
+                    apply_policy_rule(&selection.name, rule, &granted, installed, &mut reasons);
             }
         }
 
-        let missing = missing_required_capabilities(installed, &granted);
+        let granted_set = candidate_grants_to_set(&granted);
+        let missing = missing_required_capabilities(installed, &granted_set);
         if !missing.is_empty() {
             reasons.push(PolicyReason {
                 code: "policy-required-capability-missing".into(),
                 message: "local policy did not grant all required capabilities".into(),
-                detail: Some(serde_json::json!({ "missing": missing })),
+                detail: Some(serde_json::json!({
+                    "missing": missing,
+                    "profile_name": selection.name,
+                    "trust_tier": installed.trust.trust_tier,
+                    "verification_state": installed.trust.verification_state,
+                })),
             });
-            return PolicyEvaluationResult {
-                granted_capabilities: granted,
-                decision: PolicyDecision {
-                    outcome: PolicyDecisionOutcome::Rejected,
-                    summary: "local policy denied one or more required capabilities".into(),
-                    reasons,
-                    detail: Some(serde_json::json!({ "missing": missing })),
-                },
-            };
-        }
-
-        let outcome = if reasons.is_empty() {
-            PolicyDecisionOutcome::Allowed
-        } else {
-            PolicyDecisionOutcome::Reduced
-        };
-        let summary = match outcome {
-            PolicyDecisionOutcome::Allowed => "local policy granted requested capabilities",
-            PolicyDecisionOutcome::Reduced => {
-                "local policy reduced requested capabilities before execution"
-            }
-            PolicyDecisionOutcome::Rejected => "local policy denied execution before guest start",
-        }
-        .into();
-
-        PolicyEvaluationResult {
-            granted_capabilities: granted,
-            decision: PolicyDecision {
-                outcome,
-                summary,
+            return rejected_policy_evaluation(
+                installed,
+                selection.name,
+                "local policy denied one or more required capabilities",
                 reasons,
-                detail: None,
-            },
+                Some(serde_json::json!({ "missing": missing })),
+                granted_set,
+            );
         }
+
+        completed_policy_evaluation(installed, selection.name, granted_set, reasons)
     }
 
     /// Validate a resolved execution request against the installed manifest.
@@ -1423,6 +1428,9 @@ where
             ExecutionStatus::Rejected => PolicyDecision {
                 outcome: PolicyDecisionOutcome::Rejected,
                 summary: error.message.clone(),
+                profile_name: envelope.policy_decision.profile_name.clone(),
+                trust_tier: envelope.policy_decision.trust_tier.clone(),
+                verification_state: envelope.policy_decision.verification_state.clone(),
                 reasons: Vec::new(),
                 detail: error.detail.as_deref().cloned(),
             },
@@ -1803,46 +1811,117 @@ fn clamp_requested_capabilities_to_manifest(
     CapabilityGrantSet { grants }
 }
 
-fn apply_verified_publisher_policy(
-    installed: &InstalledSkill,
-    grants: &CapabilityGrantSet,
-    selectors: &[CapabilitySelector],
-    reasons: &mut Vec<PolicyReason>,
-) -> CapabilityGrantSet {
-    if selectors.is_empty() || installed.verification.is_some() {
-        return grants.clone();
-    }
-
-    let mut filtered = Vec::new();
-
-    for grant in &grants.grants {
-        if selectors.iter().any(|selector| selector.matches(grant)) {
-            reasons.push(PolicyReason {
-                code: "policy-verified-publisher-required".into(),
-                message:
-                    "local policy requires a verified imported publisher before granting this capability"
-                        .into(),
-                detail: Some(serde_json::json!({
-                    "grant": grant,
-                    "publisher_id": installed.manifest.publisher.id,
-                    "trust_tier": installed.manifest.package.trust_tier,
-                })),
-            });
-            continue;
-        }
-
-        push_unique_grant(&mut filtered, grant.clone());
-    }
-
-    CapabilityGrantSet { grants: filtered }
+#[derive(Debug, Clone)]
+struct SelectedPolicyProfile<'a> {
+    name: String,
+    profile: &'a PolicyProfile,
 }
 
-fn policy_rule_matches(
-    rule: &PolicyRule,
+fn select_policy_profile<'a>(
+    policy: &'a LocalPolicyConfig,
     request: &CallerRequest,
+) -> Result<SelectedPolicyProfile<'a>, PolicyReason> {
+    let matching: Vec<&PolicyProfileBinding> = policy
+        .bindings
+        .iter()
+        .filter(|binding| policy_profile_binding_matches(binding, request))
+        .collect();
+
+    if matching.len() > 1 {
+        return Err(PolicyReason {
+            code: "policy-profile-ambiguous".into(),
+            message: "local policy matched multiple profile bindings for the same execution".into(),
+            detail: Some(serde_json::json!({
+                "actor_id": request.actor_id,
+                "tenant_id": request.tenant_id,
+                "matches": matching.iter().map(|binding| {
+                    serde_json::json!({
+                        "binding": binding.name,
+                        "profile": binding.profile,
+                    })
+                }).collect::<Vec<_>>(),
+            })),
+        });
+    }
+
+    let profile_name = matching.first().map_or_else(
+        || policy.default_profile.clone(),
+        |binding| binding.profile.clone(),
+    );
+    let profile = policy
+        .profiles
+        .iter()
+        .find(|profile| profile.name == profile_name)
+        .ok_or_else(|| PolicyReason {
+            code: "policy-profile-missing".into(),
+            message: "local policy referenced a profile that was not declared".into(),
+            detail: Some(serde_json::json!({ "profile": profile_name })),
+        })?;
+
+    Ok(SelectedPolicyProfile {
+        name: profile.name.clone(),
+        profile,
+    })
+}
+
+fn rejected_policy_evaluation(
     installed: &InstalledSkill,
-) -> bool {
-    if let Some(actor_ids) = &rule.actor_ids {
+    profile_name: String,
+    summary: &str,
+    reasons: Vec<PolicyReason>,
+    detail: Option<serde_json::Value>,
+    granted_capabilities: CapabilityGrantSet,
+) -> PolicyEvaluationResult {
+    PolicyEvaluationResult {
+        granted_capabilities,
+        decision: PolicyDecision {
+            outcome: PolicyDecisionOutcome::Rejected,
+            summary: summary.into(),
+            profile_name,
+            trust_tier: installed.trust.trust_tier.clone(),
+            verification_state: installed.trust.verification_state.clone(),
+            reasons,
+            detail,
+        },
+    }
+}
+
+fn completed_policy_evaluation(
+    installed: &InstalledSkill,
+    profile_name: String,
+    granted_capabilities: CapabilityGrantSet,
+    reasons: Vec<PolicyReason>,
+) -> PolicyEvaluationResult {
+    let outcome = if reasons.is_empty() {
+        PolicyDecisionOutcome::Allowed
+    } else {
+        PolicyDecisionOutcome::Reduced
+    };
+    let summary = match outcome {
+        PolicyDecisionOutcome::Allowed => "local policy granted requested capabilities",
+        PolicyDecisionOutcome::Reduced => {
+            "local policy reduced requested capabilities before execution"
+        }
+        PolicyDecisionOutcome::Rejected => "local policy denied execution before guest start",
+    }
+    .into();
+
+    PolicyEvaluationResult {
+        granted_capabilities,
+        decision: PolicyDecision {
+            outcome,
+            summary,
+            profile_name,
+            trust_tier: installed.trust.trust_tier.clone(),
+            verification_state: installed.trust.verification_state.clone(),
+            reasons,
+            detail: None,
+        },
+    }
+}
+
+fn policy_profile_binding_matches(binding: &PolicyProfileBinding, request: &CallerRequest) -> bool {
+    if let Some(actor_ids) = &binding.actor_ids {
         if !actor_ids
             .iter()
             .any(|actor_id| actor_id == &request.actor_id)
@@ -1851,7 +1930,7 @@ fn policy_rule_matches(
         }
     }
 
-    if let Some(tenant_ids) = &rule.tenant_ids {
+    if let Some(tenant_ids) = &binding.tenant_ids {
         if !tenant_ids
             .iter()
             .any(|tenant_id| tenant_id == &request.tenant_id)
@@ -1860,6 +1939,44 @@ fn policy_rule_matches(
         }
     }
 
+    true
+}
+
+fn mark_required_grants(
+    installed: &InstalledSkill,
+    grants: &CapabilityGrantSet,
+) -> Vec<CandidateGrant> {
+    let required: Vec<_> = installed
+        .manifest
+        .capabilities
+        .iter()
+        .filter(|requirement| requirement.required)
+        .cloned()
+        .collect();
+
+    grants
+        .grants
+        .iter()
+        .cloned()
+        .map(|grant| CandidateGrant {
+            covers_required: required.iter().any(|requirement| {
+                CapabilityEvaluator::grant_covers_requirement(&grant, requirement)
+            }),
+            grant,
+        })
+        .collect()
+}
+
+fn candidate_grants_to_set(grants: &[CandidateGrant]) -> CapabilityGrantSet {
+    let mut unique = Vec::new();
+    for candidate in grants {
+        push_unique_grant(&mut unique, candidate.grant.clone());
+    }
+
+    CapabilityGrantSet { grants: unique }
+}
+
+fn policy_rule_matches(rule: &PolicyRule, installed: &InstalledSkill) -> bool {
     if let Some(skills) = &rule.skills {
         if !skills.iter().any(|skill| skill == &installed.manifest.key) {
             return false;
@@ -1875,104 +1992,168 @@ fn policy_rule_matches(
         }
     }
 
+    if let Some(trust_tiers) = &rule.trust_tiers {
+        if !trust_tiers
+            .iter()
+            .any(|trust_tier| trust_tier == &installed.trust.trust_tier)
+        {
+            return false;
+        }
+    }
+
+    if let Some(verification_states) = &rule.verification_states {
+        if !verification_states
+            .iter()
+            .any(|state| state == &installed.trust.verification_state)
+        {
+            return false;
+        }
+    }
+
     true
 }
 
 fn apply_policy_rule(
+    profile_name: &str,
     rule: &PolicyRule,
-    grants: &CapabilityGrantSet,
+    grants: &[CandidateGrant],
+    installed: &InstalledSkill,
     reasons: &mut Vec<PolicyReason>,
-) -> CapabilityGrantSet {
+) -> Vec<CandidateGrant> {
     match rule.effect {
-        PolicyRuleEffect::Deny => apply_policy_deny_rule(rule, grants, reasons),
-        PolicyRuleEffect::Cap => apply_policy_cap_rule(rule, grants, reasons),
+        PolicyRuleEffect::Deny => {
+            apply_policy_deny_rule(profile_name, rule, grants, installed, reasons)
+        }
+        PolicyRuleEffect::Cap => {
+            apply_policy_cap_rule(profile_name, rule, grants, installed, reasons)
+        }
+    }
+}
+
+fn policy_rule_target_matches(target: &PolicyRuleTarget, candidate: &CandidateGrant) -> bool {
+    match target {
+        PolicyRuleTarget::Any => true,
+        PolicyRuleTarget::Requested => !candidate.covers_required,
+        PolicyRuleTarget::Required => candidate.covers_required,
     }
 }
 
 fn apply_policy_deny_rule(
+    profile_name: &str,
     rule: &PolicyRule,
-    grants: &CapabilityGrantSet,
+    grants: &[CandidateGrant],
+    installed: &InstalledSkill,
     reasons: &mut Vec<PolicyReason>,
-) -> CapabilityGrantSet {
+) -> Vec<CandidateGrant> {
     let mut filtered = Vec::new();
 
-    for grant in &grants.grants {
+    for candidate in grants {
+        if !policy_rule_target_matches(&rule.applies_to, candidate) {
+            filtered.push(candidate.clone());
+            continue;
+        }
+
         if let Some(rule_grant) = rule
             .capabilities
             .grants
             .iter()
-            .find(|rule_grant| policy_grant_matches(rule_grant, grant))
+            .find(|rule_grant| policy_grant_matches(rule_grant, &candidate.grant))
         {
             reasons.push(PolicyReason {
-                code: "policy-rule-deny".into(),
-                message: "local policy rule denied a requested capability grant".into(),
+                code: "policy-profile-rule-deny".into(),
+                message: "local policy profile denied a capability grant before execution".into(),
                 detail: Some(serde_json::json!({
+                    "profile_name": profile_name,
                     "rule": rule.name,
-                    "grant": grant,
+                    "grant": candidate.grant,
                     "rule_grant": rule_grant,
+                    "trust_tier": installed.trust.trust_tier,
+                    "verification_state": installed.trust.verification_state,
+                    "applies_to": rule.applies_to,
                 })),
             });
             continue;
         }
 
-        push_unique_grant(&mut filtered, grant.clone());
+        filtered.push(candidate.clone());
     }
 
-    CapabilityGrantSet { grants: filtered }
+    filtered
 }
 
 fn apply_policy_cap_rule(
+    profile_name: &str,
     rule: &PolicyRule,
-    grants: &CapabilityGrantSet,
+    grants: &[CandidateGrant],
+    installed: &InstalledSkill,
     reasons: &mut Vec<PolicyReason>,
-) -> CapabilityGrantSet {
+) -> Vec<CandidateGrant> {
     let mut filtered = Vec::new();
 
-    for grant in &grants.grants {
+    for candidate in grants {
+        if !policy_rule_target_matches(&rule.applies_to, candidate) {
+            filtered.push(candidate.clone());
+            continue;
+        }
+
         let matching: Vec<_> = rule
             .capabilities
             .grants
             .iter()
-            .filter(|rule_grant| rule_grant.id == grant.id && rule_grant.access == grant.access)
+            .filter(|rule_grant| {
+                rule_grant.id == candidate.grant.id && rule_grant.access == candidate.grant.access
+            })
             .collect();
 
         if matching.is_empty() {
-            push_unique_grant(&mut filtered, grant.clone());
+            filtered.push(candidate.clone());
             continue;
         }
 
-        let mut reduced = Some(grant.clone());
+        let mut reduced = Some(candidate.grant.clone());
         for rule_grant in matching {
             reduced = reduced.and_then(|current| reduce_grant_to_cap(rule_grant, &current));
         }
 
         match reduced {
             Some(reduced_grant) => {
-                if reduced_grant != *grant {
+                if reduced_grant != candidate.grant {
                     reasons.push(PolicyReason {
-                        code: "policy-rule-cap".into(),
-                        message: "local policy rule reduced a requested capability grant".into(),
+                        code: "policy-profile-rule-cap".into(),
+                        message: "local policy profile reduced a capability grant before execution"
+                            .into(),
                         detail: Some(serde_json::json!({
+                            "profile_name": profile_name,
                             "rule": rule.name,
-                            "requested": grant,
+                            "requested": candidate.grant,
                             "granted": reduced_grant,
+                            "trust_tier": installed.trust.trust_tier,
+                            "verification_state": installed.trust.verification_state,
+                            "applies_to": rule.applies_to,
                         })),
                     });
                 }
-                push_unique_grant(&mut filtered, reduced_grant);
+                filtered.push(CandidateGrant {
+                    grant: reduced_grant,
+                    covers_required: candidate.covers_required,
+                });
             }
             None => reasons.push(PolicyReason {
-                code: "policy-rule-cap".into(),
-                message: "local policy rule removed a requested capability grant".into(),
+                code: "policy-profile-rule-cap".into(),
+                message: "local policy profile removed a capability grant before execution".into(),
                 detail: Some(serde_json::json!({
+                    "profile_name": profile_name,
                     "rule": rule.name,
-                    "requested": grant,
+                    "requested": candidate.grant,
+                    "trust_tier": installed.trust.trust_tier,
+                    "verification_state": installed.trust.verification_state,
+                    "applies_to": rule.applies_to,
                 })),
             }),
         }
     }
 
-    CapabilityGrantSet { grants: filtered }
+    filtered
 }
 
 fn missing_required_capabilities(

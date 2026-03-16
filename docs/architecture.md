@@ -14,6 +14,7 @@ Current architecture highlights worth knowing before you follow older notes:
 - unsupported capability families are rejected before execution in the active inspect slice
 - bounded `http-request` execution is now part of that active inspect slice through the same Wasmtime runtime path
 - caller-requested capabilities now flow through a local host-owned policy evaluator before execution starts
+- that evaluator now derives a host-owned local trust tier and selects named profiles by actor and/or tenant before deciding grants
 - read-resource auth uses canonical parsed Guild URI scopes
 - `guild-mcp-server` is now a real stdio MCP façade over the same inspect/runtime/resource path
 - installed-state portability now includes both the native signed bundle directory and a local OCI image layout transport mapping that still imports through the same trust/signature checks

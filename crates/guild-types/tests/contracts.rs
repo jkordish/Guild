@@ -1,10 +1,11 @@
 use guild_types::{
     Budget, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    CapabilitySelector, ExecutionContext, ExecutionMode, GrantedCapability, GuildResourceScope,
-    GuildResourceUri, HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
-    LocalPolicyConfig, PolicyDecision, PolicyDecisionOutcome, PolicyReason, PolicyRule,
-    PolicyRuleEffect, ReadResourceConstraints, ResolvedSkillRef, ResourceKind, SkillKey,
-    SkillVersion, VersionRequirement,
+    ExecutionContext, ExecutionMode, GrantedCapability, GuildResourceScope, GuildResourceUri,
+    HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
+    InstalledVerificationState, LocalPolicyConfig, LocalTrustTier, PolicyDecision,
+    PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule,
+    PolicyRuleEffect, PolicyRuleTarget, ReadResourceConstraints, ResolvedSkillRef, ResourceKind,
+    SkillKey, SkillVersion, VersionRequirement,
 };
 
 #[test]
@@ -184,37 +185,54 @@ fn http_request_and_response_roundtrip() {
 #[test]
 fn local_policy_config_roundtrips_with_rules() {
     let config = LocalPolicyConfig {
-        verified_publishers_required_for: vec![CapabilitySelector {
-            id: CapabilityId::HttpRequest,
-            access: CapabilityAccess::Read,
-        }],
-        rules: vec![PolicyRule {
-            name: Some("deny-http".into()),
-            actor_ids: Some(vec!["actor-1".into()]),
-            tenant_ids: Some(vec!["tenant-1".into()]),
-            skills: Some(vec![SkillKey {
-                namespace: "example".into(),
-                name: "inspect-http-json".into(),
-            }]),
-            publisher_ids: Some(vec!["local.example".into()]),
-            effect: PolicyRuleEffect::Deny,
-            capabilities: CapabilityGrantSet {
-                grants: vec![GrantedCapability {
-                    id: CapabilityId::HttpRequest,
-                    access: CapabilityAccess::Read,
-                    constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
-                        allowed_schemes: Some(vec![HttpScheme::Http]),
-                        allowed_hosts: Some(vec!["127.0.0.1".into()]),
-                        allowed_ports: Some(vec![8080]),
-                        allowed_methods: Some(vec![HttpMethod::Get]),
-                        allowed_path_prefixes: Some(vec!["/json".into()]),
-                        max_timeout_ms: Some(2_000),
-                        max_response_bytes: Some(4_096),
-                    }),
+        format_version: guild_types::LocalPolicyFormatVersion::GuildLocalPolicyV2,
+        default_profile: "trusted-networked".into(),
+        profiles: vec![
+            PolicyProfile {
+                name: "trusted-networked".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: vec![PolicyRule {
+                    name: Some("deny-restricted-http".into()),
+                    skills: Some(vec![SkillKey {
+                        namespace: "example".into(),
+                        name: "inspect-http-json".into(),
+                    }]),
+                    publisher_ids: Some(vec!["local.example".into()]),
+                    trust_tiers: Some(vec![LocalTrustTier::Restricted]),
+                    verification_states: Some(vec![InstalledVerificationState::VerifiedImport]),
+                    applies_to: PolicyRuleTarget::Any,
+                    effect: PolicyRuleEffect::Deny,
+                    capabilities: CapabilityGrantSet {
+                        grants: vec![GrantedCapability {
+                            id: CapabilityId::HttpRequest,
+                            access: CapabilityAccess::Read,
+                            constraints: CapabilityConstraints::HttpRequest(
+                                HttpRequestConstraints {
+                                    allowed_schemes: Some(vec![HttpScheme::Http]),
+                                    allowed_hosts: Some(vec!["127.0.0.1".into()]),
+                                    allowed_ports: Some(vec![8080]),
+                                    allowed_methods: Some(vec![HttpMethod::Get]),
+                                    allowed_path_prefixes: Some(vec!["/json".into()]),
+                                    max_timeout_ms: Some(2_000),
+                                    max_response_bytes: Some(4_096),
+                                },
+                            ),
+                        }],
+                    },
                 }],
             },
+            PolicyProfile {
+                name: "strict".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: Vec::new(),
+            },
+        ],
+        bindings: vec![PolicyProfileBinding {
+            name: Some("prod-tenant".into()),
+            actor_ids: Some(vec!["actor-1".into()]),
+            tenant_ids: Some(vec!["tenant-1".into()]),
+            profile: "strict".into(),
         }],
-        ..LocalPolicyConfig::default()
     };
 
     let encoded = serde_json::to_string(&config).unwrap();
@@ -229,6 +247,9 @@ fn policy_decision_serializes_reasons() {
     let decision = PolicyDecision {
         outcome: PolicyDecisionOutcome::Reduced,
         summary: "local policy reduced requested capabilities".into(),
+        profile_name: "trusted-networked".into(),
+        trust_tier: LocalTrustTier::Restricted,
+        verification_state: InstalledVerificationState::VerifiedImport,
         reasons: vec![PolicyReason {
             code: "policy-requested-capability-reduced".into(),
             message: "requested capability was narrowed to the declared surface".into(),
@@ -240,6 +261,9 @@ fn policy_decision_serializes_reasons() {
     let encoded = serde_json::to_value(&decision).unwrap();
 
     assert_eq!(encoded["outcome"], "reduced");
+    assert_eq!(encoded["profile_name"], "trusted-networked");
+    assert_eq!(encoded["trust_tier"], "restricted");
+    assert_eq!(encoded["verification_state"], "verified-import");
     assert_eq!(
         encoded["reasons"][0]["code"],
         "policy-requested-capability-reduced"
