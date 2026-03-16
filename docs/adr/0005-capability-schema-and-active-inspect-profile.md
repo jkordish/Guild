@@ -30,6 +30,7 @@ The current capability model is defined as follows:
 
 The active typed constraint families in the current inspect implementation are:
 
+- `HttpRequestConstraints`
 - `ReadResourceConstraints`
 - `InvokeDependencyConstraints`
 - `EmitEvidenceConstraints`
@@ -37,6 +38,7 @@ The active typed constraint families in the current inspect implementation are:
 
 These map to the currently active inspect capability families:
 
+- `http-request` with `read` access
 - `read-resource` with `read` access
 - `invoke-skill` with `invoke` access
 - `emit-evidence` with `write` access
@@ -49,7 +51,7 @@ That preflight rule applies to both:
 - manifest-declared capability requirements
 - execution-time grants
 
-Broader capability IDs and host imports may still exist in shared Rust types or WIT for future phases. They are not part of the active inspect profile unless the runtime actually supports them. In particular, the current inspect slice does not activate broader network, secret, cache, or clock capability families.
+Broader capability IDs and host imports may still exist in shared Rust types or WIT for future phases. They are not part of the active inspect profile unless the runtime actually supports them. In particular, the current inspect slice activates one bounded outbound network family, `http-request`, but still does not activate secret, cache, or clock capability families.
 
 Manifest requirements and host grants stay separate:
 
@@ -60,10 +62,19 @@ Manifest requirements and host grants stay separate:
 
 The host enforces typed constraint coverage, not loose string matching:
 
+- `http-request` may constrain schemes, hosts, ports, methods, path prefixes, max timeout, and max response bytes
 - `read-resource` may constrain `uri_prefixes` and `resource_kinds`
 - `invoke-skill` may constrain dependency aliases
 - `emit-evidence` may constrain `max_bytes`, `audiences`, and `redactions`
 - `log-write` may constrain permitted severities
+
+`http-request` is now real in the active inspect profile:
+
+- the guest ABI stays Guild-shaped for now
+- the host implementation uses `wasmtime-wasi-http` behind a thin translation layer
+- the host parses absolute URLs and enforces typed scheme, host, port, path, method, timeout, and size constraints before or during dispatch as appropriate
+- child execution receives only a reduced `http-request` grant derived from the parent slice
+- the public MCP surface stays at one tool, `guild.inspect`; HTTP is exercised through skill execution rather than new MCP tools
 
 `read-resource` scope matching is canonical and typed:
 
@@ -97,6 +108,7 @@ Positive:
 - host authority stays separate from skill-authored requests
 - composite execution preserves least-authority behavior through typed child-grant reduction
 - `read-resource` authorization now matches Guild URI semantics instead of permissive string prefixes
+- the inspect slice now has one standards-aligned outbound HTTP family with real host behavior instead of a stubbed or implied network surface
 
 Costs and current limits:
 
@@ -107,6 +119,7 @@ Costs and current limits:
 ## Explicit invariants
 
 - skills never receive ambient filesystem, environment, unrestricted network, or subprocess authority through the default path
+- bounded `http-request` authority is host-mediated and grant-scoped, not ambient outbound networking
 - manifest requirements are skill-authored declarations, not grants
 - grants and denials are host-owned
 - unsupported capability families in the active Wasm inspect slice are rejected before execution
@@ -117,7 +130,7 @@ Costs and current limits:
 
 - defining a general policy language or policy engine
 - implying that unsupported shared-contract capability families are production-ready
-- activating broader network, secret, cache, or clock capability families in the inspect slice
+- activating broader network, secret, cache, or clock capability families beyond bounded `http-request` in the inspect slice
 - deciding capability behavior for `plan` mode
 - deciding capability behavior for `apply` mode
 

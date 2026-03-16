@@ -33,6 +33,7 @@ Useful local proof commands:
 ```bash
 make test
 cargo run -p guild-mcp --example inspect_local
+cargo run -p guild-mcp --example inspect_http_json_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
@@ -41,7 +42,19 @@ cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
-Additional examples cover composite execution, persisted execution-tree explanation, durable rejected executions, composite portability, and tampered or untrusted bundle rejection.
+Additional examples cover bounded local HTTP inspection, composite execution, persisted execution-tree explanation, durable rejected executions, composite portability, and tampered or untrusted bundle rejection.
+
+### HTTP Proof Flow
+
+Guild now has one real new inspect-slice capability family: `http-request`.
+
+The canonical local proof command is:
+
+```bash
+cargo run -p guild-mcp --example inspect_http_json_local
+```
+
+That example starts a deterministic local HTTP server, installs the primitive `inspect-http-json` skill, grants it bounded outbound HTTP authority through `guild.inspect`, prints the successful stored execution, then runs a denied host-mismatch request and prints the persisted rejected execution. The public MCP surface does not change; HTTP is exercised through `guild.inspect`, not a new MCP tool.
 
 ## MCP Server
 
@@ -70,8 +83,9 @@ The current inspect slice is intentionally strict about a few things:
 - requested resolution fails closed if the same skill key and version exist under multiple digests
 - local source installs stage and validate in a temporary directory before an atomic move into installed state
 - host authorization denials persist as host-owned rejected executions instead of leaking into guest-owned failure semantics
-- the active Wasm inspect slice only supports `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; broader typed families are rejected before execution
+- the active Wasm inspect slice only supports `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; broader typed families are rejected before execution
 - `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
+- `http-request` is host-mediated, typed, bounded, and fail-closed; method, scheme, host, port, path, timeout, and response-size checks stay host-owned
 - durable execution records now carry host-stamped start and finish timestamps
 - the stdio MCP server exposes only `guild.inspect` plus honest Guild resource reads; HTTP transports and subscriptions remain deferred
 
@@ -129,11 +143,13 @@ What is real today:
 - source-to-installed manifest lifecycle
 - digest-pinned local resolution
 - Wasmtime-backed Wasm component execution
+- real host-mediated outbound HTTP execution through the Wasmtime runtime path
 - typed capability enforcement for the implemented host imports
 - host-minted durable execution IDs with create-only execution persistence
 - durable execution persistence with host-stamped timestamps
 - split evidence blob and evidence-record persistence
 - composite child invocation with durable lineage
+- one primitive `inspect-http-json` example that proves bounded HTTP fetches through `guild.inspect`
 - real stdio MCP server support for `guild.inspect` and Guild URI resources
 - signed local bundle export and import with trust-store verification
 

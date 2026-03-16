@@ -1,0 +1,27 @@
+{
+  "summary": "Fetched JSON from http://127.0.0.1:8080/json with HTTP 200.",
+  "structured": {
+    "requested_url": "http://127.0.0.1:8080/json",
+    "final_url": "http://127.0.0.1:8080/json",
+    "method": "get",
+    "status": 200,
+    "content_type": "application/json",
+    "response_bytes": 79,
+    "selected_fields": [
+      {
+        "pointer": "/message",
+        "found": true,
+        "value": "deterministic"
+      },
+      {
+        "pointer": "/nested/count",
+        "found": true,
+        "value": 2
+      }
+    ],
+    "json_summary": {
+      "root_kind": "object",
+      "object_keys": ["items", "message", "nested", "service"]
+    }
+  }
+}

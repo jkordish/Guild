@@ -10,16 +10,22 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+bytes.workspace = true
 guild-manifest = { path = "../guild-manifest" }
 guild-registry = { path = "../guild-registry" }
 guild-sdk-rust = { path = "../guild-sdk-rust" }
 guild-types = { path = "../guild-types" }
+http.workspace = true
+http-body-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
 sha2.workspace = true
+tokio.workspace = true
+url.workspace = true
 wasmtime.workspace = true
 wasmtime-wasi.workspace = true
+wasmtime-wasi-http.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

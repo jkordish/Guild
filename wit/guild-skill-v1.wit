@@ -55,6 +55,16 @@ interface types {
     invoke,
   }
 
+  enum http-method {
+    get,
+    head,
+  }
+
+  enum http-scheme {
+    http,
+    https,
+  }
+
   enum evidence-audience {
     user,
     assistant,
@@ -92,8 +102,19 @@ interface types {
     levels: option<list<severity>>,
   }
 
+  record http-request-constraints {
+    allowed-schemes: option<list<http-scheme>>,
+    allowed-hosts: option<list<string>>,
+    allowed-ports: option<list<u16>>,
+    allowed-methods: option<list<http-method>>,
+    allowed-path-prefixes: option<list<string>>,
+    max-timeout-ms: option<u64>,
+    max-response-bytes: option<u64>,
+  }
+
   variant capability-constraints {
     none,
+    http-request(http-request-constraints),
     read-resource(read-resource-constraints),
     invoke-dependency(invoke-dependency-constraints),
     emit-evidence(emit-evidence-constraints),
@@ -166,6 +187,19 @@ interface types {
     sha256: option<string>,
   }
 
+  record http-request-message {
+    method: http-method,
+    url: string,
+    timeout-ms: option<u64>,
+  }
+
+  record http-response-message {
+    url: string,
+    status: u16,
+    content-type: option<string>,
+    body: list<u8>,
+  }
+
   record skill-output {
     summary: string,
     structured: json,
@@ -188,7 +222,7 @@ interface types {
 }
 
 interface host {
-  use types.{dependency-invocation-request, evidence-emission-request, evidence-ref, json, resource-read-result, severity, skill-error, skill-output};
+  use types.{dependency-invocation-request, evidence-emission-request, evidence-ref, http-request-message, http-response-message, json, resource-read-result, severity, skill-error, skill-output};
 
   log: func(level: severity, message: string);
   emit-evidence: func(request: evidence-emission-request) -> result<evidence-ref, string>;
@@ -196,7 +230,7 @@ interface host {
   cache-get: func(key: string) -> option<json>;
   cache-put: func(key: string, value: json, ttl-seconds: u32);
   invoke-dependency: func(request: dependency-invocation-request) -> result<skill-output, skill-error>;
-  http-request: func(request: json) -> result<json, string>;
+  http-request: func(request: http-request-message) -> result<http-response-message, string>;
   get-secret: func(handle: string) -> result<list<u8>, string>;
   monotonic-now: func() -> result<u64, string>;
   wall-clock-now: func() -> result<string, string>;

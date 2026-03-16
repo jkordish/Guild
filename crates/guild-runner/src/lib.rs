@@ -7,8 +7,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use bytes::Bytes;
 use guild_manifest::SkillManifest;
 use guild_registry::{execution_resource_uri, InstalledSkill, RegistryError, SkillRegistry};
 use guild_sdk_rust::GuildSkill;
@@ -18,18 +19,26 @@ use guild_types::{
     Effect, EmitEvidenceConstraints, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
     EvidenceRef, ExecutionContext, ExecutionMetrics, ExecutionMode, ExecutionPhase,
     ExecutionReceipt, ExecutionRecord, ExecutionStatus, GrantedCapability, GuildResourceScope,
-    GuildResourceUri, InvokeDependencyConstraints, LogConstraints, Mutability, PolicyDecision,
-    PolicyDecisionOutcome, Provenance, ReadResourceConstraints, RedactionClass,
-    ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind,
-    Severity, SkillError, SkillOutput, TerminationDetail,
+    GuildResourceUri, HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
+    InvokeDependencyConstraints, LogConstraints, Mutability, PolicyDecision, PolicyDecisionOutcome,
+    Provenance, ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope,
+    ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError,
+    SkillOutput, TerminationDetail,
 };
+use http::header::CONTENT_TYPE;
+use http::Request;
+use http_body_util::{BodyExt, Empty};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use url::Url;
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+use wasmtime_wasi_http::bindings::http::types::ErrorCode as WasiHttpErrorCode;
+use wasmtime_wasi_http::body::HyperOutgoingBody;
+use wasmtime_wasi_http::types::{default_send_request_handler, OutgoingRequestConfig};
 
 mod bindings {
     wasmtime::component::bindgen!({
@@ -90,6 +99,19 @@ pub trait RuntimeHost: Send + Sync {
     ///
     /// Returns a skill error when the URI is invalid, unauthorized, or missing.
     fn read_resource(&self, uri: &str) -> Result<ResourceReadResult, SkillError>;
+
+    /// Execute a bounded outbound HTTP request through the host-owned runtime path.
+    ///
+    /// # Errors
+    ///
+    /// Returns a skill error when the request cannot be built, sent, or read
+    /// within the host-enforced bounds.
+    fn http_request(
+        &self,
+        request: &HttpRequest,
+        timeout: Duration,
+        max_response_bytes: u64,
+    ) -> Result<HttpResponse, SkillError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -179,6 +201,7 @@ pub struct RuntimeOutcome {
     pub output: SkillOutput,
     pub emitted_evidence: Vec<EvidenceRef>,
     pub child_executions: Vec<ChildExecutionRecord>,
+    pub network_requests: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -186,6 +209,7 @@ pub struct RuntimeFailure {
     pub error: Box<ExecutionError>,
     pub emitted_evidence: Vec<EvidenceRef>,
     pub child_executions: Vec<ChildExecutionRecord>,
+    pub network_requests: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -217,6 +241,20 @@ impl ChildInvocationError {
             denial: Some(denial),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct ParsedHttpRequest {
+    scheme: HttpScheme,
+    host: String,
+    port: u16,
+    path: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HttpExecutionPolicy {
+    timeout: Duration,
+    max_response_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -270,6 +308,7 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                network_requests: 0,
             })?;
 
         let artifact: InProcessArtifact =
@@ -284,6 +323,7 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                network_requests: 0,
             })?;
 
         if artifact.implementation != installed.manifest.runtime.entrypoint {
@@ -301,6 +341,7 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                network_requests: 0,
             });
         }
 
@@ -318,6 +359,7 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                network_requests: 0,
             })?;
 
         skill
@@ -326,11 +368,13 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 output,
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                network_requests: 0,
             })
             .map_err(|error| RuntimeFailure {
                 error: Box::new(ExecutionError::from(error)),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                network_requests: 0,
             })
     }
 }
@@ -449,6 +493,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                     error: Box::new(error),
                     emitted_evidence: Vec::new(),
                     child_executions: Vec::new(),
+                    network_requests: 0,
                 })?;
         let wit_context = to_wit_execution_context(context);
         let wit_input = serde_json::to_string(input).expect("execution input serializes");
@@ -470,6 +515,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                 )),
                 emitted_evidence: store.data().emitted_evidence.clone(),
                 child_executions: store.data().child_executions.clone(),
+                network_requests: store.data().network_requests,
             })?;
 
         match result {
@@ -478,24 +524,28 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                     error: Box::new(error),
                     emitted_evidence: store.data().emitted_evidence.clone(),
                     child_executions: store.data().child_executions.clone(),
+                    network_requests: store.data().network_requests,
                 })?;
                 validate_emitted_evidence(&output, &store.data().emitted_evidence).map_err(
                     |error| RuntimeFailure {
                         error: Box::new(error),
                         emitted_evidence: store.data().emitted_evidence.clone(),
                         child_executions: store.data().child_executions.clone(),
+                        network_requests: store.data().network_requests,
                     },
                 )?;
                 Ok(RuntimeOutcome {
                     output,
                     emitted_evidence: store.data().emitted_evidence.clone(),
                     child_executions: store.data().child_executions.clone(),
+                    network_requests: store.data().network_requests,
                 })
             }
             Err(error) => Err(RuntimeFailure {
                 error: Box::new(from_wit_skill_error(error)),
                 emitted_evidence: store.data().emitted_evidence.clone(),
                 child_executions: store.data().child_executions.clone(),
+                network_requests: store.data().network_requests,
             }),
         }
     }
@@ -507,6 +557,7 @@ struct WasmStoreState {
     host: Arc<dyn RuntimeHost>,
     child_executions: Vec<ChildExecutionRecord>,
     emitted_evidence: Vec<EvidenceRef>,
+    network_requests: u32,
     wasi: WasiCtx,
     table: ResourceTable,
 }
@@ -523,6 +574,7 @@ impl WasmStoreState {
             host,
             child_executions: Vec::new(),
             emitted_evidence: Vec::new(),
+            network_requests: 0,
             wasi: WasiCtxBuilder::new().build(),
             table: ResourceTable::new(),
         }
@@ -710,10 +762,30 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
         }
     }
 
-    fn http_request(&mut self, _request: String) -> wasmtime::Result<Result<String, String>> {
-        Err(wasmtime::Error::msg(
-            "http-request is not implemented in the Wasm inspect slice",
-        ))
+    fn http_request(
+        &mut self,
+        request: bindings::guild::skill::types::HttpRequestMessage,
+    ) -> wasmtime::Result<Result<bindings::guild::skill::types::HttpResponseMessage, String>> {
+        let request = from_wit_http_request(request);
+        let parsed_request =
+            parse_http_request(&request).map_err(|denial| capability_denial_trap(&denial))?;
+        let policy = CapabilityEvaluator::authorize_http_request(
+            self.grants(),
+            &self.execution.budget,
+            self.network_requests,
+            &request,
+            &parsed_request,
+        )
+        .map_err(|denial| capability_denial_trap(&denial))?;
+
+        self.network_requests = self.network_requests.saturating_add(1);
+        match self
+            .host
+            .http_request(&request, policy.timeout, policy.max_response_bytes)
+        {
+            Ok(response) => Ok(Ok(to_wit_http_response(&response))),
+            Err(error) => Ok(Err(format!("{}: {}", error.code, error.message))),
+        }
     }
 
     fn get_secret(&mut self, _handle: String) -> wasmtime::Result<Result<Vec<u8>, String>> {
@@ -797,6 +869,7 @@ where
                 error,
                 Vec::new(),
                 &[],
+                0,
             ));
         }
 
@@ -818,6 +891,7 @@ where
                         *failure.error,
                         failure.child_executions,
                         &failure.emitted_evidence,
+                        failure.network_requests,
                     ));
                 }
             };
@@ -842,6 +916,7 @@ where
             emitted_evidence: Self::load_evidence_records(registry, &outcome.emitted_evidence)?,
             metrics: ExecutionMetrics {
                 duration_ms,
+                network_requests: outcome.network_requests,
                 child_executions: saturating_u16_len(outcome.child_executions.len()),
                 ..ExecutionMetrics::default()
             },
@@ -1172,6 +1247,7 @@ where
         error: ExecutionError,
         child_executions: Vec<ChildExecutionRecord>,
         emitted_evidence: &[EvidenceRef],
+        network_requests: u32,
     ) -> ExecutionError
     where
         R: SkillRegistry + ?Sized,
@@ -1200,6 +1276,7 @@ where
                 .unwrap_or_default(),
             metrics: ExecutionMetrics {
                 duration_ms: context.duration_ms,
+                network_requests,
                 child_executions: saturating_u16_len(child_executions.len()),
                 ..ExecutionMetrics::default()
             },
@@ -1344,6 +1421,15 @@ where
                     "detail": error.detail,
                 })),
             })
+    }
+
+    fn http_request(
+        &self,
+        request: &HttpRequest,
+        timeout: Duration,
+        max_response_bytes: u64,
+    ) -> Result<HttpResponse, SkillError> {
+        execute_http_request(request, timeout, max_response_bytes)
     }
 }
 
@@ -1564,6 +1650,207 @@ impl CapabilityDenial {
     }
 }
 
+fn parse_http_request(request: &HttpRequest) -> Result<ParsedHttpRequest, CapabilityDenial> {
+    let url = Url::parse(&request.url).map_err(|error| CapabilityDenial {
+        code: "http-request-url-invalid".into(),
+        message: "http-request requires an absolute HTTP or HTTPS URL".into(),
+        detail: serde_json::json!({
+            "url": request.url,
+            "error": error.to_string(),
+        }),
+    })?;
+
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(CapabilityDenial {
+            code: "http-request-url-invalid".into(),
+            message: "http-request URLs must not embed credentials".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+            }),
+        });
+    }
+
+    let scheme = match url.scheme() {
+        "http" => HttpScheme::Http,
+        "https" => HttpScheme::Https,
+        other => {
+            return Err(CapabilityDenial {
+                code: "http-request-url-invalid".into(),
+                message: "http-request only supports HTTP and HTTPS URLs".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "scheme": other,
+                }),
+            });
+        }
+    };
+
+    let host = url.host_str().ok_or_else(|| CapabilityDenial {
+        code: "http-request-url-invalid".into(),
+        message: "http-request URL must include a host".into(),
+        detail: serde_json::json!({
+            "url": request.url,
+        }),
+    })?;
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| CapabilityDenial {
+            code: "http-request-url-invalid".into(),
+            message: "http-request URL must resolve to an explicit or default port".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+            }),
+        })?;
+    let path = if url.path().is_empty() {
+        "/".to_owned()
+    } else {
+        url.path().to_owned()
+    };
+
+    Ok(ParsedHttpRequest {
+        scheme,
+        host: host.to_ascii_lowercase(),
+        port,
+        path,
+    })
+}
+
+fn execute_http_request(
+    request: &HttpRequest,
+    timeout: Duration,
+    max_response_bytes: u64,
+) -> Result<HttpResponse, SkillError> {
+    let parsed_request = parse_http_request(request).map_err(CapabilityDenial::into_skill_error)?;
+    let http_request = Request::builder()
+        .method(http_method(request.method.clone()))
+        .uri(request.url.as_str())
+        .body(empty_http_body())
+        .map_err(|error| SkillError {
+            code: "http-request-build-failed".into(),
+            message: "host could not build the outbound HTTP request".into(),
+            retryable: false,
+            detail: Some(serde_json::json!({
+                "url": request.url,
+                "error": error.to_string(),
+            })),
+        })?;
+    let response = wasmtime_wasi::runtime::in_tokio(default_send_request_handler(
+        http_request,
+        OutgoingRequestConfig {
+            use_tls: matches!(parsed_request.scheme, HttpScheme::Https),
+            connect_timeout: timeout,
+            first_byte_timeout: timeout,
+            between_bytes_timeout: timeout,
+        },
+    ))
+    .map_err(|error| skill_error_from_wasi_http_error(error, request, max_response_bytes))?;
+
+    let between_bytes_timeout = response.between_bytes_timeout;
+    let worker = response.worker;
+    let resp = response.resp;
+    let status = resp.status().as_u16();
+    let content_type = resp
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let mut body = resp.into_body();
+    let body = wasmtime_wasi::runtime::in_tokio(async move {
+        let _worker = worker;
+        let mut bytes = Vec::new();
+
+        loop {
+            let frame = tokio::time::timeout(between_bytes_timeout, body.frame())
+                .await
+                .map_err(|_| WasiHttpErrorCode::HttpResponseTimeout)?;
+            let Some(frame) = frame else {
+                break;
+            };
+            let frame = frame?;
+            let Ok(data) = frame.into_data() else {
+                continue;
+            };
+
+            let next_len = u64::try_from(bytes.len())
+                .unwrap_or(u64::MAX)
+                .saturating_add(u64::try_from(data.len()).unwrap_or(u64::MAX));
+            if next_len > max_response_bytes {
+                return Err(WasiHttpErrorCode::HttpResponseBodySize(Some(
+                    max_response_bytes,
+                )));
+            }
+
+            bytes.extend_from_slice(&data);
+        }
+
+        Ok::<Vec<u8>, WasiHttpErrorCode>(bytes)
+    })
+    .map_err(|error| skill_error_from_wasi_http_error(error, request, max_response_bytes))?;
+
+    Ok(HttpResponse {
+        url: request.url.clone(),
+        status,
+        content_type,
+        body,
+    })
+}
+
+fn empty_http_body() -> HyperOutgoingBody {
+    Empty::<Bytes>::new()
+        .map_err(|never| match never {})
+        .boxed_unsync()
+}
+
+fn http_method(method: HttpMethod) -> http::Method {
+    match method {
+        HttpMethod::Get => http::Method::GET,
+        HttpMethod::Head => http::Method::HEAD,
+    }
+}
+
+fn skill_error_from_wasi_http_error(
+    error: WasiHttpErrorCode,
+    request: &HttpRequest,
+    max_response_bytes: u64,
+) -> SkillError {
+    let (code, message, retryable) = match &error {
+        WasiHttpErrorCode::ConnectionTimeout
+        | WasiHttpErrorCode::ConnectionReadTimeout
+        | WasiHttpErrorCode::HttpResponseTimeout => (
+            "http-request-timeout",
+            "outbound HTTP request exceeded the host timeout",
+            true,
+        ),
+        WasiHttpErrorCode::HttpResponseBodySize(_) => (
+            "http-request-response-too-large",
+            "outbound HTTP response exceeded the configured max_response_bytes limit",
+            false,
+        ),
+        WasiHttpErrorCode::HttpRequestUriInvalid | WasiHttpErrorCode::HttpProtocolError => (
+            "http-request-build-failed",
+            "host could not construct a valid outbound HTTP request",
+            false,
+        ),
+        _ => (
+            "http-request-failed",
+            "host failed to complete the outbound HTTP request",
+            false,
+        ),
+    };
+
+    SkillError {
+        code: code.into(),
+        message: message.into(),
+        retryable,
+        detail: Some(serde_json::json!({
+            "url": request.url,
+            "method": request.method,
+            "max_response_bytes": max_response_bytes,
+            "error": format!("{error:?}"),
+        })),
+    }
+}
+
 enum CapabilityOperation<'a> {
     ReadResource {
         uri: &'a str,
@@ -1604,6 +1891,10 @@ impl CapabilityEvaluator {
         match (&grant.constraints, &requirement.constraints) {
             (CapabilityConstraints::None(_), _) | (_, CapabilityConstraints::None(_)) => true,
             (
+                CapabilityConstraints::HttpRequest(grant),
+                CapabilityConstraints::HttpRequest(required),
+            ) => http_request_covers(grant, required),
+            (
                 CapabilityConstraints::ReadResource(grant),
                 CapabilityConstraints::ReadResource(required),
             ) => read_resource_covers(grant, required),
@@ -1637,6 +1928,182 @@ impl CapabilityEvaluator {
                 Self::authorize_emit_evidence(grants, request)
             }
             CapabilityOperation::Log { level } => Self::authorize_log(grants, level),
+        }
+    }
+
+    fn authorize_http_request(
+        grants: &CapabilityGrantSet,
+        budget: &guild_types::Budget,
+        used_network_requests: u32,
+        request: &HttpRequest,
+        parsed_request: &ParsedHttpRequest,
+    ) -> Result<HttpExecutionPolicy, CapabilityDenial> {
+        let matching =
+            Self::matching_grants(grants, &CapabilityId::HttpRequest, &CapabilityAccess::Read);
+
+        if matching.is_empty() {
+            return Err(CapabilityDenial {
+                code: "http-request-not-granted".into(),
+                message: "http-request was not granted for this execution".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "method": request.method,
+                }),
+            });
+        }
+
+        if used_network_requests >= budget.max_network_requests {
+            return Err(CapabilityDenial {
+                code: "http-request-budget-exhausted".into(),
+                message: "execution budget does not allow additional outbound HTTP requests".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "used_network_requests": used_network_requests,
+                    "max_network_requests": budget.max_network_requests,
+                }),
+            });
+        }
+
+        let mut saw_method_denial = false;
+        let mut saw_scheme_denial = false;
+        let mut saw_host_denial = false;
+        let mut saw_port_denial = false;
+        let mut saw_path_denial = false;
+        let mut saw_timeout_denial = false;
+        let mut authorized_timeout_ms: Option<u64> = None;
+        let mut authorized_response_bytes: Option<u64> = None;
+
+        for grant in matching {
+            let CapabilityConstraints::HttpRequest(constraints) = &grant.constraints else {
+                if matches!(grant.constraints, CapabilityConstraints::None(_)) {
+                    let timeout_ms =
+                        effective_timeout_ms(request.timeout_ms, None, budget.max_millis);
+                    let response_bytes = effective_response_bytes(None, budget.max_output_bytes);
+                    authorized_timeout_ms = Some(
+                        authorized_timeout_ms.map_or(timeout_ms, |current| current.max(timeout_ms)),
+                    );
+                    authorized_response_bytes = Some(
+                        authorized_response_bytes
+                            .map_or(response_bytes, |current| current.max(response_bytes)),
+                    );
+                    continue;
+                }
+                continue;
+            };
+
+            if !matches_http_method(constraints.allowed_methods.as_ref(), &request.method) {
+                saw_method_denial = true;
+                continue;
+            }
+
+            if !matches_http_scheme(constraints.allowed_schemes.as_ref(), &parsed_request.scheme) {
+                saw_scheme_denial = true;
+                continue;
+            }
+
+            if !matches_http_host(constraints.allowed_hosts.as_ref(), &parsed_request.host) {
+                saw_host_denial = true;
+                continue;
+            }
+
+            if !matches_http_port(constraints.allowed_ports.as_ref(), parsed_request.port) {
+                saw_port_denial = true;
+                continue;
+            }
+
+            if !matches_http_path(
+                constraints.allowed_path_prefixes.as_ref(),
+                &parsed_request.path,
+            ) {
+                saw_path_denial = true;
+                continue;
+            }
+
+            if let Some(request_timeout_ms) = request.timeout_ms {
+                if let Some(grant_timeout_ms) = constraints.max_timeout_ms {
+                    if request_timeout_ms > grant_timeout_ms {
+                        saw_timeout_denial = true;
+                        continue;
+                    }
+                }
+            }
+
+            let timeout_ms = effective_timeout_ms(
+                request.timeout_ms,
+                constraints.max_timeout_ms,
+                budget.max_millis,
+            );
+            let response_bytes =
+                effective_response_bytes(constraints.max_response_bytes, budget.max_output_bytes);
+            authorized_timeout_ms =
+                Some(authorized_timeout_ms.map_or(timeout_ms, |current| current.max(timeout_ms)));
+            authorized_response_bytes = Some(
+                authorized_response_bytes
+                    .map_or(response_bytes, |current| current.max(response_bytes)),
+            );
+        }
+
+        match (authorized_timeout_ms, authorized_response_bytes) {
+            (Some(timeout_ms), Some(max_response_bytes)) => Ok(HttpExecutionPolicy {
+                timeout: Duration::from_millis(timeout_ms),
+                max_response_bytes,
+            }),
+            _ if saw_timeout_denial => Err(CapabilityDenial {
+                code: "http-request-timeout-not-granted".into(),
+                message: "http-request timeout exceeded the granted max_timeout_ms limit".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "requested_timeout_ms": request.timeout_ms,
+                }),
+            }),
+            _ if saw_path_denial => Err(CapabilityDenial {
+                code: "http-request-path-not-granted".into(),
+                message: "http-request path was not granted for this execution".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "path": parsed_request.path,
+                }),
+            }),
+            _ if saw_port_denial => Err(CapabilityDenial {
+                code: "http-request-port-not-granted".into(),
+                message: "http-request port was not granted for this execution".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "port": parsed_request.port,
+                }),
+            }),
+            _ if saw_host_denial => Err(CapabilityDenial {
+                code: "http-request-host-not-granted".into(),
+                message: "http-request host was not granted for this execution".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "host": parsed_request.host,
+                }),
+            }),
+            _ if saw_scheme_denial => Err(CapabilityDenial {
+                code: "http-request-scheme-not-granted".into(),
+                message: "http-request scheme was not granted for this execution".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "scheme": parsed_request.scheme,
+                }),
+            }),
+            _ if saw_method_denial => Err(CapabilityDenial {
+                code: "http-request-method-not-granted".into(),
+                message: "http-request method was not granted for this execution".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "method": request.method,
+                }),
+            }),
+            _ => Err(CapabilityDenial {
+                code: "http-request-not-granted".into(),
+                message: "http-request was not granted for this execution".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "method": request.method,
+                }),
+            }),
         }
     }
 
@@ -1939,6 +2406,12 @@ fn reduce_child_constraints(
         (CapabilityConstraints::None(_), required) => Ok(required.clone()),
         (_, CapabilityConstraints::None(_)) => Ok(parent_grant.constraints.clone()),
         (
+            CapabilityConstraints::HttpRequest(parent),
+            CapabilityConstraints::HttpRequest(required),
+        ) => Ok(CapabilityConstraints::HttpRequest(
+            reduce_child_http_request_constraints(parent, required)?,
+        )),
+        (
             CapabilityConstraints::ReadResource(parent),
             CapabilityConstraints::ReadResource(required),
         ) => Ok(CapabilityConstraints::ReadResource(
@@ -1971,6 +2444,112 @@ fn reduce_child_constraints(
             }),
         }),
     }
+}
+
+fn reduce_child_http_request_constraints(
+    parent: &HttpRequestConstraints,
+    required: &HttpRequestConstraints,
+) -> Result<HttpRequestConstraints, CapabilityDenial> {
+    let allowed_schemes = reduce_required_enum_scope(
+        parent.allowed_schemes.as_ref(),
+        required.allowed_schemes.as_ref(),
+    )
+    .ok_or_else(|| CapabilityDenial {
+        code: "child-capability-mismatch".into(),
+        message: "child http-request schemes could not be reduced from the parent grant".into(),
+        detail: serde_json::json!({
+            "parent_constraints": parent,
+            "required_constraints": required,
+        }),
+    })?
+    .into_option();
+    let allowed_hosts = reduce_required_host_scope(
+        parent.allowed_hosts.as_ref(),
+        required.allowed_hosts.as_ref(),
+    )
+    .ok_or_else(|| CapabilityDenial {
+        code: "child-capability-mismatch".into(),
+        message: "child http-request hosts could not be reduced from the parent grant".into(),
+        detail: serde_json::json!({
+            "parent_constraints": parent,
+            "required_constraints": required,
+        }),
+    })?
+    .into_option();
+    let allowed_ports = reduce_required_enum_scope(
+        parent.allowed_ports.as_ref(),
+        required.allowed_ports.as_ref(),
+    )
+    .ok_or_else(|| CapabilityDenial {
+        code: "child-capability-mismatch".into(),
+        message: "child http-request ports could not be reduced from the parent grant".into(),
+        detail: serde_json::json!({
+            "parent_constraints": parent,
+            "required_constraints": required,
+        }),
+    })?
+    .into_option();
+    let allowed_methods = reduce_required_enum_scope(
+        parent.allowed_methods.as_ref(),
+        required.allowed_methods.as_ref(),
+    )
+    .ok_or_else(|| CapabilityDenial {
+        code: "child-capability-mismatch".into(),
+        message: "child http-request methods could not be reduced from the parent grant".into(),
+        detail: serde_json::json!({
+            "parent_constraints": parent,
+            "required_constraints": required,
+        }),
+    })?
+    .into_option();
+    let allowed_path_prefixes = reduce_required_path_prefix_scope(
+        parent.allowed_path_prefixes.as_ref(),
+        required.allowed_path_prefixes.as_ref(),
+    )
+    .ok_or_else(|| CapabilityDenial {
+        code: "child-capability-mismatch".into(),
+        message: "child http-request paths could not be reduced from the parent grant".into(),
+        detail: serde_json::json!({
+            "parent_constraints": parent,
+            "required_constraints": required,
+        }),
+    })?
+    .into_option();
+    let max_timeout_ms = reduce_required_max_bytes(parent.max_timeout_ms, required.max_timeout_ms)
+        .ok_or_else(|| CapabilityDenial {
+            code: "child-capability-mismatch".into(),
+            message: "child http-request max_timeout_ms could not be reduced from the parent grant"
+                .into(),
+            detail: serde_json::json!({
+                "parent_constraints": parent,
+                "required_constraints": required,
+            }),
+        })?
+        .into_option();
+    let max_response_bytes = reduce_required_max_bytes(
+        parent.max_response_bytes,
+        required.max_response_bytes,
+    )
+    .ok_or_else(|| CapabilityDenial {
+        code: "child-capability-mismatch".into(),
+        message: "child http-request max_response_bytes could not be reduced from the parent grant"
+            .into(),
+        detail: serde_json::json!({
+            "parent_constraints": parent,
+            "required_constraints": required,
+        }),
+    })?
+    .into_option();
+
+    Ok(HttpRequestConstraints {
+        allowed_schemes,
+        allowed_hosts,
+        allowed_ports,
+        allowed_methods,
+        allowed_path_prefixes,
+        max_timeout_ms,
+        max_response_bytes,
+    })
 }
 
 fn reduce_child_read_resource_constraints(
@@ -2112,6 +2691,26 @@ fn invoke_dependency_covers(
     string_scope_covers_exact(grant.aliases.as_ref(), required.aliases.as_ref())
 }
 
+fn http_request_covers(grant: &HttpRequestConstraints, required: &HttpRequestConstraints) -> bool {
+    enum_scope_covers(
+        grant.allowed_schemes.as_ref(),
+        required.allowed_schemes.as_ref(),
+    ) && string_scope_covers_casefold_exact(
+        grant.allowed_hosts.as_ref(),
+        required.allowed_hosts.as_ref(),
+    ) && enum_scope_covers(
+        grant.allowed_ports.as_ref(),
+        required.allowed_ports.as_ref(),
+    ) && enum_scope_covers(
+        grant.allowed_methods.as_ref(),
+        required.allowed_methods.as_ref(),
+    ) && path_prefix_scope_covers(
+        grant.allowed_path_prefixes.as_ref(),
+        required.allowed_path_prefixes.as_ref(),
+    ) && max_bytes_covers(grant.max_timeout_ms, required.max_timeout_ms)
+        && max_bytes_covers(grant.max_response_bytes, required.max_response_bytes)
+}
+
 fn emit_evidence_covers(
     grant: &EmitEvidenceConstraints,
     required: &EmitEvidenceConstraints,
@@ -2134,6 +2733,31 @@ fn string_scope_covers_exact(
         (Some(granted), Some(required)) => required
             .iter()
             .all(|value| granted.iter().any(|candidate| candidate == value)),
+    }
+}
+
+fn string_scope_covers_casefold_exact(
+    granted: Option<&Vec<String>>,
+    required: Option<&Vec<String>>,
+) -> bool {
+    match (granted, required) {
+        (_, None) | (None, Some(_)) => true,
+        (Some(granted), Some(required)) => {
+            let granted = canonicalize_host_scope(granted);
+            required.iter().all(|value| {
+                let value = value.to_ascii_lowercase();
+                granted.iter().any(|candidate| candidate == &value)
+            })
+        }
+    }
+}
+
+fn path_prefix_scope_covers(granted: Option<&Vec<String>>, required: Option<&Vec<String>>) -> bool {
+    match (granted, required) {
+        (_, None) | (None, Some(_)) => true,
+        (Some(granted), Some(required)) => required
+            .iter()
+            .all(|value| granted.iter().any(|prefix| value.starts_with(prefix))),
     }
 }
 
@@ -2206,6 +2830,69 @@ fn reduce_required_exact_string_scope(
             }
         }
     }
+}
+
+fn reduce_required_host_scope(
+    parent: Option<&Vec<String>>,
+    required: Option<&Vec<String>>,
+) -> Option<ReducedConstraint<Vec<String>>> {
+    match (parent, required) {
+        (None, None) => Some(ReducedConstraint::Unbounded),
+        (Some(parent), None) => Some(ReducedConstraint::Restricted(canonicalize_host_scope(
+            parent,
+        ))),
+        (None, Some(required)) => Some(ReducedConstraint::Restricted(canonicalize_host_scope(
+            required,
+        ))),
+        (Some(parent), Some(required)) => {
+            let parent = canonicalize_host_scope(parent);
+            let reduced = canonicalize_host_scope(required)
+                .into_iter()
+                .filter(|candidate| parent.iter().any(|host| host == candidate))
+                .collect::<Vec<_>>();
+            if reduced.is_empty() {
+                None
+            } else {
+                Some(ReducedConstraint::Restricted(reduced))
+            }
+        }
+    }
+}
+
+fn reduce_required_path_prefix_scope(
+    parent: Option<&Vec<String>>,
+    required: Option<&Vec<String>>,
+) -> Option<ReducedConstraint<Vec<String>>> {
+    match (parent, required) {
+        (None, None) => Some(ReducedConstraint::Unbounded),
+        (Some(parent), None) => Some(ReducedConstraint::Restricted(parent.clone())),
+        (None, Some(required)) => Some(ReducedConstraint::Restricted(required.clone())),
+        (Some(parent), Some(required)) => {
+            let reduced = required
+                .iter()
+                .filter(|candidate| parent.iter().any(|prefix| candidate.starts_with(prefix)))
+                .cloned()
+                .collect::<Vec<_>>();
+            if reduced.is_empty() {
+                None
+            } else {
+                Some(ReducedConstraint::Restricted(reduced))
+            }
+        }
+    }
+}
+
+fn canonicalize_host_scope(hosts: &[String]) -> Vec<String> {
+    let mut canonical = Vec::with_capacity(hosts.len());
+
+    for host in hosts {
+        let host = host.to_ascii_lowercase();
+        if !canonical.contains(&host) {
+            canonical.push(host);
+        }
+    }
+
+    canonical
 }
 
 fn reduce_required_resource_scope(
@@ -2298,7 +2985,8 @@ fn reduce_required_max_bytes(
 fn is_supported_wasm_inspect_capability(id: &CapabilityId, access: &CapabilityAccess) -> bool {
     matches!(
         (id, access),
-        (CapabilityId::ReadResource, CapabilityAccess::Read)
+        (CapabilityId::HttpRequest, CapabilityAccess::Read)
+            | (CapabilityId::ReadResource, CapabilityAccess::Read)
             | (CapabilityId::InvokeSkill, CapabilityAccess::Invoke)
             | (
                 CapabilityId::EmitEvidence | CapabilityId::LogWrite,
@@ -2309,6 +2997,7 @@ fn is_supported_wasm_inspect_capability(id: &CapabilityId, access: &CapabilityAc
 
 fn supported_wasm_inspect_capabilities() -> Vec<Value> {
     vec![
+        serde_json::json!({ "id": CapabilityId::HttpRequest, "access": CapabilityAccess::Read }),
         serde_json::json!({ "id": CapabilityId::ReadResource, "access": CapabilityAccess::Read }),
         serde_json::json!({ "id": CapabilityId::InvokeSkill, "access": CapabilityAccess::Invoke }),
         serde_json::json!({ "id": CapabilityId::EmitEvidence, "access": CapabilityAccess::Write }),
@@ -2471,6 +3160,28 @@ fn to_wit_capability_constraints(
         CapabilityConstraints::None(_) => {
             bindings::guild::skill::types::CapabilityConstraints::None
         }
+        CapabilityConstraints::HttpRequest(value) => {
+            bindings::guild::skill::types::CapabilityConstraints::HttpRequest(
+                bindings::guild::skill::types::HttpRequestConstraints {
+                    allowed_schemes: value
+                        .allowed_schemes
+                        .as_ref()
+                        .map(|schemes| schemes.iter().map(to_wit_http_scheme).collect()),
+                    allowed_hosts: value
+                        .allowed_hosts
+                        .as_ref()
+                        .map(|hosts| canonicalize_host_scope(hosts)),
+                    allowed_ports: value.allowed_ports.clone(),
+                    allowed_methods: value
+                        .allowed_methods
+                        .as_ref()
+                        .map(|methods| methods.iter().map(to_wit_http_method).collect()),
+                    allowed_path_prefixes: value.allowed_path_prefixes.clone(),
+                    max_timeout_ms: value.max_timeout_ms,
+                    max_response_bytes: value.max_response_bytes,
+                },
+            )
+        }
         CapabilityConstraints::ReadResource(value) => {
             bindings::guild::skill::types::CapabilityConstraints::ReadResource(
                 bindings::guild::skill::types::ReadResourceConstraints {
@@ -2553,6 +3264,48 @@ fn to_wit_skill_error(error: &SkillError) -> bindings::guild::skill::types::Skil
             .detail
             .as_ref()
             .map(|detail| serde_json::to_string(detail).expect("skill error detail serializes")),
+    }
+}
+
+fn from_wit_http_request(
+    request: bindings::guild::skill::types::HttpRequestMessage,
+) -> HttpRequest {
+    HttpRequest {
+        method: from_wit_http_method(request.method),
+        url: request.url,
+        timeout_ms: request.timeout_ms,
+    }
+}
+
+fn to_wit_http_response(
+    response: &HttpResponse,
+) -> bindings::guild::skill::types::HttpResponseMessage {
+    bindings::guild::skill::types::HttpResponseMessage {
+        url: response.url.clone(),
+        status: response.status,
+        content_type: response.content_type.clone(),
+        body: response.body.clone(),
+    }
+}
+
+fn from_wit_http_method(method: bindings::guild::skill::types::HttpMethod) -> HttpMethod {
+    match method {
+        bindings::guild::skill::types::HttpMethod::Get => HttpMethod::Get,
+        bindings::guild::skill::types::HttpMethod::Head => HttpMethod::Head,
+    }
+}
+
+fn to_wit_http_method(method: &HttpMethod) -> bindings::guild::skill::types::HttpMethod {
+    match method {
+        HttpMethod::Get => bindings::guild::skill::types::HttpMethod::Get,
+        HttpMethod::Head => bindings::guild::skill::types::HttpMethod::Head,
+    }
+}
+
+fn to_wit_http_scheme(scheme: &HttpScheme) -> bindings::guild::skill::types::HttpScheme {
+    match scheme {
+        HttpScheme::Http => bindings::guild::skill::types::HttpScheme::Http,
+        HttpScheme::Https => bindings::guild::skill::types::HttpScheme::Https,
     }
 }
 
@@ -2776,4 +3529,48 @@ fn severity_label(severity: &Severity) -> &'static str {
         Severity::Warn => "warn",
         Severity::Error => "error",
     }
+}
+
+fn matches_http_method(allowed: Option<&Vec<HttpMethod>>, method: &HttpMethod) -> bool {
+    allowed.is_none_or(|methods| methods.iter().any(|candidate| candidate == method))
+}
+
+fn matches_http_scheme(allowed: Option<&Vec<HttpScheme>>, scheme: &HttpScheme) -> bool {
+    allowed.is_none_or(|schemes| schemes.iter().any(|candidate| candidate == scheme))
+}
+
+fn matches_http_host(allowed: Option<&Vec<String>>, host: &str) -> bool {
+    allowed.is_none_or(|hosts| {
+        hosts
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(host))
+    })
+}
+
+fn matches_http_port(allowed: Option<&Vec<u16>>, port: u16) -> bool {
+    allowed.is_none_or(|ports| ports.contains(&port))
+}
+
+fn matches_http_path(allowed: Option<&Vec<String>>, path: &str) -> bool {
+    allowed.is_none_or(|prefixes| prefixes.iter().any(|prefix| path.starts_with(prefix)))
+}
+
+fn effective_timeout_ms(
+    request_timeout_ms: Option<u64>,
+    grant_timeout_ms: Option<u64>,
+    budget_timeout_ms: u64,
+) -> u64 {
+    request_timeout_ms
+        .unwrap_or(u64::MAX)
+        .min(grant_timeout_ms.unwrap_or(u64::MAX))
+        .min(budget_timeout_ms)
+}
+
+fn effective_response_bytes(
+    grant_max_response_bytes: Option<u64>,
+    budget_max_output_bytes: u64,
+) -> u64 {
+    grant_max_response_bytes
+        .unwrap_or(u64::MAX)
+        .min(budget_max_output_bytes)
 }

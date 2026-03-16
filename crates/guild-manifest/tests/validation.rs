@@ -5,9 +5,10 @@ use guild_manifest::{
 };
 use guild_types::{
     AbiVersion, CapabilityAccess, CapabilityConstraints, CapabilityId, CapabilityRequirement,
-    EmitEvidenceConstraints, ExecutionMode, FreshnessClass, ManifestSchemaVersion, Mutability,
-    ReadResourceConstraints, RequestedSkillRef, ResolvedSkillRef, ResourceKind, RuntimeKind,
-    SkillApiVersion, SkillCategory, SkillKey, SkillVersion, VersionRequirement,
+    EmitEvidenceConstraints, ExecutionMode, FreshnessClass, HttpMethod, HttpRequestConstraints,
+    HttpScheme, ManifestSchemaVersion, Mutability, ReadResourceConstraints, RequestedSkillRef,
+    ResolvedSkillRef, ResourceKind, RuntimeKind, SkillApiVersion, SkillCategory, SkillKey,
+    SkillVersion, VersionRequirement,
 };
 
 fn sample_source_manifest() -> SourceSkillManifest {
@@ -235,6 +236,19 @@ fn explain_fixture_source_manifest_declares_scoped_resource_reads() {
 }
 
 #[test]
+fn http_fixture_source_manifest_declares_http_request_capability() {
+    let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/skills/inspect-http-json/manifest.json");
+    let manifest: SourceSkillManifest =
+        serde_json::from_str(&std::fs::read_to_string(manifest_path).unwrap()).unwrap();
+
+    manifest.validate().unwrap();
+    assert_eq!(manifest.capabilities.len(), 1);
+    assert_eq!(manifest.capabilities[0].id, CapabilityId::HttpRequest);
+    assert_eq!(manifest.capabilities[0].access, CapabilityAccess::Read);
+}
+
+#[test]
 fn capability_validation_rejects_wrong_family_and_empty_scopes() {
     let mut manifest = sample_source_manifest();
     manifest.capabilities = vec![
@@ -257,9 +271,49 @@ fn capability_validation_rejects_wrong_family_and_empty_scopes() {
             }),
             required: true,
         },
+        CapabilityRequirement {
+            id: CapabilityId::HttpRequest,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+                allowed_schemes: Some(Vec::new()),
+                allowed_hosts: Some(vec!["".into()]),
+                allowed_ports: Some(vec![0]),
+                allowed_methods: Some(vec![HttpMethod::Get]),
+                allowed_path_prefixes: Some(vec!["json".into()]),
+                max_timeout_ms: Some(0),
+                max_response_bytes: Some(0),
+            }),
+            required: true,
+        },
     ];
 
     let errors = manifest.validate().unwrap_err();
     assert!(has_error(&errors, "capabilities[0].constraints"));
     assert!(has_error(&errors, "capabilities[1].constraints"));
+    assert!(has_error(&errors, "capabilities[2].constraints"));
+}
+
+#[test]
+fn typed_http_capability_roundtrips_in_source_manifests() {
+    let mut manifest = sample_source_manifest();
+    manifest.capabilities = vec![CapabilityRequirement {
+        id: CapabilityId::HttpRequest,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+            allowed_schemes: Some(vec![HttpScheme::Http]),
+            allowed_hosts: Some(vec!["127.0.0.1".into()]),
+            allowed_ports: Some(vec![8080]),
+            allowed_methods: Some(vec![HttpMethod::Get]),
+            allowed_path_prefixes: Some(vec!["/json".into()]),
+            max_timeout_ms: Some(2_000),
+            max_response_bytes: Some(4_096),
+        }),
+        required: true,
+    }];
+
+    let encoded = serde_json::to_string_pretty(&manifest).unwrap();
+    let decoded: SourceSkillManifest = serde_json::from_str(&encoded).unwrap();
+
+    decoded.validate().unwrap();
+    assert_eq!(decoded, manifest);
 }

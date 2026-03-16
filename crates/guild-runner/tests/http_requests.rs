@@ -1,0 +1,744 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use guild_registry::{LocalRegistry, LocalSourceInstaller, SkillRegistry};
+use guild_runner::{ExecutionError, Runner, WasmtimeRuntimeAdapter};
+use guild_types::{
+    Budget, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
+    CapabilityId, ExecutionMode, ExecutionRecord, ExecutionStatus, GrantedCapability, HttpMethod,
+    HttpRequestConstraints, HttpScheme, InvokeDependencyConstraints, PolicyDecision,
+    PolicyDecisionOutcome, RequestedSkillRef, ResolvedExecutionEnvelope, SkillKey,
+    VersionRequirement,
+};
+use serde_json::{json, Value};
+
+#[path = "../../../test-support/http_test_server.rs"]
+mod http_test_server;
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap()
+}
+
+fn http_skill_dir() -> PathBuf {
+    repo_root().join("examples/skills/inspect-http-json")
+}
+
+fn wit_dir() -> PathBuf {
+    repo_root().join("wit")
+}
+
+fn prepared_registry_root() -> &'static PathBuf {
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+
+    ROOT.get_or_init(|| {
+        let root = repo_root().join("target/test-install-registry/guild-runner-http");
+        if root.exists() {
+            let _ = fs::remove_dir_all(&root);
+        }
+
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(http_skill_dir())
+            .unwrap();
+        root
+    })
+}
+
+fn requested_skill(name: &str) -> RequestedSkillRef {
+    RequestedSkillRef {
+        key: SkillKey {
+            namespace: "example".into(),
+            name: name.into(),
+        },
+        version_req: VersionRequirement::parse("^0.1").unwrap(),
+    }
+}
+
+fn load_registry() -> LocalRegistry {
+    LocalRegistry::load(prepared_registry_root()).unwrap()
+}
+
+fn build_runner() -> Runner<WasmtimeRuntimeAdapter> {
+    Runner::new(WasmtimeRuntimeAdapter::new().unwrap())
+}
+
+fn execution_request(
+    installed: &guild_registry::InstalledSkill,
+    request_id: impl Into<String>,
+    input: Value,
+    grants: CapabilityGrantSet,
+    budget: Budget,
+) -> ResolvedExecutionEnvelope {
+    let request_id = request_id.into();
+
+    ResolvedExecutionEnvelope {
+        request: CallerRequest {
+            request_id: format!("{request_id}-request"),
+            skill: requested_skill(&installed.resolved_ref.key.name),
+            tenant_id: "tenant-1".into(),
+            actor_id: "actor-1".into(),
+            mode: ExecutionMode::Inspect,
+            input,
+            budget,
+            requested_capabilities: grants.clone(),
+            idempotency_key: None,
+            trace_id: format!("{request_id}-trace"),
+        },
+        resolved_skill: installed.resolved_ref.clone(),
+        granted_capabilities: grants,
+        policy_decision: PolicyDecision {
+            outcome: PolicyDecisionOutcome::Allowed,
+            summary: "test request allowed".into(),
+            detail: None,
+        },
+        parent_execution_id: None,
+    }
+}
+
+fn http_grant(
+    host: &str,
+    port: u16,
+    path_prefix: &str,
+    methods: &[HttpMethod],
+    schemes: &[HttpScheme],
+    max_timeout_ms: u64,
+    max_response_bytes: u64,
+) -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::HttpRequest,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+            allowed_schemes: Some(schemes.to_vec()),
+            allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_ports: Some(vec![port]),
+            allowed_methods: Some(methods.to_vec()),
+            allowed_path_prefixes: Some(vec![path_prefix.to_owned()]),
+            max_timeout_ms: Some(max_timeout_ms),
+            max_response_bytes: Some(max_response_bytes),
+        }),
+    }
+}
+
+fn run_http_skill(
+    registry: &LocalRegistry,
+    runner: &Runner<WasmtimeRuntimeAdapter>,
+    input: Value,
+    grants: CapabilityGrantSet,
+    budget: Budget,
+) -> Result<ExecutionRecord, ExecutionError> {
+    let installed = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+    runner.execute(
+        registry,
+        &installed,
+        &execution_request(
+            &installed,
+            unique_id("inspect-http-json"),
+            input,
+            grants,
+            budget,
+        ),
+    )
+}
+
+fn persisted_error_record(
+    registry: &LocalRegistry,
+    error: &ExecutionError,
+) -> guild_types::ExecutionRecord {
+    let receipt = error
+        .receipt
+        .as_ref()
+        .expect("unsuccessful HTTP execution persists a receipt");
+    registry
+        .load_execution_record(&receipt.execution_id)
+        .unwrap()
+}
+
+fn unique_id(prefix: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    format!("{prefix}-{nanos}")
+}
+
+struct TempFixtureDir {
+    path: PathBuf,
+}
+
+impl TempFixtureDir {
+    fn new(prefix: &str) -> Self {
+        let path = std::env::temp_dir().join(unique_id(prefix));
+        fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempFixtureDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).unwrap();
+
+    for entry in fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        let file_type = entry.file_type().unwrap();
+        let destination_path = destination.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&entry.path(), &destination_path);
+        } else {
+            fs::copy(entry.path(), destination_path).unwrap();
+        }
+    }
+}
+
+fn write_http_composite_fixture(root: &Path) -> PathBuf {
+    let source_dir = root.join("examples/skills/http-composite-forwarder");
+    fs::create_dir_all(source_dir.join("skill-rust/src")).unwrap();
+    fs::create_dir_all(source_dir.join("tests")).unwrap();
+
+    fs::write(
+        source_dir.join("manifest.json"),
+        r#"{
+  "manifest_schema_version": "guild-manifest-v1",
+  "skill_api_version": "guild-skill-v1",
+  "key": {
+    "namespace": "example",
+    "name": "http-composite-forwarder"
+  },
+  "version": "0.1.0",
+  "display_name": "HTTP Composite Forwarder",
+  "description": "A narrow test-only composite that forwards inspect input to the HTTP child skill.",
+  "runtime": {
+    "kind": "wasm-component",
+    "entrypoint": "guild-skill",
+    "guest_abi_version": "guild-skill-v1"
+  },
+  "interface": {
+    "input_schema_uri": "./input.schema.json",
+    "output_schema_uri": "./output.schema.json",
+    "examples_uri": "./examples.json"
+  },
+  "behavior": {
+    "category": "inventory",
+    "mutability": "read-only",
+    "idempotent": true,
+    "open_world": false,
+    "freshness": "deterministic",
+    "modes": {
+      "supported": ["inspect"],
+      "apply_requires_approval": false,
+      "apply_requires_idempotency_key": false
+    }
+  },
+  "capabilities": [
+    {
+      "id": "invoke-skill",
+      "access": "invoke",
+      "required": true,
+      "constraints": {
+        "aliases": ["http"]
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "alias": "http",
+      "skill": {
+        "key": {
+          "namespace": "example",
+          "name": "inspect-http-json"
+        },
+        "version_req": "^0.1"
+      }
+    }
+  ],
+  "publisher": {
+    "id": "local.example",
+    "display_name": "Local Example",
+    "homepage": null
+  },
+  "package": {
+    "visibility": "private",
+    "trust_tier": "local",
+    "sbom_uri": null,
+    "signature_uri": null
+  },
+  "build": {
+    "kind": "cargo-wasm-component",
+    "cargo_manifest_path": "./skill-rust/Cargo.toml",
+    "target": "wasm32-wasip2",
+    "profile": "release"
+  },
+  "tests": [
+    {
+      "name": "forwards-http-input",
+      "fixtures_uri": "./tests/inspect-input.json",
+      "expected_output_uri": "./tests/expected-output.json"
+    }
+  ]
+}"#,
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("input.schema.json"),
+        r#"{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}"#,
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("output.schema.json"),
+        r#"{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}"#,
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("examples.json"),
+        r#"[{"name":"forward-local-http","input":{"url":"http://127.0.0.1:8080/json"}}]"#,
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("tests/inspect-input.json"),
+        r#"{"url":"http://127.0.0.1:8080/json"}"#,
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("tests/expected-output.json"),
+        r#"{"summary":"Forwarded HTTP child execution."}"#,
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("skill-rust/Cargo.toml"),
+        r#"[package]
+name = "guild-test-http-composite-forwarder"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+serde_json = "1"
+wit-bindgen = "0.53.1"
+"#,
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("skill-rust/src/lib.rs"),
+        r#"use serde_json::{json, Value};
+use wit_bindgen::generate;
+
+generate!({
+    path: "../../../../wit",
+    world: "guild-skill",
+});
+
+use crate::exports::guild::skill::skill::{ExecutionContext, Guest, Json, SkillError, SkillOutput};
+use crate::guild::skill::host;
+use crate::guild::skill::types::DependencyInvocationRequest;
+
+struct HttpCompositeForwarder;
+
+impl Guest for HttpCompositeForwarder {
+    fn run(_ctx: ExecutionContext, input: Json) -> Result<SkillOutput, SkillError> {
+        let _: Value = serde_json::from_str(&input).map_err(|error| SkillError {
+            code: "invalid-input".into(),
+            message: "input JSON could not be parsed".into(),
+            retryable: false,
+            detail: Some(json!({ "error": error.to_string() }).to_string()),
+        })?;
+
+        let child_output = host::invoke_dependency(&DependencyInvocationRequest {
+            alias: "http".into(),
+            input,
+        })?;
+        let child_structured: Value =
+            serde_json::from_str(&child_output.structured).unwrap_or(Value::Null);
+
+        Ok(SkillOutput {
+            summary: "Forwarded HTTP child execution.".into(),
+            structured: json!({
+                "child_summary": child_output.summary,
+                "child_structured": child_structured,
+            })
+            .to_string(),
+            diagnostics: Vec::new(),
+            effects: Vec::new(),
+            evidence: Vec::new(),
+        })
+    }
+}
+
+export!(HttpCompositeForwarder with_types_in self);
+"#,
+    )
+    .unwrap();
+
+    source_dir
+}
+
+#[test]
+fn http_happy_path_executes_through_real_host_path() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let record = run_http_skill(
+        &registry,
+        &runner,
+        json!({
+            "url": server.json_url(),
+            "method": "get",
+            "json_pointers": ["/message", "/nested/count"],
+        }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                server.host(),
+                server.port(),
+                "/json",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap();
+
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.metrics.network_requests, 1);
+    let output = record.output.as_ref().unwrap();
+    assert_eq!(output.structured["status"], 200);
+    assert_eq!(
+        output.structured["selected_fields"][0]["value"],
+        Value::String("deterministic".into())
+    );
+    assert_eq!(output.structured["json_summary"]["root_kind"], "object");
+}
+
+#[test]
+fn unauthorized_host_is_rejected_by_host_owned_http_denial() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.json_url(), "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                "localhost",
+                server.port(),
+                "/json",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-host-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 0);
+    assert_eq!(
+        record.termination.as_ref().unwrap().code,
+        "http-request-host-not-granted"
+    );
+}
+
+#[test]
+fn unauthorized_method_is_rejected_by_host_owned_http_denial() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.json_url(), "method": "head" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                server.host(),
+                server.port(),
+                "/json",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-method-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 0);
+}
+
+#[test]
+fn unauthorized_scheme_is_rejected_by_host_owned_http_denial() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({
+            "url": format!("https://{}:{}/json", server.host(), server.port()),
+            "method": "get",
+        }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                server.host(),
+                server.port(),
+                "/json",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-scheme-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 0);
+}
+
+#[test]
+fn unauthorized_port_is_rejected_by_host_owned_http_denial() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.json_url(), "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                server.host(),
+                server.port().saturating_add(1),
+                "/json",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-port-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 0);
+}
+
+#[test]
+fn unauthorized_path_is_rejected_by_host_owned_http_denial() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.json_url(), "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                server.host(),
+                server.port(),
+                "/other",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-path-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 0);
+}
+
+#[test]
+fn oversized_http_response_fails_with_explicit_host_bound() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.large_json_url(), "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                server.host(),
+                server.port(),
+                "/large",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                512,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-response-too-large");
+    assert_eq!(record.status, ExecutionStatus::Failed);
+    assert_eq!(record.metrics.network_requests, 1);
+    assert!(http_test_server::large_response_bytes() > 512);
+}
+
+#[test]
+fn slow_http_response_times_out_with_explicit_host_bound() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({
+            "url": server.slow_json_url(),
+            "method": "get",
+            "timeout_ms": 50,
+        }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                server.host(),
+                server.port(),
+                "/slow",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                50,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-timeout");
+    assert_eq!(record.status, ExecutionStatus::Failed);
+    assert_eq!(record.metrics.network_requests, 1);
+    assert!(http_test_server::slow_response_ms() > 50);
+}
+
+#[test]
+fn composite_child_cannot_expand_parent_http_authority() {
+    let server = http_test_server::HttpTestServer::start();
+    let temp = TempFixtureDir::new("guild-http-nested");
+    let workspace_root = temp.path().join("workspace");
+    let registry_root = temp.path().join("registry");
+    let http_source_root = workspace_root.join("examples/skills/inspect-http-json");
+    let composite_source_root = write_http_composite_fixture(&workspace_root);
+
+    copy_dir_recursive(&http_skill_dir(), &http_source_root);
+    copy_dir_recursive(&wit_dir(), &workspace_root.join("wit"));
+
+    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    installer.install(&http_source_root).unwrap();
+    let composite = installer.install(&composite_source_root).unwrap();
+
+    let registry = LocalRegistry::load(&registry_root).unwrap();
+    let runner = build_runner();
+    let error = runner
+        .execute(
+            &registry,
+            &composite,
+            &execution_request(
+                &composite,
+                unique_id("http-composite"),
+                json!({
+                    "url": server.json_url(),
+                    "method": "get",
+                    "json_pointers": ["/message"],
+                }),
+                CapabilityGrantSet {
+                    grants: vec![
+                        GrantedCapability {
+                            id: CapabilityId::InvokeSkill,
+                            access: CapabilityAccess::Invoke,
+                            constraints: CapabilityConstraints::InvokeDependency(
+                                InvokeDependencyConstraints {
+                                    aliases: Some(vec!["http".into()]),
+                                },
+                            ),
+                        },
+                        http_grant(
+                            server.host(),
+                            server.port(),
+                            "/blocked",
+                            &[HttpMethod::Get],
+                            &[HttpScheme::Http],
+                            2_000,
+                            4_096,
+                        ),
+                    ],
+                },
+                Budget::default(),
+            ),
+        )
+        .unwrap_err();
+
+    let parent_record = persisted_error_record(&registry, &error);
+    let child_record = registry
+        .load_execution_record(&parent_record.child_executions[0].execution_id)
+        .unwrap();
+    let child_http_constraints = child_record
+        .granted_capabilities
+        .grants
+        .iter()
+        .find(|grant| grant.id == CapabilityId::HttpRequest)
+        .and_then(|grant| grant.constraints.as_http_request())
+        .expect("child receives narrowed http-request grant");
+
+    assert_eq!(error.code, "child-invocation-failed");
+    assert_eq!(parent_record.status, ExecutionStatus::Failed);
+    assert_eq!(child_record.status, ExecutionStatus::Rejected);
+    assert_eq!(
+        child_record.termination.as_ref().unwrap().code,
+        "http-request-path-not-granted"
+    );
+    assert_eq!(
+        child_http_constraints.allowed_path_prefixes,
+        Some(vec!["/blocked".into()])
+    );
+}

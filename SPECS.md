@@ -171,7 +171,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - composite skills invoke declared child dependencies by alias through the host boundary
 - local source installs stage and validate before an atomic move into place
 - requested resolution fails closed if a single key and version maps to multiple installed digests
-- supported typed capability families in the active Wasm inspect slice are currently `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- supported typed capability families in the active Wasm inspect slice are currently `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
 - unsupported capability families present elsewhere in shared contracts are rejected before execution in the active inspect slice
 
 The current repository does not yet implement full `plan` mode, a general policy engine, or `apply` mode.
@@ -311,6 +311,7 @@ Implementations MAY define capability families such as:
 
 - `inspect`
 - `explain`
+- `http-request`
 - `read-resource`
 - `emit-evidence`
 - `invoke-skill`
@@ -333,6 +334,7 @@ Guests MUST NOT mint, widen, or self-approve their own capabilities.
 
 The current repository enforces typed constraints for:
 
+- `http-request`: `allowed_schemes`, `allowed_hosts`, `allowed_ports`, `allowed_methods`, `allowed_path_prefixes`, `max_timeout_ms`, `max_response_bytes`
 - `read-resource`: `uri_prefixes`, `resource_kinds`
 - `invoke-skill`: `aliases`
 - `emit-evidence`: `max_bytes`, `audiences`, `redactions`
@@ -341,6 +343,8 @@ The current repository enforces typed constraints for:
 Those are the currently implemented product names in the active Wasm inspect slice. Unknown fields, wrong-family constraint shapes, and empty scoped lists are validation errors.
 
 For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, and `guild://objects/sha256/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching.
+
+For `http-request`, the current repository exposes a bounded request/response model rather than ambient networking. The host MUST parse absolute HTTP or HTTPS URLs, enforce typed scheme/host/port/path/method constraints before dispatch, clamp timeout and response-size limits to host-owned bounds, and keep authorization denials host-owned. The current inspect slice supports bodyless `GET` and `HEAD` requests only, does not expose arbitrary request headers or request-body streaming, and returns a bounded typed response body to the guest.
 
 Shared contracts may mention broader capability families for future phases, but the active inspect slice MUST either prune unsupported families from the executable surface or reject them before execution. The current repository chooses preflight rejection.
 
@@ -500,6 +504,8 @@ Policy MAY be expressed against:
 Policy rejection SHOULD produce a durable record suitable for later inspection and audit.
 
 In the current repository, authorization denials across runner checks and supported host imports are represented as host-owned rejected executions rather than guest-authored failures.
+
+For supported runtime-side HTTP failures after authorization, the current repository distinguishes host-owned authorization rejections from bounded transport/runtime failures such as timeout or oversized response bodies. Those latter failures persist as unsuccessful executions without being reclassified as capability denials.
 
 ### 18.4 Safety precedence
 

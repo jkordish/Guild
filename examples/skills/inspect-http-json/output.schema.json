@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InspectHttpJsonOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requested_url",
+    "final_url",
+    "method",
+    "status",
+    "content_type",
+    "response_bytes",
+    "selected_fields",
+    "json_summary",
+    "granted_capabilities"
+  ],
+  "properties": {
+    "requested_url": {
+      "type": "string"
+    },
+    "final_url": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string",
+      "enum": ["get", "head"]
+    },
+    "status": {
+      "type": "integer"
+    },
+    "content_type": {
+      "type": ["string", "null"]
+    },
+    "response_bytes": {
+      "type": "integer"
+    },
+    "selected_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pointer", "found", "value"],
+        "properties": {
+          "pointer": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "value": {}
+        }
+      }
+    },
+    "json_summary": {},
+    "granted_capabilities": {}
+  }
+}

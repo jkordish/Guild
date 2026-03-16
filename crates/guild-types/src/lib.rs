@@ -289,6 +289,20 @@ pub enum CapabilityAccess {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+pub enum HttpMethod {
+    Get,
+    Head,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum HttpScheme {
+    Http,
+    Https,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub enum ResourceKind {
     Execution,
     Object,
@@ -519,10 +533,30 @@ pub struct LogConstraints {
     pub levels: Option<Vec<Severity>>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct HttpRequestConstraints {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_schemes: Option<Vec<HttpScheme>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_hosts: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_ports: Option<Vec<u16>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_methods: Option<Vec<HttpMethod>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_path_prefixes: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_timeout_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_response_bytes: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum CapabilityConstraints {
     None(EmptyConstraints),
+    HttpRequest(HttpRequestConstraints),
     ReadResource(ReadResourceConstraints),
     InvokeDependency(InvokeDependencyConstraints),
     EmitEvidence(EmitEvidenceConstraints),
@@ -539,6 +573,14 @@ impl CapabilityConstraints {
     #[must_use]
     pub fn none() -> Self {
         Self::default()
+    }
+
+    #[must_use]
+    pub fn as_http_request(&self) -> Option<&HttpRequestConstraints> {
+        match self {
+            Self::HttpRequest(value) => Some(value),
+            _ => None,
+        }
     }
 
     #[must_use]
@@ -579,6 +621,11 @@ impl CapabilityConstraints {
             (id, access, self),
             (_, _, Self::None(_))
                 | (
+                    CapabilityId::HttpRequest,
+                    CapabilityAccess::Read,
+                    Self::HttpRequest(_)
+                )
+                | (
                     CapabilityId::ReadResource,
                     CapabilityAccess::Read,
                     Self::ReadResource(_)
@@ -616,6 +663,7 @@ impl CapabilityConstraints {
 
         match self {
             Self::None(_) => {}
+            Self::HttpRequest(constraints) => errors.extend(constraints.validate()),
             Self::ReadResource(constraints) => errors.extend(constraints.validate()),
             Self::InvokeDependency(constraints) => errors.extend(constraints.validate()),
             Self::EmitEvidence(constraints) => errors.extend(constraints.validate()),
@@ -725,6 +773,74 @@ impl LogConstraints {
             if levels.is_empty() {
                 errors.push("levels must not be empty when provided".into());
             }
+        }
+
+        errors
+    }
+}
+
+impl HttpRequestConstraints {
+    #[must_use]
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        if let Some(schemes) = &self.allowed_schemes {
+            if schemes.is_empty() {
+                errors.push("allowed_schemes must not be empty when provided".into());
+            }
+        }
+
+        if let Some(hosts) = &self.allowed_hosts {
+            if hosts.is_empty() {
+                errors.push("allowed_hosts must not be empty when provided".into());
+            }
+
+            for host in hosts {
+                if host.trim().is_empty() {
+                    errors.push("allowed_hosts must not contain empty values".into());
+                }
+            }
+        }
+
+        if let Some(ports) = &self.allowed_ports {
+            if ports.is_empty() {
+                errors.push("allowed_ports must not be empty when provided".into());
+            }
+
+            if ports.contains(&0) {
+                errors.push("allowed_ports must not contain zero".into());
+            }
+        }
+
+        if let Some(methods) = &self.allowed_methods {
+            if methods.is_empty() {
+                errors.push("allowed_methods must not be empty when provided".into());
+            }
+        }
+
+        if let Some(prefixes) = &self.allowed_path_prefixes {
+            if prefixes.is_empty() {
+                errors.push("allowed_path_prefixes must not be empty when provided".into());
+            }
+
+            for prefix in prefixes {
+                if prefix.trim().is_empty() {
+                    errors.push("allowed_path_prefixes must not contain empty values".into());
+                    continue;
+                }
+
+                if !prefix.starts_with('/') {
+                    errors.push("allowed_path_prefixes must start with `/`".into());
+                }
+            }
+        }
+
+        if matches!(self.max_timeout_ms, Some(0)) {
+            errors.push("max_timeout_ms must be greater than zero when provided".into());
+        }
+
+        if matches!(self.max_response_bytes, Some(0)) {
+            errors.push("max_response_bytes must be greater than zero when provided".into());
         }
 
         errors
@@ -913,6 +1029,21 @@ pub struct ResourceReadResult {
     pub mime_type: String,
     pub bytes: Vec<u8>,
     pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct HttpRequest {
+    pub method: HttpMethod,
+    pub url: String,
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct HttpResponse {
+    pub url: String,
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub body: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]

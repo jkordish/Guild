@@ -15,10 +15,12 @@ What is materially real today:
 - durable execution IDs are host-minted, collision-resistant, and protected against silent overwrite
 - evidence persists as durable local Guild objects with distinct blob identity and per-emission evidence-record identity
 - Guild now runs as a real MCP server over stdio, not just an internal façade with MCP-shaped concepts
+- Guild now has a real bounded `http-request` capability family in the active inspect slice
 - MCP resource reads and guest-side `read-resource` calls use the same local backend
 - a resource-aware explain skill can read stored execution and evidence artifacts through the Wasm host boundary, including failed and rejected records
 - top-level unsuccessful inspect calls return host-issued execution receipts pointing at persisted `guild://executions/...` records
 - supported inspect-slice capability families now use typed host-enforced constraints
+- the canonical primitive HTTP proof skill is `inspect-http-json`, exercised through `guild.inspect` against a deterministic local server
 - unsupported capability families are rejected before execution in the active inspect slice
 - `read-resource` authorization now matches parsed canonical Guild URI scopes instead of loose raw string prefixes
 - same-version / different-digest requested resolution now fails closed instead of silently picking an artifact
@@ -80,6 +82,8 @@ What this means in practice:
 - Replaced raw-prefix `read-resource` authorization with parsed canonical Guild URI scope matching and fail-closed URI validation.
 - Stamped durable execution provenance with real host-generated UTC start and finish timestamps across top-level and child records.
 - Added a real stdio MCP server entrypoint with honest initialize/capabilities, one public tool (`guild.inspect`), Guild URI resources, and resource templates.
+- Added a real host-mediated `http-request` capability family with typed host enforcement and a Wasmtime-backed outbound HTTP path behind the existing Guild guest ABI.
+- Added the primitive `inspect-http-json` example skill plus a local deterministic HTTP proof flow and regression coverage for denial, timeout, response-size, and nested child-grant reduction behavior.
 - Mapped successful inspect calls to MCP tool results with `structuredContent`, text compatibility output, and execution/evidence resource links.
 - Mapped unsuccessful inspect executions to MCP tool errors with `isError: true` while preserving persisted execution receipt and record information.
 - Raised crate-level lint strictness across the workspace to `clippy::all`, `clippy::pedantic`, `clippy::cargo`, and `clippy::perf`, then resolved the resulting warnings with API docs, `#[must_use]`, safer numeric conversions, smaller helper boundaries, and more explicit error handling.
@@ -159,6 +163,7 @@ Canonical local proof commands:
 
 ```bash
 cargo run -p guild-mcp --example inspect_local
+cargo run -p guild-mcp --example inspect_http_json_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
@@ -172,6 +177,7 @@ cargo run -p guild-mcp --example mcp_stdio_local
 What they prove:
 
 - `inspect_local`: install `hello-inspect`, execute it, read back stored execution + evidence
+- `inspect_http_json_local`: start a deterministic local HTTP server, install `inspect-http-json`, run one bounded allowed request through `guild.inspect`, then run one denied host-mismatch request and read back both persisted execution records
 - `inspect_composite_local`: install `hello-inspect`, install `hello-composite`, execute composite inspect, read back parent + child + child evidence
 - `explain_execution_local`: install `hello-inspect`, produce a stored execution URI, install `explain-execution`, then run a resource-aware skill against that stored execution through the Wasm host boundary
 - `explain_execution_tree_local`: install `hello-inspect` and `hello-composite`, produce a stored parent/child execution tree, install `explain-execution-tree`, then walk that stored lineage through the same host-mediated resource path

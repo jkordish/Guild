@@ -239,6 +239,7 @@ Wasm/WASI is the preferred execution substrate because it gives Guild:
 
 The runtime host SHOULD expose a narrow interface to the guest for operations such as:
 
+- `http-request`
 - `read-resource`
 - `emit-evidence`
 - `invoke-skill`
@@ -252,9 +253,11 @@ Anything that changes durable system state or reaches outside the guest boundary
 
 ### 6.4 Current repository runtime
 
-The current repository uses a Wasmtime-backed Wasm component adapter for the working slice. Primitive, explain, and composite example skills execute through `wit/guild-skill-v1.wit`, where the current host-facing operation names are `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`, and skill output or failure is returned from `skill.run` rather than emitted through separate host calls.
+The current repository uses a Wasmtime-backed Wasm component adapter for the working slice. Primitive, explain, composite, and bounded HTTP example skills execute through `wit/guild-skill-v1.wit`, where the current host-facing operation names are `http-request`, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`, and skill output or failure is returned from `skill.run` rather than emitted through separate host calls.
 
-The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution so the runtime surface stays honest.
+The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution so the runtime surface stays honest.
+
+`http-request` is implemented as a thin Guild host adapter over `wasmtime-wasi-http`. The guest ABI remains Guild-shaped for this milestone, while the host path uses Wasmtime's real outbound HTTP support underneath. The host parses the absolute URL, enforces typed method/scheme/host/port/path constraints before dispatch, clamps timeout and response-size bounds, and persists host-owned denials or bounded failures without widening the MCP public surface.
 
 The current example skills now include single-record and execution-tree explanation over stored Guild resources. Those examples deepen inspect usefulness by consuming persisted execution lineage and bounded evidence metadata through the existing host-mediated resource path rather than by widening the runtime surface.
 
@@ -597,7 +600,7 @@ The current repository implements a real but intentionally narrow slice of this 
 - evidence persists as durable local objects with separate blob and evidence-record identity and is readable through the same backend used by guest `read-resource`
 - composite skills invoke declared child dependencies by alias through the same host boundary
 - resource-aware inspect skills can explain stored execution trees by walking persisted child lineage and bounded evidence descriptors through existing Guild execution and object-record URIs
-- supported capability families in the active inspect slice are `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; unsupported families are rejected before execution
+- supported capability families in the active inspect slice are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; unsupported families are rejected before execution
 - `guild.inspect` in `guild-mcp` rides that same registry, runner, and storage path
 - `guild-mcp-server` exposes that same path over stdio MCP with one public tool plus Guild execution and evidence resources
 

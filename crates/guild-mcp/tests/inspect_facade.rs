@@ -8,10 +8,14 @@ use guild_registry::{InstalledSkill, LocalPublisherIdentity, LocalRegistry, Loca
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, ExecutionStatus, GrantedCapability,
-    InvokeDependencyConstraints, LogConstraints, ReadResourceConstraints, RedactionClass,
-    RequestedSkillRef, ResourceKind, Severity, SkillKey, VersionRequirement,
+    EmitEvidenceConstraints, EvidenceAudience, ExecutionStatus, GrantedCapability, HttpMethod,
+    HttpRequestConstraints, HttpScheme, InvokeDependencyConstraints, LogConstraints,
+    ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResourceKind, Severity, SkillKey,
+    VersionRequirement,
 };
+
+#[path = "../../../test-support/http_test_server.rs"]
+mod http_test_server;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -26,6 +30,10 @@ fn example_source_dir() -> PathBuf {
 
 fn composite_source_dir() -> PathBuf {
     repo_root().join("examples/skills/hello-composite")
+}
+
+fn http_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/inspect-http-json")
 }
 
 fn explain_source_dir() -> PathBuf {
@@ -58,6 +66,10 @@ fn prepared_registry_root() -> &'static PathBuf {
         LocalSourceInstaller::new(&root)
             .unwrap()
             .install(composite_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(http_source_dir())
             .unwrap();
         LocalSourceInstaller::new(&root)
             .unwrap()
@@ -154,6 +166,22 @@ fn log_info_grant() -> GrantedCapability {
         access: CapabilityAccess::Write,
         constraints: CapabilityConstraints::Log(LogConstraints {
             levels: Some(vec![Severity::Info]),
+        }),
+    }
+}
+
+fn http_grant(host: &str, port: u16, path_prefix: &str, method: HttpMethod) -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::HttpRequest,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+            allowed_schemes: Some(vec![HttpScheme::Http]),
+            allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_ports: Some(vec![port]),
+            allowed_methods: Some(vec![method]),
+            allowed_path_prefixes: Some(vec![path_prefix.to_owned()]),
+            max_timeout_ms: Some(2_000),
+            max_response_bytes: Some(4_096),
         }),
     }
 }
@@ -273,6 +301,50 @@ fn guild_inspect_executes_composite_skill_through_nested_path() {
 }
 
 #[test]
+fn guild_inspect_executes_http_skill_through_real_host_path() {
+    let server = http_test_server::HttpTestServer::start();
+    let facade = build_facade();
+    let response = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "get",
+                "json_pointers": ["/message", "/nested/count"],
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant(
+                    server.host(),
+                    server.port(),
+                    "/json",
+                    HttpMethod::Get,
+                )],
+            },
+        ))
+        .unwrap();
+    let output = response.structured_content.output.as_ref().unwrap();
+
+    assert_eq!(
+        response.structured_content.status,
+        ExecutionStatus::Succeeded
+    );
+    assert_eq!(response.structured_content.metrics.network_requests, 1);
+    assert_eq!(output.structured["status"], 200);
+    assert_eq!(
+        output.structured["selected_fields"][0]["value"],
+        serde_json::json!("deterministic")
+    );
+}
+
+#[test]
 fn missing_resource_read_fails_closed() {
     let facade = build_facade();
     let error = facade
@@ -330,6 +402,49 @@ fn explain_skill_reads_the_same_resources_mcp_exposes() {
     assert_eq!(
         explained_output.structured["stored_summary"],
         primitive_output.summary
+    );
+}
+
+#[test]
+fn explain_skill_can_summarize_persisted_http_denials() {
+    let server = http_test_server::HttpTestServer::start();
+    let facade = build_facade();
+    let denied = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "get",
+                "json_pointers": ["/message"],
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant(
+                    "localhost",
+                    server.port(),
+                    "/json",
+                    HttpMethod::Get,
+                )],
+            },
+        ))
+        .unwrap_err();
+
+    assert_eq!(denied.code, "http-request-host-not-granted");
+    let receipt = denied.receipt.expect("HTTP denial persists a receipt");
+    let explained = facade.inspect(explain_request(&receipt.uri)).unwrap();
+    let explained_output = explained.structured_content.output.as_ref().unwrap();
+
+    assert_eq!(explained_output.structured["target_status"], "rejected");
+    assert_eq!(
+        explained_output.structured["termination"]["code"],
+        "http-request-host-not-granted"
     );
 }
 
