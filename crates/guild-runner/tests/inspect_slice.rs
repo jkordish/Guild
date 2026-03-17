@@ -8,9 +8,9 @@ use guild_runner::{Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
     CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
     CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, EvidenceRef, ExecutionMode,
-    ExecutionStatus, GrantedCapability, LogConstraints, PolicyDecision, PolicyDecisionOutcome,
-    RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope, Severity, SkillKey,
-    VersionRequirement,
+    ExecutionStatus, FilesystemConstraints, FilesystemOperation, FilesystemRoot, GrantedCapability,
+    LogConstraints, PolicyDecision, PolicyDecisionOutcome, RedactionClass, RequestedSkillRef,
+    ResolvedExecutionEnvelope, Severity, SkillKey, VersionRequirement,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -137,6 +137,21 @@ fn log_info_grant() -> GrantedCapability {
         access: CapabilityAccess::Write,
         constraints: CapabilityConstraints::Log(LogConstraints {
             levels: Some(vec![Severity::Info]),
+        }),
+    }
+}
+
+fn filesystem_read_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::Filesystem,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::Filesystem(FilesystemConstraints {
+            preopened_roots: vec![FilesystemRoot {
+                name: "workspace".into(),
+                guest_path_prefix: "/workspace".into(),
+                host_path: "/var/lib/guild/workspace".into(),
+                operations: vec![FilesystemOperation::Read],
+            }],
         }),
     }
 }
@@ -768,4 +783,60 @@ fn unsupported_manifest_capabilities_are_rejected_before_execution() {
         .load_execution_record(&receipt.execution_id)
         .unwrap();
     assert_eq!(stored.status, ExecutionStatus::Rejected);
+}
+
+#[test]
+fn filesystem_manifest_capabilities_are_rejected_before_execution() {
+    let (mut installed, request) =
+        sample_request(CapabilityGrantSet::default(), ExecutionMode::Inspect);
+    installed.manifest.capabilities.push(CapabilityRequirement {
+        id: CapabilityId::Filesystem,
+        access: CapabilityAccess::Read,
+        constraints: filesystem_read_grant().constraints,
+        required: true,
+    });
+
+    let registry = load_registry();
+    let runner = build_runner();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
+
+    assert_eq!(error.code, "filesystem-runtime-not-supported");
+    let receipt = error
+        .receipt
+        .expect("filesystem manifest rejection is persisted");
+    let stored = registry
+        .load_execution_record(&receipt.execution_id)
+        .unwrap();
+    assert_eq!(stored.status, ExecutionStatus::Rejected);
+    assert_eq!(
+        stored.termination.as_ref().unwrap().phase,
+        guild_types::ExecutionPhase::Validation
+    );
+}
+
+#[test]
+fn filesystem_grants_are_rejected_before_execution() {
+    let (installed, request) = sample_request(
+        CapabilityGrantSet {
+            grants: vec![filesystem_read_grant()],
+        },
+        ExecutionMode::Inspect,
+    );
+
+    let registry = load_registry();
+    let runner = build_runner();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
+
+    assert_eq!(error.code, "filesystem-runtime-not-supported");
+    let receipt = error
+        .receipt
+        .expect("filesystem grant rejection is persisted");
+    let stored = registry
+        .load_execution_record(&receipt.execution_id)
+        .unwrap();
+    assert_eq!(stored.status, ExecutionStatus::Rejected);
+    assert_eq!(
+        stored.termination.as_ref().unwrap().phase,
+        guild_types::ExecutionPhase::Validation
+    );
 }

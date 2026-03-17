@@ -12,6 +12,7 @@ Current architecture highlights worth knowing before you follow older notes:
 - evidence blob storage is separate from per-emission evidence records
 - source installs stage and move atomically instead of pre-deleting installed state
 - unsupported capability families are rejected before execution in the active inspect slice
+- the shared host-side capability surface now includes a typed deferred `filesystem` family, and the active inspect slice still rejects it before guest start rather than pretending runtime file access exists
 - bounded `http-request` execution is now part of that active inspect slice through the same Wasmtime runtime path, including host/domain/path enforcement, explicit redirect policy, and fail-closed loopback/private-network blocking unless policy grants those destinations
 - caller-requested capabilities now flow through a local host-owned policy evaluator before execution starts
 - that evaluator now derives a host-owned local trust tier and selects named profiles by actor and/or tenant before deciding grants

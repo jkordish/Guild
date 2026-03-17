@@ -23,6 +23,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+guild-manifest = { path = "../guild-manifest" }
 registry-testkit.workspace = true
 tokio.workspace = true
 

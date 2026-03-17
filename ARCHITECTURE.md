@@ -257,6 +257,8 @@ The current repository uses a Wasmtime-backed Wasm component adapter for the wor
 
 The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution so the runtime surface stays honest.
 
+The broader shared Rust type surface now also includes an explicit typed `filesystem` family for future work. That host-side contract models named roots, guest-path prefixes, host-path concepts, and explicit read/write/create/append operations so manifests, caller intent, and local policy can describe filesystem authority intentionally. The current guest ABI still does not expose filesystem imports or preopened directories, and the active Wasm inspect slice rejects any manifest or granted filesystem capability before guest start.
+
 `http-request` is implemented as a thin Guild host adapter over `wasmtime-wasi-http`. The guest ABI remains Guild-shaped for this milestone, while the host path uses Wasmtime's real outbound HTTP support underneath. The host parses the absolute URL, enforces typed method/scheme/host/domain-suffix/port/path constraints before dispatch, classifies and blocks loopback, link-local, private-network, and raw IP-literal targets unless explicitly granted, and keeps redirects disabled unless the grant explicitly enables bounded following. Every redirected hop is re-authorized against the same granted HTTP slice and execution budget before dispatch, and the runtime persists host-owned denials or bounded failures without widening the MCP public surface.
 
 The current example skills now include single-record and execution-tree explanation over stored Guild resources plus one bounded execution-query summary skill. Those examples deepen inspect usefulness by consuming persisted execution lineage, bounded evidence metadata, and bounded query results through the existing host-mediated resource path rather than by widening the runtime surface.
@@ -534,6 +536,8 @@ The current repository now uses a small local-first policy layer instead of trea
 - child execution starts from the parent-derived subset and is then re-evaluated by the same host policy path, so policy can narrow but never widen authority
 
 The default local profile keeps current example flows working by allowing only caller-requested grants that fit the declared capability surface of the resolved local dependency tree. Named profiles then reduce or deny from that starting point using typed capability ceilings plus host-owned trust metadata. In the current repository, `http-request` is the primary higher-risk family used to prove trust-tier-aware reductions and denials.
+
+`filesystem` is now also explicit in that host-side policy vocabulary, but only as a deferred family. Profiles may reference it in typed rules, and manifests may declare it, yet the runner still fails closed before guest start if filesystem survives policy into the final granted set for the active inspect slice.
 
 ## 15. Example Logical Layout of a Guild Root
 

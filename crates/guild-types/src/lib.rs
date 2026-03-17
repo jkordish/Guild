@@ -273,6 +273,7 @@ pub enum CapabilityId {
     CacheRead,
     CacheWrite,
     LogWrite,
+    Filesystem,
     MonotonicClock,
     WallClock,
 }
@@ -665,6 +666,30 @@ pub struct LogConstraints {
     pub levels: Option<Vec<Severity>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum FilesystemOperation {
+    Read,
+    Write,
+    Create,
+    Append,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct FilesystemRoot {
+    pub name: String,
+    pub guest_path_prefix: String,
+    pub host_path: String,
+    pub operations: Vec<FilesystemOperation>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct FilesystemConstraints {
+    pub preopened_roots: Vec<FilesystemRoot>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct HttpRequestConstraints {
@@ -702,6 +727,7 @@ pub struct HttpRequestConstraints {
 #[serde(untagged)]
 pub enum CapabilityConstraints {
     None(EmptyConstraints),
+    Filesystem(FilesystemConstraints),
     HttpRequest(HttpRequestConstraints),
     ReadResource(ReadResourceConstraints),
     InvokeDependency(InvokeDependencyConstraints),
@@ -725,6 +751,14 @@ impl CapabilityConstraints {
     pub fn as_http_request(&self) -> Option<&HttpRequestConstraints> {
         match self {
             Self::HttpRequest(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn as_filesystem(&self) -> Option<&FilesystemConstraints> {
+        match self {
+            Self::Filesystem(value) => Some(value),
             _ => None,
         }
     }
@@ -767,6 +801,11 @@ impl CapabilityConstraints {
             (id, access, self),
             (_, _, Self::None(_))
                 | (
+                    CapabilityId::Filesystem,
+                    CapabilityAccess::Read | CapabilityAccess::Write,
+                    Self::Filesystem(_)
+                )
+                | (
                     CapabilityId::HttpRequest,
                     CapabilityAccess::Read,
                     Self::HttpRequest(_)
@@ -798,6 +837,13 @@ impl CapabilityConstraints {
     pub fn validate_for(&self, id: &CapabilityId, access: &CapabilityAccess) -> Vec<String> {
         let mut errors = Vec::new();
 
+        if matches!(id, CapabilityId::Filesystem) && matches!(self, Self::None(_)) {
+            errors.push(
+                "filesystem capabilities must declare explicit filesystem constraints".into(),
+            );
+            return errors;
+        }
+
         if !self.matches_capability(id, access) {
             errors.push(format!(
                 "constraints for {}:{} must match the capability family",
@@ -809,11 +855,91 @@ impl CapabilityConstraints {
 
         match self {
             Self::None(_) => {}
+            Self::Filesystem(constraints) => errors.extend(constraints.validate(access)),
             Self::HttpRequest(constraints) => errors.extend(constraints.validate()),
             Self::ReadResource(constraints) => errors.extend(constraints.validate()),
             Self::InvokeDependency(constraints) => errors.extend(constraints.validate()),
             Self::EmitEvidence(constraints) => errors.extend(constraints.validate()),
             Self::Log(constraints) => errors.extend(constraints.validate()),
+        }
+
+        errors
+    }
+}
+
+impl FilesystemConstraints {
+    #[must_use]
+    pub fn validate(&self, access: &CapabilityAccess) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        if self.preopened_roots.is_empty() {
+            errors.push("preopened_roots must not be empty".into());
+            return errors;
+        }
+
+        let mut seen_names = std::collections::HashSet::new();
+        let mut seen_guest_paths = std::collections::HashSet::new();
+
+        for (index, root) in self.preopened_roots.iter().enumerate() {
+            let prefix = format!("preopened_roots[{index}]");
+
+            if root.name.trim().is_empty() {
+                errors.push(format!("{prefix}.name must not be empty"));
+            } else if !seen_names.insert(root.name.clone()) {
+                errors.push(format!("{prefix}.name must be unique"));
+            }
+
+            if root.guest_path_prefix.trim().is_empty() {
+                errors.push(format!("{prefix}.guest_path_prefix must not be empty"));
+            } else {
+                if let Some(message) =
+                    validate_filesystem_guest_path_prefix(&root.guest_path_prefix)
+                {
+                    errors.push(format!("{prefix}.guest_path_prefix {message}"));
+                }
+
+                if !seen_guest_paths.insert(root.guest_path_prefix.clone()) {
+                    errors.push(format!("{prefix}.guest_path_prefix must be unique"));
+                }
+            }
+
+            if root.host_path.trim().is_empty() {
+                errors.push(format!("{prefix}.host_path must not be empty"));
+            }
+
+            if root.operations.is_empty() {
+                errors.push(format!("{prefix}.operations must not be empty"));
+                continue;
+            }
+
+            let mut seen_operations = std::collections::HashSet::new();
+            for operation in &root.operations {
+                if !seen_operations.insert(operation) {
+                    errors.push(format!(
+                        "{prefix}.operations must not contain duplicate `{}` entries",
+                        filesystem_operation_label(operation)
+                    ));
+                }
+
+                match (access, operation) {
+                    (CapabilityAccess::Read, FilesystemOperation::Read)
+                    | (
+                        CapabilityAccess::Write,
+                        FilesystemOperation::Write
+                        | FilesystemOperation::Create
+                        | FilesystemOperation::Append,
+                    ) => {}
+                    (CapabilityAccess::Read, _) => errors.push(format!(
+                        "{prefix}.operations may only contain `read` when access is `read`"
+                    )),
+                    (CapabilityAccess::Write, FilesystemOperation::Read) => errors.push(format!(
+                        "{prefix}.operations must not contain `read` when access is `write`"
+                    )),
+                    (CapabilityAccess::Invoke, _) => {
+                        errors.push("filesystem capabilities must use read or write access".into());
+                    }
+                }
+            }
         }
 
         errors
@@ -1074,6 +1200,34 @@ fn validate_http_host_value(value: &str, field: &str, allow_ip_literals: bool) -
         return Some(format!(
             "{field} entries must use ASCII alphanumeric or `-` DNS labels"
         ));
+    }
+
+    None
+}
+
+fn validate_filesystem_guest_path_prefix(value: &str) -> Option<&'static str> {
+    if !value.starts_with('/') {
+        return Some("must start with `/`");
+    }
+
+    if value != "/" && value.ends_with('/') {
+        return Some("must not end with `/` unless it is the root `/`");
+    }
+
+    if value.contains('\\') {
+        return Some("must use `/` separators only");
+    }
+
+    if value.split('/').skip(1).any(str::is_empty) {
+        return Some("must not contain empty path segments");
+    }
+
+    if value
+        .split('/')
+        .skip(1)
+        .any(|segment| matches!(segment, "." | ".."))
+    {
+        return Some("must not contain `.` or `..` path segments");
     }
 
     None
@@ -1782,8 +1936,18 @@ fn capability_id_label(id: &CapabilityId) -> &'static str {
         CapabilityId::CacheRead => "cache-read",
         CapabilityId::CacheWrite => "cache-write",
         CapabilityId::LogWrite => "log-write",
+        CapabilityId::Filesystem => "filesystem",
         CapabilityId::MonotonicClock => "monotonic-clock",
         CapabilityId::WallClock => "wall-clock",
+    }
+}
+
+fn filesystem_operation_label(operation: &FilesystemOperation) -> &'static str {
+    match operation {
+        FilesystemOperation::Read => "read",
+        FilesystemOperation::Write => "write",
+        FilesystemOperation::Create => "create",
+        FilesystemOperation::Append => "append",
     }
 }
 

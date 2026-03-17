@@ -12,6 +12,7 @@ Current contract highlights worth knowing before you follow older notes:
 - `EvidenceRef` points at a host-issued evidence-record URI, while payload blobs remain digest-addressed
 - requested same-version multi-digest resolution now fails closed as ambiguous
 - the active Wasm inspect slice only supports `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- the shared host-side contracts now also expose an explicit typed `filesystem` family, but the active inspect slice still rejects filesystem before execution and the guest ABI does not expose filesystem imports yet
 - `read-resource` scopes are canonical Guild URI roots, not permissive raw string prefixes
 - `http-request` is now a real bounded host capability behind `guild.inspect`, not a separate MCP tool, and its host/domain/path/redirect/private-network controls are enforced by the Rust host boundary rather than guest code
 - caller-requested capabilities are now local policy input; the host decides the final granted set before execution

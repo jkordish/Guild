@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use guild_manifest::SourceSkillManifest;
 use guild_mcp::{GuildMcpFacade, InspectRequest};
 use guild_registry::{
     execution_query_resource_uri, InstalledSkill, LocalPublisherIdentity, LocalRegistry,
@@ -12,8 +13,9 @@ use guild_registry::{
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, ExecutionQueryResource, ExecutionQueryResult,
-    ExecutionRecord, ExecutionStatus, GrantedCapability, HttpMethod, HttpRequestConstraints,
+    CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, ExecutionQueryResource,
+    ExecutionQueryResult, ExecutionRecord, ExecutionStatus, FilesystemConstraints,
+    FilesystemOperation, FilesystemRoot, GrantedCapability, HttpMethod, HttpRequestConstraints,
     HttpScheme, InstalledVerificationState, InvokeDependencyConstraints, LocalPolicyConfig,
     LocalTrustTier, LogConstraints, PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding,
     PolicyRule, PolicyRuleEffect, PolicyRuleTarget, ReadResourceConstraints, RedactionClass,
@@ -287,6 +289,25 @@ fn http_grant_with_options(
     }
 }
 
+fn filesystem_read_constraints() -> FilesystemConstraints {
+    FilesystemConstraints {
+        preopened_roots: vec![FilesystemRoot {
+            name: "workspace".into(),
+            guest_path_prefix: "/workspace".into(),
+            host_path: "/var/lib/guild/workspace".into(),
+            operations: vec![FilesystemOperation::Read],
+        }],
+    }
+}
+
+fn filesystem_read_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::Filesystem,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::Filesystem(filesystem_read_constraints()),
+    }
+}
+
 struct TempFixtureDir {
     path: PathBuf,
 }
@@ -327,6 +348,29 @@ fn copy_dir_recursive(source: &Path, destination: &Path) {
             fs::copy(entry.path(), destination_path).unwrap();
         }
     }
+}
+
+fn write_filesystem_fixture(root: &Path, skill_name: &str, required: bool) -> PathBuf {
+    let workspace_root = root.join("workspace");
+    let source_root = workspace_root.join(format!("examples/skills/{skill_name}"));
+    copy_dir_recursive(&example_source_dir(), &source_root);
+    copy_dir_recursive(&wit_dir(), &workspace_root.join("wit"));
+
+    let manifest_path = source_root.join("manifest.json");
+    let mut manifest: SourceSkillManifest =
+        serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+    manifest.key.name = skill_name.into();
+    manifest.display_name = format!("{} Filesystem", manifest.display_name);
+    manifest.description = "A fixture that declares deferred filesystem access.".into();
+    manifest.capabilities.push(CapabilityRequirement {
+        id: CapabilityId::Filesystem,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::Filesystem(filesystem_read_constraints()),
+        required,
+    });
+    fs::write(manifest_path, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+
+    source_root
 }
 
 fn write_policy(root: &Path, policy: &LocalPolicyConfig) {
@@ -925,6 +969,170 @@ fn explain_skill_can_summarize_persisted_http_denials() {
     assert_eq!(
         explained_output.structured["termination"]["code"],
         "http-request-host-not-granted"
+    );
+}
+
+#[test]
+fn filesystem_requested_capabilities_persist_host_owned_rejection() {
+    let temp = TempFixtureDir::new("guild-filesystem-requested");
+    let registry_root = temp.path().join("registry");
+    let filesystem_source = write_filesystem_fixture(temp.path(), "hello-inspect-filesystem", true);
+    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    installer.install(&filesystem_source).unwrap();
+
+    let facade = build_facade_for_root(&registry_root);
+    let denied = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect-filesystem".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![emit_evidence_grant(), filesystem_read_grant()],
+            },
+        ))
+        .unwrap_err();
+
+    assert_eq!(denied.code, "filesystem-runtime-not-supported");
+    let receipt = denied
+        .receipt
+        .expect("filesystem rejection persists a receipt");
+    let record: ExecutionRecord =
+        serde_json::from_slice(&facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(
+        record.termination.as_ref().unwrap().code,
+        "filesystem-runtime-not-supported"
+    );
+    assert!(record
+        .granted_capabilities
+        .grants
+        .iter()
+        .any(|grant| grant.id == CapabilityId::Filesystem));
+}
+
+#[test]
+fn policy_profiles_cannot_enable_deferred_filesystem_runtime() {
+    let temp = TempFixtureDir::new("guild-filesystem-policy");
+    let registry_root = temp.path().join("registry");
+    let filesystem_source = write_filesystem_fixture(temp.path(), "hello-inspect-filesystem", true);
+    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    installer.install(&filesystem_source).unwrap();
+    write_policy(
+        &registry_root,
+        &LocalPolicyConfig {
+            default_profile: "filesystem-profile".into(),
+            profiles: vec![PolicyProfile {
+                name: "filesystem-profile".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: vec![PolicyRule {
+                    name: Some("cap-filesystem-contract".into()),
+                    skills: Some(vec![SkillKey {
+                        namespace: "example".into(),
+                        name: "hello-inspect-filesystem".into(),
+                    }]),
+                    publisher_ids: None,
+                    trust_tiers: None,
+                    verification_states: None,
+                    applies_to: PolicyRuleTarget::Any,
+                    effect: PolicyRuleEffect::Cap,
+                    capabilities: CapabilityGrantSet {
+                        grants: vec![filesystem_read_grant()],
+                    },
+                }],
+            }],
+            bindings: vec![PolicyProfileBinding {
+                name: Some("filesystem-actor".into()),
+                actor_ids: Some(vec!["actor-filesystem".into()]),
+                tenant_ids: None,
+                profile: "filesystem-profile".into(),
+            }],
+            ..LocalPolicyConfig::default()
+        },
+    );
+
+    let facade = build_facade_for_root(&registry_root);
+    let denied = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect-filesystem".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-filesystem",
+            CapabilityGrantSet {
+                grants: vec![emit_evidence_grant(), filesystem_read_grant()],
+            },
+        ))
+        .unwrap_err();
+
+    assert_eq!(denied.code, "filesystem-runtime-not-supported");
+    let receipt = denied
+        .receipt
+        .expect("filesystem policy rejection persists a receipt");
+    let record: ExecutionRecord =
+        serde_json::from_slice(&facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+
+    assert_eq!(record.policy_decision.profile_name, "filesystem-profile");
+    assert_eq!(
+        record.policy_decision.outcome,
+        PolicyDecisionOutcome::Allowed
+    );
+    assert_eq!(
+        record.termination.as_ref().unwrap().code,
+        "filesystem-runtime-not-supported"
+    );
+}
+
+#[test]
+fn explain_skill_can_summarize_persisted_filesystem_rejections() {
+    let temp = TempFixtureDir::new("guild-filesystem-explain");
+    let registry_root = temp.path().join("registry");
+    let filesystem_source = write_filesystem_fixture(temp.path(), "hello-inspect-filesystem", true);
+    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    installer.install(&filesystem_source).unwrap();
+    installer.install(explain_source_dir()).unwrap();
+
+    let facade = build_facade_for_root(&registry_root);
+    let denied = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect-filesystem".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![emit_evidence_grant(), filesystem_read_grant()],
+            },
+        ))
+        .unwrap_err();
+
+    let receipt = denied
+        .receipt
+        .expect("filesystem rejection persists a receipt");
+    let explained = facade.inspect(explain_request(&receipt.uri)).unwrap();
+    let explained_output = explained.structured_content.output.as_ref().unwrap();
+
+    assert_eq!(explained_output.structured["target_status"], "rejected");
+    assert_eq!(
+        explained_output.structured["termination"]["code"],
+        "filesystem-runtime-not-supported"
     );
 }
 

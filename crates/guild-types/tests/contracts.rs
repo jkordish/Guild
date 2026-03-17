@@ -1,7 +1,8 @@
 use guild_types::{
     Budget, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    ExecutionContext, ExecutionMode, ExecutionQueryResource, GrantedCapability, GuildResourceScope,
-    GuildResourceUri, HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
+    ExecutionContext, ExecutionMode, ExecutionQueryResource, FilesystemConstraints,
+    FilesystemOperation, FilesystemRoot, GrantedCapability, GuildResourceScope, GuildResourceUri,
+    HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
     InstalledVerificationState, LocalPolicyConfig, LocalTrustTier, PolicyDecision,
     PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule,
     PolicyRuleEffect, PolicyRuleTarget, ReadResourceConstraints, ResolvedSkillRef, ResourceKind,
@@ -215,6 +216,57 @@ fn http_capability_constraints_roundtrip_in_execution_context() {
 }
 
 #[test]
+fn filesystem_capability_contract_roundtrips_in_execution_context() {
+    let ctx = ExecutionContext {
+        execution_id: "exec-fs-1".into(),
+        trace_id: "trace-fs-1".into(),
+        tenant_id: "tenant-1".into(),
+        skill: ResolvedSkillRef {
+            key: SkillKey {
+                namespace: "example".into(),
+                name: "hello-inspect".into(),
+            },
+            version: SkillVersion::parse("0.1.0").unwrap(),
+            digest: "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+                .into(),
+        },
+        mode: ExecutionMode::Inspect,
+        input_sha256: "sha256:abc".into(),
+        now_utc: Some("2026-03-17T00:00:00Z".into()),
+        budget: Budget::default(),
+        granted_capabilities: CapabilityGrantSet {
+            grants: vec![GrantedCapability {
+                id: CapabilityId::Filesystem,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::Filesystem(FilesystemConstraints {
+                    preopened_roots: vec![FilesystemRoot {
+                        name: "workspace".into(),
+                        guest_path_prefix: "/workspace".into(),
+                        host_path: "/var/lib/guild/workspace".into(),
+                        operations: vec![FilesystemOperation::Read],
+                    }],
+                }),
+            }],
+        },
+    };
+
+    let encoded = serde_json::to_value(&ctx).unwrap();
+    assert_eq!(
+        encoded["granted_capabilities"]["grants"][0]["id"],
+        "filesystem"
+    );
+    assert_eq!(
+        encoded["granted_capabilities"]["grants"][0]["constraints"]["preopened_roots"][0]["name"],
+        "workspace"
+    );
+    assert_eq!(
+        encoded["granted_capabilities"]["grants"][0]["constraints"]["preopened_roots"][0]
+            ["operations"][0],
+        "read"
+    );
+}
+
+#[test]
 fn http_request_and_response_roundtrip() {
     let request = HttpRequest {
         method: HttpMethod::Get,
@@ -308,6 +360,36 @@ fn local_policy_config_roundtrips_with_rules() {
 
     assert_eq!(decoded, config);
     assert!(decoded.validate().is_empty());
+}
+
+#[test]
+fn filesystem_constraints_require_explicit_roots_and_matching_access() {
+    let vague = GrantedCapability {
+        id: CapabilityId::Filesystem,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::none(),
+    };
+    let vague_errors = vague.validate();
+    assert!(vague_errors
+        .iter()
+        .any(|message| message.contains("explicit filesystem constraints")));
+
+    let invalid_write = GrantedCapability {
+        id: CapabilityId::Filesystem,
+        access: CapabilityAccess::Write,
+        constraints: CapabilityConstraints::Filesystem(FilesystemConstraints {
+            preopened_roots: vec![FilesystemRoot {
+                name: "workspace".into(),
+                guest_path_prefix: "/workspace".into(),
+                host_path: "/var/lib/guild/workspace".into(),
+                operations: vec![FilesystemOperation::Read],
+            }],
+        }),
+    };
+    let invalid_write_errors = invalid_write.validate();
+    assert!(invalid_write_errors
+        .iter()
+        .any(|message| message.contains("must not contain `read` when access is `write`")));
 }
 
 #[test]

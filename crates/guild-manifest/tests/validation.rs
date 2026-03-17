@@ -5,8 +5,9 @@ use guild_manifest::{
 };
 use guild_types::{
     AbiVersion, CapabilityAccess, CapabilityConstraints, CapabilityId, CapabilityRequirement,
-    EmitEvidenceConstraints, ExecutionMode, FreshnessClass, HttpMethod, HttpRequestConstraints,
-    HttpScheme, ManifestSchemaVersion, Mutability, ReadResourceConstraints, RequestedSkillRef,
+    EmitEvidenceConstraints, ExecutionMode, FilesystemConstraints, FilesystemOperation,
+    FilesystemRoot, FreshnessClass, HttpMethod, HttpRequestConstraints, HttpScheme,
+    ManifestSchemaVersion, Mutability, ReadResourceConstraints, RequestedSkillRef,
     ResolvedSkillRef, ResourceKind, RuntimeKind, SkillApiVersion, SkillCategory, SkillKey,
     SkillVersion, VersionRequirement,
 };
@@ -348,4 +349,42 @@ fn typed_http_capability_roundtrips_in_source_manifests() {
 
     decoded.validate().unwrap();
     assert_eq!(decoded, manifest);
+}
+
+#[test]
+fn typed_filesystem_capability_roundtrips_in_source_manifests() {
+    let mut manifest = sample_source_manifest();
+    manifest.capabilities = vec![CapabilityRequirement {
+        id: CapabilityId::Filesystem,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::Filesystem(FilesystemConstraints {
+            preopened_roots: vec![FilesystemRoot {
+                name: "workspace".into(),
+                guest_path_prefix: "/workspace".into(),
+                host_path: "/var/lib/guild/workspace".into(),
+                operations: vec![FilesystemOperation::Read],
+            }],
+        }),
+        required: true,
+    }];
+
+    let encoded = serde_json::to_string_pretty(&manifest).unwrap();
+    let decoded: SourceSkillManifest = serde_json::from_str(&encoded).unwrap();
+
+    decoded.validate().unwrap();
+    assert_eq!(decoded, manifest);
+}
+
+#[test]
+fn filesystem_capabilities_require_explicit_typed_constraints() {
+    let mut manifest = sample_source_manifest();
+    manifest.capabilities = vec![CapabilityRequirement {
+        id: CapabilityId::Filesystem,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::none(),
+        required: true,
+    }];
+
+    let errors = manifest.validate().unwrap_err();
+    assert!(has_error(&errors, "capabilities[0].constraints"));
 }

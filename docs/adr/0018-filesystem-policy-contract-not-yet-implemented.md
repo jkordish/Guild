@@ -25,14 +25,29 @@ Current truth:
 
 - the active Wasm inspect slice supports `http-request`, `read-resource`,
   `invoke-skill`, `emit-evidence`, and `log-write` only
-- the current shared contracts do not expose a working filesystem capability
-  family
+- the shared Rust contracts now expose an explicit typed `filesystem` family as
+  a host-side contract only
+- the guest ABI still does not expose filesystem imports or preopened
+  directories
 - unsupported families in the active inspect slice are rejected before
-  execution
+  execution, and filesystem now gets that rejection intentionally rather than
+  as a vague unknown surface
 
-For that reason, filesystem capability requests are currently rejected in
-practice by the active inspect slice's unsupported-family preflight boundary.
-There is no executable filesystem runtime path today.
+The current host-side contract uses `CapabilityId::Filesystem` with
+`FilesystemConstraints { preopened_roots: Vec<FilesystemRoot> }`, where each
+`FilesystemRoot` carries:
+
+- `name`
+- `guest_path_prefix`
+- `host_path`
+- `operations: Vec<FilesystemOperation>`
+
+`FilesystemOperation` is currently frozen as `read`, `write`, `create`, and
+`append`.
+
+For that reason, filesystem capability requests are now rejected in practice by
+an explicit active-inspect preflight boundary. There is still no executable
+filesystem runtime path today.
 
 Before any runtime support lands, Guild freezes the required policy shape for a
 future filesystem family:
@@ -88,7 +103,7 @@ Positive:
 
 Costs and limits:
 
-- the ADR intentionally leaves exact ABI field names deferred
+- the ADR still leaves exact guest ABI encoding deferred
 - current users still have no filesystem capability in the active inspect slice
 
 ## Explicit invariants
@@ -103,7 +118,7 @@ Costs and limits:
 ## Explicit non-goals / deferred work
 
 - implementing filesystem runtime support
-- choosing a final WIT or Rust type shape in this ADR
+- widening the current WIT guest ABI to expose filesystem imports
 - ambient filesystem access for local demos
 - broad workflow DSLs around path authorization
 - apply-mode mutation policy
@@ -119,4 +134,3 @@ Costs and limits:
 - `wit/guild-skill-v1.wit`
 - `crates/guild-types/src/lib.rs`
 - `crates/guild-runner/src/lib.rs`
-

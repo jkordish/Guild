@@ -19,14 +19,14 @@ use guild_types::{
     CapabilityGrantSet, CapabilityId, CapabilityRequirement, ChildExecutionRecord, Diagnostic,
     Effect, EmitEvidenceConstraints, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
     EvidenceRef, ExecutionContext, ExecutionMetrics, ExecutionMode, ExecutionPhase,
-    ExecutionReceipt, ExecutionRecord, ExecutionStatus, GrantedCapability, GuildResourceScope,
-    GuildResourceUri, HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
-    InvokeDependencyConstraints, LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints,
-    Mutability, PolicyDecision, PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding,
-    PolicyReason, PolicyRule, PolicyRuleEffect, PolicyRuleTarget, Provenance,
-    ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope, ResolvedSkillRef,
-    ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError, SkillOutput,
-    TerminationDetail,
+    ExecutionReceipt, ExecutionRecord, ExecutionStatus, FilesystemConstraints, FilesystemOperation,
+    FilesystemRoot, GrantedCapability, GuildResourceScope, GuildResourceUri, HttpMethod,
+    HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme, InvokeDependencyConstraints,
+    LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints, Mutability, PolicyDecision,
+    PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule,
+    PolicyRuleEffect, PolicyRuleTarget, Provenance, ReadResourceConstraints, RedactionClass,
+    ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind,
+    Severity, SkillError, SkillOutput, TerminationDetail,
 };
 use http::header::{CONTENT_TYPE, LOCATION};
 use http::Request;
@@ -627,6 +627,17 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
         input: &Value,
         host: Arc<dyn RuntimeHost>,
     ) -> Result<RuntimeOutcome, RuntimeFailure> {
+        let wit_context = match to_wit_execution_context(context) {
+            Ok(context) => context,
+            Err(error) => {
+                return Err(RuntimeFailure {
+                    error: Box::new(error),
+                    emitted_evidence: Vec::new(),
+                    child_executions: Vec::new(),
+                    network_requests: 0,
+                });
+            }
+        };
         let (mut store, instance) =
             self.instantiate(installed, context, host)
                 .map_err(|error| RuntimeFailure {
@@ -635,7 +646,6 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                     child_executions: Vec::new(),
                     network_requests: 0,
                 })?;
-        let wit_context = to_wit_execution_context(context);
         let wit_input = serde_json::to_string(input).expect("execution input serializes");
 
         let result = instance
@@ -1417,17 +1427,31 @@ where
             return Ok(());
         }
 
-        Err(ExecutionError::new(
-            "unsupported-runtime-surface",
-            "Wasm inspect execution only supports the active capability allowlist",
-        )
-        .with_detail(serde_json::json!({
-            "runtime_kind": self.runtime.kind(),
-            "supported_capabilities": supported_wasm_inspect_capabilities(),
-            "unsupported_manifest_capabilities": unsupported_manifest_capabilities,
-            "unsupported_grants": unsupported_grants,
-        }))
-        .with_phase(ExecutionPhase::Validation))
+        let includes_filesystem = unsupported_surface_includes_filesystem(
+            &unsupported_manifest_capabilities,
+            &unsupported_grants,
+        );
+        let (code, message) = if includes_filesystem {
+            (
+                "filesystem-runtime-not-supported",
+                "filesystem capability contracts are not implemented in the active Wasm inspect slice",
+            )
+        } else {
+            (
+                "unsupported-runtime-surface",
+                "Wasm inspect execution only supports the active capability allowlist",
+            )
+        };
+
+        Err(ExecutionError::new(code, message)
+            .with_detail(serde_json::json!({
+                "runtime_kind": self.runtime.kind(),
+                "supported_capabilities": supported_wasm_inspect_capabilities(),
+                "unsupported_manifest_capabilities": unsupported_manifest_capabilities,
+                "unsupported_grants": unsupported_grants,
+                "deferred_filesystem_contract": includes_filesystem,
+            }))
+            .with_phase(ExecutionPhase::Validation))
     }
 
     fn validate_resolved_ref(
@@ -2329,6 +2353,9 @@ fn reduce_grant_to_cap(
         (CapabilityConstraints::None(_), _) | (_, CapabilityConstraints::None(_)) => {
             grant.constraints.clone()
         }
+        (CapabilityConstraints::Filesystem(cap), CapabilityConstraints::Filesystem(grant)) => {
+            CapabilityConstraints::Filesystem(reduce_cap_filesystem_constraints(cap, grant)?)
+        }
         (CapabilityConstraints::HttpRequest(cap), CapabilityConstraints::HttpRequest(grant)) => {
             CapabilityConstraints::HttpRequest(reduce_cap_http_request_constraints(cap, grant)?)
         }
@@ -2878,6 +2905,10 @@ impl CapabilityEvaluator {
         match (&grant.constraints, &requirement.constraints) {
             (CapabilityConstraints::None(_), _) | (_, CapabilityConstraints::None(_)) => true,
             (
+                CapabilityConstraints::Filesystem(grant),
+                CapabilityConstraints::Filesystem(required),
+            ) => filesystem_covers(grant, required),
+            (
                 CapabilityConstraints::HttpRequest(grant),
                 CapabilityConstraints::HttpRequest(required),
             ) => http_request_covers(grant, required),
@@ -3262,6 +3293,12 @@ fn reduce_child_constraints(
         (CapabilityConstraints::None(_), required) => Ok(required.clone()),
         (_, CapabilityConstraints::None(_)) => Ok(parent_grant.constraints.clone()),
         (
+            CapabilityConstraints::Filesystem(parent),
+            CapabilityConstraints::Filesystem(required),
+        ) => Ok(CapabilityConstraints::Filesystem(
+            reduce_child_filesystem_constraints(parent, required)?,
+        )),
+        (
             CapabilityConstraints::HttpRequest(parent),
             CapabilityConstraints::HttpRequest(required),
         ) => Ok(CapabilityConstraints::HttpRequest(
@@ -3300,6 +3337,129 @@ fn reduce_child_constraints(
             }),
         }),
     }
+}
+
+fn filesystem_covers(grant: &FilesystemConstraints, required: &FilesystemConstraints) -> bool {
+    required.preopened_roots.iter().all(|required_root| {
+        grant
+            .preopened_roots
+            .iter()
+            .any(|grant_root| filesystem_root_covers(grant_root, required_root))
+    })
+}
+
+fn filesystem_root_covers(grant: &FilesystemRoot, required: &FilesystemRoot) -> bool {
+    filesystem_root_identity_matches(grant, required)
+        && required
+            .operations
+            .iter()
+            .all(|operation| grant.operations.contains(operation))
+}
+
+fn filesystem_root_identity_matches(left: &FilesystemRoot, right: &FilesystemRoot) -> bool {
+    left.name == right.name
+        && left.guest_path_prefix == right.guest_path_prefix
+        && left.host_path == right.host_path
+}
+
+fn reduce_child_filesystem_constraints(
+    parent: &FilesystemConstraints,
+    required: &FilesystemConstraints,
+) -> Result<FilesystemConstraints, CapabilityDenial> {
+    let mut roots = Vec::new();
+
+    for required_root in &required.preopened_roots {
+        let Some(parent_root) = parent
+            .preopened_roots
+            .iter()
+            .find(|candidate| filesystem_root_covers(candidate, required_root))
+        else {
+            return Err(CapabilityDenial {
+                code: "child-capability-mismatch".into(),
+                message: "child filesystem capability exceeded the parent grant".into(),
+                detail: serde_json::json!({
+                    "required_root": required_root,
+                    "parent_constraints": parent,
+                }),
+            });
+        };
+
+        let operations =
+            intersect_filesystem_operations(&parent_root.operations, &required_root.operations);
+        if operations.is_empty() {
+            return Err(CapabilityDenial {
+                code: "child-capability-mismatch".into(),
+                message: "child filesystem capability exceeded the parent grant".into(),
+                detail: serde_json::json!({
+                    "required_root": required_root,
+                    "parent_root": parent_root,
+                }),
+            });
+        }
+
+        roots.push(FilesystemRoot {
+            name: required_root.name.clone(),
+            guest_path_prefix: required_root.guest_path_prefix.clone(),
+            host_path: required_root.host_path.clone(),
+            operations,
+        });
+    }
+
+    Ok(FilesystemConstraints {
+        preopened_roots: roots,
+    })
+}
+
+fn reduce_cap_filesystem_constraints(
+    cap: &FilesystemConstraints,
+    grant: &FilesystemConstraints,
+) -> Option<FilesystemConstraints> {
+    let preopened_roots: Vec<_> = grant
+        .preopened_roots
+        .iter()
+        .filter_map(|grant_root| {
+            cap.preopened_roots
+                .iter()
+                .find(|cap_root| filesystem_root_identity_matches(cap_root, grant_root))
+                .and_then(|cap_root| {
+                    let operations = intersect_filesystem_operations(
+                        &cap_root.operations,
+                        &grant_root.operations,
+                    );
+                    if operations.is_empty() {
+                        None
+                    } else {
+                        Some(FilesystemRoot {
+                            name: grant_root.name.clone(),
+                            guest_path_prefix: grant_root.guest_path_prefix.clone(),
+                            host_path: grant_root.host_path.clone(),
+                            operations,
+                        })
+                    }
+                })
+        })
+        .collect();
+
+    if preopened_roots.is_empty() {
+        None
+    } else {
+        Some(FilesystemConstraints { preopened_roots })
+    }
+}
+
+fn intersect_filesystem_operations(
+    left: &[FilesystemOperation],
+    right: &[FilesystemOperation],
+) -> Vec<FilesystemOperation> {
+    let mut operations = Vec::new();
+
+    for operation in left {
+        if right.contains(operation) && !operations.contains(operation) {
+            operations.push(operation.clone());
+        }
+    }
+
+    operations
 }
 
 fn reduce_child_http_request_constraints(
@@ -4223,6 +4383,20 @@ fn supported_wasm_inspect_capabilities() -> Vec<Value> {
     ]
 }
 
+fn unsupported_surface_includes_filesystem(
+    unsupported_manifest_capabilities: &[Value],
+    unsupported_grants: &[Value],
+) -> bool {
+    unsupported_manifest_capabilities
+        .iter()
+        .chain(unsupported_grants.iter())
+        .any(|entry| {
+            entry
+                .get("id")
+                .is_some_and(|id| id == &serde_json::json!(CapabilityId::Filesystem))
+        })
+}
+
 const CAPABILITY_DENIAL_TRAP_PREFIX: &str = "guild-capability-denial:";
 
 fn capability_denial_trap(denial: &CapabilityDenial) -> wasmtime::Error {
@@ -4290,8 +4464,8 @@ fn write_canonical_json(value: &Value, output: &mut String) {
 
 fn to_wit_execution_context(
     context: &ExecutionContext,
-) -> bindings::guild::skill::types::ExecutionContext {
-    bindings::guild::skill::types::ExecutionContext {
+) -> Result<bindings::guild::skill::types::ExecutionContext, ExecutionError> {
+    Ok(bindings::guild::skill::types::ExecutionContext {
         execution_id: context.execution_id.clone(),
         trace_id: context.trace_id.clone(),
         tenant_id: context.tenant_id.clone(),
@@ -4311,8 +4485,8 @@ fn to_wit_execution_context(
             .grants
             .iter()
             .map(to_wit_granted_capability)
-            .collect(),
-    }
+            .collect::<Result<Vec<_>, _>>()?,
+    })
 }
 
 fn to_wit_resolved_skill_ref(
@@ -4330,12 +4504,12 @@ fn to_wit_resolved_skill_ref(
 
 fn to_wit_granted_capability(
     grant: &GrantedCapability,
-) -> bindings::guild::skill::types::GrantedCapability {
-    bindings::guild::skill::types::GrantedCapability {
-        id: to_wit_capability_id(&grant.id),
+) -> Result<bindings::guild::skill::types::GrantedCapability, ExecutionError> {
+    Ok(bindings::guild::skill::types::GrantedCapability {
+        id: to_wit_capability_id(&grant.id)?,
         access: to_wit_capability_access(&grant.access),
-        constraints: to_wit_capability_constraints(&grant.constraints),
-    }
+        constraints: to_wit_capability_constraints(&grant.id, &grant.constraints)?,
+    })
 }
 
 fn to_wit_execution_mode(mode: &ExecutionMode) -> bindings::guild::skill::types::ExecutionMode {
@@ -4346,18 +4520,30 @@ fn to_wit_execution_mode(mode: &ExecutionMode) -> bindings::guild::skill::types:
     }
 }
 
-fn to_wit_capability_id(id: &CapabilityId) -> bindings::guild::skill::types::CapabilityId {
+fn to_wit_capability_id(
+    id: &CapabilityId,
+) -> Result<bindings::guild::skill::types::CapabilityId, ExecutionError> {
     match id {
-        CapabilityId::HttpRequest => bindings::guild::skill::types::CapabilityId::HttpRequest,
-        CapabilityId::ReadResource => bindings::guild::skill::types::CapabilityId::ReadResource,
-        CapabilityId::InvokeSkill => bindings::guild::skill::types::CapabilityId::InvokeSkill,
-        CapabilityId::EmitEvidence => bindings::guild::skill::types::CapabilityId::EmitEvidence,
-        CapabilityId::GetSecret => bindings::guild::skill::types::CapabilityId::GetSecret,
-        CapabilityId::CacheRead => bindings::guild::skill::types::CapabilityId::CacheRead,
-        CapabilityId::CacheWrite => bindings::guild::skill::types::CapabilityId::CacheWrite,
-        CapabilityId::LogWrite => bindings::guild::skill::types::CapabilityId::LogWrite,
-        CapabilityId::MonotonicClock => bindings::guild::skill::types::CapabilityId::MonotonicClock,
-        CapabilityId::WallClock => bindings::guild::skill::types::CapabilityId::WallClock,
+        CapabilityId::HttpRequest => Ok(bindings::guild::skill::types::CapabilityId::HttpRequest),
+        CapabilityId::ReadResource => Ok(bindings::guild::skill::types::CapabilityId::ReadResource),
+        CapabilityId::InvokeSkill => Ok(bindings::guild::skill::types::CapabilityId::InvokeSkill),
+        CapabilityId::EmitEvidence => Ok(bindings::guild::skill::types::CapabilityId::EmitEvidence),
+        CapabilityId::GetSecret => Ok(bindings::guild::skill::types::CapabilityId::GetSecret),
+        CapabilityId::CacheRead => Ok(bindings::guild::skill::types::CapabilityId::CacheRead),
+        CapabilityId::CacheWrite => Ok(bindings::guild::skill::types::CapabilityId::CacheWrite),
+        CapabilityId::LogWrite => Ok(bindings::guild::skill::types::CapabilityId::LogWrite),
+        CapabilityId::Filesystem => Err(ExecutionError::new(
+            "filesystem-runtime-not-supported",
+            "filesystem capability contracts are not implemented in the active Wasm inspect slice",
+        )
+        .with_detail(serde_json::json!({
+            "id": id,
+        }))
+        .with_phase(ExecutionPhase::Validation)),
+        CapabilityId::MonotonicClock => {
+            Ok(bindings::guild::skill::types::CapabilityId::MonotonicClock)
+        }
+        CapabilityId::WallClock => Ok(bindings::guild::skill::types::CapabilityId::WallClock),
     }
 }
 
@@ -4372,13 +4558,23 @@ fn to_wit_capability_access(
 }
 
 fn to_wit_capability_constraints(
+    id: &CapabilityId,
     constraints: &CapabilityConstraints,
-) -> bindings::guild::skill::types::CapabilityConstraints {
+) -> Result<bindings::guild::skill::types::CapabilityConstraints, ExecutionError> {
     match constraints {
         CapabilityConstraints::None(_) => {
-            bindings::guild::skill::types::CapabilityConstraints::None
+            Ok(bindings::guild::skill::types::CapabilityConstraints::None)
         }
-        CapabilityConstraints::HttpRequest(value) => {
+        CapabilityConstraints::Filesystem(value) => Err(ExecutionError::new(
+            "filesystem-runtime-not-supported",
+            "filesystem capability contracts are not implemented in the active Wasm inspect slice",
+        )
+        .with_detail(serde_json::json!({
+            "id": id,
+            "constraints": value,
+        }))
+        .with_phase(ExecutionPhase::Validation)),
+        CapabilityConstraints::HttpRequest(value) => Ok(
             bindings::guild::skill::types::CapabilityConstraints::HttpRequest(
                 bindings::guild::skill::types::HttpRequestConstraints {
                     allowed_schemes: value
@@ -4398,9 +4594,9 @@ fn to_wit_capability_constraints(
                     max_timeout_ms: value.max_timeout_ms,
                     max_response_bytes: value.max_response_bytes,
                 },
-            )
-        }
-        CapabilityConstraints::ReadResource(value) => {
+            ),
+        ),
+        CapabilityConstraints::ReadResource(value) => Ok(
             bindings::guild::skill::types::CapabilityConstraints::ReadResource(
                 bindings::guild::skill::types::ReadResourceConstraints {
                     uri_prefixes: value.uri_prefixes.clone(),
@@ -4409,39 +4605,39 @@ fn to_wit_capability_constraints(
                         .as_ref()
                         .map(|kinds| kinds.iter().map(to_wit_resource_kind).collect()),
                 },
-            )
-        }
-        CapabilityConstraints::InvokeDependency(value) => {
+            ),
+        ),
+        CapabilityConstraints::InvokeDependency(value) => Ok(
             bindings::guild::skill::types::CapabilityConstraints::InvokeDependency(
                 bindings::guild::skill::types::InvokeDependencyConstraints {
                     aliases: value.aliases.clone(),
                 },
-            )
-        }
+            ),
+        ),
         CapabilityConstraints::EmitEvidence(value) => {
-            bindings::guild::skill::types::CapabilityConstraints::EmitEvidence(
-                bindings::guild::skill::types::EmitEvidenceConstraints {
-                    max_bytes: value.max_bytes,
-                    audiences: value
-                        .audiences
-                        .as_ref()
-                        .map(|audiences| audiences.iter().map(to_wit_evidence_audience).collect()),
-                    redactions: value
-                        .redactions
-                        .as_ref()
-                        .map(|redactions| redactions.iter().map(to_wit_redaction_class).collect()),
-                },
+            Ok(
+                bindings::guild::skill::types::CapabilityConstraints::EmitEvidence(
+                    bindings::guild::skill::types::EmitEvidenceConstraints {
+                        max_bytes: value.max_bytes,
+                        audiences: value.audiences.as_ref().map(|audiences| {
+                            audiences.iter().map(to_wit_evidence_audience).collect()
+                        }),
+                        redactions: value.redactions.as_ref().map(|redactions| {
+                            redactions.iter().map(to_wit_redaction_class).collect()
+                        }),
+                    },
+                ),
             )
         }
         CapabilityConstraints::Log(value) => {
-            bindings::guild::skill::types::CapabilityConstraints::Log(
+            Ok(bindings::guild::skill::types::CapabilityConstraints::Log(
                 bindings::guild::skill::types::LogConstraints {
                     levels: value
                         .levels
                         .as_ref()
                         .map(|levels| levels.iter().map(to_wit_severity).collect()),
                 },
-            )
+            ))
         }
     }
 }

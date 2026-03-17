@@ -176,6 +176,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - local source installs stage and validate before an atomic move into place
 - requested resolution fails closed if a single key and version maps to multiple installed digests
 - supported typed capability families in the active Wasm inspect slice are currently `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- the shared host-side capability vocabulary now also includes an explicit typed `filesystem` family, but the active Wasm inspect slice still rejects filesystem before execution and the guest ABI does not expose filesystem imports in this milestone
 - caller-requested capabilities are evaluated through a host-owned local policy layer before execution
 - the current repository loads an optional `policy.json` from the Guild root and otherwise uses a built-in default local policy profile
 - local policy now selects a named profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
@@ -334,6 +335,7 @@ Implementations MAY define capability families such as:
 
 - `inspect`
 - `explain`
+- `filesystem`
 - `http-request`
 - `read-resource`
 - `emit-evidence`
@@ -357,13 +359,16 @@ Guests MUST NOT mint, widen, or self-approve their own capabilities.
 
 The current repository enforces typed constraints for:
 
+- `filesystem` (host-side contract only; rejected before execution in the active Wasm inspect slice): `preopened_roots`, where each root declares `name`, `guest_path_prefix`, `host_path`, and `operations`
 - `http-request`: `allowed_schemes`, `allowed_hosts`, `allowed_host_suffixes`, `allowed_ports`, `allowed_methods`, `allowed_path_prefixes`, `max_timeout_ms`, `max_response_bytes`, `follow_redirects`, `max_redirects`, `allow_loopback`, `allow_link_local`, `allow_private_networks`, `allow_ip_literals`
 - `read-resource`: `uri_prefixes`, `resource_kinds`
 - `invoke-skill`: `aliases`
 - `emit-evidence`: `max_bytes`, `audiences`, `redactions`
 - `log-write`: `levels`
 
-Those are the currently implemented product names in the active Wasm inspect slice. Unknown fields, wrong-family constraint shapes, and empty scoped lists are validation errors.
+Those are the current typed product names in shared host-side contracts. Unknown fields, wrong-family constraint shapes, empty scoped lists, and vague `filesystem` entries without explicit root contracts are validation errors.
+
+For `filesystem`, `CapabilityAccess::Read` roots may only declare `read` operations, while `CapabilityAccess::Write` roots may only declare `write`, `create`, or `append` operations. The contract exists so manifests, caller intent, and local policy can represent filesystem authority intentionally, but the current guest ABI does not expose filesystem imports and the active Wasm inspect slice MUST reject any manifest or granted filesystem capability before guest execution.
 
 For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, `guild://objects/sha256/`, and `guild://queries/executions/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching.
 
@@ -549,6 +554,8 @@ Policy rejection SHOULD produce a durable record suitable for later inspection a
 In the current repository, authorization denials across runner checks and supported host imports are represented as host-owned rejected executions rather than guest-authored failures.
 
 For supported runtime-side HTTP failures after authorization, the current repository distinguishes host-owned authorization rejections from bounded transport/runtime failures such as timeout or oversized response bodies. Those latter failures persist as unsuccessful executions without being reclassified as capability denials.
+
+The current host-side `filesystem` contract may appear in manifests, caller-requested capabilities, and local `policy.json` profiles, but those surfaces MUST NOT enable guest filesystem runtime support in the active inspect slice. When filesystem survives policy evaluation into a final grant, the runner MUST reject it before guest start as a host-owned validation outcome.
 
 The current repository uses a local file-backed `policy.json` with named
 profiles plus a built-in default profile when the file is absent. Profile

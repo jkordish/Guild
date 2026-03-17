@@ -35,6 +35,7 @@ make test
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_http_json_local
 cargo run -p guild-mcp --example inspect_policy_local
+cargo run -p guild-mcp --example filesystem_rejection_local
 cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
@@ -52,7 +53,7 @@ cargo run -p guild-mcp --example signed_pull_oci_registry_failures_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
-Additional examples cover bounded local HTTP inspection, trust-tier-aware local policy profiles, bounded execution-query resources, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, local OCI image layout portability, OCI registry portability, and tampered or untrusted import rejection.
+Additional examples cover bounded local HTTP inspection, trust-tier-aware local policy profiles, explicit deferred filesystem-contract rejection, bounded execution-query resources, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, local OCI image layout portability, OCI registry portability, and tampered or untrusted import rejection.
 
 ### HTTP Proof Flow
 
@@ -77,6 +78,18 @@ cargo run -p guild-mcp --example inspect_policy_local
 ```
 
 That example installs `inspect-http-json`, exports it as a signed bundle, imports it into two fresh Guild roots with different publisher trust tiers, writes a local `policy.json` with named profiles plus a tenant binding, then proves two outcomes through the same `guild.inspect` surface: a trusted imported execution that keeps bounded redirect authority and a restricted imported execution whose HTTP grant is reduced before guest start and then rejected by the host when a redirect arrives. It then runs `explain-execution` against the persisted denied execution URI to prove the denial remains host-owned, durable, and explainable through the same resource path. The persisted execution record retains the caller-requested capability set, the smaller host-granted set, the selected policy profile, the verification state, and the host-owned trust tier that influenced the decision.
+
+### Filesystem Rejection Proof Flow
+
+Guild now also exposes an explicit host-side filesystem capability contract while keeping runtime filesystem access deferred.
+
+The canonical local proof command is:
+
+```bash
+cargo run -p guild-mcp --example filesystem_rejection_local
+```
+
+That example builds a temporary `hello-inspect` variant whose manifest declares the typed filesystem contract, requests a matching filesystem grant through `guild.inspect`, shows the host-owned rejected execution record, and then runs `explain-execution` against that persisted receipt. The contract is real in the host-side manifest and policy surface, but the active Wasm inspect slice still rejects filesystem before guest start. No guest filesystem import, preopened directory, or host file IO is added in this milestone.
 
 ### Artifact Query Proof Flow
 
@@ -119,6 +132,7 @@ The current inspect slice is intentionally strict about a few things:
 - local source installs stage and validate in a temporary directory before an atomic move into installed state
 - host authorization denials persist as host-owned rejected executions instead of leaking into guest-owned failure semantics
 - the active Wasm inspect slice only supports `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; broader typed families are rejected before execution
+- `filesystem` is now an explicit typed host-side capability contract with named roots, guest-path prefixes, host-path concepts, and read/write/create/append operations, but the active inspect slice still rejects it before guest start
 - `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
 - `http-request` is host-mediated, typed, bounded, and fail-closed; method, scheme, host, domain suffix, port, path, redirect, timeout, response-size, loopback, private-network, link-local, and IP-literal checks stay host-owned
 - caller-requested capabilities are policy input, not final authority; a local `policy.json` plus host-owned defaults decide the granted capability set before execution
@@ -184,6 +198,7 @@ What is real today:
 - Wasmtime-backed Wasm component execution
 - real host-mediated outbound HTTP execution through the Wasmtime runtime path
 - typed capability enforcement for the implemented host imports
+- explicit host-side filesystem contract modeling plus preflight rejection guardrails for the deferred family
 - local file-backed policy evaluation with named profiles, actor/tenant bindings, and host-owned trust tiers that can allow, reduce, or reject caller-requested capabilities before execution
 - host-minted durable execution IDs with create-only execution persistence
 - durable execution persistence with host-stamped timestamps
@@ -201,6 +216,7 @@ What is still deferred:
 
 - remote or distributed policy beyond the local host-owned evaluator
 - a broader policy language beyond the current typed local `policy.json` profile model
+- filesystem runtime support, preopened directories, and host file IO for guests
 - subscriptions, list-changed notifications, full-text search, and broader evidence-specific query surfaces
 - full `plan` mode
 - `apply` mode
