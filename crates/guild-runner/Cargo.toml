@@ -1,13 +1,13 @@
 [package]
-name = "guild-runner"
-version.workspace = true
-edition.workspace = true
-description = "Execution orchestration and runtime boundary for Guild skills"
-license.workspace = true
-repository.workspace = true
-readme.workspace = true
-keywords.workspace = true
 categories.workspace = true
+description = "Execution orchestration and runtime boundary for Guild skills"
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+name = "guild-runner"
+readme.workspace = true
+repository.workspace = true
+version.workspace = true
 
 [dependencies]
 bytes.workspace = true
@@ -17,9 +17,9 @@ guild-sdk-rust = { path = "../guild-sdk-rust" }
 guild-types = { path = "../guild-types" }
 http.workspace = true
 http-body-util.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-schemars.workspace = true
 sha2.workspace = true
 tokio.workspace = true
 url.workspace = true

@@ -1,13 +1,13 @@
 [package]
-name = "guild-registry"
-version.workspace = true
-edition.workspace = true
-description = "Local installation, resolution, bundle, and resource persistence for Guild"
-license.workspace = true
-repository.workspace = true
-readme.workspace = true
-keywords.workspace = true
 categories.workspace = true
+description = "Local installation, resolution, bundle, and resource persistence for Guild"
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+name = "guild-registry"
+readme.workspace = true
+repository.workspace = true
+version.workspace = true
 
 [dependencies]
 base64.workspace = true
@@ -18,9 +18,9 @@ guild-types = { path = "../guild-types" }
 http.workspace = true
 oci-client.workspace = true
 rand_core.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-schemars.workspace = true
 sha2.workspace = true
 tokio.workspace = true
 walkdir.workspace = true

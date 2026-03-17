@@ -1,22 +1,22 @@
 [workspace]
-resolver = "2"
 members = [
-  "crates/guild-types",
-  "crates/guild-manifest",
-  "crates/guild-runner",
-  "crates/guild-registry",
-  "crates/guild-mcp",
-  "crates/guild-sdk-rust",
+    "crates/guild-types",
+    "crates/guild-manifest",
+    "crates/guild-runner",
+    "crates/guild-registry",
+    "crates/guild-mcp",
+    "crates/guild-sdk-rust",
 ]
+resolver = "2"
 
 [workspace.package]
-edition = "2021"
-version = "0.1.0"
-license = "UNLICENSED"
-repository = "https://github.com/jkordish/Guild"
-readme = "README.md"
-keywords = ["guild", "mcp", "wasm", "skills", "runtime"]
 categories = ["development-tools", "wasm"]
+edition = "2021"
+keywords = ["guild", "mcp", "wasm", "skills", "runtime"]
+license = "UNLICENSED"
+readme = "README.md"
+repository = "https://github.com/jkordish/Guild"
+version = "0.1.0"
 
 [workspace.dependencies]
 base64 = "0.22"
@@ -28,20 +28,20 @@ http-body-util = "0.1"
 oci-client = "0.16.1"
 rand_core = { version = "0.6", features = ["getrandom"] }
 registry-testkit = "0.1.3"
+schemars = { version = "1.2", features = ["derive"] }
+semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-schemars = { version = "0.8", features = ["derive"] }
-semver = "1"
 sha2 = "0.10"
-tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 time = { version = "0.3", features = ["formatting"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 url = "2"
 uuid = { version = "1", features = ["v7"] }
 walkdir = "2"
 wasmtime = { version = "42.0.1", features = ["component-model"] }
 wasmtime-wasi = "42.0.1"
 wasmtime-wasi-http = "42.0.1"
-wit-bindgen = "0.53.1"
+wit-bindgen = "0.54.0"
 
 [workspace.lints.clippy]
 # Wasmtime and Cranelift currently pull two incompatible hashbrown major lines.

@@ -3,15 +3,12 @@
 
 //! Core shared data structures for Guild contracts.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Write as _;
 use std::str::FromStr;
 
-use schemars::{
-    gen::SchemaGenerator,
-    schema::{InstanceType, Metadata, Schema, SchemaObject},
-    JsonSchema,
-};
+use schemars::{JsonSchema, Schema, SchemaGenerator};
 use semver::{Version, VersionReq};
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -109,8 +106,8 @@ impl<'de> Deserialize<'de> for SkillVersion {
 }
 
 impl JsonSchema for SkillVersion {
-    fn schema_name() -> String {
-        "SkillVersion".to_owned()
+    fn schema_name() -> Cow<'static, str> {
+        "SkillVersion".into()
     }
 
     fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
@@ -180,8 +177,8 @@ impl<'de> Deserialize<'de> for VersionRequirement {
 }
 
 impl JsonSchema for VersionRequirement {
-    fn schema_name() -> String {
-        "VersionRequirement".to_owned()
+    fn schema_name() -> Cow<'static, str> {
+        "VersionRequirement".into()
     }
 
     fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
@@ -1723,20 +1720,18 @@ fn default_policy_profile() -> PolicyProfile {
 }
 
 fn string_schema(format: Option<&str>, description: Option<&str>) -> Schema {
-    let mut schema = SchemaObject {
-        instance_type: Some(InstanceType::String.into()),
-        format: format.map(str::to_owned),
-        ..Default::default()
-    };
+    let mut schema = serde_json::Map::from_iter([("type".into(), Value::String("string".into()))]);
 
-    if let Some(description) = description {
-        schema.metadata = Some(Box::new(Metadata {
-            description: Some(description.to_owned()),
-            ..Default::default()
-        }));
+    if let Some(format) = format {
+        schema.insert("format".into(), Value::String(format.to_owned()));
     }
 
-    Schema::Object(schema)
+    if let Some(description) = description {
+        schema.insert("description".into(), Value::String(description.to_owned()));
+    }
+
+    Schema::try_from(Value::Object(schema))
+        .expect("string schema helper produces a valid JSON Schema")
 }
 
 fn execution_status_label(status: &ExecutionStatus) -> &'static str {

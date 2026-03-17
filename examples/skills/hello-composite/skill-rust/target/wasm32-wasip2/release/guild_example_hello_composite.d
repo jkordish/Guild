@@ -1,1 +1,0 @@
-/home/ubuntu/Guild/examples/skills/hello-composite/skill-rust/target/wasm32-wasip2/release/guild_example_hello_composite.wasm: /home/ubuntu/Guild/examples/skills/hello-composite/skill-rust/src/lib.rs /home/ubuntu/Guild/wit/guild-skill-v1.wit

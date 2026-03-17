@@ -1,13 +1,13 @@
 [package]
-name = "guild-sdk-rust"
-version.workspace = true
-edition.workspace = true
-description = "Rust authoring support for Guild guest skills"
-license.workspace = true
-repository.workspace = true
-readme.workspace = true
-keywords.workspace = true
 categories.workspace = true
+description = "Rust authoring support for Guild guest skills"
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+name = "guild-sdk-rust"
+readme.workspace = true
+repository.workspace = true
+version.workspace = true
 
 [dependencies]
 guild-manifest = { path = "../guild-manifest" }

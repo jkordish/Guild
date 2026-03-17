@@ -1,6 +1,8 @@
 use serde_json::{json, Value};
 use wit_bindgen::generate;
 
+const _: &str = include_str!("../../../../../wit/guild-skill-v1.wit");
+
 generate!({
     path: "../../../../wit",
     world: "guild-skill",
