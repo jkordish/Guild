@@ -81,6 +81,7 @@ interface types {
   enum resource-kind {
     execution,
     object,
+    query,
   }
 
   record read-resource-constraints {

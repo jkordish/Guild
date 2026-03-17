@@ -18,7 +18,9 @@ What is materially real today:
 - Guild now has a real bounded `http-request` capability family in the active inspect slice
 - Guild can now export and import the same signed installed bundles either as native bundle directories, local OCI image layouts, or OCI registry artifacts
 - MCP resource reads and guest-side `read-resource` calls use the same local backend
+- bounded execution-query resources and templates now derive from that same local backend, so persisted executions can be discovered without already knowing an exact execution URI
 - a resource-aware explain skill can read stored execution and evidence artifacts through the Wasm host boundary, including failed and rejected records
+- a resource-aware query-summary skill can read bounded execution-query resources through the Wasm host boundary and return deterministic structured reports
 - top-level unsuccessful inspect calls return host-issued execution receipts pointing at persisted `guild://executions/...` records
 - supported inspect-slice capability families now use typed host-enforced constraints
 - the canonical primitive HTTP proof skill is `inspect-http-json`, exercised through `guild.inspect` against a deterministic local server
@@ -162,8 +164,8 @@ What this means in practice:
 - `tools/call` for `guild.inspect` executes through the same `GuildMcpFacade -> registry -> runner -> Wasmtime` path as the direct Rust façade.
 - Successful MCP tool results include `structuredContent`, a text compatibility block, and resource links to the persisted execution record and emitted evidence records.
 - Unsuccessful inspect executions that reached a real resolved execution attempt are surfaced as MCP tool errors with preserved persisted execution record identity instead of opaque protocol crashes.
-- MCP `resources/read` exposes execution records, evidence-record payloads, and digest-addressed blobs through the same local resource backend Guild already used internally.
-- MCP `resources/templates/list` now exposes canonical Guild URI templates for execution records, evidence records, and raw blobs.
+- MCP `resources/read` exposes execution records, bounded execution-query results, evidence-record payloads, and digest-addressed blobs through the same local resource backend Guild already used internally.
+- MCP `resources/templates/list` now exposes canonical Guild URI templates for execution records, bounded execution-query resources, evidence records, and raw blobs.
 - MCP `resources/list` remains intentionally narrow and honest by listing only a bounded recent view of execution records.
 
 ### Example flows
@@ -178,6 +180,7 @@ cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
+cargo run -p guild-mcp --example explain_recent_failures_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_oci_local
 cargo run -p guild-mcp --example export_import_composite_local
@@ -199,6 +202,7 @@ What they prove:
 - `explain_execution_local`: install `hello-inspect`, produce a stored execution URI, install `explain-execution`, then run a resource-aware skill against that stored execution through the Wasm host boundary
 - `explain_execution_tree_local`: install `hello-inspect` and `hello-composite`, produce a stored parent/child execution tree, install `explain-execution-tree`, then walk that stored lineage through the same host-mediated resource path
 - `explain_failure_local`: trigger a persisted rejected execution, capture its receipt URI, then run `explain-execution` against that stored unsuccessful record
+- `explain_recent_failures_local`: produce a small deterministic set of succeeded, failed, and rejected executions, read `guild://queries/executions/failures/recent/10` through the host resource backend, then run `summarize-execution-query` against that same query URI through the Wasm host boundary
 - `export_import_local`: install `hello-inspect` into registry A, generate a local publisher identity, export a signed installed bundle, trust that publisher in fresh registry B, import, resolve by `RequestedSkillRef`, and execute without rebuilding
 - `export_import_oci_local`: export the same installed signed bundle payload as an OCI image layout, trust/import it in fresh registry B, resolve by `RequestedSkillRef`, and execute without rebuilding
 - `export_import_composite_local`: export `hello-composite` together with its installed dependency closure as a signed bundle, trust the publisher in fresh registry B, and execute the composite plus child entirely from imported installed records
@@ -278,9 +282,16 @@ cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
+cargo run -p guild-mcp --example explain_recent_failures_local
 cargo run -p guild-mcp --example export_import_local
+cargo run -p guild-mcp --example export_import_oci_local
 cargo run -p guild-mcp --example export_import_composite_local
+cargo run -p guild-mcp --example export_import_composite_oci_local
 cargo run -p guild-mcp --example signed_import_failures_local
+cargo run -p guild-mcp --example signed_import_oci_failures_local
+cargo run -p guild-mcp --example push_pull_oci_registry_local
+cargo run -p guild-mcp --example push_pull_composite_oci_registry_local
+cargo run -p guild-mcp --example signed_pull_oci_registry_failures_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
@@ -315,9 +326,10 @@ Regression coverage now includes:
 - durable provenance timestamps on successful, failed, rejected, and child records
 - shared backend consistency between MCP resource reads and guest resource reads
 - real stdio MCP initialize/tools/resources flows against a subprocess server
-- strict workspace lint verification via `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- strict workspace lint verification via `cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -W clippy::cargo -W clippy::future_not_send`
 - MCP tool-error semantics preserving persisted execution receipts instead of collapsing them into raw protocol failures
-- bounded recent execution resource listing and canonical Guild URI resource templates
+- bounded recent execution resource listing, bounded execution-query resource reads, and canonical Guild URI resource templates
 - resource-aware explain skill execution against stored successful, failed, and rejected artifacts
+- resource-aware query-summary skill execution against bounded execution-query resources discovered through the same backend
 - documented primitive and composite portability proof flows using separate registry A / bundle / registry B roots
 - documented negative trust proof flow for untrusted and tampered signed bundles

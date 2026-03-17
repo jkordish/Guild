@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Summarize Execution Query Output",
+  "type": "object",
+  "properties": {
+    "query_uri": { "type": "string" },
+    "total_matches": { "type": "integer", "minimum": 0 },
+    "returned_matches": { "type": "integer", "minimum": 0 },
+    "truncated": { "type": "boolean" },
+    "status_counts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "count": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["status", "count"],
+        "additionalProperties": false
+      }
+    },
+    "top_skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "namespace": { "type": "string" },
+          "name": { "type": "string" },
+          "count": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["namespace", "name", "count"],
+        "additionalProperties": false
+      }
+    },
+    "termination_counts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "phase": { "type": "string" },
+          "code": { "type": "string" },
+          "count": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["phase", "code", "count"],
+        "additionalProperties": false
+      }
+    },
+    "policy_reason_counts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "count": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["code", "count"],
+        "additionalProperties": false
+      }
+    },
+    "evidence_summary": {
+      "type": "object",
+      "properties": {
+        "executions_with_evidence": { "type": "integer", "minimum": 0 },
+        "total_evidence_records": { "type": "integer", "minimum": 0 },
+        "sample_evidence_record_uris": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": [
+        "executions_with_evidence",
+        "total_evidence_records",
+        "sample_evidence_record_uris"
+      ],
+      "additionalProperties": false
+    },
+    "notable_execution_uris": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "query_resource": {
+      "type": "object",
+      "properties": {
+        "uri": { "type": "string" },
+        "mime_type": { "type": "string" },
+        "sha256": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["uri", "mime_type", "sha256"],
+      "additionalProperties": false
+    },
+    "granted_capabilities": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "query_uri",
+    "total_matches",
+    "returned_matches",
+    "truncated",
+    "status_counts",
+    "top_skills",
+    "termination_counts",
+    "policy_reason_counts",
+    "evidence_summary",
+    "notable_execution_uris",
+    "query_resource",
+    "granted_capabilities"
+  ],
+  "additionalProperties": false
+}

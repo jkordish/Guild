@@ -5,17 +5,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use guild_mcp::{GuildMcpFacade, InspectRequest};
 use guild_registry::{
-    InstalledSkill, LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller, OciRegistryAuth,
-    OciRegistryReference, OciRegistryTarget, OciRegistryTransportOptions,
+    execution_query_resource_uri, InstalledSkill, LocalPublisherIdentity, LocalRegistry,
+    LocalSourceInstaller, OciRegistryAuth, OciRegistryReference, OciRegistryTarget,
+    OciRegistryTransportOptions,
 };
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, ExecutionStatus, GrantedCapability, HttpMethod,
-    HttpRequestConstraints, HttpScheme, InstalledVerificationState, InvokeDependencyConstraints,
-    LocalPolicyConfig, LocalTrustTier, LogConstraints, PolicyDecisionOutcome, PolicyProfile,
-    PolicyProfileBinding, PolicyRule, PolicyRuleEffect, PolicyRuleTarget, ReadResourceConstraints,
-    RedactionClass, RequestedSkillRef, ResourceKind, Severity, SkillKey, VersionRequirement,
+    EmitEvidenceConstraints, EvidenceAudience, ExecutionQueryResource, ExecutionQueryResult,
+    ExecutionRecord, ExecutionStatus, GrantedCapability, HttpMethod, HttpRequestConstraints,
+    HttpScheme, InstalledVerificationState, InvokeDependencyConstraints, LocalPolicyConfig,
+    LocalTrustTier, LogConstraints, PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding,
+    PolicyRule, PolicyRuleEffect, PolicyRuleTarget, ReadResourceConstraints, RedactionClass,
+    RequestedSkillRef, ResourceKind, Severity, SkillKey, VersionRequirement,
 };
 
 #[path = "../../../test-support/http_test_server.rs"]
@@ -44,6 +46,10 @@ fn http_source_dir() -> PathBuf {
 
 fn explain_source_dir() -> PathBuf {
     repo_root().join("examples/skills/explain-execution")
+}
+
+fn summarize_query_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/summarize-execution-query")
 }
 
 fn wit_dir() -> PathBuf {
@@ -100,6 +106,10 @@ fn prepared_registry_root() -> &'static PathBuf {
             .unwrap()
             .install(explain_source_dir())
             .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(summarize_query_source_dir())
+            .unwrap();
 
         root
     })
@@ -133,6 +143,12 @@ fn build_facade_for_root(root: &Path) -> GuildMcpFacade<LocalRegistry, WasmtimeR
         LocalRegistry::load(root).unwrap(),
         WasmtimeRuntimeAdapter::new().unwrap(),
     )
+}
+
+fn install_query_test_skills(root: &Path) {
+    let installer = LocalSourceInstaller::new(root).unwrap();
+    installer.install(http_source_dir()).unwrap();
+    installer.install(summarize_query_source_dir()).unwrap();
 }
 
 fn explain_request(uri: &str) -> InspectRequest {
@@ -200,6 +216,37 @@ fn log_info_grant() -> GrantedCapability {
             levels: Some(vec![Severity::Info]),
         }),
     }
+}
+
+fn query_resource_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec!["guild://queries/executions/".into()]),
+            resource_kinds: Some(vec![ResourceKind::Query]),
+        }),
+    }
+}
+
+fn summarize_query_request(query_uri: &str) -> InspectRequest {
+    InspectRequest::new(
+        RequestedSkillRef {
+            key: SkillKey {
+                namespace: "example".into(),
+                name: "summarize-execution-query".into(),
+            },
+            version_req: VersionRequirement::parse("^0.1").unwrap(),
+        },
+        serde_json::json!({
+            "query_uri": query_uri,
+        }),
+        "tenant-1",
+        "actor-1",
+        CapabilityGrantSet {
+            grants: vec![query_resource_grant()],
+        },
+    )
 }
 
 fn http_grant(host: &str, port: u16, path_prefix: &str, method: HttpMethod) -> GrantedCapability {
@@ -992,6 +1039,222 @@ fn mcp_can_read_persisted_failed_execution_resources() {
     let record: guild_types::ExecutionRecord = serde_json::from_slice(&resource.bytes).unwrap();
     assert_eq!(record.status, ExecutionStatus::Rejected);
     assert!(record.output.is_none());
+}
+
+#[test]
+fn mcp_can_read_bounded_execution_query_resources() {
+    let temp = TempFixtureDir::new("guild-query-read");
+    install_query_test_skills(temp.path());
+    let server = http_test_server::HttpTestServer::start();
+    let facade = build_facade_for_root(temp.path());
+
+    facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "get",
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant(
+                    http_test_server::HttpTestServer::host(),
+                    server.port(),
+                    "/json",
+                    HttpMethod::Get,
+                )],
+            },
+        ))
+        .unwrap();
+
+    let failed = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "post",
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant(
+                    http_test_server::HttpTestServer::host(),
+                    server.port(),
+                    "/json",
+                    HttpMethod::Get,
+                )],
+            },
+        ))
+        .unwrap_err();
+    let rejected = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "get",
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet::default(),
+        ))
+        .unwrap_err();
+
+    let query = ExecutionQueryResource::FailuresRecent { limit: 10 };
+    let resource = facade
+        .read_resource(execution_query_resource_uri(&query))
+        .unwrap();
+    let result: ExecutionQueryResult = serde_json::from_slice(&resource.bytes).unwrap();
+
+    assert_eq!(result.query_uri, execution_query_resource_uri(&query));
+    assert_eq!(result.total_matches, 2);
+    assert_eq!(result.returned_matches, 2);
+    assert_eq!(result.results[0].status, ExecutionStatus::Rejected);
+    assert_eq!(result.results[1].status, ExecutionStatus::Failed);
+    assert_eq!(
+        result.results[0].receipt.uri,
+        rejected.receipt.as_ref().unwrap().uri
+    );
+    assert_eq!(
+        result.results[1].receipt.uri,
+        failed.receipt.as_ref().unwrap().uri
+    );
+}
+
+#[test]
+fn summarize_query_skill_uses_the_same_query_backend_as_direct_reads() {
+    let temp = TempFixtureDir::new("guild-query-skill");
+    install_query_test_skills(temp.path());
+    let server = http_test_server::HttpTestServer::start();
+    let facade = build_facade_for_root(temp.path());
+
+    facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "post",
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant(
+                    http_test_server::HttpTestServer::host(),
+                    server.port(),
+                    "/json",
+                    HttpMethod::Get,
+                )],
+            },
+        ))
+        .unwrap_err();
+    facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "get",
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet::default(),
+        ))
+        .unwrap_err();
+
+    let query = ExecutionQueryResource::FailuresRecent { limit: 10 };
+    let query_uri = execution_query_resource_uri(&query);
+    let direct: ExecutionQueryResult =
+        serde_json::from_slice(&facade.read_resource(&query_uri).unwrap().bytes).unwrap();
+
+    let response = facade.inspect(summarize_query_request(&query_uri)).unwrap();
+    let report = &response
+        .structured_content
+        .output
+        .as_ref()
+        .unwrap()
+        .structured;
+
+    assert_eq!(report["query_uri"], query_uri);
+    assert_eq!(report["total_matches"], direct.total_matches);
+    assert_eq!(report["returned_matches"], direct.returned_matches);
+    assert_eq!(report["truncated"], direct.truncated);
+    assert_eq!(report["status_counts"][0]["count"], 1);
+    assert_eq!(report["status_counts"][1]["count"], 1);
+    assert_eq!(
+        report["notable_execution_uris"][0],
+        direct.results[0].receipt.uri
+    );
+}
+
+#[test]
+fn query_resource_reads_require_query_scope() {
+    let temp = TempFixtureDir::new("guild-query-auth");
+    install_query_test_skills(temp.path());
+    let query_uri = execution_query_resource_uri(&ExecutionQueryResource::Recent { limit: 10 });
+    let facade = build_facade_for_root(temp.path());
+
+    let error = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "summarize-execution-query".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "query_uri": query_uri,
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![read_resource_grant()],
+            },
+        ))
+        .unwrap_err();
+
+    assert_eq!(error.code, "policy-denied");
+    let receipt = error
+        .receipt
+        .expect("missing query scope should still persist a rejected execution");
+    let resource = facade.read_resource(&receipt.uri).unwrap();
+    let record: ExecutionRecord = serde_json::from_slice(&resource.bytes).unwrap();
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.termination.as_ref().unwrap().code, "policy-denied");
+    assert!(record
+        .policy_decision
+        .reasons
+        .iter()
+        .any(|reason| reason.code == "policy-required-capability-missing"));
 }
 
 #[test]

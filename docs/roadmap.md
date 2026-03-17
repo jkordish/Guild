@@ -20,12 +20,13 @@ Goal: inspect-mode vertical slice.
 - evidence storage
 - `guild.inspect` path end to end
 
-## Phase 2: plan mode and composition
-Goal: multi-step, read-only skill execution.
+## Phase 2: inspect reuse and composition
+Goal: richer read-only execution over durable artifacts.
 
 - child skill invocation
 - dependency snapshots
-- plan-mode effect reporting
+- explain/debug skills over persisted artifacts
+- bounded local query resources over stored executions
 - better diagnostics and provenance
 
 ## Phase 3: distribution and trust

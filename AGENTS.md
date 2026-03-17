@@ -119,9 +119,11 @@ The repository now has a real local inspect-only path:
 - resolved execution attempts persist under local Guild URIs on success, failure, and rejection with host-minted durable IDs and host-stamped timestamps
 - evidence emitted through the Wasm boundary persists as content-addressed blobs plus host-issued per-emission evidence records
 - `read-resource` authorization uses canonical parsed Guild URI scopes rather than loose raw string prefix checks
+- bounded execution-query resources and templates now derive from the same persisted execution backend seen by guest `read-resource` and MCP `resources/read`
 - `guild.inspect` in `guild-mcp` rides that same path
 - `guild-mcp-server` now exposes that same inspect/runtime/resource model over real stdio MCP
 - a resource-aware `explain-execution-tree` skill can walk stored parent/child execution lineage with bounded traversal and optional evidence descriptors through the same host-mediated path
+- a resource-aware `summarize-execution-query` skill can consume bounded execution-query resources and return deterministic structured summaries through the same host-mediated path
 - installed skills can be exported as signed portable bundles, verified against a local trust store, and imported into fresh Guild roots without rebuilding
 
 Preferred local proof commands:
@@ -134,15 +136,23 @@ cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
+cargo run -p guild-mcp --example explain_recent_failures_local
 cargo run -p guild-mcp --example export_import_local
+cargo run -p guild-mcp --example export_import_oci_local
 cargo run -p guild-mcp --example export_import_composite_local
+cargo run -p guild-mcp --example export_import_composite_oci_local
 cargo run -p guild-mcp --example signed_import_failures_local
+cargo run -p guild-mcp --example signed_import_oci_failures_local
+cargo run -p guild-mcp --example push_pull_oci_registry_local
+cargo run -p guild-mcp --example push_pull_composite_oci_registry_local
+cargo run -p guild-mcp --example signed_pull_oci_registry_failures_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
 Those commands are the canonical local install workflows: they build the example source skills, install them into command-specific cleaned subdirectories under `target/dev-local-registry/`, resolve them, and execute them. The source manifests no longer require manual artifact digest updates.
 They also prove the storage layer by reading back persisted execution and evidence resources, `explain_execution_local` proves that a Wasm guest can consume those same Guild URIs through a host-mediated `read-resource` capability, `explain_execution_tree_local` proves that a resource-aware inspect skill can walk a persisted parent/child execution tree deterministically, and `explain_failure_local` proves that unsuccessful resolved executions now persist durable host-owned records that can be explained after the fact.
-`export_import_local` and `export_import_composite_local` now prove signed bundle portability with an explicit local publisher identity plus local trust-store import verification, while `signed_import_failures_local` proves that untrusted or tampered bundles fail closed before installation.
+`explain_recent_failures_local` proves that bounded execution-query resources can discover persisted failed and rejected executions without already knowing an exact execution URI, and that a Wasm guest can consume those same query results through a scoped `read-resource` grant.
+`export_import_local`, `export_import_oci_local`, `export_import_composite_local`, `export_import_composite_oci_local`, `push_pull_oci_registry_local`, and `push_pull_composite_oci_registry_local` now prove signed-bundle portability across native, OCI layout, and OCI registry transport with explicit local trust verification, while `signed_import_failures_local`, `signed_import_oci_failures_local`, and `signed_pull_oci_registry_failures_local` prove that untrusted or tampered imports fail closed before installation.
 `inspect_http_json_local` proves the bounded `http-request` host capability, and `inspect_policy_local` proves that a local `policy.json` can reduce or deny caller-requested capabilities before guest execution. The current working capability families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, all with typed constraints rather than ad hoc JSON matching. Caller request IDs are correlation only, not durable execution IDs, and `EvidenceRef` values now identify evidence-record URIs rather than raw blob digests.
 
 ## Change rules

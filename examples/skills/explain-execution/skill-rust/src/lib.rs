@@ -239,6 +239,7 @@ fn resource_kind_label(kind: &ResourceKind) -> &'static str {
     match kind {
         ResourceKind::Execution => "execution",
         ResourceKind::Object => "object",
+        ResourceKind::Query => "query",
     }
 }
 

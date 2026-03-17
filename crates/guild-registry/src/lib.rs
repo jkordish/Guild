@@ -3,7 +3,7 @@
 
 //! Registry model for publishing and resolving Guild skills.
 
-use std::cmp::Reverse;
+use std::cmp::{Ordering, Reverse};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::{self, Write as _};
@@ -20,7 +20,8 @@ use guild_manifest::{
 };
 use guild_types::{
     mint_host_evidence_record_id, CapabilityId, EvidenceBlobRecord, EvidenceEmissionRequest,
-    EvidenceRecord, EvidenceRef, ExecutionRecord, GuildResourceUri, InstalledVerificationState,
+    EvidenceRecord, EvidenceRef, ExecutionQueryMatch, ExecutionQueryResource, ExecutionQueryResult,
+    ExecutionRecord, ExecutionStatus, GuildResourceUri, InstalledVerificationState,
     LocalPolicyConfig, LocalTrustTier, RequestedSkillRef, ResolvedSkillRef, ResourceReadResult,
     SkillCategory, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
     GUILD_OBJECT_RECORD_URI_PREFIX,
@@ -463,57 +464,23 @@ impl LocalRegistry {
         &self,
         limit: usize,
     ) -> Result<Vec<ExecutionRecord>, RegistryError> {
-        let mut entries: Vec<_> = fs::read_dir(executions_root(&self.root))
-            .map_err(|error| {
-                RegistryError::new(
-                    "execution-list-read-failed",
-                    "failed to read the local execution store",
-                )
-                .with_detail(error.to_string())
-            })?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| {
-                RegistryError::new(
-                    "execution-list-read-failed",
-                    "failed to read execution store entry",
-                )
-                .with_detail(error.to_string())
-            })?;
-
-        entries.retain(|entry| {
-            entry
-                .file_type()
-                .map(|kind| kind.is_file())
-                .unwrap_or(false)
-                && entry
-                    .path()
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    == Some("json")
-        });
-        entries.sort_by_key(|entry| Reverse(entry.file_name()));
-
-        entries
+        Ok(load_execution_records_sorted(&self.root)?
             .into_iter()
             .take(limit)
-            .map(|entry| {
-                let bytes = fs::read_to_string(entry.path()).map_err(|error| {
-                    RegistryError::new(
-                        "execution-list-entry-read-failed",
-                        "failed to read execution record while listing recent executions",
-                    )
-                    .with_detail(error.to_string())
-                })?;
+            .collect())
+    }
 
-                serde_json::from_str(&bytes).map_err(|error| {
-                    RegistryError::new(
-                        "execution-list-entry-parse-failed",
-                        "failed to parse execution record while listing recent executions",
-                    )
-                    .with_detail(error.to_string())
-                })
-            })
-            .collect()
+    /// Execute a bounded local query over persisted execution records.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the execution store cannot be scanned or a persisted
+    /// record cannot be parsed.
+    pub fn query_execution_records(
+        &self,
+        query: &ExecutionQueryResource,
+    ) -> Result<ExecutionQueryResult, RegistryError> {
+        query_execution_records_from_root(&self.root, query)
     }
 
     /// Trust a publisher record in the local Guild trust store.
@@ -1172,6 +1139,10 @@ impl SkillRegistry for LocalRegistry {
                 let record = self.load_execution_record(&execution_id)?;
                 read_execution_resource(&record, uri)
             }
+            GuildResourceUri::ExecutionQuery { query } => {
+                let result = self.query_execution_records(&query)?;
+                read_execution_query_resource(&result)
+            }
             GuildResourceUri::ObjectRecord { .. } => read_record_backed_object(&self.root, uri),
             GuildResourceUri::ObjectBlob { digest_hex } => {
                 read_blob_object(&self.root, uri, &digest_hex)
@@ -1219,6 +1190,154 @@ impl SkillRegistry for LocalRegistry {
                     })),
             )
         }
+    }
+}
+
+const EXECUTION_QUERY_SAMPLE_EVIDENCE_LIMIT: usize = 3;
+
+fn query_execution_records_from_root(
+    root: &Path,
+    query: &ExecutionQueryResource,
+) -> Result<ExecutionQueryResult, RegistryError> {
+    let records = load_execution_records_sorted(root)?;
+    let filtered = records
+        .into_iter()
+        .filter(|record| execution_record_matches_query(record, query))
+        .collect::<Vec<_>>();
+    let total_matches = filtered.len();
+    let results = filtered
+        .into_iter()
+        .take(query.limit())
+        .map(|record| ExecutionQueryMatch {
+            receipt: record.receipt,
+            resolved_skill: record.resolved_skill,
+            status: record.status,
+            policy_decision: record.policy_decision,
+            termination: record.termination,
+            parent_execution_id: record.parent_execution_id,
+            evidence_count: record.emitted_evidence.len(),
+            sample_evidence_record_uris: record
+                .emitted_evidence
+                .iter()
+                .take(EXECUTION_QUERY_SAMPLE_EVIDENCE_LIMIT)
+                .map(|evidence| evidence.uri.clone())
+                .collect(),
+            child_execution_count: record.child_executions.len(),
+            started_at_utc: record.provenance.started_at_utc,
+            finished_at_utc: record.provenance.finished_at_utc,
+        })
+        .collect::<Vec<_>>();
+
+    Ok(ExecutionQueryResult {
+        query_uri: query.canonical_uri(),
+        total_matches,
+        returned_matches: results.len(),
+        truncated: total_matches > results.len(),
+        results,
+    })
+}
+
+fn load_execution_records_sorted(root: &Path) -> Result<Vec<ExecutionRecord>, RegistryError> {
+    let mut entries: Vec<_> = fs::read_dir(executions_root(root))
+        .map_err(|error| {
+            RegistryError::new(
+                "execution-list-read-failed",
+                "failed to read the local execution store",
+            )
+            .with_detail(error.to_string())
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            RegistryError::new(
+                "execution-list-read-failed",
+                "failed to read execution store entry",
+            )
+            .with_detail(error.to_string())
+        })?;
+
+    entries.retain(|entry| {
+        entry
+            .file_type()
+            .map(|kind| kind.is_file())
+            .unwrap_or(false)
+            && entry
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                == Some("json")
+    });
+    entries.sort_by_key(|entry| Reverse(entry.file_name()));
+
+    let mut records = entries
+        .into_iter()
+        .map(|entry| {
+            let bytes = fs::read_to_string(entry.path()).map_err(|error| {
+                RegistryError::new(
+                    "execution-list-entry-read-failed",
+                    "failed to read execution record while scanning the local execution store",
+                )
+                .with_detail(error.to_string())
+            })?;
+
+            serde_json::from_str(&bytes).map_err(|error| {
+                RegistryError::new(
+                    "execution-list-entry-parse-failed",
+                    "failed to parse execution record while scanning the local execution store",
+                )
+                .with_detail(error.to_string())
+            })
+        })
+        .collect::<Result<Vec<ExecutionRecord>, _>>()?;
+
+    records.sort_by(compare_execution_records_for_query);
+    Ok(records)
+}
+
+fn execution_record_matches_query(
+    record: &ExecutionRecord,
+    query: &ExecutionQueryResource,
+) -> bool {
+    match query {
+        ExecutionQueryResource::Recent { .. } => true,
+        ExecutionQueryResource::FailuresRecent { .. } => {
+            matches!(
+                record.status,
+                ExecutionStatus::Failed | ExecutionStatus::Rejected
+            )
+        }
+        ExecutionQueryResource::ByStatus { status, .. } => &record.status == status,
+        ExecutionQueryResource::BySkill {
+            namespace, name, ..
+        } => {
+            record.resolved_skill.key.namespace == *namespace
+                && record.resolved_skill.key.name == *name
+        }
+    }
+}
+
+fn compare_execution_records_for_query(
+    left: &ExecutionRecord,
+    right: &ExecutionRecord,
+) -> Ordering {
+    compare_optional_timestamps_desc(
+        left.provenance.finished_at_utc.as_deref(),
+        right.provenance.finished_at_utc.as_deref(),
+    )
+    .then_with(|| {
+        compare_optional_timestamps_desc(
+            left.provenance.started_at_utc.as_deref(),
+            right.provenance.started_at_utc.as_deref(),
+        )
+    })
+    .then_with(|| right.receipt.execution_id.cmp(&left.receipt.execution_id))
+}
+
+fn compare_optional_timestamps_desc(left: Option<&str>, right: Option<&str>) -> Ordering {
+    match (left, right) {
+        (Some(left), Some(right)) => right.cmp(left),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
     }
 }
 
@@ -1306,6 +1425,24 @@ fn read_execution_resource(
     })?;
     Ok(ResourceReadResult {
         uri: uri.to_owned(),
+        mime_type: "application/json".into(),
+        sha256: Some(format!("sha256:{}", sha256_bytes(&bytes))),
+        bytes,
+    })
+}
+
+fn read_execution_query_resource(
+    result: &ExecutionQueryResult,
+) -> Result<ResourceReadResult, RegistryError> {
+    let bytes = serde_json::to_vec_pretty(result).map_err(|error| {
+        RegistryError::new(
+            "execution-query-serialize-failed",
+            "failed to serialize stored execution query result",
+        )
+        .with_detail(error.to_string())
+    })?;
+    Ok(ResourceReadResult {
+        uri: result.query_uri.clone(),
         mime_type: "application/json".into(),
         sha256: Some(format!("sha256:{}", sha256_bytes(&bytes))),
         bytes,
@@ -2272,6 +2409,11 @@ fn installed_verification_path(install_root: &Path) -> PathBuf {
 
 fn execution_path(root: &Path, execution_id: &str) -> PathBuf {
     executions_root(root).join(format!("{}.json", percent_encode_component(execution_id)))
+}
+
+#[must_use]
+pub fn execution_query_resource_uri(query: &ExecutionQueryResource) -> String {
+    query.canonical_uri()
 }
 
 #[must_use]

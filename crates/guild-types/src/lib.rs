@@ -4,6 +4,7 @@
 //! Core shared data structures for Guild contracts.
 
 use std::fmt;
+use std::fmt::Write as _;
 use std::str::FromStr;
 
 use schemars::{
@@ -306,17 +307,134 @@ pub enum HttpScheme {
 pub enum ResourceKind {
     Execution,
     Object,
+    Query,
 }
 
 pub const GUILD_EXECUTION_URI_PREFIX: &str = "guild://executions/";
 pub const GUILD_OBJECT_BLOB_URI_PREFIX: &str = "guild://objects/sha256/";
 pub const GUILD_OBJECT_RECORD_URI_PREFIX: &str = "guild://objects/records/";
+pub const GUILD_EXECUTION_QUERY_URI_PREFIX: &str = "guild://queries/executions/";
+pub const MAX_EXECUTION_QUERY_LIMIT: usize = 50;
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ExecutionQueryResource {
+    Recent {
+        limit: usize,
+    },
+    FailuresRecent {
+        limit: usize,
+    },
+    ByStatus {
+        status: ExecutionStatus,
+        limit: usize,
+    },
+    BySkill {
+        namespace: String,
+        name: String,
+        limit: usize,
+    },
+}
+
+impl ExecutionQueryResource {
+    /// Parse a canonical Guild execution query URI.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `uri` is malformed, uses invalid percent encoding,
+    /// names an unsupported query path, or requests an out-of-range result limit.
+    pub fn parse_uri(uri: &str) -> Result<Self, GuildResourceParseError> {
+        let Some(path) = uri.strip_prefix(GUILD_EXECUTION_QUERY_URI_PREFIX) else {
+            return Err(GuildResourceParseError::new(format!(
+                "execution query URI must start with `{GUILD_EXECUTION_QUERY_URI_PREFIX}`"
+            )));
+        };
+
+        let segments = path.split('/').collect::<Vec<_>>();
+        match segments.as_slice() {
+            ["recent", limit] => Ok(Self::Recent {
+                limit: parse_execution_query_limit(limit)?,
+            }),
+            ["failures", "recent", limit] => Ok(Self::FailuresRecent {
+                limit: parse_execution_query_limit(limit)?,
+            }),
+            ["by-status", status, limit] => Ok(Self::ByStatus {
+                status: parse_execution_query_status(status)?,
+                limit: parse_execution_query_limit(limit)?,
+            }),
+            ["by-skill", namespace, name, limit] => {
+                let namespace = percent_decode_component(namespace).map_err(|error| {
+                    GuildResourceParseError::new(format!(
+                        "execution query namespace contained invalid percent encoding: {error}"
+                    ))
+                })?;
+                let name = percent_decode_component(name).map_err(|error| {
+                    GuildResourceParseError::new(format!(
+                        "execution query skill name contained invalid percent encoding: {error}"
+                    ))
+                })?;
+
+                if namespace.is_empty() || name.is_empty() {
+                    return Err(GuildResourceParseError::new(
+                        "execution query skill path must contain non-empty namespace and name",
+                    ));
+                }
+
+                Ok(Self::BySkill {
+                    namespace,
+                    name,
+                    limit: parse_execution_query_limit(limit)?,
+                })
+            }
+            _ => Err(GuildResourceParseError::new(
+                "execution query URI did not match a supported local Guild query path",
+            )),
+        }
+    }
+
+    #[must_use]
+    pub fn canonical_uri(&self) -> String {
+        match self {
+            Self::Recent { limit } => {
+                format!("{GUILD_EXECUTION_QUERY_URI_PREFIX}recent/{limit}")
+            }
+            Self::FailuresRecent { limit } => {
+                format!("{GUILD_EXECUTION_QUERY_URI_PREFIX}failures/recent/{limit}")
+            }
+            Self::ByStatus { status, limit } => format!(
+                "{GUILD_EXECUTION_QUERY_URI_PREFIX}by-status/{}/{limit}",
+                execution_status_label(status)
+            ),
+            Self::BySkill {
+                namespace,
+                name,
+                limit,
+            } => format!(
+                "{GUILD_EXECUTION_QUERY_URI_PREFIX}by-skill/{}/{}/{}",
+                percent_encode_component(namespace),
+                percent_encode_component(name),
+                limit
+            ),
+        }
+    }
+
+    #[must_use]
+    pub fn limit(&self) -> usize {
+        match self {
+            Self::Recent { limit }
+            | Self::FailuresRecent { limit }
+            | Self::ByStatus { limit, .. }
+            | Self::BySkill { limit, .. } => *limit,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GuildResourceScope {
     Execution,
     ObjectBlob,
     ObjectRecord,
+    ExecutionQuery,
 }
 
 impl GuildResourceScope {
@@ -331,10 +449,12 @@ impl GuildResourceScope {
             GUILD_EXECUTION_URI_PREFIX => Ok(Self::Execution),
             GUILD_OBJECT_BLOB_URI_PREFIX => Ok(Self::ObjectBlob),
             GUILD_OBJECT_RECORD_URI_PREFIX => Ok(Self::ObjectRecord),
+            GUILD_EXECUTION_QUERY_URI_PREFIX => Ok(Self::ExecutionQuery),
             _ => Err(GuildResourceParseError::new(format!(
                 "read-resource uri_prefixes must use canonical Guild scope roots: \
-                 `{GUILD_EXECUTION_URI_PREFIX}`, `{GUILD_OBJECT_BLOB_URI_PREFIX}`, or \
-                 `{GUILD_OBJECT_RECORD_URI_PREFIX}`"
+                 `{GUILD_EXECUTION_URI_PREFIX}`, `{GUILD_OBJECT_BLOB_URI_PREFIX}`, \
+                 `{GUILD_OBJECT_RECORD_URI_PREFIX}`, or \
+                 `{GUILD_EXECUTION_QUERY_URI_PREFIX}`"
             ))),
         }
     }
@@ -344,6 +464,7 @@ impl GuildResourceScope {
         match self {
             Self::Execution => ResourceKind::Execution,
             Self::ObjectBlob | Self::ObjectRecord => ResourceKind::Object,
+            Self::ExecutionQuery => ResourceKind::Query,
         }
     }
 
@@ -353,6 +474,7 @@ impl GuildResourceScope {
             Self::Execution => GUILD_EXECUTION_URI_PREFIX,
             Self::ObjectBlob => GUILD_OBJECT_BLOB_URI_PREFIX,
             Self::ObjectRecord => GUILD_OBJECT_RECORD_URI_PREFIX,
+            Self::ExecutionQuery => GUILD_EXECUTION_QUERY_URI_PREFIX,
         }
     }
 
@@ -363,6 +485,10 @@ impl GuildResourceScope {
             (Self::Execution, GuildResourceUri::Execution { .. })
                 | (Self::ObjectBlob, GuildResourceUri::ObjectBlob { .. })
                 | (Self::ObjectRecord, GuildResourceUri::ObjectRecord { .. })
+                | (
+                    Self::ExecutionQuery,
+                    GuildResourceUri::ExecutionQuery { .. }
+                )
         )
     }
 }
@@ -372,6 +498,7 @@ pub enum GuildResourceUri {
     Execution { execution_id: String },
     ObjectBlob { digest_hex: String },
     ObjectRecord { evidence_record_id: String },
+    ExecutionQuery { query: ExecutionQueryResource },
 }
 
 impl GuildResourceUri {
@@ -382,6 +509,12 @@ impl GuildResourceUri {
     /// Returns an error when `uri` is malformed, uses invalid percent encoding, or
     /// does not match a supported local Guild resource kind.
     pub fn parse(uri: &str) -> Result<Self, GuildResourceParseError> {
+        if uri.starts_with(GUILD_EXECUTION_QUERY_URI_PREFIX) {
+            return Ok(Self::ExecutionQuery {
+                query: ExecutionQueryResource::parse_uri(uri)?,
+            });
+        }
+
         if let Some(encoded) = uri.strip_prefix(GUILD_EXECUTION_URI_PREFIX) {
             if encoded.is_empty() {
                 return Err(GuildResourceParseError::new(
@@ -446,6 +579,7 @@ impl GuildResourceUri {
         match self {
             Self::Execution { .. } => ResourceKind::Execution,
             Self::ObjectBlob { .. } | Self::ObjectRecord { .. } => ResourceKind::Object,
+            Self::ExecutionQuery { .. } => ResourceKind::Query,
         }
     }
 
@@ -455,6 +589,7 @@ impl GuildResourceUri {
             Self::Execution { .. } => GuildResourceScope::Execution,
             Self::ObjectBlob { .. } => GuildResourceScope::ObjectBlob,
             Self::ObjectRecord { .. } => GuildResourceScope::ObjectRecord,
+            Self::ExecutionQuery { .. } => GuildResourceScope::ExecutionQuery,
         }
     }
 }
@@ -1491,6 +1626,32 @@ pub struct ExecutionRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ExecutionQueryMatch {
+    pub receipt: ExecutionReceipt,
+    pub resolved_skill: ResolvedSkillRef,
+    pub status: ExecutionStatus,
+    pub policy_decision: PolicyDecision,
+    pub termination: Option<TerminationDetail>,
+    pub parent_execution_id: Option<String>,
+    pub evidence_count: usize,
+    #[serde(default)]
+    pub sample_evidence_record_uris: Vec<String>,
+    pub child_execution_count: usize,
+    pub started_at_utc: Option<String>,
+    pub finished_at_utc: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ExecutionQueryResult {
+    pub query_uri: String,
+    pub total_matches: usize,
+    pub returned_matches: usize,
+    pub truncated: bool,
+    #[serde(default)]
+    pub results: Vec<ExecutionQueryMatch>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct SkillError {
     pub code: String,
     pub message: String,
@@ -1576,6 +1737,58 @@ fn string_schema(format: Option<&str>, description: Option<&str>) -> Schema {
     }
 
     Schema::Object(schema)
+}
+
+fn execution_status_label(status: &ExecutionStatus) -> &'static str {
+    match status {
+        ExecutionStatus::Succeeded => "succeeded",
+        ExecutionStatus::Failed => "failed",
+        ExecutionStatus::Partial => "partial",
+        ExecutionStatus::Rejected => "rejected",
+    }
+}
+
+fn parse_execution_query_status(segment: &str) -> Result<ExecutionStatus, GuildResourceParseError> {
+    match segment {
+        "succeeded" => Ok(ExecutionStatus::Succeeded),
+        "failed" => Ok(ExecutionStatus::Failed),
+        "partial" => Ok(ExecutionStatus::Partial),
+        "rejected" => Ok(ExecutionStatus::Rejected),
+        _ => Err(GuildResourceParseError::new(format!(
+            "unsupported execution query status `{segment}`"
+        ))),
+    }
+}
+
+fn parse_execution_query_limit(segment: &str) -> Result<usize, GuildResourceParseError> {
+    let limit = segment.parse::<usize>().map_err(|_| {
+        GuildResourceParseError::new("execution query limit must be a positive base-10 integer")
+    })?;
+    if (1..=MAX_EXECUTION_QUERY_LIMIT).contains(&limit) {
+        Ok(limit)
+    } else {
+        Err(GuildResourceParseError::new(format!(
+            "execution query limit must be between 1 and {MAX_EXECUTION_QUERY_LIMIT}",
+        )))
+    }
+}
+
+fn percent_encode_component(input: &str) -> String {
+    let mut encoded = String::with_capacity(input.len());
+
+    for byte in input.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            _ => {
+                encoded.push('%');
+                let _ = write!(encoded, "{byte:02X}");
+            }
+        }
+    }
+
+    encoded
 }
 
 fn percent_decode_component(input: &str) -> Result<String, &'static str> {

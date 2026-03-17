@@ -39,6 +39,7 @@ cargo run -p guild-mcp --example inspect_composite_local
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
+cargo run -p guild-mcp --example explain_recent_failures_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_oci_local
 cargo run -p guild-mcp --example export_import_composite_local
@@ -51,7 +52,7 @@ cargo run -p guild-mcp --example signed_pull_oci_registry_failures_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
-Additional examples cover bounded local HTTP inspection, trust-tier-aware local policy profiles, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, local OCI image layout portability, OCI registry portability, and tampered or untrusted import rejection.
+Additional examples cover bounded local HTTP inspection, trust-tier-aware local policy profiles, bounded execution-query resources, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, local OCI image layout portability, OCI registry portability, and tampered or untrusted import rejection.
 
 ### HTTP Proof Flow
 
@@ -77,6 +78,18 @@ cargo run -p guild-mcp --example inspect_policy_local
 
 That example installs `inspect-http-json`, exports it as a signed bundle, imports it into two fresh Guild roots with different publisher trust tiers, writes a local `policy.json` with named profiles plus a tenant binding, then proves two outcomes through the same `guild.inspect` surface: a trusted imported execution that keeps bounded HTTP authority and a restricted imported execution that is denied before guest start. It then runs `explain-execution` against the persisted denied execution URI to prove the denial remains host-owned, durable, and explainable through the same resource path. The persisted execution record retains the caller-requested capability set, the smaller host-granted set, the selected policy profile, the verification state, and the host-owned trust tier that influenced the decision.
 
+### Artifact Query Proof Flow
+
+Guild now also exposes one bounded local execution-query layer through Guild resources and resource templates, not through a sprawl of new MCP tools.
+
+The canonical local proof command is:
+
+```bash
+cargo run -p guild-mcp --example explain_recent_failures_local
+```
+
+That example produces a small deterministic set of stored executions with different outcomes, reads `guild://queries/executions/failures/recent/10` directly through the host resource backend, then runs the new inspect-only `summarize-execution-query` skill against that same query URI through `guild.inspect`. The result is a structured report over canonical execution URIs, statuses, policy reasons, and evidence presence. Query reads remain host-mediated, bounded, and capability-scoped; the public MCP tool surface still does not grow.
+
 ## MCP Server
 
 Guild now ships a real stdio MCP server entrypoint:
@@ -91,7 +104,8 @@ The current MCP surface is intentionally small:
 - a bounded `resources/list` view of recent execution records
 - durable Guild execution records are exposed through `resources/read`
 - durable evidence-record and blob URIs are exposed through `resources/read`
-- resource templates are exposed for `guild://executions/{execution_id}`, `guild://objects/records/{evidence_record_id}`, and `guild://objects/sha256/{digest}`
+- bounded execution-query results are exposed through `resources/read`
+- resource templates are exposed for `guild://executions/{execution_id}`, `guild://objects/records/{evidence_record_id}`, `guild://objects/sha256/{digest}`, `guild://queries/executions/recent/{limit}`, `guild://queries/executions/failures/recent/{limit}`, `guild://queries/executions/by-status/{status}/{limit}`, and `guild://queries/executions/by-skill/{namespace}/{name}/{limit}`
 
 Unsuccessful inspect executions that reached the real runtime path are surfaced as MCP tool errors with `isError: true`, while preserving the persisted execution record URI instead of collapsing it into an opaque protocol failure.
 
@@ -111,6 +125,7 @@ The current inspect slice is intentionally strict about a few things:
 - policy now selects a named local profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
 - policy reductions and rejections persist as host-owned execution metadata and stay visible to explain/debug flows
 - durable execution records now carry host-stamped start and finish timestamps
+- bounded local execution-query resources now derive deterministically from the same persisted execution store used by explain/debug flows
 - the stdio MCP server exposes only `guild.inspect` plus honest Guild resource reads; HTTP transports and subscriptions remain deferred
 
 ## Canonical Docs
@@ -175,15 +190,18 @@ What is real today:
 - split evidence blob and evidence-record persistence
 - composite child invocation with durable lineage
 - one primitive `inspect-http-json` example that proves bounded HTTP fetches through `guild.inspect`
+- one inspect-only `summarize-execution-query` example that reads bounded execution-query resources and returns a deterministic structured report
 - real stdio MCP server support for `guild.inspect` and Guild URI resources
 - signed local bundle export and import with trust-store verification
 - local OCI image layout export and import as an additional transport for the same signed installed-state bundle semantics
 - OCI registry push and pull for that same signed installed-state transport without changing the local trust/signature gate on import
+- bounded local execution-query resources and templates over the same backend used by guest `read-resource` and MCP `resources/read`
 
 What is still deferred:
 
 - remote or distributed policy beyond the local host-owned evaluator
 - a broader policy language beyond the current typed local `policy.json` profile model
+- subscriptions, list-changed notifications, full-text search, and broader evidence-specific query surfaces
 - full `plan` mode
 - `apply` mode
 - Sigstore, transparency logs, remote trust distribution, and broader publication/discovery infrastructure

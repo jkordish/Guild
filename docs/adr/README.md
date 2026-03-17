@@ -14,13 +14,14 @@ Guild uses ADRs to record platform-shaping decisions and to queue the next contr
 - `0008-local-policy-evaluator.md` - accepted local host-owned policy evaluation, `policy.json` profile shape, and separation between requested and granted capabilities
 - `0009-oci-image-layout-mapping.md` - accepted OCI image layout mapping for the existing signed installed-bundle transport without changing Guild's local trust model
 - `0010-oci-registry-transport.md` - accepted OCI registry push/pull for the existing signed installed-bundle transport without changing Guild's local trust model
+- `0011-bounded-artifact-query-resources.md` - accepted bounded execution-query resources over the canonical persisted execution store without widening the public MCP tool surface
 
 ## Backlog
 
 The next ADRs should focus on still-deferred platform shape:
 
-1. Retention and query surfaces
-   Define retention, indexing, and query expectations for execution and evidence stores.
+1. Retention and evidence query surfaces
+   Define retention, garbage collection, and any broader evidence-specific query expectations for execution and evidence stores.
 2. Remote publication and trust
    Define remote bundle publication, trust distribution, and any transparency or signing integration.
 

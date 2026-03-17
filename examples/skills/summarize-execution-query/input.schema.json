@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Summarize Execution Query Input",
+  "type": "object",
+  "properties": {
+    "query_uri": {
+      "type": "string",
+      "description": "A canonical Guild execution query resource URI."
+    }
+  },
+  "required": ["query_uri"],
+  "additionalProperties": false
+}

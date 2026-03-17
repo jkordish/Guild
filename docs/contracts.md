@@ -18,6 +18,7 @@ Current contract highlights worth knowing before you follow older notes:
 - local policy now selects named profiles by actor and/or tenant and records the host-owned trust tier and verification state used for the decision
 - `guild-mcp-server` now exposes one honest stdio MCP tool (`guild.inspect`) plus Guild URI resources and templates
 - installed-state portability now has three transport shapes over the same signed payload: the native signed bundle directory, a local OCI image layout, and OCI registry push/pull
+- bounded execution-query resources now live under `guild://queries/executions/...` and are exposed through Guild resources and templates rather than new MCP tools
 
 Read next:
 

@@ -249,6 +249,24 @@ fn http_fixture_source_manifest_declares_http_request_capability() {
 }
 
 #[test]
+fn query_summary_fixture_source_manifest_declares_scoped_query_reads() {
+    let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/skills/summarize-execution-query/manifest.json");
+    let manifest: SourceSkillManifest =
+        serde_json::from_str(&std::fs::read_to_string(manifest_path).unwrap()).unwrap();
+
+    manifest.validate().unwrap();
+    assert_eq!(manifest.capabilities.len(), 1);
+    assert_eq!(
+        manifest.capabilities[0].constraints,
+        CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec!["guild://queries/executions/".into()]),
+            resource_kinds: Some(vec![ResourceKind::Query]),
+        })
+    );
+}
+
+#[test]
 fn capability_validation_rejects_wrong_family_and_empty_scopes() {
     let mut manifest = sample_source_manifest();
     manifest.capabilities = vec![

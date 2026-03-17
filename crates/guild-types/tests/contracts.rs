@@ -1,7 +1,7 @@
 use guild_types::{
     Budget, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    ExecutionContext, ExecutionMode, GrantedCapability, GuildResourceScope, GuildResourceUri,
-    HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
+    ExecutionContext, ExecutionMode, ExecutionQueryResource, GrantedCapability, GuildResourceScope,
+    GuildResourceUri, HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
     InstalledVerificationState, LocalPolicyConfig, LocalTrustTier, PolicyDecision,
     PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule,
     PolicyRuleEffect, PolicyRuleTarget, ReadResourceConstraints, ResolvedSkillRef, ResourceKind,
@@ -75,6 +75,12 @@ fn guild_resource_scopes_must_be_canonical_roots() {
             .kind(),
         ResourceKind::Object
     );
+    assert_eq!(
+        GuildResourceScope::parse("guild://queries/executions/")
+            .unwrap()
+            .kind(),
+        ResourceKind::Query
+    );
     assert!(GuildResourceScope::parse("guild://executions").is_err());
     assert!(GuildResourceScope::parse("guild://objects/").is_err());
     assert!(GuildResourceScope::parse("guild://exec").is_err());
@@ -102,8 +108,44 @@ fn guild_resource_uris_parse_canonically() {
         .kind(),
         ResourceKind::Object
     );
+    assert_eq!(
+        GuildResourceUri::parse("guild://queries/executions/failures/recent/10")
+            .unwrap()
+            .kind(),
+        ResourceKind::Query
+    );
     assert!(GuildResourceUri::parse("guild://objects/sha256/ABCDEF").is_err());
     assert!(GuildResourceUri::parse("guild://executions/%GG").is_err());
+}
+
+#[test]
+fn execution_query_resources_roundtrip_canonical_uris() {
+    let query = ExecutionQueryResource::BySkill {
+        namespace: "example".into(),
+        name: "summarize-execution-query".into(),
+        limit: 7,
+    };
+    let uri = query.canonical_uri();
+
+    assert_eq!(ExecutionQueryResource::parse_uri(&uri).unwrap(), query);
+    assert_eq!(
+        GuildResourceUri::parse(&uri).unwrap(),
+        GuildResourceUri::ExecutionQuery { query }
+    );
+}
+
+#[test]
+fn malformed_execution_query_resources_fail_closed() {
+    assert!(ExecutionQueryResource::parse_uri("guild://queries/executions/recent/0").is_err());
+    assert!(ExecutionQueryResource::parse_uri(
+        "guild://queries/executions/by-status/not-a-status/5"
+    )
+    .is_err());
+    assert!(ExecutionQueryResource::parse_uri(
+        "guild://queries/executions/by-skill/example/skill/99"
+    )
+    .is_err());
+    assert!(GuildResourceUri::parse("guild://queries/executions/unknown/5").is_err());
 }
 
 #[test]

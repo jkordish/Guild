@@ -6,13 +6,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use guild_registry::{
-    BundleSignatureEnvelope, InstalledSkill, InstalledSkillBundle, LocalPublisherIdentity,
-    LocalRegistry, LocalSourceInstaller, OciRegistryAuth, OciRegistryReference, OciRegistryTarget,
-    OciRegistryTransportOptions, SkillRegistry, VerificationStatus,
+    execution_query_resource_uri, execution_resource_uri, BundleSignatureEnvelope, InstalledSkill,
+    InstalledSkillBundle, LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller,
+    OciRegistryAuth, OciRegistryReference, OciRegistryTarget, OciRegistryTransportOptions,
+    SkillRegistry, VerificationStatus,
 };
 use guild_types::{
-    EvidenceAudience, EvidenceEmissionRequest, LocalPolicyConfig, RedactionClass,
-    RequestedSkillRef, SkillKey, VersionRequirement,
+    AbiVersion, CapabilityGrantSet, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
+    ExecutionPhase, ExecutionQueryResource, ExecutionQueryResult, ExecutionReceipt,
+    ExecutionRecord, ExecutionStatus, InstalledVerificationState, LocalPolicyConfig,
+    LocalTrustTier, PolicyDecision, PolicyDecisionOutcome, PolicyReason, Provenance,
+    RedactionClass, RequestedSkillRef, ResolvedSkillRef, SkillKey, SkillVersion, TerminationDetail,
+    VersionRequirement,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -142,6 +147,132 @@ fn requested_hello_composite() -> RequestedSkillRef {
     }
 }
 
+fn query_result_from_resource(
+    registry: &LocalRegistry,
+    query: &ExecutionQueryResource,
+) -> ExecutionQueryResult {
+    serde_json::from_slice(
+        &registry
+            .read_resource(&execution_query_resource_uri(query))
+            .unwrap()
+            .bytes,
+    )
+    .unwrap()
+}
+
+fn sample_resolved_skill(name: &str, digest_seed: &str) -> ResolvedSkillRef {
+    let digest = format!("sha256:{:x}", Sha256::digest(digest_seed.as_bytes()));
+    ResolvedSkillRef {
+        key: SkillKey {
+            namespace: "example".into(),
+            name: name.into(),
+        },
+        version: SkillVersion::parse("0.1.0").unwrap(),
+        digest,
+    }
+}
+
+fn sample_evidence_record(evidence_record_id: &str, execution_id: &str) -> EvidenceRecord {
+    let digest_hex = format!("{:x}", Sha256::digest(evidence_record_id.as_bytes()));
+    EvidenceRecord {
+        uri: format!("guild://objects/records/{evidence_record_id}"),
+        blob_uri: format!("guild://objects/sha256/{digest_hex}"),
+        mime_type: "application/json".into(),
+        sha256: format!("sha256:{digest_hex}"),
+        size_bytes: 32,
+        title: Some("sample evidence".into()),
+        audience: EvidenceAudience::Internal,
+        redaction: RedactionClass::None,
+        freshness: Some("deterministic".into()),
+        produced_by_execution: Some(execution_id.into()),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn sample_execution_record(
+    execution_id: &str,
+    skill_name: &str,
+    status: ExecutionStatus,
+    started_at_utc: &str,
+    finished_at_utc: &str,
+    policy_outcome: PolicyDecisionOutcome,
+    policy_reason_code: Option<&str>,
+    termination: Option<(&str, ExecutionPhase)>,
+    evidence_count: usize,
+) -> ExecutionRecord {
+    let resolved_skill = sample_resolved_skill(skill_name, execution_id);
+    let mut emitted_evidence = Vec::new();
+    for index in 0..evidence_count {
+        emitted_evidence.push(sample_evidence_record(
+            &format!("{execution_id}-evidence-{index}"),
+            execution_id,
+        ));
+    }
+
+    ExecutionRecord {
+        receipt: ExecutionReceipt {
+            execution_id: execution_id.into(),
+            uri: execution_resource_uri(execution_id),
+            trace_id: format!("trace-{execution_id}"),
+            status: status.clone(),
+        },
+        request: guild_types::CallerRequest {
+            request_id: format!("request-{execution_id}"),
+            skill: RequestedSkillRef {
+                key: resolved_skill.key.clone(),
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            tenant_id: "tenant-test".into(),
+            actor_id: "actor-test".into(),
+            mode: guild_types::ExecutionMode::Inspect,
+            input: serde_json::json!({ "execution_id": execution_id }),
+            budget: guild_types::Budget::default(),
+            requested_capabilities: CapabilityGrantSet::default(),
+            idempotency_key: None,
+            trace_id: format!("trace-{execution_id}"),
+        },
+        policy_decision: PolicyDecision {
+            outcome: policy_outcome,
+            summary: format!("policy summary for {execution_id}"),
+            profile_name: "default".into(),
+            trust_tier: LocalTrustTier::LocalDev,
+            verification_state: InstalledVerificationState::LocalSource,
+            reasons: policy_reason_code
+                .map(|code| {
+                    vec![PolicyReason {
+                        code: code.into(),
+                        message: format!("reason {code}"),
+                        detail: None,
+                    }]
+                })
+                .unwrap_or_default(),
+            detail: None,
+        },
+        resolved_skill: resolved_skill.clone(),
+        parent_execution_id: None,
+        status,
+        output: None,
+        termination: termination.map(|(code, phase)| TerminationDetail {
+            phase,
+            code: code.into(),
+            message: format!("termination {code}"),
+            retryable: false,
+            detail: None,
+        }),
+        granted_capabilities: CapabilityGrantSet::default(),
+        emitted_evidence,
+        metrics: guild_types::ExecutionMetrics::default(),
+        provenance: Provenance {
+            resolved_skill,
+            abi: AbiVersion::GuildSkillV1,
+            dependency_digests: Vec::new(),
+            started_at_utc: Some(started_at_utc.into()),
+            finished_at_utc: Some(finished_at_utc.into()),
+        },
+        child_executions: Vec::new(),
+    }
+}
+
 #[test]
 fn load_policy_config_defaults_when_policy_file_is_missing() {
     let temp = TempFixtureDir::new();
@@ -161,6 +292,133 @@ fn load_policy_config_fails_closed_when_policy_file_is_invalid() {
     let error = registry.load_policy_config().unwrap_err();
 
     assert_eq!(error.code, "policy-parse-failed");
+}
+
+#[test]
+fn execution_query_happy_path_is_bounded_and_deterministic() {
+    let temp = TempFixtureDir::new();
+    let registry = LocalRegistry::load(temp.path()).unwrap();
+    registry
+        .persist_execution_record(&sample_execution_record(
+            "exec-001",
+            "inspect-http-json",
+            ExecutionStatus::Succeeded,
+            "2026-03-17T00:00:01Z",
+            "2026-03-17T00:00:02Z",
+            PolicyDecisionOutcome::Allowed,
+            None,
+            None,
+            1,
+        ))
+        .unwrap();
+    registry
+        .persist_execution_record(&sample_execution_record(
+            "exec-002",
+            "inspect-http-json",
+            ExecutionStatus::Failed,
+            "2026-03-17T00:00:03Z",
+            "2026-03-17T00:00:04Z",
+            PolicyDecisionOutcome::Allowed,
+            Some("runtime-failed"),
+            Some(("invalid-method", ExecutionPhase::RuntimeExec)),
+            0,
+        ))
+        .unwrap();
+    registry
+        .persist_execution_record(&sample_execution_record(
+            "exec-003",
+            "summarize-execution-query",
+            ExecutionStatus::Rejected,
+            "2026-03-17T00:00:05Z",
+            "2026-03-17T00:00:06Z",
+            PolicyDecisionOutcome::Rejected,
+            Some("policy-denied"),
+            Some(("required-capability-missing", ExecutionPhase::Grant)),
+            0,
+        ))
+        .unwrap();
+
+    let recent = registry
+        .query_execution_records(&ExecutionQueryResource::Recent { limit: 2 })
+        .unwrap();
+    assert_eq!(recent.total_matches, 3);
+    assert_eq!(recent.returned_matches, 2);
+    assert!(recent.truncated);
+    assert_eq!(recent.results[0].receipt.execution_id, "exec-003");
+    assert_eq!(recent.results[1].receipt.execution_id, "exec-002");
+
+    let failures = registry
+        .query_execution_records(&ExecutionQueryResource::FailuresRecent { limit: 10 })
+        .unwrap();
+    assert_eq!(failures.total_matches, 2);
+    assert_eq!(failures.returned_matches, 2);
+    assert_eq!(failures.results[0].status, ExecutionStatus::Rejected);
+    assert_eq!(failures.results[1].status, ExecutionStatus::Failed);
+    assert_eq!(
+        failures.results[1].termination.as_ref().unwrap().code,
+        "invalid-method"
+    );
+
+    let by_skill = registry
+        .query_execution_records(&ExecutionQueryResource::BySkill {
+            namespace: "example".into(),
+            name: "inspect-http-json".into(),
+            limit: 10,
+        })
+        .unwrap();
+    assert_eq!(by_skill.total_matches, 2);
+    assert_eq!(by_skill.results[0].receipt.execution_id, "exec-002");
+    assert_eq!(by_skill.results[1].receipt.execution_id, "exec-001");
+    assert_eq!(by_skill.results[1].evidence_count, 1);
+    assert_eq!(by_skill.results[1].sample_evidence_record_uris.len(), 1);
+}
+
+#[test]
+fn execution_query_resource_reads_share_the_same_backend_result() {
+    let temp = TempFixtureDir::new();
+    let registry = LocalRegistry::load(temp.path()).unwrap();
+    registry
+        .persist_execution_record(&sample_execution_record(
+            "exec-backend-1",
+            "inspect-http-json",
+            ExecutionStatus::Rejected,
+            "2026-03-17T00:10:00Z",
+            "2026-03-17T00:10:01Z",
+            PolicyDecisionOutcome::Rejected,
+            Some("policy-denied"),
+            Some(("required-capability-missing", ExecutionPhase::Grant)),
+            0,
+        ))
+        .unwrap();
+
+    let query = ExecutionQueryResource::ByStatus {
+        status: ExecutionStatus::Rejected,
+        limit: 10,
+    };
+    let direct = registry.query_execution_records(&query).unwrap();
+    let via_resource = query_result_from_resource(&registry, &query);
+
+    assert_eq!(via_resource, direct);
+    assert_eq!(
+        via_resource.results[0].policy_decision.reasons[0].code,
+        "policy-denied"
+    );
+}
+
+#[test]
+fn malformed_execution_query_resources_fail_closed() {
+    let temp = TempFixtureDir::new();
+    let registry = LocalRegistry::load(temp.path()).unwrap();
+
+    let invalid_limit = registry
+        .read_resource("guild://queries/executions/recent/999")
+        .unwrap_err();
+    assert_eq!(invalid_limit.code, "resource-uri-invalid");
+
+    let invalid_status = registry
+        .read_resource("guild://queries/executions/by-status/not-a-status/5")
+        .unwrap_err();
+    assert_eq!(invalid_status.code, "resource-uri-invalid");
 }
 
 struct TempFixtureDir {

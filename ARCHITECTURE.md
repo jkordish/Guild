@@ -259,9 +259,9 @@ The active Wasm inspect slice is intentionally smaller than the broader shared t
 
 `http-request` is implemented as a thin Guild host adapter over `wasmtime-wasi-http`. The guest ABI remains Guild-shaped for this milestone, while the host path uses Wasmtime's real outbound HTTP support underneath. The host parses the absolute URL, enforces typed method/scheme/host/port/path constraints before dispatch, clamps timeout and response-size bounds, and persists host-owned denials or bounded failures without widening the MCP public surface.
 
-The current example skills now include single-record and execution-tree explanation over stored Guild resources. Those examples deepen inspect usefulness by consuming persisted execution lineage and bounded evidence metadata through the existing host-mediated resource path rather than by widening the runtime surface.
+The current example skills now include single-record and execution-tree explanation over stored Guild resources plus one bounded execution-query summary skill. Those examples deepen inspect usefulness by consuming persisted execution lineage, bounded evidence metadata, and bounded query results through the existing host-mediated resource path rather than by widening the runtime surface.
 
-The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates.
+The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 
 ## 7. Registry and Resolution Architecture
 
@@ -415,7 +415,7 @@ The current repository separates evidence blob identity from evidence-record ide
 
 Host reads and guest `read-resource` calls should hit the same conceptual backend.
 
-The current repository also treats authorization scopes canonically: `read-resource` grants are expressed as exact local Guild scope roots and matched against parsed execution, blob, and evidence-record URIs rather than ad hoc raw string-prefix checks.
+The current repository also treats authorization scopes canonically: `read-resource` grants are expressed as exact local Guild scope roots and matched against parsed execution, blob, evidence-record, and execution-query URIs rather than ad hoc raw string-prefix checks.
 
 ### 11.2 Why this matters
 
@@ -430,6 +430,8 @@ Resource backend should provide:
 - explicit attribution
 - optional caching/normalization
 - policy-aware reads
+
+The current repository now adds one bounded local query layer on top of that same backend. Execution-query resources are still host-issued Guild URIs, not a general search API. They are evaluated locally against persisted execution records, ordered deterministically by finished and started timestamps plus execution ID, capped by explicit limits, and exposed through the same registry-backed `read_resource` path used by MCP `resources/read` and guest `read-resource`.
 
 ## 12. Composite Skill Architecture
 
@@ -629,19 +631,21 @@ The current repository implements a real but intentionally narrow slice of this 
 - caller-requested grants flow through a host-owned local policy evaluator before typed capability enforcement
 - successful, failed, and rejected resolved executions persist as durable execution records with host-minted IDs and host-stamped timestamps
 - evidence persists as durable local objects with separate blob and evidence-record identity and is readable through the same backend used by guest `read-resource`
+- bounded execution-query resources and templates derive from that same persisted execution store and are readable through the same backend by guests and MCP clients
 - composite skills invoke declared child dependencies by alias through the same host boundary
-- resource-aware inspect skills can explain stored execution trees by walking persisted child lineage and bounded evidence descriptors through existing Guild execution and object-record URIs
+- resource-aware inspect skills can explain stored execution trees by walking persisted child lineage and bounded evidence descriptors through existing Guild execution and object-record URIs, and can summarize bounded execution-query resources without learning a second backend
 - supported capability families in the active inspect slice are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; unsupported families are rejected before execution
 - `guild.inspect` in `guild-mcp` rides that same registry, runner, and storage path
-- `guild-mcp-server` exposes that same path over stdio MCP with one public tool plus Guild execution and evidence resources
+- `guild-mcp-server` exposes that same path over stdio MCP with one public tool plus Guild execution, evidence, and bounded execution-query resources
 
 What is still deferred in this repo:
 
 - remote or distributed policy evaluation
 - a broader policy language beyond the current local typed profile
+- subscriptions, list-changed notifications, full-text search, and broader evidence-specific query resources
 - full `plan` execution
 - `apply` mode
-- remote registry and publication infrastructure
+- broader remote publication, trust, and discovery infrastructure
 
 ## 20. Near-Term Build Priorities
 
@@ -656,7 +660,7 @@ Phase 1
 Phase 2
 
 - inspect/explain skills over persisted artifacts
-- execution graph queries
+- bounded artifact query resources over persisted execution records
 - failure/rejection views
 - resource backend unification
 

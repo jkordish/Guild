@@ -179,6 +179,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - caller-requested capabilities are evaluated through a host-owned local policy layer before execution
 - the current repository loads an optional `policy.json` from the Guild root and otherwise uses a built-in default local policy profile
 - local policy now selects a named profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
+- bounded local execution-query resources expose deterministic views over persisted execution records through the same host-mediated resource backend used by guest `read-resource` and MCP `resources/read`
 - unsupported capability families present elsewhere in shared contracts are rejected before execution in the active inspect slice
 
 The current repository does not yet implement full `plan` mode, remote or distributed policy, or `apply` mode.
@@ -187,7 +188,7 @@ The current repository now also exposes a real stdio MCP server surface over tha
 
 - stdio transport only in this milestone
 - one public tool, `guild.inspect`
-- bounded recent-execution `resources/list` plus `resources/read` and `resources/templates/list` for durable Guild URIs
+- bounded recent-execution `resources/list` plus `resources/read` and `resources/templates/list` for durable Guild URIs and bounded execution-query resources
 - no subscriptions, no list-changed notifications, and no HTTP transport in this milestone
 
 Unsuccessful `guild.inspect` executions that reached a real resolved execution attempt MUST be surfaced over MCP as tool execution errors while preserving the persisted execution record and receipt URI.
@@ -364,7 +365,7 @@ The current repository enforces typed constraints for:
 
 Those are the currently implemented product names in the active Wasm inspect slice. Unknown fields, wrong-family constraint shapes, and empty scoped lists are validation errors.
 
-For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, and `guild://objects/sha256/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching.
+For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, `guild://objects/sha256/`, and `guild://queries/executions/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching.
 
 For `http-request`, the current repository exposes a bounded request/response model rather than ambient networking. The host MUST parse absolute HTTP or HTTPS URLs, enforce typed scheme/host/port/path/method constraints before dispatch, clamp timeout and response-size limits to host-owned bounds, and keep authorization denials host-owned. The current inspect slice supports bodyless `GET` and `HEAD` requests only, does not expose arbitrary request headers or request-body streaming, and returns a bounded typed response body to the guest.
 
@@ -574,6 +575,19 @@ Resource access SHOULD be attributable to execution attempts.
 
 The system SHOULD be able to answer: what did this execution read, and under which capability grant?
 
+### 19.4 Bounded query resources
+
+Implementations MAY expose bounded query resources derived from persisted host-owned artifacts, but those resources MUST remain canonical host-issued URIs rather than a free-form search language.
+
+If query resources are supported:
+
+- they MUST remain deterministic and bounded by explicit host-owned limits
+- they MUST return structured host-owned results that point back to canonical execution or evidence URIs
+- guest `read-resource` and host or MCP resource reads MUST observe the same query backend result for the same query URI
+- authorization MUST remain fail-closed and SHOULD require an explicit query scope rather than implicitly reusing exact-record execution or object grants
+
+The current repository supports bounded execution-query resources only. It exposes recent, failure, by-status, and by-skill execution views under `guild://queries/executions/...`, keeps result limits in the closed range `1..=50`, orders results deterministically by host-stamped execution timestamps plus execution ID, and does not implement full-text search, arbitrary boolean query DSLs, subscriptions, list-changed notifications, or broader evidence-query resources in this milestone.
+
 ## 21. Security Properties
 
 A strong Guild implementation SHOULD provide all of the following:
@@ -607,7 +621,7 @@ Future specs or ADRs SHOULD define:
 
 - remote publication and registry mapping for installed bundles
 - signatures and provenance chains
-- execution and evidence query model
+- richer evidence query surfaces and notification models
 - retention and garbage collection
 - capability schema registry and versioning
 - replay semantics

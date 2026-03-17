@@ -511,6 +511,49 @@ impl GuildMcpServer {
                         ),
                         mime_type: None,
                     },
+                    ResourceTemplate {
+                        uri_template: "guild://queries/executions/recent/{limit}".into(),
+                        name: "Guild recent executions query".into(),
+                        title: Some("Guild Execution Query".into()),
+                        description: Some(
+                            "Read a bounded recent-executions query result from the local Guild execution store."
+                                .into(),
+                        ),
+                        mime_type: Some("application/json".into()),
+                    },
+                    ResourceTemplate {
+                        uri_template: "guild://queries/executions/failures/recent/{limit}".into(),
+                        name: "Guild recent failures query".into(),
+                        title: Some("Guild Recent Failures Query".into()),
+                        description: Some(
+                            "Read a bounded recent failed or rejected execution query result."
+                                .into(),
+                        ),
+                        mime_type: Some("application/json".into()),
+                    },
+                    ResourceTemplate {
+                        uri_template: "guild://queries/executions/by-status/{status}/{limit}"
+                            .into(),
+                        name: "Guild executions by status query".into(),
+                        title: Some("Guild Executions By Status Query".into()),
+                        description: Some(
+                            "Read a bounded execution query result filtered by execution status."
+                                .into(),
+                        ),
+                        mime_type: Some("application/json".into()),
+                    },
+                    ResourceTemplate {
+                        uri_template:
+                            "guild://queries/executions/by-skill/{namespace}/{name}/{limit}"
+                                .into(),
+                        name: "Guild executions by skill query".into(),
+                        title: Some("Guild Executions By Skill Query".into()),
+                        description: Some(
+                            "Read a bounded execution query result filtered by resolved skill key."
+                                .into(),
+                        ),
+                        mime_type: Some("application/json".into()),
+                    },
                 ],
                 next_cursor: None,
             },

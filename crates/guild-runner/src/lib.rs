@@ -4098,6 +4098,7 @@ fn to_wit_resource_kind(kind: &ResourceKind) -> bindings::guild::skill::types::R
     match kind {
         ResourceKind::Execution => bindings::guild::skill::types::ResourceKind::Execution,
         ResourceKind::Object => bindings::guild::skill::types::ResourceKind::Object,
+        ResourceKind::Query => bindings::guild::skill::types::ResourceKind::Query,
     }
 }
 
@@ -4160,6 +4161,7 @@ fn resource_kind_label(kind: &ResourceKind) -> &'static str {
     match kind {
         ResourceKind::Execution => "execution",
         ResourceKind::Object => "object",
+        ResourceKind::Query => "query",
     }
 }
 

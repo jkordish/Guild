@@ -18,6 +18,7 @@ Current architecture highlights worth knowing before you follow older notes:
 - read-resource auth uses canonical parsed Guild URI scopes
 - `guild-mcp-server` is now a real stdio MCP façade over the same inspect/runtime/resource path
 - installed-state portability now includes the native signed bundle directory, a local OCI image layout mapping, and OCI registry transport, all of which still import through the same trust/signature checks
+- bounded execution-query resources now derive from the same persisted execution backend seen by guest `read-resource` and MCP `resources/read`
 
 Read next:
 

@@ -11,8 +11,8 @@ use guild_mcp::protocol::{
 use guild_registry::LocalSourceInstaller;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
-    EvidenceAudience, ExecutionRecord, ExecutionStatus, GrantedCapability, PolicyDecisionOutcome,
-    RedactionClass, RequestedSkillRef, SkillKey, VersionRequirement,
+    EvidenceAudience, ExecutionQueryResult, ExecutionRecord, ExecutionStatus, GrantedCapability,
+    PolicyDecisionOutcome, RedactionClass, RequestedSkillRef, SkillKey, VersionRequirement,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
@@ -356,7 +356,7 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
     let resources_response = harness.request("resources/list", &json!({}));
     let resources: ListResourcesResult = parse_result(&resources_response);
 
-    assert_eq!(templates.resource_templates.len(), 3);
+    assert_eq!(templates.resource_templates.len(), 7);
     assert!(templates
         .resource_templates
         .iter()
@@ -369,10 +369,40 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
         .resource_templates
         .iter()
         .any(|template| template.uri_template == "guild://objects/sha256/{digest}"));
+    assert!(templates
+        .resource_templates
+        .iter()
+        .any(|template| template.uri_template == "guild://queries/executions/recent/{limit}"));
+    assert!(templates.resource_templates.iter().any(|template| {
+        template.uri_template == "guild://queries/executions/failures/recent/{limit}"
+    }));
+    assert!(templates.resource_templates.iter().any(|template| {
+        template.uri_template == "guild://queries/executions/by-status/{status}/{limit}"
+    }));
+    assert!(templates.resource_templates.iter().any(|template| {
+        template.uri_template == "guild://queries/executions/by-skill/{namespace}/{name}/{limit}"
+    }));
     assert!(resources
         .resources
         .iter()
         .any(|resource| resource.uri == record.receipt.uri));
+
+    let query_response = harness.request(
+        "resources/read",
+        &json!({ "uri": "guild://queries/executions/recent/10" }),
+    );
+    let query: ReadResourceResult = parse_result(&query_response);
+    let query_contents = match &query.contents[0] {
+        ResourceContents::Text(text) => text,
+        other @ ResourceContents::Blob(_) => {
+            panic!("expected text query contents, got {other:?}")
+        }
+    };
+    let query_result: ExecutionQueryResult = serde_json::from_str(&query_contents.text).unwrap();
+    assert!(query_result
+        .results
+        .iter()
+        .any(|item| item.receipt.uri == record.receipt.uri));
 }
 
 #[test]
