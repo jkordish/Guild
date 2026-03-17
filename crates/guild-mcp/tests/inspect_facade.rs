@@ -6,9 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use guild_manifest::SourceSkillManifest;
 use guild_mcp::{GuildMcpFacade, InspectRequest};
 use guild_registry::{
-    execution_query_resource_uri, InstalledSkill, LocalPublisherIdentity, LocalRegistry,
-    LocalSourceInstaller, OciRegistryAuth, OciRegistryReference, OciRegistryTarget,
-    OciRegistryTransportOptions,
+    InstalledSkill, LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller, OciRegistryAuth,
+    OciRegistryReference, OciRegistryTarget, OciRegistryTransportOptions,
+    execution_query_resource_uri,
 };
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
@@ -639,19 +639,23 @@ fn local_policy_reduces_requested_capabilities_before_execution() {
         response.structured_content.policy_decision.outcome,
         PolicyDecisionOutcome::Reduced
     );
-    assert!(response
-        .structured_content
-        .granted_capabilities
-        .grants
-        .iter()
-        .all(|grant| grant.id != CapabilityId::HttpRequest));
-    assert!(response
-        .structured_content
-        .request
-        .requested_capabilities
-        .grants
-        .iter()
-        .any(|grant| grant.id == CapabilityId::HttpRequest));
+    assert!(
+        response
+            .structured_content
+            .granted_capabilities
+            .grants
+            .iter()
+            .all(|grant| grant.id != CapabilityId::HttpRequest)
+    );
+    assert!(
+        response
+            .structured_content
+            .request
+            .requested_capabilities
+            .grants
+            .iter()
+            .any(|grant| grant.id == CapabilityId::HttpRequest)
+    );
 }
 
 #[test]
@@ -701,16 +705,20 @@ fn local_policy_denial_persists_host_owned_rejection() {
         record.policy_decision.verification_state,
         InstalledVerificationState::LocalSource
     );
-    assert!(record
-        .policy_decision
-        .reasons
-        .iter()
-        .any(|reason| reason.code == "policy-profile-rule-deny"));
-    assert!(record
-        .policy_decision
-        .reasons
-        .iter()
-        .any(|reason| reason.code == "policy-required-capability-missing"));
+    assert!(
+        record
+            .policy_decision
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "policy-profile-rule-deny")
+    );
+    assert!(
+        record
+            .policy_decision
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "policy-required-capability-missing")
+    );
     assert!(record.granted_capabilities.grants.is_empty());
 }
 
@@ -852,11 +860,13 @@ fn local_policy_can_vary_http_by_imported_trust_tier() {
         record.policy_decision.verification_state,
         InstalledVerificationState::VerifiedImport
     );
-    assert!(record
-        .policy_decision
-        .reasons
-        .iter()
-        .any(|reason| reason.code == "policy-profile-rule-cap"));
+    assert!(
+        record
+            .policy_decision
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "policy-profile-rule-cap")
+    );
     let granted_http = record
         .granted_capabilities
         .grants
@@ -1011,11 +1021,13 @@ fn filesystem_requested_capabilities_persist_host_owned_rejection() {
         record.termination.as_ref().unwrap().code,
         "filesystem-runtime-not-supported"
     );
-    assert!(record
-        .granted_capabilities
-        .grants
-        .iter()
-        .any(|grant| grant.id == CapabilityId::Filesystem));
+    assert!(
+        record
+            .granted_capabilities
+            .grants
+            .iter()
+            .any(|grant| grant.id == CapabilityId::Filesystem)
+    );
 }
 
 #[test]
@@ -1214,25 +1226,31 @@ fn local_policy_can_further_reduce_child_grants_without_widening() {
 
     assert_eq!(parent.status, ExecutionStatus::Failed);
     assert_eq!(parent.child_executions.len(), 1);
-    assert!(parent
-        .granted_capabilities
-        .grants
-        .iter()
-        .any(|grant| grant.id == CapabilityId::EmitEvidence));
+    assert!(
+        parent
+            .granted_capabilities
+            .grants
+            .iter()
+            .any(|grant| grant.id == CapabilityId::EmitEvidence)
+    );
     assert_eq!(
         parent.child_executions[0].policy_decision.outcome,
         PolicyDecisionOutcome::Rejected
     );
-    assert!(parent.child_executions[0]
-        .policy_decision
-        .reasons
-        .iter()
-        .any(|reason| reason.code == "policy-profile-rule-deny"));
-    assert!(parent.child_executions[0]
-        .granted_capabilities
-        .grants
-        .iter()
-        .all(|grant| grant.id != CapabilityId::EmitEvidence));
+    assert!(
+        parent.child_executions[0]
+            .policy_decision
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "policy-profile-rule-deny")
+    );
+    assert!(
+        parent.child_executions[0]
+            .granted_capabilities
+            .grants
+            .iter()
+            .all(|grant| grant.id != CapabilityId::EmitEvidence)
+    );
 }
 
 #[test]
@@ -1503,11 +1521,13 @@ fn query_resource_reads_require_query_scope() {
     let record: ExecutionRecord = serde_json::from_slice(&resource.bytes).unwrap();
     assert_eq!(record.status, ExecutionStatus::Rejected);
     assert_eq!(record.termination.as_ref().unwrap().code, "policy-denied");
-    assert!(record
-        .policy_decision
-        .reasons
-        .iter()
-        .any(|reason| reason.code == "policy-required-capability-missing"));
+    assert!(
+        record
+            .policy_decision
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "policy-required-capability-missing")
+    );
 }
 
 #[test]

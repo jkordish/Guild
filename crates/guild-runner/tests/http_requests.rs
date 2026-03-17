@@ -12,7 +12,7 @@ use guild_types::{
     PolicyDecisionOutcome, RequestedSkillRef, ResolvedExecutionEnvelope, SkillKey,
     VersionRequirement,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[path = "../../../test-support/http_test_server.rs"]
 mod http_test_server;
@@ -372,7 +372,8 @@ fn write_http_composite_fixture(root: &Path) -> PathBuf {
         r#"[package]
 name = "guild-test-http-composite-forwarder"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.94"
 
 [workspace]
 

@@ -5,7 +5,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use guild_mcp::protocol::{InitializeResult, PROTOCOL_VERSION_2025_11_25};
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub struct McpStdioClient {
     child: Child,

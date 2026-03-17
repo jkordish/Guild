@@ -2,13 +2,12 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-const JSON_BODY: &str =
-    "{\"service\":\"guild-http\",\"message\":\"deterministic\",\"nested\":{\"count\":2},\"items\":[{\"name\":\"alpha\"},{\"name\":\"beta\"}]}";
+const JSON_BODY: &str = "{\"service\":\"guild-http\",\"message\":\"deterministic\",\"nested\":{\"count\":2},\"items\":[{\"name\":\"alpha\"},{\"name\":\"beta\"}]}";
 const LARGE_BODY_BYTES: usize = 8 * 1024;
 const SLOW_RESPONSE_MS: u64 = 250;
 

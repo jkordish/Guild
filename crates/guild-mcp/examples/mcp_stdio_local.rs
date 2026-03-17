@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use guild_mcp::protocol::{
-    CallToolResult, InitializeResult, ListToolsResult, ReadResourceResult,
-    PROTOCOL_VERSION_2025_11_25,
+    CallToolResult, InitializeResult, ListToolsResult, PROTOCOL_VERSION_2025_11_25,
+    ReadResourceResult,
 };
 use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
@@ -13,7 +13,7 @@ use guild_types::{
     RequestedSkillRef, SkillKey, VersionRequirement,
 };
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

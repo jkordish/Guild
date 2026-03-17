@@ -12,24 +12,24 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use guild_manifest::SkillManifest;
-use guild_registry::{execution_resource_uri, InstalledSkill, RegistryError, SkillRegistry};
+use guild_registry::{InstalledSkill, RegistryError, SkillRegistry, execution_resource_uri};
 use guild_sdk_rust::GuildSkill;
 use guild_types::{
-    host_now_utc, mint_host_execution_id, CallerRequest, CapabilityAccess, CapabilityConstraints,
-    CapabilityGrantSet, CapabilityId, CapabilityRequirement, ChildExecutionRecord, Diagnostic,
-    Effect, EmitEvidenceConstraints, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
-    EvidenceRef, ExecutionContext, ExecutionMetrics, ExecutionMode, ExecutionPhase,
-    ExecutionReceipt, ExecutionRecord, ExecutionStatus, FilesystemConstraints, FilesystemOperation,
-    FilesystemRoot, GrantedCapability, GuildResourceScope, GuildResourceUri, HttpMethod,
-    HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme, InvokeDependencyConstraints,
-    LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints, Mutability, PolicyDecision,
-    PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule,
-    PolicyRuleEffect, PolicyRuleTarget, Provenance, ReadResourceConstraints, RedactionClass,
+    CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
+    CapabilityRequirement, ChildExecutionRecord, Diagnostic, Effect, EmitEvidenceConstraints,
+    EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionContext,
+    ExecutionMetrics, ExecutionMode, ExecutionPhase, ExecutionReceipt, ExecutionRecord,
+    ExecutionStatus, FilesystemConstraints, FilesystemOperation, FilesystemRoot, GrantedCapability,
+    GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequest, HttpRequestConstraints,
+    HttpResponse, HttpScheme, InvokeDependencyConstraints, LocalPolicyConfig,
+    LocalPolicyDefaultAction, LogConstraints, Mutability, PolicyDecision, PolicyDecisionOutcome,
+    PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule, PolicyRuleEffect,
+    PolicyRuleTarget, Provenance, ReadResourceConstraints, RedactionClass,
     ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind,
-    Severity, SkillError, SkillOutput, TerminationDetail,
+    Severity, SkillError, SkillOutput, TerminationDetail, host_now_utc, mint_host_execution_id,
 };
-use http::header::{CONTENT_TYPE, LOCATION};
 use http::Request;
+use http::header::{CONTENT_TYPE, LOCATION};
 use http_body_util::{BodyExt, Empty};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -41,7 +41,7 @@ use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::bindings::http::types::ErrorCode as WasiHttpErrorCode;
 use wasmtime_wasi_http::body::HyperOutgoingBody;
-use wasmtime_wasi_http::types::{default_send_request_handler, OutgoingRequestConfig};
+use wasmtime_wasi_http::types::{OutgoingRequestConfig, default_send_request_handler};
 
 mod bindings {
     wasmtime::component::bindgen!({
@@ -2070,22 +2070,20 @@ fn completed_policy_evaluation(
 }
 
 fn policy_profile_binding_matches(binding: &PolicyProfileBinding, request: &CallerRequest) -> bool {
-    if let Some(actor_ids) = &binding.actor_ids {
-        if !actor_ids
+    if let Some(actor_ids) = &binding.actor_ids
+        && !actor_ids
             .iter()
             .any(|actor_id| actor_id == &request.actor_id)
-        {
-            return false;
-        }
+    {
+        return false;
     }
 
-    if let Some(tenant_ids) = &binding.tenant_ids {
-        if !tenant_ids
+    if let Some(tenant_ids) = &binding.tenant_ids
+        && !tenant_ids
             .iter()
             .any(|tenant_id| tenant_id == &request.tenant_id)
-        {
-            return false;
-        }
+    {
+        return false;
     }
 
     true
@@ -2126,37 +2124,34 @@ fn candidate_grants_to_set(grants: &[CandidateGrant]) -> CapabilityGrantSet {
 }
 
 fn policy_rule_matches(rule: &PolicyRule, installed: &InstalledSkill) -> bool {
-    if let Some(skills) = &rule.skills {
-        if !skills.iter().any(|skill| skill == &installed.manifest.key) {
-            return false;
-        }
+    if let Some(skills) = &rule.skills
+        && !skills.iter().any(|skill| skill == &installed.manifest.key)
+    {
+        return false;
     }
 
-    if let Some(publisher_ids) = &rule.publisher_ids {
-        if !publisher_ids
+    if let Some(publisher_ids) = &rule.publisher_ids
+        && !publisher_ids
             .iter()
             .any(|publisher_id| publisher_id == &installed.manifest.publisher.id)
-        {
-            return false;
-        }
+    {
+        return false;
     }
 
-    if let Some(trust_tiers) = &rule.trust_tiers {
-        if !trust_tiers
+    if let Some(trust_tiers) = &rule.trust_tiers
+        && !trust_tiers
             .iter()
             .any(|trust_tier| trust_tier == &installed.trust.trust_tier)
-        {
-            return false;
-        }
+    {
+        return false;
     }
 
-    if let Some(verification_states) = &rule.verification_states {
-        if !verification_states
+    if let Some(verification_states) = &rule.verification_states
+        && !verification_states
             .iter()
             .any(|state| state == &installed.trust.verification_state)
-        {
-            return false;
-        }
+    {
+        return false;
     }
 
     true
@@ -3141,25 +3136,25 @@ impl CapabilityEvaluator {
                 continue;
             };
 
-            if let Some(max_bytes) = constraints.max_bytes {
-                if payload_bytes > max_bytes {
-                    saw_size_denial = true;
-                    continue;
-                }
+            if let Some(max_bytes) = constraints.max_bytes
+                && payload_bytes > max_bytes
+            {
+                saw_size_denial = true;
+                continue;
             }
 
-            if let Some(audiences) = &constraints.audiences {
-                if !audiences.contains(&request.audience) {
-                    saw_audience_denial = true;
-                    continue;
-                }
+            if let Some(audiences) = &constraints.audiences
+                && !audiences.contains(&request.audience)
+            {
+                saw_audience_denial = true;
+                continue;
             }
 
-            if let Some(redactions) = &constraints.redactions {
-                if !redactions.contains(&request.redaction) {
-                    saw_redaction_denial = true;
-                    continue;
-                }
+            if let Some(redactions) = &constraints.redactions
+                && !redactions.contains(&request.redaction)
+            {
+                saw_redaction_denial = true;
+                continue;
             }
 
             return Ok(());

@@ -5,8 +5,8 @@ use std::sync::OnceLock;
 
 use guild_mcp::protocol::{
     CallToolResult, ContentBlock, InitializeResult, ListResourceTemplatesResult,
-    ListResourcesResult, ListToolsResult, ReadResourceResult, ResourceContents,
-    PROTOCOL_VERSION_2025_11_25,
+    ListResourcesResult, ListToolsResult, PROTOCOL_VERSION_2025_11_25, ReadResourceResult,
+    ResourceContents,
 };
 use guild_registry::LocalSourceInstaller;
 use guild_types::{
@@ -15,7 +15,7 @@ use guild_types::{
     PolicyDecisionOutcome, RedactionClass, RequestedSkillRef, SkillKey, VersionRequirement,
 };
 use serde::de::DeserializeOwned;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -357,22 +357,28 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
     let resources: ListResourcesResult = parse_result(&resources_response);
 
     assert_eq!(templates.resource_templates.len(), 7);
-    assert!(templates
-        .resource_templates
-        .iter()
-        .any(|template| template.uri_template == "guild://executions/{execution_id}"));
+    assert!(
+        templates
+            .resource_templates
+            .iter()
+            .any(|template| template.uri_template == "guild://executions/{execution_id}")
+    );
     assert!(templates
         .resource_templates
         .iter()
         .any(|template| template.uri_template == "guild://objects/records/{evidence_record_id}"));
-    assert!(templates
-        .resource_templates
-        .iter()
-        .any(|template| template.uri_template == "guild://objects/sha256/{digest}"));
-    assert!(templates
-        .resource_templates
-        .iter()
-        .any(|template| template.uri_template == "guild://queries/executions/recent/{limit}"));
+    assert!(
+        templates
+            .resource_templates
+            .iter()
+            .any(|template| template.uri_template == "guild://objects/sha256/{digest}")
+    );
+    assert!(
+        templates
+            .resource_templates
+            .iter()
+            .any(|template| template.uri_template == "guild://queries/executions/recent/{limit}")
+    );
     assert!(templates.resource_templates.iter().any(|template| {
         template.uri_template == "guild://queries/executions/failures/recent/{limit}"
     }));
@@ -382,10 +388,12 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
     assert!(templates.resource_templates.iter().any(|template| {
         template.uri_template == "guild://queries/executions/by-skill/{namespace}/{name}/{limit}"
     }));
-    assert!(resources
-        .resources
-        .iter()
-        .any(|resource| resource.uri == record.receipt.uri));
+    assert!(
+        resources
+            .resources
+            .iter()
+            .any(|resource| resource.uri == record.receipt.uri)
+    );
 
     let query_response = harness.request(
         "resources/read",
@@ -399,10 +407,12 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
         }
     };
     let query_result: ExecutionQueryResult = serde_json::from_str(&query_contents.text).unwrap();
-    assert!(query_result
-        .results
-        .iter()
-        .any(|item| item.receipt.uri == record.receipt.uri));
+    assert!(
+        query_result
+            .results
+            .iter()
+            .any(|item| item.receipt.uri == record.receipt.uri)
+    );
 }
 
 #[test]

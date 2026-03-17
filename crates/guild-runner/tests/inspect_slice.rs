@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use guild_registry::{execution_resource_uri, LocalRegistry, LocalSourceInstaller, SkillRegistry};
+use guild_registry::{LocalRegistry, LocalSourceInstaller, SkillRegistry, execution_resource_uri};
 use guild_runner::{Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
     CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
@@ -12,7 +12,7 @@ use guild_types::{
     LogConstraints, PolicyDecision, PolicyDecisionOutcome, RedactionClass, RequestedSkillRef,
     ResolvedExecutionEnvelope, Severity, SkillKey, VersionRequirement,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 fn repo_root() -> PathBuf {

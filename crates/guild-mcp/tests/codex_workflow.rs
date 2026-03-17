@@ -4,7 +4,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use guild_mcp::codex::{
-    bootstrap_codex_registry, codex_server_config, CodexBootstrapOutput, CodexServerConfig,
+    CodexBootstrapOutput, CodexServerConfig, bootstrap_codex_registry, codex_server_config,
 };
 use guild_mcp::protocol::{CallToolResult, ReadResourceResult};
 use guild_types::{
@@ -12,7 +12,7 @@ use guild_types::{
     EvidenceAudience, ExecutionRecord, ExecutionStatus, GrantedCapability,
     InvokeDependencyConstraints, ReadResourceConstraints, RedactionClass, ResourceKind,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[path = "../../../test-support/mcp_stdio_client.rs"]
 mod mcp_stdio_client;
@@ -202,14 +202,18 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
                 .into_owned()
         )
     );
-    assert!(payload
-        .recommended_proof_commands
-        .iter()
-        .any(|command| command.ends_with("codex_explain_execution_local")));
-    assert!(payload
-        .config
-        .codex_mcp_add_command()
-        .contains("codex mcp add"));
+    assert!(
+        payload
+            .recommended_proof_commands
+            .iter()
+            .any(|command| command.ends_with("codex_explain_execution_local"))
+    );
+    assert!(
+        payload
+            .config
+            .codex_mcp_add_command()
+            .contains("codex mcp add")
+    );
     assert!(payload.config.config_toml().contains("[mcp_servers."));
 }
 

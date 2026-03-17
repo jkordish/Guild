@@ -19,12 +19,12 @@ use guild_manifest::{
     InstalledDependencySpec, PublisherRef, SkillManifest, SourceBuildKind, SourceSkillManifest,
 };
 use guild_types::{
-    mint_host_evidence_record_id, CapabilityId, EvidenceBlobRecord, EvidenceEmissionRequest,
-    EvidenceRecord, EvidenceRef, ExecutionQueryMatch, ExecutionQueryResource, ExecutionQueryResult,
-    ExecutionRecord, ExecutionStatus, GuildResourceUri, InstalledVerificationState,
+    CapabilityId, EvidenceBlobRecord, EvidenceEmissionRequest, EvidenceRecord, EvidenceRef,
+    ExecutionQueryMatch, ExecutionQueryResource, ExecutionQueryResult, ExecutionRecord,
+    ExecutionStatus, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
+    GUILD_OBJECT_RECORD_URI_PREFIX, GuildResourceUri, InstalledVerificationState,
     LocalPolicyConfig, LocalTrustTier, RequestedSkillRef, ResolvedSkillRef, ResourceReadResult,
-    SkillCategory, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
-    GUILD_OBJECT_RECORD_URI_PREFIX,
+    SkillCategory, mint_host_evidence_record_id,
 };
 use rand_core::OsRng;
 use schemars::JsonSchema;

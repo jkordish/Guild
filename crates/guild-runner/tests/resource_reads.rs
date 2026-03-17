@@ -12,7 +12,7 @@ use guild_types::{
     ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope,
     ResourceKind, SkillKey, SkillOutput, VersionRequirement,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -480,7 +480,8 @@ fn resource_composite_cargo_toml() -> &'static str {
     r#"[package]
 name = "guild-example-resource-composite"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.94"
 
 [workspace]
 
@@ -758,11 +759,13 @@ fn missing_execution_resource_fails_cleanly() {
     .unwrap_err();
 
     assert_eq!(error.code, "read-resource-failed");
-    assert!(error
-        .detail
-        .unwrap()
-        .to_string()
-        .contains("execution-not-found"));
+    assert!(
+        error
+            .detail
+            .unwrap()
+            .to_string()
+            .contains("execution-not-found")
+    );
 }
 
 #[test]
@@ -808,11 +811,13 @@ fn non_canonical_resource_scopes_are_rejected_before_execution() {
     .unwrap_err();
 
     assert_eq!(error.code, "capability-grant-invalid");
-    assert!(error
-        .detail
-        .unwrap()
-        .to_string()
-        .contains("expected canonical roots"));
+    assert!(
+        error
+            .detail
+            .unwrap()
+            .to_string()
+            .contains("expected canonical roots")
+    );
 }
 
 #[test]

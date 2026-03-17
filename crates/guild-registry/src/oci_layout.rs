@@ -12,11 +12,11 @@ use oci_client::{Client, Reference, RegistryOperation};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    bundle_file_relative_from_str, bundle_index_path, bundle_signature_path,
+    InstalledSkill, InstalledSkillBundle, LocalRegistry, OciRegistryAuth, OciRegistryReference,
+    OciRegistryTarget, OciRegistryTransportOptions, PublishedOciArtifact, RegistryError,
+    SignedBundlePayload, bundle_file_relative_from_str, bundle_index_path, bundle_signature_path,
     ensure_registry_layout, json_bytes, parse_bundle_index, parse_bundle_signature_bytes,
-    sha256_bytes, write_bytes, write_json, InstalledSkill, InstalledSkillBundle, LocalRegistry,
-    OciRegistryAuth, OciRegistryReference, OciRegistryTarget, OciRegistryTransportOptions,
-    PublishedOciArtifact, RegistryError, SignedBundlePayload,
+    sha256_bytes, write_bytes, write_json,
 };
 
 const OCI_IMAGE_LAYOUT_VERSION: &str = "1.0.0";

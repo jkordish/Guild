@@ -7,7 +7,7 @@ use guild_types::{
     EvidenceAudience, ExecutionRecord, GrantedCapability, ReadResourceConstraints, RedactionClass,
     ResourceKind,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[path = "../../../test-support/mcp_stdio_client.rs"]
 mod mcp_stdio_client;

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use guild_mcp::{GuildMcpFacade, InspectRequest};
-use guild_registry::{execution_query_resource_uri, LocalRegistry, LocalSourceInstaller};
+use guild_registry::{LocalRegistry, LocalSourceInstaller, execution_query_resource_uri};
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,

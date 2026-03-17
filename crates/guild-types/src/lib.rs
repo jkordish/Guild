@@ -13,8 +13,8 @@ use semver::{Version, VersionReq};
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
 /// Mint a host-owned durable execution identifier.
@@ -970,20 +970,20 @@ impl ReadResourceConstraints {
                 };
                 let kind = scope.kind();
 
-                if let Some(kinds) = &self.resource_kinds {
-                    if !kinds.contains(&kind) {
-                        errors.push(format!(
-                            "uri_prefix `{prefix}` is incompatible with resource_kinds"
-                        ));
-                    }
+                if let Some(kinds) = &self.resource_kinds
+                    && !kinds.contains(&kind)
+                {
+                    errors.push(format!(
+                        "uri_prefix `{prefix}` is incompatible with resource_kinds"
+                    ));
                 }
             }
         }
 
-        if let Some(kinds) = &self.resource_kinds {
-            if kinds.is_empty() {
-                errors.push("resource_kinds must not be empty when provided".into());
-            }
+        if let Some(kinds) = &self.resource_kinds
+            && kinds.is_empty()
+        {
+            errors.push("resource_kinds must not be empty when provided".into());
         }
 
         errors
@@ -1020,16 +1020,16 @@ impl EmitEvidenceConstraints {
             errors.push("max_bytes must be greater than zero when provided".into());
         }
 
-        if let Some(audiences) = &self.audiences {
-            if audiences.is_empty() {
-                errors.push("audiences must not be empty when provided".into());
-            }
+        if let Some(audiences) = &self.audiences
+            && audiences.is_empty()
+        {
+            errors.push("audiences must not be empty when provided".into());
         }
 
-        if let Some(redactions) = &self.redactions {
-            if redactions.is_empty() {
-                errors.push("redactions must not be empty when provided".into());
-            }
+        if let Some(redactions) = &self.redactions
+            && redactions.is_empty()
+        {
+            errors.push("redactions must not be empty when provided".into());
         }
 
         errors
@@ -1041,10 +1041,10 @@ impl LogConstraints {
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        if let Some(levels) = &self.levels {
-            if levels.is_empty() {
-                errors.push("levels must not be empty when provided".into());
-            }
+        if let Some(levels) = &self.levels
+            && levels.is_empty()
+        {
+            errors.push("levels must not be empty when provided".into());
         }
 
         errors
@@ -1056,10 +1056,10 @@ impl HttpRequestConstraints {
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        if let Some(schemes) = &self.allowed_schemes {
-            if schemes.is_empty() {
-                errors.push("allowed_schemes must not be empty when provided".into());
-            }
+        if let Some(schemes) = &self.allowed_schemes
+            && schemes.is_empty()
+        {
+            errors.push("allowed_schemes must not be empty when provided".into());
         }
 
         if let Some(hosts) = &self.allowed_hosts {
@@ -1098,10 +1098,10 @@ impl HttpRequestConstraints {
             }
         }
 
-        if let Some(methods) = &self.allowed_methods {
-            if methods.is_empty() {
-                errors.push("allowed_methods must not be empty when provided".into());
-            }
+        if let Some(methods) = &self.allowed_methods
+            && methods.is_empty()
+        {
+            errors.push("allowed_methods must not be empty when provided".into());
         }
 
         if let Some(prefixes) = &self.allowed_path_prefixes {
@@ -1403,10 +1403,10 @@ impl PolicyRule {
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        if let Some(name) = &self.name {
-            if name.trim().is_empty() {
-                errors.push("policy rule names must not be empty when provided".into());
-            }
+        if let Some(name) = &self.name
+            && name.trim().is_empty()
+        {
+            errors.push("policy rule names must not be empty when provided".into());
         }
 
         if let Some(skills) = &self.skills {
@@ -1437,17 +1437,16 @@ impl PolicyRule {
             }
         }
 
-        if let Some(trust_tiers) = &self.trust_tiers {
-            if trust_tiers.is_empty() {
-                errors.push("policy rule trust_tiers must not be empty when provided".into());
-            }
+        if let Some(trust_tiers) = &self.trust_tiers
+            && trust_tiers.is_empty()
+        {
+            errors.push("policy rule trust_tiers must not be empty when provided".into());
         }
 
-        if let Some(verification_states) = &self.verification_states {
-            if verification_states.is_empty() {
-                errors
-                    .push("policy rule verification_states must not be empty when provided".into());
-            }
+        if let Some(verification_states) = &self.verification_states
+            && verification_states.is_empty()
+        {
+            errors.push("policy rule verification_states must not be empty when provided".into());
         }
 
         if self.capabilities.grants.is_empty() {
@@ -1507,10 +1506,10 @@ impl PolicyProfileBinding {
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
 
-        if let Some(name) = &self.name {
-            if name.trim().is_empty() {
-                errors.push("policy profile binding names must not be empty when provided".into());
-            }
+        if let Some(name) = &self.name
+            && name.trim().is_empty()
+        {
+            errors.push("policy profile binding names must not be empty when provided".into());
         }
 
         if self.profile.trim().is_empty() {

@@ -138,14 +138,14 @@ fn execution_query_resources_roundtrip_canonical_uris() {
 #[test]
 fn malformed_execution_query_resources_fail_closed() {
     assert!(ExecutionQueryResource::parse_uri("guild://queries/executions/recent/0").is_err());
-    assert!(ExecutionQueryResource::parse_uri(
-        "guild://queries/executions/by-status/not-a-status/5"
-    )
-    .is_err());
-    assert!(ExecutionQueryResource::parse_uri(
-        "guild://queries/executions/by-skill/example/skill/99"
-    )
-    .is_err());
+    assert!(
+        ExecutionQueryResource::parse_uri("guild://queries/executions/by-status/not-a-status/5")
+            .is_err()
+    );
+    assert!(
+        ExecutionQueryResource::parse_uri("guild://queries/executions/by-skill/example/skill/99")
+            .is_err()
+    );
     assert!(GuildResourceUri::parse("guild://queries/executions/unknown/5").is_err());
 }
 
@@ -260,8 +260,8 @@ fn filesystem_capability_contract_roundtrips_in_execution_context() {
         "workspace"
     );
     assert_eq!(
-        encoded["granted_capabilities"]["grants"][0]["constraints"]["preopened_roots"][0]
-            ["operations"][0],
+        encoded["granted_capabilities"]["grants"][0]["constraints"]["preopened_roots"][0]["operations"]
+            [0],
         "read"
     );
 }
@@ -370,9 +370,11 @@ fn filesystem_constraints_require_explicit_roots_and_matching_access() {
         constraints: CapabilityConstraints::none(),
     };
     let vague_errors = vague.validate();
-    assert!(vague_errors
-        .iter()
-        .any(|message| message.contains("explicit filesystem constraints")));
+    assert!(
+        vague_errors
+            .iter()
+            .any(|message| message.contains("explicit filesystem constraints"))
+    );
 
     let invalid_write = GrantedCapability {
         id: CapabilityId::Filesystem,
@@ -387,9 +389,11 @@ fn filesystem_constraints_require_explicit_roots_and_matching_access() {
         }),
     };
     let invalid_write_errors = invalid_write.validate();
-    assert!(invalid_write_errors
-        .iter()
-        .any(|message| message.contains("must not contain `read` when access is `write`")));
+    assert!(
+        invalid_write_errors
+            .iter()
+            .any(|message| message.contains("must not contain `read` when access is `write`"))
+    );
 }
 
 #[test]
@@ -440,14 +444,17 @@ fn http_request_constraints_validate_redirect_and_host_shape() {
     };
 
     let errors = invalid.validate();
-    assert!(errors
-        .iter()
-        .any(|message| message.contains("allowed_hosts must not")));
-    assert!(errors
-        .iter()
-        .any(|message| message
-            .contains("allowed_host_suffixes entries must not use raw IP literals")));
-    assert!(errors
-        .iter()
-        .any(|message| message.contains("max_redirects requires follow_redirects")));
+    assert!(
+        errors
+            .iter()
+            .any(|message| message.contains("allowed_hosts must not"))
+    );
+    assert!(errors.iter().any(|message| {
+        message.contains("allowed_host_suffixes entries must not use raw IP literals")
+    }));
+    assert!(
+        errors
+            .iter()
+            .any(|message| message.contains("max_redirects requires follow_redirects"))
+    );
 }

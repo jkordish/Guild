@@ -6,10 +6,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use guild_registry::{
-    execution_query_resource_uri, execution_resource_uri, BundleSignatureEnvelope, InstalledSkill,
-    InstalledSkillBundle, LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller,
-    OciRegistryAuth, OciRegistryReference, OciRegistryTarget, OciRegistryTransportOptions,
-    SkillRegistry, VerificationStatus,
+    BundleSignatureEnvelope, InstalledSkill, InstalledSkillBundle, LocalPublisherIdentity,
+    LocalRegistry, LocalSourceInstaller, OciRegistryAuth, OciRegistryReference, OciRegistryTarget,
+    OciRegistryTransportOptions, SkillRegistry, VerificationStatus, execution_query_resource_uri,
+    execution_resource_uri,
 };
 use guild_types::{
     AbiVersion, CapabilityGrantSet, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
@@ -491,19 +491,25 @@ fn primitive_bundle_export_contains_expected_installed_record() {
     assert_eq!(bundle.skills.len(), 1);
     assert_eq!(bundle.skills[0].resolved_ref, bundle.root_skill);
     assert!(bundle_root.join(&bundle.skills[0].install_dir).exists());
-    assert!(bundle_root
-        .join(&bundle.skills[0].install_dir)
-        .join("component.wasm")
-        .exists());
-    assert!(bundle_root
-        .join(&bundle.skills[0].install_dir)
-        .join("input.schema.json")
-        .exists());
+    assert!(
+        bundle_root
+            .join(&bundle.skills[0].install_dir)
+            .join("component.wasm")
+            .exists()
+    );
+    assert!(
+        bundle_root
+            .join(&bundle.skills[0].install_dir)
+            .join("input.schema.json")
+            .exists()
+    );
     assert!(bundle_root.join("bundle.signature.json").exists());
-    assert!(bundle
-        .files
-        .iter()
-        .any(|entry| entry.path.ends_with("/component.wasm")));
+    assert!(
+        bundle
+            .files
+            .iter()
+            .any(|entry| entry.path.ends_with("/component.wasm"))
+    );
 }
 
 #[test]
@@ -557,15 +563,11 @@ fn primitive_oci_export_contains_expected_installed_record() {
         manifest["layers"][0]["mediaType"].as_str().unwrap(),
         "application/vnd.guild.installed-bundle.signature.v1+json"
     );
-    assert!(manifest["layers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(
-            |layer| layer["annotations"]["org.opencontainers.image.title"]
-                .as_str()
-                .is_some_and(|title| title.ends_with("/component.wasm"))
-        ));
+    assert!(manifest["layers"].as_array().unwrap().iter().any(|layer| {
+        layer["annotations"]["org.opencontainers.image.title"]
+            .as_str()
+            .is_some_and(|title| title.ends_with("/component.wasm"))
+    }));
 }
 
 #[test]
@@ -801,23 +803,29 @@ fn composite_bundle_export_includes_dependency_closure() {
     assert_eq!(bundle.root_skill, composite.resolved_ref);
     assert_eq!(bundle.publisher, composite.manifest.publisher);
     assert_eq!(bundle.skills.len(), 2);
-    assert!(bundle
-        .skills
-        .iter()
-        .any(|entry| entry.resolved_ref == composite.resolved_ref));
-    assert!(bundle
-        .skills
-        .iter()
-        .any(|entry| entry.resolved_ref == primitive.resolved_ref));
+    assert!(
+        bundle
+            .skills
+            .iter()
+            .any(|entry| entry.resolved_ref == composite.resolved_ref)
+    );
+    assert!(
+        bundle
+            .skills
+            .iter()
+            .any(|entry| entry.resolved_ref == primitive.resolved_ref)
+    );
     assert_eq!(composite.manifest.dependencies[0].alias, "hello");
     assert_eq!(
         composite.manifest.dependencies[0].skill,
         primitive.resolved_ref
     );
-    assert!(bundle
-        .files
-        .iter()
-        .any(|entry| entry.path.ends_with("/component.wasm")));
+    assert!(
+        bundle
+            .files
+            .iter()
+            .any(|entry| entry.path.ends_with("/component.wasm"))
+    );
 }
 
 #[test]
@@ -840,37 +848,33 @@ fn composite_oci_export_includes_dependency_closure() {
     assert_eq!(bundle.root_skill, composite.resolved_ref);
     assert_eq!(bundle.publisher, composite.manifest.publisher);
     assert_eq!(bundle.skills.len(), 2);
-    assert!(bundle
-        .skills
-        .iter()
-        .any(|entry| entry.resolved_ref == composite.resolved_ref));
-    assert!(bundle
-        .skills
-        .iter()
-        .any(|entry| entry.resolved_ref == primitive.resolved_ref));
+    assert!(
+        bundle
+            .skills
+            .iter()
+            .any(|entry| entry.resolved_ref == composite.resolved_ref)
+    );
+    assert!(
+        bundle
+            .skills
+            .iter()
+            .any(|entry| entry.resolved_ref == primitive.resolved_ref)
+    );
     assert_eq!(composite.manifest.dependencies[0].alias, "hello");
     assert_eq!(
         composite.manifest.dependencies[0].skill,
         primitive.resolved_ref
     );
-    assert!(manifest["layers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(
-            |layer| layer["annotations"]["org.opencontainers.image.title"]
-                .as_str()
-                .is_some_and(|title| title.contains("hello-composite"))
-        ));
-    assert!(manifest["layers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(
-            |layer| layer["annotations"]["org.opencontainers.image.title"]
-                .as_str()
-                .is_some_and(|title| title.contains("hello-inspect"))
-        ));
+    assert!(manifest["layers"].as_array().unwrap().iter().any(|layer| {
+        layer["annotations"]["org.opencontainers.image.title"]
+            .as_str()
+            .is_some_and(|title| title.contains("hello-composite"))
+    }));
+    assert!(manifest["layers"].as_array().unwrap().iter().any(|layer| {
+        layer["annotations"]["org.opencontainers.image.title"]
+            .as_str()
+            .is_some_and(|title| title.contains("hello-inspect"))
+    }));
 }
 
 #[test]
@@ -909,37 +913,33 @@ fn composite_oci_registry_push_includes_dependency_closure() {
     assert!(published.bundle.includes_dependency_closure);
     assert_eq!(bundle.root_skill, composite.resolved_ref);
     assert_eq!(bundle.skills.len(), 2);
-    assert!(bundle
-        .skills
-        .iter()
-        .any(|entry| entry.resolved_ref == composite.resolved_ref));
-    assert!(bundle
-        .skills
-        .iter()
-        .any(|entry| entry.resolved_ref == primitive.resolved_ref));
+    assert!(
+        bundle
+            .skills
+            .iter()
+            .any(|entry| entry.resolved_ref == composite.resolved_ref)
+    );
+    assert!(
+        bundle
+            .skills
+            .iter()
+            .any(|entry| entry.resolved_ref == primitive.resolved_ref)
+    );
     assert_eq!(composite.manifest.dependencies[0].alias, "hello");
     assert_eq!(
         composite.manifest.dependencies[0].skill,
         primitive.resolved_ref
     );
-    assert!(manifest["layers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(
-            |layer| layer["annotations"]["org.opencontainers.image.title"]
-                .as_str()
-                .is_some_and(|title| title.contains("hello-composite"))
-        ));
-    assert!(manifest["layers"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(
-            |layer| layer["annotations"]["org.opencontainers.image.title"]
-                .as_str()
-                .is_some_and(|title| title.contains("hello-inspect"))
-        ));
+    assert!(manifest["layers"].as_array().unwrap().iter().any(|layer| {
+        layer["annotations"]["org.opencontainers.image.title"]
+            .as_str()
+            .is_some_and(|title| title.contains("hello-composite"))
+    }));
+    assert!(manifest["layers"].as_array().unwrap().iter().any(|layer| {
+        layer["annotations"]["org.opencontainers.image.title"]
+            .as_str()
+            .is_some_and(|title| title.contains("hello-inspect"))
+    }));
 }
 
 #[test]

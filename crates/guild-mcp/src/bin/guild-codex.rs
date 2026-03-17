@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use guild_mcp::codex::{
-    bootstrap_codex_registry, codex_server_config, default_registry_root,
-    recommended_proof_commands, CodexBootstrapOutput, DEFAULT_CODEX_SERVER_NAME,
+    CodexBootstrapOutput, DEFAULT_CODEX_SERVER_NAME, bootstrap_codex_registry, codex_server_config,
+    default_registry_root, recommended_proof_commands,
 };
 
 fn main() -> ExitCode {
@@ -127,7 +127,9 @@ fn print_usage() {
     println!(
         "bootstrap      create a local Guild root for Codex and install the default dogfood skills"
     );
-    println!("print-config   print the Codex MCP config and launch snippets for an existing or planned Guild root");
+    println!(
+        "print-config   print the Codex MCP config and launch snippets for an existing or planned Guild root"
+    );
 }
 
 fn print_bootstrap_output(

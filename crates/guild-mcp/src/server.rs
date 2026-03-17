@@ -5,23 +5,23 @@ use base64::Engine as _;
 use guild_registry::LocalRegistry;
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{ExecutionRecord, ResourceReadResult};
-use schemars::{schema_for, JsonSchema};
+use schemars::{JsonSchema, schema_for};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::protocol::{
-    BlobResourceContents, CallToolParams, CallToolResult, ContentBlock, Implementation,
-    InitializeParams, InitializeResult, JsonRpcError, JsonRpcErrorResponse, JsonRpcRequest,
-    JsonRpcSuccessResponse, ListParams, ListResourceTemplatesResult, ListResourcesResult,
-    ListToolsResult, ReadResourceParams, ReadResourceResult, Resource, ResourceContents,
-    ResourceLink, ResourceTemplate, ResourcesCapabilities, ServerCapabilities, TextContent,
-    TextResourceContents, Tool, ToolAnnotations, ToolsCapabilities, ERROR_INVALID_PARAMS,
+    BlobResourceContents, CallToolParams, CallToolResult, ContentBlock, ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST, ERROR_METHOD_NOT_FOUND, ERROR_PARSE, ERROR_SERVER,
-    ERROR_SERVER_NOT_INITIALIZED, JSONRPC_VERSION, METHOD_INITIALIZE, METHOD_PING,
-    METHOD_RESOURCES_LIST, METHOD_RESOURCES_READ, METHOD_RESOURCE_TEMPLATES_LIST,
-    METHOD_TOOLS_CALL, METHOD_TOOLS_LIST, NOTIFICATION_INITIALIZED, SUPPORTED_PROTOCOL_VERSIONS,
+    ERROR_SERVER_NOT_INITIALIZED, Implementation, InitializeParams, InitializeResult,
+    JSONRPC_VERSION, JsonRpcError, JsonRpcErrorResponse, JsonRpcRequest, JsonRpcSuccessResponse,
+    ListParams, ListResourceTemplatesResult, ListResourcesResult, ListToolsResult,
+    METHOD_INITIALIZE, METHOD_PING, METHOD_RESOURCE_TEMPLATES_LIST, METHOD_RESOURCES_LIST,
+    METHOD_RESOURCES_READ, METHOD_TOOLS_CALL, METHOD_TOOLS_LIST, NOTIFICATION_INITIALIZED,
+    ReadResourceParams, ReadResourceResult, Resource, ResourceContents, ResourceLink,
+    ResourceTemplate, ResourcesCapabilities, SUPPORTED_PROTOCOL_VERSIONS, ServerCapabilities,
+    TextContent, TextResourceContents, Tool, ToolAnnotations, ToolsCapabilities,
 };
-use crate::{GuildMcpFacade, InspectToolRequest, McpError, INSPECT_TOOL, SERVER_NAME};
+use crate::{GuildMcpFacade, INSPECT_TOOL, InspectToolRequest, McpError, SERVER_NAME};
 
 const DEFAULT_RECENT_EXECUTION_LIMIT: usize = 50;
 
@@ -227,12 +227,12 @@ impl GuildMcpServer {
     }
 
     fn handle_notification(&mut self, request: &JsonRpcRequest) {
-        if request.method == NOTIFICATION_INITIALIZED {
-            if let SessionState::WaitingForInitialized { protocol_version } = &self.state {
-                self.state = SessionState::Ready {
-                    protocol_version: protocol_version.clone(),
-                };
-            }
+        if request.method == NOTIFICATION_INITIALIZED
+            && let SessionState::WaitingForInitialized { protocol_version } = &self.state
+        {
+            self.state = SessionState::Ready {
+                protocol_version: protocol_version.clone(),
+            };
         }
     }
 
@@ -278,7 +278,7 @@ impl GuildMcpServer {
         let params = match deserialize_params::<InitializeParams>(params) {
             Ok(params) => params,
             Err(error) => {
-                return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error))
+                return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
             }
         };
 
@@ -344,7 +344,7 @@ impl GuildMcpServer {
         let params = match deserialize_params::<CallToolParams>(params) {
             Ok(params) => params,
             Err(error) => {
-                return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error))
+                return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
             }
         };
 
@@ -368,7 +368,7 @@ impl GuildMcpServer {
                     ERROR_INVALID_PARAMS,
                     "Invalid tool arguments",
                     Some(json!({ "detail": error.to_string() })),
-                )
+                );
             }
         };
 
@@ -451,7 +451,7 @@ impl GuildMcpServer {
         let params = match deserialize_params::<ReadResourceParams>(params) {
             Ok(params) => params,
             Err(error) => {
-                return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error))
+                return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
             }
         };
 
@@ -735,14 +735,14 @@ fn execution_record_to_resource(record: &ExecutionRecord) -> Resource {
 }
 
 fn resource_contents(resource: ResourceReadResult) -> ResourceContents {
-    if is_textual_mime(&resource.mime_type) {
-        if let Ok(text) = String::from_utf8(resource.bytes.clone()) {
-            return ResourceContents::Text(TextResourceContents {
-                uri: resource.uri,
-                mime_type: resource.mime_type,
-                text,
-            });
-        }
+    if is_textual_mime(&resource.mime_type)
+        && let Ok(text) = String::from_utf8(resource.bytes.clone())
+    {
+        return ResourceContents::Text(TextResourceContents {
+            uri: resource.uri,
+            mime_type: resource.mime_type,
+            text,
+        });
     }
 
     ResourceContents::Blob(BlobResourceContents {
