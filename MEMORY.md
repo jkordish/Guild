@@ -16,7 +16,7 @@ What is materially real today:
 - evidence persists as durable local Guild objects with distinct blob identity and per-emission evidence-record identity
 - Guild now runs as a real MCP server over stdio, not just an internal façade with MCP-shaped concepts
 - Guild now has a real bounded `http-request` capability family in the active inspect slice
-- Guild can now export and import the same signed installed bundles either as native bundle directories or as local OCI image layouts
+- Guild can now export and import the same signed installed bundles either as native bundle directories, local OCI image layouts, or OCI registry artifacts
 - MCP resource reads and guest-side `read-resource` calls use the same local backend
 - a resource-aware explain skill can read stored execution and evidence artifacts through the Wasm host boundary, including failed and rejected records
 - top-level unsuccessful inspect calls return host-issued execution receipts pointing at persisted `guild://executions/...` records
@@ -73,6 +73,7 @@ What this means in practice:
 - Replaced loose capability constraint handling with typed constraints plus one shared host-side evaluator.
 - Added portable local bundle export/import built from installed executable records, including composite dependency closure export/import.
 - Added OCI image layout export/import as an additional transport mapping for those same signed installed bundles, preserving the existing local trust/signature verification path by reconstructing the native signed bundle semantics before installation.
+- Added OCI registry push/pull for that same OCI-mapped signed installed bundle transport, still reconstructing the native signed bundle semantics and re-running the local trust/signature verification path before installation.
 - Added local publisher identities, signed bundle export, local trust-store verification on import, and host-owned verification metadata for imported installs.
 - Hardened execution identity so durable execution IDs are host-minted UUIDv7 values rather than caller-controlled IDs or process-local counters.
 - Made execution persistence create-only so stored execution records cannot be silently overwritten by duplicate IDs.
@@ -112,8 +113,10 @@ What this means in practice:
 - OCI image layouts are also built from installed executable state, not source directories.
 - A signed bundle contains the installed manifest, staged Wasm artifact, staged support files, explicit digests for bundled files, a bundle index identifying the root skill and included installs, and a detached signature envelope.
 - The OCI mapping stores that same signed bundle index as the root manifest config blob, stores the detached signature as a dedicated OCI layer, stores each bundled installed file as its own OCI blob layer, and identifies the root skill through descriptor annotations in `index.json`.
+- OCI registry transport pushes and pulls that same OCI-mapped artifact through a registry reference; the pull path validates the OCI image index, root manifest, and referenced blob digests before reconstructing the signed bundle payload locally.
 - Import verifies bundle structure, publisher trust, signature validity, and bundled digests before copying anything into the target registry.
 - OCI import first verifies image layout structure plus blob descriptor size/digest integrity, then reconstructs the native signed bundle payload and runs the same publisher-trust, signature, and bundled-digest verification flow before copying anything into the target registry.
+- OCI registry pull/import first verifies remote OCI structure plus pulled blob digests, then reconstructs the native signed bundle payload and runs the same publisher-trust, signature, and bundled-digest verification flow before copying anything into the target registry.
 - Imported skills become normal installed records under the target registry's `installed/...` tree.
 - Imported execution does not require the original source tree or a local rebuild.
 - Imported verified installs carry host-owned verification metadata in registry-side sidecars.
@@ -181,6 +184,9 @@ cargo run -p guild-mcp --example export_import_composite_local
 cargo run -p guild-mcp --example export_import_composite_oci_local
 cargo run -p guild-mcp --example signed_import_failures_local
 cargo run -p guild-mcp --example signed_import_oci_failures_local
+cargo run -p guild-mcp --example push_pull_oci_registry_local
+cargo run -p guild-mcp --example push_pull_composite_oci_registry_local
+cargo run -p guild-mcp --example signed_pull_oci_registry_failures_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
@@ -199,6 +205,9 @@ What they prove:
 - `export_import_composite_oci_local`: export that same installed dependency closure as an OCI image layout, trust/import it in fresh registry B, and execute the composite plus child entirely from imported installed records
 - `signed_import_failures_local`: prove both untrusted-publisher rejection and tampered-bundle rejection before unsafe executable state is installed
 - `signed_import_oci_failures_local`: prove the same untrusted/tampered fail-closed behavior for OCI image layout import before unsafe executable state is installed
+- `push_pull_oci_registry_local`: publish the same installed signed bundle payload through a local OCI registry, trust/pull it in fresh registry B, resolve by `RequestedSkillRef`, and execute without rebuilding
+- `push_pull_composite_oci_registry_local`: publish `hello-composite` together with its installed dependency closure through a local OCI registry, trust/pull it in fresh registry B, and execute the composite plus child entirely from pulled installed records
+- `signed_pull_oci_registry_failures_local`: prove the same untrusted/tampered fail-closed behavior for OCI registry pull/import before unsafe executable state is installed
 - `mcp_stdio_local`: launch `guild-mcp-server` as a subprocess, initialize over stdio JSON-RPC, list tools, call `guild.inspect`, and read back the returned execution/evidence URIs through MCP resources
 
 Each command uses its own cleaned subdirectory under `target/dev-local-registry/`, so repeated local runs stay deterministic and do not overwrite another proof flow's stored execution ids.

@@ -317,11 +317,15 @@ The current repository supports two local packaging shapes for that same install
 - a native signed installed-bundle directory
 - an OCI image layout whose root manifest points at the same signed bundle index plus the bundled installed files as OCI blobs
 
+The current repository also supports OCI registry transport for that same OCI-mapped artifact. Registry publication moves installed executable state, not source trees.
+
 ### 8.3 Import path
 
 Import validates the bundle, verifies signature, trust, and bundled file integrity, and installs it into the local Guild root.
 
 When the OCI image layout mapping is used, the importer first validates OCI layout structure plus descriptor digests and sizes, then reconstructs the same signed installed-bundle payload and runs the existing trust/signature/import verification flow before installation.
+
+When OCI registry transport is used, the pull path first retrieves the OCI image index, root manifest, and referenced blobs from the registry, validates their structure and digests, then reconstructs the same signed installed-bundle payload and runs the existing trust/signature/import verification flow before installation.
 
 ### 8.4 Root portability
 
@@ -329,7 +333,7 @@ Two different Guild roots should be able to agree on artifact identity for the s
 
 ### 8.5 Current repository portability flow
 
-The working portability flow is built from installed executable state rather than source directories. The native signed-bundle directory remains the canonical signed transport unit. OCI image layout is an additional local transport mapping over that same signed payload. Import verifies trust, signature, and bundled file digests before installation and writes host-owned verification metadata alongside imported installed records.
+The working portability flow is built from installed executable state rather than source directories. The native signed-bundle directory remains the canonical signed transport unit. OCI image layout is an additional local transport mapping over that same signed payload, and OCI registry transport moves that same OCI-mapped artifact between Guild roots. Every import path verifies trust, signature, and bundled file digests before installation and writes host-owned verification metadata alongside imported installed records.
 
 ## 9. Execution Store Design
 
@@ -556,7 +560,7 @@ The default local profile keeps current example flows working by allowing only c
   .oci-layout-import-staging/
 ```
 
-This is illustrative, not normative. The current local registry root keeps installed executable state, execution records, evidence storage, and trusted publisher records under one root. Native signed-bundle directories and OCI image layout directories are caller-chosen export/import locations outside that root in the current milestone.
+This is illustrative, not normative. The current local registry root keeps installed executable state, execution records, evidence storage, and trusted publisher records under one root. Native signed-bundle directories and OCI image layout directories are caller-chosen export/import locations outside that root in the current milestone, while OCI registry transport stores that same signed installed-state payload in a separate OCI registry under a caller-chosen repository reference.
 
 ## 16. Sequence Sketch
 

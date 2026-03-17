@@ -65,6 +65,16 @@ Both execution records carry host-stamped timestamps, and the child lineage is p
 6. resolves `hello-composite` by `RequestedSkillRef`
 7. executes the parent and child entirely from imported installed records
 
+`push_pull_composite_oci_registry_local` proves the same dependency-closure portability contract through a real local OCI registry:
+
+1. installs `hello-inspect` and `hello-composite` into registry A
+2. generates a local publisher identity
+3. publishes `hello-composite` together with its transitive installed dependency closure to a local OCI registry
+4. trusts that publisher in fresh registry B
+5. pulls the verified artifact into registry B through the normal local trust/signature gate
+6. resolves `hello-composite` by `RequestedSkillRef`
+7. executes the parent and child entirely from pulled installed records
+
 The working example uses:
 
 - `invoke-skill` with the declared alias `hello`

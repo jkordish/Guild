@@ -1,17 +1,26 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 
+use futures_util::TryStreamExt;
+use http::HeaderValue;
+use oci_client::client::ClientConfig;
+use oci_client::client::ClientProtocol;
+use oci_client::secrets::RegistryAuth;
+use oci_client::{Client, Reference, RegistryOperation};
 use serde::{Deserialize, Serialize};
 
 use super::{
     bundle_file_relative_from_str, bundle_index_path, bundle_signature_path,
     ensure_registry_layout, json_bytes, parse_bundle_index, parse_bundle_signature_bytes,
-    sha256_bytes, sha256_file, write_bytes, write_json, InstalledSkill, InstalledSkillBundle,
-    LocalRegistry, RegistryError, SignedBundlePayload,
+    sha256_bytes, write_bytes, write_json, InstalledSkill, InstalledSkillBundle, LocalRegistry,
+    OciRegistryAuth, OciRegistryReference, OciRegistryTarget, OciRegistryTransportOptions,
+    PublishedOciArtifact, RegistryError, SignedBundlePayload,
 };
 
 const OCI_IMAGE_LAYOUT_VERSION: &str = "1.0.0";
+const OCI_IMAGE_INDEX_MEDIA_TYPE: &str = "application/vnd.oci.image.index.v1+json";
 const OCI_IMAGE_MANIFEST_MEDIA_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
 const GUILD_OCI_ARTIFACT_TYPE: &str = "application/vnd.guild.installed-bundle.oci.v1";
 const GUILD_BUNDLE_CONFIG_MEDIA_TYPE: &str = "application/vnd.guild.installed-bundle.v2+json";
@@ -25,20 +34,20 @@ const GUILD_ROOT_DIGEST_ANNOTATION: &str = "dev.guild.root-skill.digest";
 const GUILD_PUBLISHER_ID_ANNOTATION: &str = "dev.guild.publisher.id";
 const GUILD_CLOSURE_ANNOTATION: &str = "dev.guild.includes-dependency-closure";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct OciLayoutMetadata {
     #[serde(rename = "imageLayoutVersion")]
     image_layout_version: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OciImageIndex {
     schema_version: u32,
     manifests: Vec<OciDescriptor>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OciImageManifest {
     schema_version: u32,
@@ -57,8 +66,23 @@ struct OciDescriptor {
     annotations: Option<BTreeMap<String, String>>,
 }
 
+#[derive(Debug, Clone)]
+struct OciBlob {
+    descriptor: OciDescriptor,
+    bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+struct BuiltOciArtifact {
+    index_bytes: Vec<u8>,
+    manifest_bytes: Vec<u8>,
+    root_descriptor: OciDescriptor,
+    config: OciBlob,
+    layers: Vec<OciBlob>,
+}
+
 #[derive(Debug)]
-struct DecodedOciLayout {
+struct DecodedOciArtifact {
     bundle_bytes: Vec<u8>,
     signature_bytes: Vec<u8>,
     files: Vec<DecodedOciFile>,
@@ -80,13 +104,14 @@ struct DecodedBundleMetadata {
 #[derive(Debug)]
 struct DecodedOciFile {
     relative_path: String,
-    blob_path: PathBuf,
+    bytes: Vec<u8>,
 }
 
 pub(super) fn export_oci_layout(
     payload: &SignedBundlePayload,
     layout_root: impl AsRef<Path>,
 ) -> Result<(), RegistryError> {
+    let artifact = build_oci_artifact(payload)?;
     let layout_root = prepare_oci_layout_root(layout_root)?;
     write_json(
         &layout_root.join("oci-layout"),
@@ -94,26 +119,217 @@ pub(super) fn export_oci_layout(
             image_layout_version: OCI_IMAGE_LAYOUT_VERSION.into(),
         },
     )?;
-
-    let config_descriptor = write_oci_blob(
+    write_oci_blob_at_digest(
         &layout_root,
-        GUILD_BUNDLE_CONFIG_MEDIA_TYPE,
-        &payload.bundle_bytes,
-        Some(single_annotation(OCI_TITLE_ANNOTATION, "bundle.json")),
+        &artifact.config.descriptor.digest,
+        &artifact.config.bytes,
     )?;
+    for layer in &artifact.layers {
+        write_oci_blob_at_digest(&layout_root, &layer.descriptor.digest, &layer.bytes)?;
+    }
+    write_oci_blob_at_digest(
+        &layout_root,
+        &artifact.root_descriptor.digest,
+        &artifact.manifest_bytes,
+    )?;
+    write_bytes(&layout_root.join("index.json"), &artifact.index_bytes)?;
+
+    Ok(())
+}
+
+pub(super) fn import_oci_layout(
+    root: &Path,
+    layout_root: &Path,
+) -> Result<Vec<InstalledSkill>, RegistryError> {
+    let layout_root = open_oci_layout_root(layout_root)?;
+    validate_layout_metadata(&layout_root)?;
+    let index_bytes = read_layout_index_bytes(&layout_root)?;
+    let validated_manifest = load_validated_root_manifest(&index_bytes, &|descriptor| {
+        read_oci_blob_bytes(&layout_root, descriptor)
+    })?;
+    let decoded = decode_oci_artifact(
+        &validated_manifest.root_descriptor,
+        &validated_manifest.manifest,
+        &|descriptor| read_oci_blob_bytes(&layout_root, descriptor),
+    )?;
+    import_decoded_oci_artifact(root, &decoded, ".oci-layout-import-staging", "oci-layout")
+}
+
+pub(super) fn push_oci_registry(
+    payload: &SignedBundlePayload,
+    reference: &OciRegistryReference,
+    options: &OciRegistryTransportOptions,
+) -> Result<PublishedOciArtifact, RegistryError> {
+    if matches!(reference.target, OciRegistryTarget::Digest(_)) {
+        return Err(RegistryError::new(
+            "oci-registry-push-reference-invalid",
+            "OCI registry push targets must use a tag reference",
+        )
+        .with_detail(registry_reference_string(reference)));
+    }
+
+    let artifact = build_oci_artifact(payload)?;
+    let expected_manifest_digest = format!("sha256:{}", sha256_bytes(&artifact.index_bytes));
+    let reference = reference.clone();
+    let options = options.clone();
+    let bundle = payload.bundle.clone();
+    run_registry_future(async move {
+        let client_reference = parse_registry_reference(&reference)?;
+        let client = build_registry_client(&reference, &options);
+        let auth = registry_auth(&options.auth);
+        authenticate_registry(&client, &client_reference, &auth, RegistryOperation::Push).await?;
+
+        upload_registry_blob(&client, &client_reference, &artifact.config).await?;
+        for layer in &artifact.layers {
+            upload_registry_blob(&client, &client_reference, layer).await?;
+        }
+
+        client
+            .push_manifest_raw(
+                &client_reference,
+                artifact.manifest_bytes.clone(),
+                HeaderValue::from_static(OCI_IMAGE_MANIFEST_MEDIA_TYPE),
+            )
+            .await
+            .map_err(|error| {
+                RegistryError::new(
+                    "oci-registry-push-manifest-failed",
+                    "failed to push the Guild OCI image manifest to the registry",
+                )
+                .with_detail(error.to_string())
+            })?;
+
+        client
+            .push_manifest_raw(
+                &client_reference,
+                artifact.index_bytes.clone(),
+                HeaderValue::from_static(OCI_IMAGE_INDEX_MEDIA_TYPE),
+            )
+            .await
+            .map_err(|error| {
+                RegistryError::new(
+                    "oci-registry-push-index-failed",
+                    "failed to push the Guild OCI image index to the registry",
+                )
+                .with_detail(error.to_string())
+            })?;
+
+        let published_digest = client
+            .fetch_manifest_digest(&client_reference, &auth)
+            .await
+            .map_err(|error| {
+                RegistryError::new(
+                    "oci-registry-push-verify-failed",
+                    "failed to read back the published OCI manifest digest from the registry",
+                )
+                .with_detail(error.to_string())
+            })?;
+        if published_digest != expected_manifest_digest {
+            return Err(RegistryError::new(
+                "oci-registry-push-digest-mismatch",
+                "registry-published OCI index digest did not match the locally assembled artifact",
+            )
+            .with_detail(serde_json::json!({
+                "expected": expected_manifest_digest,
+                "actual": published_digest,
+                "reference": registry_reference_string(&reference),
+            })));
+        }
+
+        Ok(PublishedOciArtifact {
+            reference,
+            manifest_digest: published_digest,
+            bundle,
+        })
+    })
+}
+
+pub(super) fn pull_oci_registry(
+    root: &Path,
+    reference: &OciRegistryReference,
+    options: &OciRegistryTransportOptions,
+) -> Result<Vec<InstalledSkill>, RegistryError> {
+    let reference = reference.clone();
+    let options = options.clone();
+    let decoded = run_registry_future(async move {
+        let client_reference = parse_registry_reference(&reference)?;
+        let client = build_registry_client(&reference, &options);
+        let auth = registry_auth(&options.auth);
+        authenticate_registry(&client, &client_reference, &auth, RegistryOperation::Pull).await?;
+
+        let (index_bytes, _) = client
+            .pull_manifest_raw(&client_reference, &auth, &[OCI_IMAGE_INDEX_MEDIA_TYPE])
+            .await
+            .map_err(|error| {
+                RegistryError::new(
+                    "oci-registry-index-fetch-failed",
+                    "failed to pull the OCI image index for the requested Guild artifact",
+                )
+                .with_detail(serde_json::json!({
+                    "reference": registry_reference_string(&reference),
+                    "cause": error.to_string(),
+                }))
+            })?;
+        let root_descriptor = parse_and_validate_root_index(&index_bytes)?;
+        let manifest_reference = parse_registry_reference(&reference_with_digest(
+            &reference,
+            root_descriptor.digest.clone(),
+        ))?;
+        let (manifest_bytes, _) = client
+            .pull_manifest_raw(&manifest_reference, &auth, &[OCI_IMAGE_MANIFEST_MEDIA_TYPE])
+            .await
+            .map_err(|error| {
+                RegistryError::new(
+                    "oci-registry-manifest-fetch-failed",
+                    "failed to pull the OCI image manifest for the requested Guild artifact",
+                )
+                .with_detail(serde_json::json!({
+                    "reference": registry_reference_string(&reference),
+                    "manifest_digest": root_descriptor.digest,
+                    "cause": error.to_string(),
+                }))
+            })?;
+        validate_registry_bytes(&manifest_bytes, &root_descriptor)?;
+        let manifest = parse_and_validate_root_manifest(&manifest_bytes)?;
+        let blob_bytes = fetch_registry_blobs(&client, &client_reference, &manifest).await?;
+
+        decode_oci_artifact(&root_descriptor, &manifest, &|descriptor| {
+            blob_bytes.get(&descriptor.digest).cloned().ok_or_else(|| {
+                RegistryError::new(
+                    "oci-registry-blob-missing",
+                    "pulled OCI registry content was missing a required blob",
+                )
+                .with_detail(descriptor.digest.clone())
+            })
+        })
+    })?;
+
+    import_decoded_oci_artifact(root, &decoded, ".oci-registry-pull-staging", "oci-registry")
+}
+
+fn build_oci_artifact(payload: &SignedBundlePayload) -> Result<BuiltOciArtifact, RegistryError> {
+    let config = OciBlob {
+        descriptor: descriptor_for_blob(
+            GUILD_BUNDLE_CONFIG_MEDIA_TYPE,
+            &payload.bundle_bytes,
+            Some(single_annotation(OCI_TITLE_ANNOTATION, "bundle.json")),
+        )?,
+        bytes: payload.bundle_bytes.clone(),
+    };
     let signature_bytes = json_bytes(&payload.signature)?;
-    let signature_descriptor = write_oci_blob(
-        &layout_root,
-        GUILD_BUNDLE_SIGNATURE_MEDIA_TYPE,
-        &signature_bytes,
-        Some(single_annotation(
-            OCI_TITLE_ANNOTATION,
-            "bundle.signature.json",
-        )),
-    )?;
-
     let mut layers = Vec::with_capacity(payload.files.len() + 1);
-    layers.push(signature_descriptor);
+    layers.push(OciBlob {
+        descriptor: descriptor_for_blob(
+            GUILD_BUNDLE_SIGNATURE_MEDIA_TYPE,
+            &signature_bytes,
+            Some(single_annotation(
+                OCI_TITLE_ANNOTATION,
+                "bundle.signature.json",
+            )),
+        )?,
+        bytes: signature_bytes,
+    });
+
     for file in &payload.files {
         let bytes = fs::read(&file.source_path).map_err(|error| {
             RegistryError::new(
@@ -125,8 +341,7 @@ pub(super) fn export_oci_layout(
                 "cause": error.to_string(),
             }))
         })?;
-        let descriptor = write_oci_blob(
-            &layout_root,
+        let descriptor = descriptor_for_blob(
             GUILD_BUNDLE_FILE_MEDIA_TYPE,
             &bytes,
             Some(single_annotation(
@@ -145,108 +360,45 @@ pub(super) fn export_oci_layout(
                 "actual": descriptor.digest,
             })));
         }
-        layers.push(descriptor);
+        layers.push(OciBlob { descriptor, bytes });
     }
 
     let manifest = OciImageManifest {
         schema_version: 2,
         artifact_type: Some(GUILD_OCI_ARTIFACT_TYPE.into()),
-        config: config_descriptor,
-        layers,
+        config: config.descriptor.clone(),
+        layers: layers
+            .iter()
+            .map(|layer| layer.descriptor.clone())
+            .collect(),
     };
     let manifest_bytes = json_bytes(&manifest)?;
     let mut root_descriptor =
         descriptor_for_blob(OCI_IMAGE_MANIFEST_MEDIA_TYPE, &manifest_bytes, None)?;
     root_descriptor.annotations = Some(root_descriptor_annotations(&payload.bundle));
-    write_oci_blob_at_digest(&layout_root, &root_descriptor.digest, &manifest_bytes)?;
-
-    write_json(
-        &layout_root.join("index.json"),
-        &OciImageIndex {
-            schema_version: 2,
-            manifests: vec![root_descriptor],
-        },
-    )?;
-
-    Ok(())
-}
-
-pub(super) fn import_oci_layout(
-    root: &Path,
-    layout_root: &Path,
-) -> Result<Vec<InstalledSkill>, RegistryError> {
-    let root = ensure_registry_layout(root)?;
-    let layout_root = open_oci_layout_root(layout_root)?;
-    let decoded = decode_oci_layout(&layout_root)?;
-    let staging_root = oci_import_staging_root(&root);
-    if staging_root.exists() {
-        fs::remove_dir_all(&staging_root).map_err(|error| {
-            RegistryError::new(
-                "oci-layout-import-staging-cleanup-failed",
-                "failed to remove previous OCI layout import staging directory",
-            )
-            .with_detail(error.to_string())
-        })?;
-    }
-    fs::create_dir_all(&staging_root).map_err(|error| {
-        RegistryError::new(
-            "oci-layout-import-staging-create-failed",
-            "failed to create OCI layout import staging directory",
-        )
-        .with_detail(error.to_string())
-    })?;
-
-    let staged_result = (|| -> Result<Vec<InstalledSkill>, RegistryError> {
-        let bundle_root = staging_root.join("bundle");
-        fs::create_dir_all(&bundle_root).map_err(|error| {
-            RegistryError::new(
-                "oci-layout-import-staging-create-failed",
-                "failed to create reconstructed bundle staging directory",
-            )
-            .with_detail(error.to_string())
-        })?;
-        write_bytes(&bundle_index_path(&bundle_root), &decoded.bundle_bytes)?;
-        write_bytes(
-            &bundle_signature_path(&bundle_root),
-            &decoded.signature_bytes,
-        )?;
-        write_decoded_files(&bundle_root, &decoded.files)?;
-        LocalRegistry::import_bundle(&root, &bundle_root)
-    })();
-
-    let cleanup_result = if staging_root.exists() {
-        fs::remove_dir_all(&staging_root).map_err(|error| {
-            RegistryError::new(
-                "oci-layout-import-staging-cleanup-failed",
-                "failed to clean OCI layout import staging directory",
-            )
-            .with_detail(error.to_string())
-        })
-    } else {
-        Ok(())
+    let index = OciImageIndex {
+        schema_version: 2,
+        manifests: vec![root_descriptor.clone()],
     };
 
-    match (staged_result, cleanup_result) {
-        (Ok(imported), Ok(())) => Ok(imported),
-        (Err(error), _) | (Ok(_), Err(error)) => Err(error),
-    }
+    Ok(BuiltOciArtifact {
+        index_bytes: json_bytes(&index)?,
+        manifest_bytes,
+        root_descriptor,
+        config,
+        layers,
+    })
 }
 
-fn decode_oci_layout(layout_root: &Path) -> Result<DecodedOciLayout, RegistryError> {
-    validate_layout_metadata(layout_root)?;
-    let validated_manifest = load_validated_root_manifest(layout_root)?;
-    let decoded_bundle = decode_bundle_metadata(
-        layout_root,
-        &validated_manifest.root_descriptor,
-        &validated_manifest.manifest,
-    )?;
-    let files = decode_file_layers(
-        layout_root,
-        &decoded_bundle.bundle,
-        &validated_manifest.manifest,
-    )?;
+fn decode_oci_artifact(
+    root_descriptor: &OciDescriptor,
+    manifest: &OciImageManifest,
+    load_blob: &impl Fn(&OciDescriptor) -> Result<Vec<u8>, RegistryError>,
+) -> Result<DecodedOciArtifact, RegistryError> {
+    let decoded_bundle = decode_bundle_metadata(root_descriptor, manifest, load_blob)?;
+    let files = decode_file_layers(&decoded_bundle.bundle, manifest, load_blob)?;
 
-    Ok(DecodedOciLayout {
+    Ok(DecodedOciArtifact {
         bundle_bytes: decoded_bundle.bundle_bytes,
         signature_bytes: decoded_bundle.signature_bytes,
         files,
@@ -269,19 +421,39 @@ fn validate_layout_metadata(layout_root: &Path) -> Result<(), RegistryError> {
     Ok(())
 }
 
-fn load_validated_root_manifest(layout_root: &Path) -> Result<ValidatedOciManifest, RegistryError> {
-    let index = read_layout_index(layout_root)?;
+fn load_validated_root_manifest(
+    index_bytes: &[u8],
+    load_manifest: &impl Fn(&OciDescriptor) -> Result<Vec<u8>, RegistryError>,
+) -> Result<ValidatedOciManifest, RegistryError> {
+    let root_descriptor = parse_and_validate_root_index(index_bytes)?;
+    let manifest_bytes = load_manifest(&root_descriptor)?;
+    let manifest = parse_and_validate_root_manifest(&manifest_bytes)?;
+
+    Ok(ValidatedOciManifest {
+        root_descriptor,
+        manifest,
+    })
+}
+
+fn parse_and_validate_root_index(index_bytes: &[u8]) -> Result<OciDescriptor, RegistryError> {
+    let index: OciImageIndex = serde_json::from_slice(index_bytes).map_err(|error| {
+        RegistryError::new(
+            "oci-layout-index-parse-failed",
+            "failed to parse OCI image index",
+        )
+        .with_detail(error.to_string())
+    })?;
     if index.schema_version != 2 {
         return Err(RegistryError::new(
             "oci-layout-index-invalid",
-            "OCI layout index used an unsupported schema version",
+            "OCI image index used an unsupported schema version",
         )
         .with_detail(index.schema_version));
     }
     if index.manifests.len() != 1 {
         return Err(RegistryError::new(
             "oci-layout-index-invalid",
-            "OCI layout index must contain exactly one root manifest descriptor",
+            "OCI image index must contain exactly one root manifest descriptor",
         )
         .with_detail(index.manifests.len()));
     }
@@ -290,17 +462,12 @@ fn load_validated_root_manifest(layout_root: &Path) -> Result<ValidatedOciManife
     if root_descriptor.media_type != OCI_IMAGE_MANIFEST_MEDIA_TYPE {
         return Err(RegistryError::new(
             "oci-layout-index-invalid",
-            "OCI layout root descriptor must reference an OCI image manifest",
+            "OCI image index root descriptor must reference an OCI image manifest",
         )
         .with_detail(root_descriptor.media_type.clone()));
     }
 
-    let manifest_bytes = read_oci_blob_bytes(layout_root, &root_descriptor)?;
-    let manifest = parse_and_validate_root_manifest(&manifest_bytes)?;
-    Ok(ValidatedOciManifest {
-        root_descriptor,
-        manifest,
-    })
+    Ok(root_descriptor)
 }
 
 fn parse_and_validate_root_manifest(
@@ -339,16 +506,16 @@ fn parse_and_validate_root_manifest(
 }
 
 fn decode_bundle_metadata(
-    layout_root: &Path,
     root_descriptor: &OciDescriptor,
     manifest: &OciImageManifest,
+    load_blob: &impl Fn(&OciDescriptor) -> Result<Vec<u8>, RegistryError>,
 ) -> Result<DecodedBundleMetadata, RegistryError> {
-    let bundle_bytes = read_oci_blob_bytes(layout_root, &manifest.config)?;
+    let bundle_bytes = load_blob(&manifest.config)?;
     let bundle = parse_bundle_index(&bundle_bytes)?;
     validate_root_descriptor_annotations(root_descriptor, &bundle)?;
 
     let signature_descriptor = find_signature_descriptor(manifest)?;
-    let signature_bytes = read_oci_blob_bytes(layout_root, signature_descriptor)?;
+    let signature_bytes = load_blob(signature_descriptor)?;
     let signature = parse_bundle_signature_bytes(&signature_bytes)?;
     if manifest.config.digest != signature.bundle_sha256 {
         return Err(RegistryError::new(
@@ -392,21 +559,22 @@ fn find_signature_descriptor(manifest: &OciImageManifest) -> Result<&OciDescript
 }
 
 fn decode_file_layers(
-    layout_root: &Path,
     bundle: &InstalledSkillBundle,
     manifest: &OciImageManifest,
+    load_blob: &impl Fn(&OciDescriptor) -> Result<Vec<u8>, RegistryError>,
 ) -> Result<Vec<DecodedOciFile>, RegistryError> {
-    let mut files_by_path = indexed_file_layers(layout_root, manifest)?;
+    let mut files_by_path = indexed_file_layers(manifest)?;
     let mut files = Vec::with_capacity(bundle.files.len());
     for file in &bundle.files {
-        let decoded = files_by_path.remove(&file.path).ok_or_else(|| {
+        let descriptor = files_by_path.remove(&file.path).ok_or_else(|| {
             RegistryError::new(
                 "oci-layout-file-missing",
-                "OCI layout omitted a file listed by the signed bundle index",
+                "OCI artifact omitted a file listed by the signed bundle index",
             )
             .with_detail(file.path.clone())
         })?;
-        let actual_digest = sha256_file(&decoded.blob_path)?;
+        let bytes = load_blob(&descriptor)?;
+        let actual_digest = format!("sha256:{}", sha256_bytes(&bytes));
         if actual_digest != file.sha256 {
             return Err(RegistryError::new(
                 "oci-layout-file-digest-mismatch",
@@ -418,13 +586,16 @@ fn decode_file_layers(
                 "actual": actual_digest,
             })));
         }
-        files.push(decoded);
+        files.push(DecodedOciFile {
+            relative_path: file.path.clone(),
+            bytes,
+        });
     }
 
     if let Some(extra) = files_by_path.into_keys().next() {
         return Err(RegistryError::new(
             "oci-layout-unexpected-content",
-            "OCI layout included a bundled file that was not listed in the signed bundle index",
+            "OCI artifact included a bundled file that was not listed in the signed bundle index",
         )
         .with_detail(extra));
     }
@@ -433,9 +604,8 @@ fn decode_file_layers(
 }
 
 fn indexed_file_layers(
-    layout_root: &Path,
     manifest: &OciImageManifest,
-) -> Result<BTreeMap<String, DecodedOciFile>, RegistryError> {
+) -> Result<BTreeMap<String, OciDescriptor>, RegistryError> {
     let mut files_by_path = BTreeMap::new();
     for layer in &manifest.layers {
         if layer.media_type == GUILD_BUNDLE_SIGNATURE_MEDIA_TYPE {
@@ -464,43 +634,91 @@ fn indexed_file_layers(
             )
             .with_detail(relative));
         }
-        let blob_path = validate_oci_blob_file(layout_root, layer)?;
-        files_by_path.insert(
-            relative.clone(),
-            DecodedOciFile {
-                relative_path: relative,
-                blob_path,
-            },
-        );
+        files_by_path.insert(relative, layer.clone());
     }
 
     Ok(files_by_path)
 }
 
-fn write_decoded_files(bundle_root: &Path, files: &[DecodedOciFile]) -> Result<(), RegistryError> {
+fn import_decoded_oci_artifact(
+    root: &Path,
+    decoded: &DecodedOciArtifact,
+    staging_dir_name: &str,
+    code_prefix: &str,
+) -> Result<Vec<InstalledSkill>, RegistryError> {
+    let root = ensure_registry_layout(root)?;
+    let staging_root = root.join(staging_dir_name);
+    if staging_root.exists() {
+        fs::remove_dir_all(&staging_root).map_err(|error| {
+            RegistryError::new(
+                format!("{code_prefix}-import-staging-cleanup-failed"),
+                "failed to remove previous OCI import staging directory",
+            )
+            .with_detail(error.to_string())
+        })?;
+    }
+    fs::create_dir_all(&staging_root).map_err(|error| {
+        RegistryError::new(
+            format!("{code_prefix}-import-staging-create-failed"),
+            "failed to create OCI import staging directory",
+        )
+        .with_detail(error.to_string())
+    })?;
+
+    let staged_result = (|| -> Result<Vec<InstalledSkill>, RegistryError> {
+        let bundle_root = staging_root.join("bundle");
+        fs::create_dir_all(&bundle_root).map_err(|error| {
+            RegistryError::new(
+                format!("{code_prefix}-import-staging-create-failed"),
+                "failed to create reconstructed bundle staging directory",
+            )
+            .with_detail(error.to_string())
+        })?;
+        write_bytes(&bundle_index_path(&bundle_root), &decoded.bundle_bytes)?;
+        write_bytes(
+            &bundle_signature_path(&bundle_root),
+            &decoded.signature_bytes,
+        )?;
+        write_decoded_files(&bundle_root, &decoded.files, code_prefix)?;
+        LocalRegistry::import_bundle(&root, &bundle_root)
+    })();
+
+    let cleanup_result = if staging_root.exists() {
+        fs::remove_dir_all(&staging_root).map_err(|error| {
+            RegistryError::new(
+                format!("{code_prefix}-import-staging-cleanup-failed"),
+                "failed to clean OCI import staging directory",
+            )
+            .with_detail(error.to_string())
+        })
+    } else {
+        Ok(())
+    };
+
+    match (staged_result, cleanup_result) {
+        (Ok(imported), Ok(())) => Ok(imported),
+        (Err(error), _) | (Ok(_), Err(error)) => Err(error),
+    }
+}
+
+fn write_decoded_files(
+    bundle_root: &Path,
+    files: &[DecodedOciFile],
+    code_prefix: &str,
+) -> Result<(), RegistryError> {
     for file in files {
         let relative = bundle_file_relative_from_str(&file.relative_path)?;
         let destination = bundle_root.join(relative);
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent).map_err(|error| {
                 RegistryError::new(
-                    "oci-layout-import-file-create-failed",
+                    format!("{code_prefix}-import-file-create-failed"),
                     "failed to create parent directory while reconstructing bundled files",
                 )
                 .with_detail(error.to_string())
             })?;
         }
-        fs::copy(&file.blob_path, &destination).map_err(|error| {
-            RegistryError::new(
-                "oci-layout-import-file-copy-failed",
-                "failed to reconstruct a bundled file from an OCI blob",
-            )
-            .with_detail(serde_json::json!({
-                "source": file.blob_path.display().to_string(),
-                "destination": destination.display().to_string(),
-                "cause": error.to_string(),
-            }))
-        })?;
+        write_bytes(&destination, &file.bytes)?;
     }
 
     Ok(())
@@ -600,8 +818,8 @@ fn read_layout_metadata(layout_root: &Path) -> Result<OciLayoutMetadata, Registr
     })
 }
 
-fn read_layout_index(layout_root: &Path) -> Result<OciImageIndex, RegistryError> {
-    let bytes = fs::read(layout_root.join("index.json")).map_err(|error| {
+fn read_layout_index_bytes(layout_root: &Path) -> Result<Vec<u8>, RegistryError> {
+    fs::read(layout_root.join("index.json")).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             RegistryError::new(
                 "oci-layout-index-missing",
@@ -614,25 +832,7 @@ fn read_layout_index(layout_root: &Path) -> Result<OciImageIndex, RegistryError>
             )
             .with_detail(error.to_string())
         }
-    })?;
-    serde_json::from_slice(&bytes).map_err(|error| {
-        RegistryError::new(
-            "oci-layout-index-parse-failed",
-            "failed to parse OCI layout index",
-        )
-        .with_detail(error.to_string())
     })
-}
-
-fn write_oci_blob(
-    layout_root: &Path,
-    media_type: &str,
-    bytes: &[u8],
-    annotations: Option<BTreeMap<String, String>>,
-) -> Result<OciDescriptor, RegistryError> {
-    let descriptor = descriptor_for_blob(media_type, bytes, annotations)?;
-    write_oci_blob_at_digest(layout_root, &descriptor.digest, bytes)?;
-    Ok(descriptor)
 }
 
 fn descriptor_for_blob(
@@ -686,69 +886,50 @@ fn read_oci_blob_bytes(
             .with_detail(error.to_string())
         }
     })?;
-    validate_blob_bytes(&bytes, descriptor)?;
+    validate_layout_bytes(&bytes, descriptor)?;
     Ok(bytes)
 }
 
-fn validate_oci_blob_file(
-    layout_root: &Path,
-    descriptor: &OciDescriptor,
-) -> Result<PathBuf, RegistryError> {
-    let blob_path = blob_path_for_digest(layout_root, &descriptor.digest)?;
-    if !blob_path.exists() {
-        return Err(RegistryError::new(
-            "oci-layout-blob-missing",
-            "OCI layout descriptor referenced a missing blob",
-        )
-        .with_detail(serde_json::json!({
-            "digest": descriptor.digest,
-            "path": blob_path.display().to_string(),
-        })));
-    }
-    let metadata = fs::metadata(&blob_path).map_err(|error| {
-        RegistryError::new(
-            "oci-layout-blob-read-failed",
-            "failed to inspect an OCI layout blob",
-        )
-        .with_detail(error.to_string())
-    })?;
-    if metadata.len() != descriptor.size {
-        return Err(RegistryError::new(
-            "oci-layout-blob-size-mismatch",
-            "OCI layout blob size did not match its descriptor",
-        )
-        .with_detail(serde_json::json!({
-            "digest": descriptor.digest,
-            "expected": descriptor.size,
-            "actual": metadata.len(),
-        })));
-    }
-    let actual = sha256_file(&blob_path)?;
-    if actual != descriptor.digest {
-        return Err(RegistryError::new(
-            "oci-layout-blob-digest-mismatch",
-            "OCI layout blob digest did not match its descriptor",
-        )
-        .with_detail(serde_json::json!({
-            "expected": descriptor.digest,
-            "actual": actual,
-        })));
-    }
-
-    Ok(blob_path)
+fn validate_layout_bytes(bytes: &[u8], descriptor: &OciDescriptor) -> Result<(), RegistryError> {
+    validate_descriptor_bytes(
+        bytes,
+        descriptor,
+        "oci-layout-blob-size-invalid",
+        "oci-layout-blob-size-mismatch",
+        "oci-layout-blob-digest-mismatch",
+        "OCI layout",
+    )
 }
 
-fn validate_blob_bytes(bytes: &[u8], descriptor: &OciDescriptor) -> Result<(), RegistryError> {
+fn validate_registry_bytes(bytes: &[u8], descriptor: &OciDescriptor) -> Result<(), RegistryError> {
+    validate_descriptor_bytes(
+        bytes,
+        descriptor,
+        "oci-registry-blob-size-invalid",
+        "oci-registry-blob-size-mismatch",
+        "oci-registry-blob-digest-mismatch",
+        "OCI registry",
+    )
+}
+
+fn validate_descriptor_bytes(
+    bytes: &[u8],
+    descriptor: &OciDescriptor,
+    size_invalid_code: &str,
+    size_mismatch_code: &str,
+    digest_mismatch_code: &str,
+    artifact_label: &str,
+) -> Result<(), RegistryError> {
     let actual_size = u64::try_from(bytes.len()).map_err(|_| {
         RegistryError::new(
-            "oci-layout-blob-size-invalid",
-            "OCI layout blob size exceeded the supported descriptor range",
+            size_invalid_code,
+            format!("{artifact_label} blob size exceeded the supported descriptor range"),
         )
     })?;
     if actual_size != descriptor.size {
         return Err(RegistryError::new(
-            "oci-layout-blob-size-mismatch",
-            "OCI layout blob size did not match its descriptor",
+            size_mismatch_code,
+            format!("{artifact_label} blob size did not match its descriptor"),
         )
         .with_detail(serde_json::json!({
             "digest": descriptor.digest,
@@ -760,8 +941,8 @@ fn validate_blob_bytes(bytes: &[u8], descriptor: &OciDescriptor) -> Result<(), R
     let actual_digest = format!("sha256:{}", sha256_bytes(bytes));
     if actual_digest != descriptor.digest {
         return Err(RegistryError::new(
-            "oci-layout-blob-digest-mismatch",
-            "OCI layout blob digest did not match its descriptor",
+            digest_mismatch_code,
+            format!("{artifact_label} blob digest did not match its descriptor"),
         )
         .with_detail(serde_json::json!({
             "expected": descriptor.digest,
@@ -781,14 +962,14 @@ fn sha256_hex_from_digest(digest: &str) -> Result<&str, RegistryError> {
     let Some(hex) = digest.strip_prefix("sha256:") else {
         return Err(RegistryError::new(
             "oci-layout-digest-invalid",
-            "OCI layout descriptors must use sha256 digests",
+            "OCI descriptors must use sha256 digests",
         )
         .with_detail(digest.to_owned()));
     };
     if hex.len() != 64 || !hex.chars().all(|character| character.is_ascii_hexdigit()) {
         return Err(RegistryError::new(
             "oci-layout-digest-invalid",
-            "OCI layout digest must contain 64 hexadecimal sha256 characters",
+            "OCI descriptor digests must contain 64 hexadecimal sha256 characters",
         )
         .with_detail(digest.to_owned()));
     }
@@ -826,7 +1007,7 @@ fn validate_root_descriptor_annotations(
     let annotations = descriptor.annotations.as_ref().ok_or_else(|| {
         RegistryError::new(
             "oci-layout-index-invalid",
-            "OCI layout root descriptor was missing Guild root annotations",
+            "OCI root descriptor was missing Guild root annotations",
         )
     })?;
     let expected = root_descriptor_annotations(bundle);
@@ -834,14 +1015,14 @@ fn validate_root_descriptor_annotations(
         let actual = annotations.get(&key).ok_or_else(|| {
             RegistryError::new(
                 "oci-layout-index-invalid",
-                "OCI layout root descriptor was missing a required Guild annotation",
+                "OCI root descriptor was missing a required Guild annotation",
             )
             .with_detail(key.clone())
         })?;
         if actual != &value {
             return Err(RegistryError::new(
                 "oci-layout-index-invalid",
-                "OCI layout root descriptor annotation did not match the signed bundle root metadata",
+                "OCI root descriptor annotation did not match the signed bundle root metadata",
             )
             .with_detail(serde_json::json!({
                 "annotation": key,
@@ -877,6 +1058,174 @@ fn single_annotation(key: &str, value: &str) -> BTreeMap<String, String> {
     BTreeMap::from([(key.to_owned(), value.to_owned())])
 }
 
-fn oci_import_staging_root(root: &Path) -> PathBuf {
-    root.join(".oci-layout-import-staging")
+fn registry_reference_string(reference: &OciRegistryReference) -> String {
+    match &reference.target {
+        OciRegistryTarget::Tag(tag) => {
+            format!("{}/{}:{tag}", reference.registry, reference.repository)
+        }
+        OciRegistryTarget::Digest(digest) => {
+            format!("{}/{}@{digest}", reference.registry, reference.repository)
+        }
+    }
+}
+
+fn reference_with_digest(reference: &OciRegistryReference, digest: String) -> OciRegistryReference {
+    OciRegistryReference {
+        registry: reference.registry.clone(),
+        repository: reference.repository.clone(),
+        target: OciRegistryTarget::Digest(digest),
+    }
+}
+
+fn parse_registry_reference(reference: &OciRegistryReference) -> Result<Reference, RegistryError> {
+    registry_reference_string(reference)
+        .parse::<Reference>()
+        .map_err(|error| {
+            RegistryError::new(
+                "oci-registry-reference-invalid",
+                "failed to parse the OCI registry reference",
+            )
+            .with_detail(serde_json::json!({
+                "reference": registry_reference_string(reference),
+                "cause": error.to_string(),
+            }))
+        })
+}
+
+fn build_registry_client(
+    reference: &OciRegistryReference,
+    options: &OciRegistryTransportOptions,
+) -> Client {
+    let protocol = if options.allow_http {
+        ClientProtocol::HttpsExcept(vec![reference.registry.clone()])
+    } else {
+        ClientProtocol::Https
+    };
+    Client::new(ClientConfig {
+        protocol,
+        ..ClientConfig::default()
+    })
+}
+
+fn registry_auth(auth: &OciRegistryAuth) -> RegistryAuth {
+    match auth {
+        OciRegistryAuth::Anonymous => RegistryAuth::Anonymous,
+        OciRegistryAuth::Basic { username, password } => {
+            RegistryAuth::Basic(username.clone(), password.clone())
+        }
+        OciRegistryAuth::Bearer { token } => RegistryAuth::Bearer(token.clone()),
+    }
+}
+
+async fn authenticate_registry(
+    client: &Client,
+    reference: &Reference,
+    auth: &RegistryAuth,
+    operation: RegistryOperation,
+) -> Result<(), RegistryError> {
+    client
+        .auth(reference, auth, operation)
+        .await
+        .map_err(|error| {
+            RegistryError::new(
+                "oci-registry-auth-failed",
+                "failed to authenticate against the OCI registry",
+            )
+            .with_detail(error.to_string())
+        })?;
+    Ok(())
+}
+
+async fn upload_registry_blob(
+    client: &Client,
+    reference: &Reference,
+    blob: &OciBlob,
+) -> Result<(), RegistryError> {
+    client
+        .push_blob(reference, blob.bytes.clone(), &blob.descriptor.digest)
+        .await
+        .map_err(|error| {
+            RegistryError::new(
+                "oci-registry-push-blob-failed",
+                "failed to push an OCI blob to the registry",
+            )
+            .with_detail(serde_json::json!({
+                "digest": blob.descriptor.digest,
+                "cause": error.to_string(),
+            }))
+        })?;
+    Ok(())
+}
+
+async fn fetch_registry_blobs(
+    client: &Client,
+    reference: &Reference,
+    manifest: &OciImageManifest,
+) -> Result<BTreeMap<String, Vec<u8>>, RegistryError> {
+    let mut blobs = BTreeMap::new();
+    let mut descriptors = Vec::with_capacity(manifest.layers.len() + 1);
+    descriptors.push(manifest.config.clone());
+    descriptors.extend(manifest.layers.iter().cloned());
+
+    for descriptor in descriptors {
+        let mut stream = client
+            .pull_blob_stream(reference, descriptor.digest.as_str())
+            .await
+            .map_err(|error| {
+                RegistryError::new(
+                    "oci-registry-blob-fetch-failed",
+                    "failed to pull an OCI blob from the registry",
+                )
+                .with_detail(serde_json::json!({
+                    "digest": descriptor.digest,
+                    "cause": error.to_string(),
+                }))
+            })?;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = stream.try_next().await.map_err(|error| {
+            RegistryError::new(
+                "oci-registry-blob-read-failed",
+                "failed to stream an OCI blob from the registry",
+            )
+            .with_detail(serde_json::json!({
+                "digest": descriptor.digest,
+                "cause": error.to_string(),
+            }))
+        })? {
+            bytes.extend_from_slice(&chunk);
+        }
+        validate_registry_bytes(&bytes, &descriptor)?;
+        blobs.insert(descriptor.digest.clone(), bytes);
+    }
+
+    Ok(blobs)
+}
+
+fn run_registry_future<T>(
+    future: impl Future<Output = Result<T, RegistryError>> + Send + 'static,
+) -> Result<T, RegistryError>
+where
+    T: Send + 'static,
+{
+    let handle = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| {
+                RegistryError::new(
+                    "oci-registry-runtime-create-failed",
+                    "failed to create a Tokio runtime for OCI registry transport",
+                )
+                .with_detail(error.to_string())
+            })?;
+        runtime.block_on(future)
+    });
+
+    match handle.join() {
+        Ok(result) => result,
+        Err(_) => Err(RegistryError::new(
+            "oci-registry-runtime-panicked",
+            "OCI registry transport worker panicked while processing the request",
+        )),
+    }
 }

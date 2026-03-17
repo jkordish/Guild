@@ -4,7 +4,7 @@
 
 Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages operational know-how as versioned, capability-scoped, portable skills that can be resolved, executed, inspected, and shared without giving guests ambient authority.
 
-> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, Guild can run as a real MCP stdio server, signed installed bundles can be exported and imported without rebuilding, those same signed installed bundles can also be transported as local OCI image layouts, execution attempts persist as host-owned records with host-minted durable IDs, and evidence persists as durable Guild objects with distinct blob and record identity.
+> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, Guild can run as a real MCP stdio server, signed installed bundles can be exported and imported without rebuilding, those same signed installed bundles can also be transported as local OCI image layouts and through OCI registries, execution attempts persist as host-owned records with host-minted durable IDs, and evidence persists as durable Guild objects with distinct blob and record identity.
 
 ## Why Guild Exists
 
@@ -26,7 +26,7 @@ The current repository proves a narrow but real path:
 2. resolve a `RequestedSkillRef` to a digest-pinned executable artifact
 3. execute it through the Wasm runtime with host-decided granted capabilities
 4. persist `ExecutionRecord` and `EvidenceRef` artifacts under local Guild URIs
-5. optionally export the installed skill as a signed portable transport unit and import it into a fresh Guild root through either the native signed bundle directory or a local OCI image layout
+5. optionally export the installed skill as a signed portable transport unit and import it into a fresh Guild root through the native signed bundle directory, a local OCI image layout, or an OCI registry
 
 Useful local proof commands:
 
@@ -45,10 +45,13 @@ cargo run -p guild-mcp --example export_import_composite_local
 cargo run -p guild-mcp --example export_import_composite_oci_local
 cargo run -p guild-mcp --example signed_import_failures_local
 cargo run -p guild-mcp --example signed_import_oci_failures_local
+cargo run -p guild-mcp --example push_pull_oci_registry_local
+cargo run -p guild-mcp --example push_pull_composite_oci_registry_local
+cargo run -p guild-mcp --example signed_pull_oci_registry_failures_local
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
-Additional examples cover bounded local HTTP inspection, trust-tier-aware local policy profiles, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, OCI image layout portability, and tampered or untrusted import rejection.
+Additional examples cover bounded local HTTP inspection, trust-tier-aware local policy profiles, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, local OCI image layout portability, OCI registry portability, and tampered or untrusted import rejection.
 
 ### HTTP Proof Flow
 
@@ -152,7 +155,7 @@ Current crate responsibilities:
 
 - `guild-types`: shared types for identities, capabilities, execution, and evidence
 - `guild-manifest`: source and installed manifest model
-- `guild-registry`: local installation, native signed-bundle flow, OCI image layout flow, resolution, and Guild resource persistence
+- `guild-registry`: local installation, native signed-bundle flow, OCI image layout flow, OCI registry transport flow, resolution, and Guild resource persistence
 - `guild-runner`: runtime orchestration, capability checks, and execution boundary
 - `guild-mcp`: stable facade surface, stdio MCP server, and local proof examples
 - `guild-sdk-rust`: guest authoring support for Rust-based skills
@@ -175,6 +178,7 @@ What is real today:
 - real stdio MCP server support for `guild.inspect` and Guild URI resources
 - signed local bundle export and import with trust-store verification
 - local OCI image layout export and import as an additional transport for the same signed installed-state bundle semantics
+- OCI registry push and pull for that same signed installed-state transport without changing the local trust/signature gate on import
 
 What is still deferred:
 
@@ -182,7 +186,7 @@ What is still deferred:
 - a broader policy language beyond the current typed local `policy.json` profile model
 - full `plan` mode
 - `apply` mode
-- remote registries, publication flows, and transparency infrastructure
+- Sigstore, transparency logs, remote trust distribution, and broader publication/discovery infrastructure
 
 ## Development
 

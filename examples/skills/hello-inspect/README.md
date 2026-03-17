@@ -51,6 +51,8 @@ cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_oci_local
 cargo run -p guild-mcp --example signed_import_failures_local
 cargo run -p guild-mcp --example signed_import_oci_failures_local
+cargo run -p guild-mcp --example push_pull_oci_registry_local
+cargo run -p guild-mcp --example signed_pull_oci_registry_failures_local
 ```
 
 That command:
@@ -92,6 +94,21 @@ The stored execution URI is host-issued. Any caller-supplied request ID is prese
 
 1. an untrusted OCI-carried signed bundle is rejected before installation
 2. a tampered OCI blob is rejected even after the publisher is trusted
+
+`push_pull_oci_registry_local` proves the same installed-state portability contract through a real local OCI registry:
+
+1. installs `hello-inspect` into registry A
+2. generates a local publisher identity
+3. publishes the OCI-mapped signed installed bundle to a local OCI registry
+4. trusts that publisher in fresh registry B
+5. pulls the artifact from the registry and re-runs the same local trust/signature verification before installation
+6. resolves `hello-inspect` by `RequestedSkillRef` in registry B
+7. executes it through the normal Wasmtime-backed path without rebuilding
+
+`signed_pull_oci_registry_failures_local` proves the same fail-closed behavior for OCI registry transport:
+
+1. an untrusted pulled signed bundle is rejected before installation
+2. a tampered pulled OCI blob is rejected even after the publisher is trusted
 
 The normal happy path grants:
 

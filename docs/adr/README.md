@@ -13,6 +13,7 @@ Guild uses ADRs to record platform-shaping decisions and to queue the next contr
 - `0007-evidence-record-schema.md` - accepted split between blob identity and per-emission evidence-record identity
 - `0008-local-policy-evaluator.md` - accepted local host-owned policy evaluation, `policy.json` profile shape, and separation between requested and granted capabilities
 - `0009-oci-image-layout-mapping.md` - accepted OCI image layout mapping for the existing signed installed-bundle transport without changing Guild's local trust model
+- `0010-oci-registry-transport.md` - accepted OCI registry push/pull for the existing signed installed-bundle transport without changing Guild's local trust model
 
 ## Backlog
 

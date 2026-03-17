@@ -28,7 +28,7 @@ That command:
 
 `explain_failure_local` uses the same skill to explain a persisted rejected execution record returned through an MCP error receipt URI.
 
-Imported verified skills produce the same local execution resources. That means `explain-execution` can also be used against records created by the native signed-bundle and OCI image layout portability proof flows after import.
+Imported verified skills produce the same local execution resources. That means `explain-execution` can also be used against records created by the native signed-bundle, OCI image layout, and OCI registry portability proof flows after import.
 
 The required `read-resource` capability is constrained to local Guild execution and object URIs:
 

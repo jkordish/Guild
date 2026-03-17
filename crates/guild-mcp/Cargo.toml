@@ -22,5 +22,9 @@ serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
 
+[dev-dependencies]
+registry-testkit.workspace = true
+tokio.workspace = true
+
 [lints]
 workspace = true

@@ -12,14 +12,22 @@ categories.workspace = true
 [dependencies]
 base64.workspace = true
 ed25519-dalek.workspace = true
+futures-util.workspace = true
 guild-manifest = { path = "../guild-manifest" }
 guild-types = { path = "../guild-types" }
+http.workspace = true
+oci-client.workspace = true
 rand_core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
 sha2.workspace = true
+tokio.workspace = true
 walkdir.workspace = true
+
+[dev-dependencies]
+registry-testkit.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

@@ -171,6 +171,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - evidence payload blobs remain content-addressed by digest and distinct from evidence-record identity
 - signed local bundle export and import verifies trust, signature, and bundled file digests before installation
 - local OCI image layout transport maps those same signed installed-bundle semantics onto OCI descriptors and blobs without changing execution identity or trust rules
+- OCI registry transport pushes and pulls that same OCI-mapped signed installed bundle through a remote OCI registry without changing Guild's local trust or signature verification rules on import
 - composite skills invoke declared child dependencies by alias through the host boundary
 - local source installs stage and validate before an atomic move into place
 - requested resolution fails closed if a single key and version maps to multiple installed digests
@@ -244,6 +245,8 @@ The current repository supports two local transport mappings for installed execu
 - a native signed installed-bundle directory
 - an OCI image layout that carries the same signed installed-bundle semantics as OCI blobs and descriptors
 
+The current repository also supports OCI registry transport for that same installed executable state by pushing and pulling the OCI-mapped signed bundle through a registry reference.
+
 ### 10.3 Import
 
 Guild SHOULD support importing bundles into a fresh Guild root while preserving executable identity.
@@ -259,6 +262,8 @@ Imported artifacts MUST be integrity-verifiable. Verification failure MUST preve
 The host MAY accept, reject, quarantine, or reclassify imported bundles. Import does not imply trust.
 
 OCI image layout transport MUST NOT bypass the host's trust or signature verification rules. If OCI image layout is supported, its import path MUST still verify layout structure, bundled digests, and the current host-owned signature and publisher-trust metadata before installation.
+
+OCI registry transport MUST NOT bypass the host's trust or signature verification rules. If OCI registry transport is supported, its pull/import path MUST still verify pulled OCI manifest structure, pulled blob digests, the reconstructed signed bundle digest, and the current host-owned signature and publisher-trust metadata before installation.
 
 ### 10.6 Installed execution source
 

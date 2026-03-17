@@ -149,6 +149,58 @@ pub struct InstalledVerificationRecord {
     pub signature: BundleSignatureEnvelope,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct OciRegistryReference {
+    pub registry: String,
+    pub repository: String,
+    pub target: OciRegistryTarget,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum OciRegistryTarget {
+    Tag(String),
+    Digest(String),
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum OciRegistryAuth {
+    #[default]
+    Anonymous,
+    Basic {
+        username: String,
+        password: String,
+    },
+    Bearer {
+        token: String,
+    },
+}
+
+#[derive(Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct OciRegistryTransportOptions {
+    #[serde(default)]
+    pub auth: OciRegistryAuth,
+    #[serde(default)]
+    pub allow_http: bool,
+}
+
+impl Default for OciRegistryTransportOptions {
+    fn default() -> Self {
+        Self {
+            auth: OciRegistryAuth::Anonymous,
+            allow_http: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct PublishedOciArtifact {
+    pub reference: OciRegistryReference,
+    pub manifest_digest: String,
+    pub bundle: InstalledSkillBundle,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct RegistryError {
     pub code: String,
@@ -521,6 +573,24 @@ impl LocalRegistry {
         Ok(payload.bundle)
     }
 
+    /// Publish an installed skill, and optionally its dependency closure, to an OCI registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the root skill cannot be resolved, installed files
+    /// cannot be staged into the OCI artifact, or the registry publish fails.
+    pub fn push_oci_registry(
+        &self,
+        root: &ResolvedSkillRef,
+        include_dependencies: bool,
+        reference: &OciRegistryReference,
+        options: &OciRegistryTransportOptions,
+        signer: &LocalPublisherIdentity,
+    ) -> Result<PublishedOciArtifact, RegistryError> {
+        let payload = self.build_signed_bundle_payload(root, include_dependencies, signer)?;
+        oci_layout::push_oci_registry(&payload, reference, options)
+    }
+
     /// Import a signed installed-skill bundle into a local registry root.
     ///
     /// # Errors
@@ -618,6 +688,20 @@ impl LocalRegistry {
         layout_root: impl AsRef<Path>,
     ) -> Result<Vec<InstalledSkill>, RegistryError> {
         oci_layout::import_oci_layout(root.as_ref(), layout_root.as_ref())
+    }
+
+    /// Pull and import a signed installed-skill OCI artifact from a registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the remote artifact is malformed, transport integrity
+    /// fails, trust or signature verification fails, or installation checks fail.
+    pub fn pull_oci_registry(
+        root: impl AsRef<Path>,
+        reference: &OciRegistryReference,
+        options: &OciRegistryTransportOptions,
+    ) -> Result<Vec<InstalledSkill>, RegistryError> {
+        oci_layout::pull_oci_registry(root.as_ref(), reference, options)
     }
 
     fn collect_bundle_skills(

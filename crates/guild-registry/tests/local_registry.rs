@@ -7,12 +7,17 @@ use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use guild_registry::{
     BundleSignatureEnvelope, InstalledSkill, InstalledSkillBundle, LocalPublisherIdentity,
-    LocalRegistry, LocalSourceInstaller, SkillRegistry, VerificationStatus,
+    LocalRegistry, LocalSourceInstaller, OciRegistryAuth, OciRegistryReference, OciRegistryTarget,
+    OciRegistryTransportOptions, SkillRegistry, VerificationStatus,
 };
 use guild_types::{
     EvidenceAudience, EvidenceEmissionRequest, LocalPolicyConfig, RedactionClass,
     RequestedSkillRef, SkillKey, VersionRequirement,
 };
+use sha2::{Digest as _, Sha256};
+
+#[path = "../../../test-support/oci_registry_test_server.rs"]
+mod oci_registry_test_server;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -64,6 +69,33 @@ fn oci_bundle_json(layout_root: &Path) -> InstalledSkillBundle {
     let manifest = oci_root_manifest(layout_root);
     let digest = manifest["config"]["digest"].as_str().unwrap();
     serde_json::from_str(&fs::read_to_string(oci_blob_path(layout_root, digest)).unwrap()).unwrap()
+}
+
+fn registry_reference(
+    server: &oci_registry_test_server::OciRegistryTestServer,
+    repository: &str,
+    tag: &str,
+) -> OciRegistryReference {
+    OciRegistryReference {
+        registry: server.registry(),
+        repository: repository.into(),
+        target: OciRegistryTarget::Tag(tag.into()),
+    }
+}
+
+fn registry_options() -> OciRegistryTransportOptions {
+    OciRegistryTransportOptions {
+        auth: OciRegistryAuth::Anonymous,
+        allow_http: true,
+    }
+}
+
+fn json_value(bytes: &[u8]) -> serde_json::Value {
+    serde_json::from_slice(bytes).unwrap()
+}
+
+fn sha256_digest(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 fn publisher_identity(installed: &InstalledSkill, path: &Path) -> LocalPublisherIdentity {
@@ -279,6 +311,63 @@ fn primitive_oci_export_contains_expected_installed_record() {
 }
 
 #[test]
+fn primitive_oci_registry_push_contains_expected_root_metadata() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry-a");
+    let registry_store = temp.path().join("oci-registry-store");
+    let source_installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_root).unwrap();
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = registry_reference(&server, "guild-example-hello-inspect", "0.1.0");
+
+    let published = registry
+        .push_oci_registry(
+            &installed_skill.resolved_ref,
+            false,
+            &reference,
+            &registry_options(),
+            &identity,
+        )
+        .unwrap();
+
+    let index = json_value(&server.manifest_bytes_for_tag("guild-example-hello-inspect", "0.1.0"));
+    let manifest_digest = index["manifests"][0]["digest"].as_str().unwrap();
+    let manifest = json_value(
+        &fs::read(server.digest_manifest_path("guild-example-hello-inspect", manifest_digest))
+            .unwrap(),
+    );
+
+    assert_eq!(published.reference, reference);
+    assert_eq!(published.bundle.root_skill, installed_skill.resolved_ref);
+    assert_eq!(
+        published.manifest_digest,
+        sha256_digest(&server.manifest_bytes_for_tag("guild-example-hello-inspect", "0.1.0"))
+    );
+    assert_eq!(
+        index["manifests"][0]["annotations"]["org.opencontainers.image.title"]
+            .as_str()
+            .unwrap(),
+        "example/hello-inspect:0.1.0"
+    );
+    assert_eq!(
+        index["manifests"][0]["annotations"]["dev.guild.root-skill.digest"]
+            .as_str()
+            .unwrap(),
+        installed_skill.resolved_ref.digest
+    );
+    assert_eq!(
+        manifest["artifactType"].as_str().unwrap(),
+        "application/vnd.guild.installed-bundle.oci.v1"
+    );
+    assert_eq!(
+        manifest["config"]["mediaType"].as_str().unwrap(),
+        "application/vnd.guild.installed-bundle.v2+json"
+    );
+}
+
+#[test]
 fn signed_bundle_export_verifies_against_local_publisher_identity() {
     let temp = TempFixtureDir::new();
     let registry_root = temp.path().join("registry-a");
@@ -336,6 +425,48 @@ fn primitive_oci_import_resolves_digest_pinned_skill_in_fresh_registry() {
         .unwrap();
     LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
     LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap();
+
+    let imported = LocalRegistry::load(&registry_b)
+        .unwrap()
+        .resolve(&requested_hello_inspect())
+        .unwrap();
+    assert_eq!(imported.resolved_ref, installed_skill.resolved_ref);
+    assert_eq!(
+        imported.manifest.package.artifact_digest,
+        installed_skill.manifest.package.artifact_digest
+    );
+    assert!(imported.artifact_path.exists());
+    let verification = imported
+        .verification
+        .expect("imported skills carry verification metadata");
+    assert_eq!(verification.status, VerificationStatus::Verified);
+    assert_eq!(verification.publisher.id, identity.publisher.id);
+}
+
+#[test]
+fn primitive_oci_registry_pull_resolves_digest_pinned_skill_in_fresh_registry() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let registry_store = temp.path().join("oci-registry-store");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = registry_reference(&server, "guild-example-hello-inspect", "0.1.0");
+
+    registry
+        .push_oci_registry(
+            &installed_skill.resolved_ref,
+            false,
+            &reference,
+            &registry_options(),
+            &identity,
+        )
+        .unwrap();
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    LocalRegistry::pull_oci_registry(&registry_b, &reference, &registry_options()).unwrap();
 
     let imported = LocalRegistry::load(&registry_b)
         .unwrap()
@@ -485,6 +616,75 @@ fn composite_oci_export_includes_dependency_closure() {
 }
 
 #[test]
+fn composite_oci_registry_push_includes_dependency_closure() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry-a");
+    let registry_store = temp.path().join("oci-registry-store");
+    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    let primitive = installer.install(example_source_dir()).unwrap();
+    let composite = installer.install(composite_source_dir()).unwrap();
+    let identity = publisher_identity(&composite, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_root).unwrap();
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = registry_reference(&server, "guild-example-hello-composite", "0.1.0");
+
+    let published = registry
+        .push_oci_registry(
+            &composite.resolved_ref,
+            true,
+            &reference,
+            &registry_options(),
+            &identity,
+        )
+        .unwrap();
+    let index =
+        json_value(&server.manifest_bytes_for_tag("guild-example-hello-composite", "0.1.0"));
+    let manifest_digest = index["manifests"][0]["digest"].as_str().unwrap();
+    let manifest = json_value(
+        &fs::read(server.digest_manifest_path("guild-example-hello-composite", manifest_digest))
+            .unwrap(),
+    );
+    let bundle_digest = manifest["config"]["digest"].as_str().unwrap();
+    let bundle: InstalledSkillBundle =
+        serde_json::from_slice(&fs::read(server.blob_path(bundle_digest)).unwrap()).unwrap();
+
+    assert!(published.bundle.includes_dependency_closure);
+    assert_eq!(bundle.root_skill, composite.resolved_ref);
+    assert_eq!(bundle.skills.len(), 2);
+    assert!(bundle
+        .skills
+        .iter()
+        .any(|entry| entry.resolved_ref == composite.resolved_ref));
+    assert!(bundle
+        .skills
+        .iter()
+        .any(|entry| entry.resolved_ref == primitive.resolved_ref));
+    assert_eq!(composite.manifest.dependencies[0].alias, "hello");
+    assert_eq!(
+        composite.manifest.dependencies[0].skill,
+        primitive.resolved_ref
+    );
+    assert!(manifest["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |layer| layer["annotations"]["org.opencontainers.image.title"]
+                .as_str()
+                .is_some_and(|title| title.contains("hello-composite"))
+        ));
+    assert!(manifest["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |layer| layer["annotations"]["org.opencontainers.image.title"]
+                .as_str()
+                .is_some_and(|title| title.contains("hello-inspect"))
+        ));
+}
+
+#[test]
 fn composite_bundle_import_preserves_dependency_resolution() {
     let temp = TempFixtureDir::new();
     let registry_a = temp.path().join("registry-a");
@@ -573,6 +773,58 @@ fn composite_oci_import_preserves_dependency_resolution() {
 }
 
 #[test]
+fn composite_oci_registry_pull_preserves_dependency_resolution() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let registry_store = temp.path().join("oci-registry-store");
+    let registry_b = temp.path().join("registry-b");
+    let installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let primitive = installer.install(example_source_dir()).unwrap();
+    let composite = installer.install(composite_source_dir()).unwrap();
+    let identity = publisher_identity(&composite, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = registry_reference(&server, "guild-example-hello-composite", "0.1.0");
+
+    registry
+        .push_oci_registry(
+            &composite.resolved_ref,
+            true,
+            &reference,
+            &registry_options(),
+            &identity,
+        )
+        .unwrap();
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    LocalRegistry::pull_oci_registry(&registry_b, &reference, &registry_options()).unwrap();
+
+    let imported_registry = LocalRegistry::load(&registry_b).unwrap();
+    let imported_composite = imported_registry
+        .resolve(&requested_hello_composite())
+        .unwrap();
+    assert_eq!(imported_composite.resolved_ref, composite.resolved_ref);
+    assert_eq!(
+        imported_composite.manifest.dependencies[0].skill,
+        primitive.resolved_ref
+    );
+    assert_eq!(
+        imported_registry
+            .resolve_exact(&imported_composite.manifest.dependencies[0].skill)
+            .unwrap()
+            .resolved_ref,
+        primitive.resolved_ref
+    );
+    assert_eq!(
+        imported_composite
+            .verification
+            .expect("verified import metadata present")
+            .publisher
+            .id,
+        identity.publisher.id
+    );
+}
+
+#[test]
 fn bundle_import_fails_for_untrusted_signed_bundle() {
     let temp = TempFixtureDir::new();
     let registry_a = temp.path().join("registry-a");
@@ -618,6 +870,35 @@ fn oci_import_fails_for_untrusted_signed_bundle() {
         .unwrap();
 
     let error = LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap_err();
+    assert_eq!(error.code, "bundle-publisher-untrusted");
+    assert!(!registry_b.join("installed").join("example").exists());
+}
+
+#[test]
+fn oci_registry_pull_fails_for_untrusted_signed_bundle() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let registry_store = temp.path().join("oci-registry-store");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = registry_reference(&server, "guild-example-hello-inspect", "0.1.0");
+
+    registry
+        .push_oci_registry(
+            &installed_skill.resolved_ref,
+            false,
+            &reference,
+            &registry_options(),
+            &identity,
+        )
+        .unwrap();
+
+    let error =
+        LocalRegistry::pull_oci_registry(&registry_b, &reference, &registry_options()).unwrap_err();
     assert_eq!(error.code, "bundle-publisher-untrusted");
     assert!(!registry_b.join("installed").join("example").exists());
 }
@@ -687,6 +968,40 @@ fn oci_import_fails_on_tampered_content_even_when_signature_is_trusted() {
 
     let error = LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap_err();
     assert_eq!(error.code, "oci-layout-blob-size-mismatch");
+    assert!(!registry_b.join("installed").join("example").exists());
+}
+
+#[test]
+fn oci_registry_pull_fails_on_tampered_content_even_when_signature_is_trusted() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let registry_store = temp.path().join("oci-registry-store");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = registry_reference(&server, "guild-example-hello-inspect", "0.1.0");
+
+    registry
+        .push_oci_registry(
+            &installed_skill.resolved_ref,
+            false,
+            &reference,
+            &registry_options(),
+            &identity,
+        )
+        .unwrap();
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    server.tamper_blob(
+        &installed_skill.manifest.package.artifact_digest,
+        b"tampered artifact",
+    );
+
+    let error =
+        LocalRegistry::pull_oci_registry(&registry_b, &reference, &registry_options()).unwrap_err();
+    assert_eq!(error.code, "oci-registry-blob-read-failed");
     assert!(!registry_b.join("installed").join("example").exists());
 }
 
