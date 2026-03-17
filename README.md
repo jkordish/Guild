@@ -4,7 +4,7 @@
 
 Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages operational know-how as versioned, capability-scoped, portable skills that can be resolved, executed, inspected, and shared without giving guests ambient authority.
 
-> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, Guild can run as a real MCP stdio server, signed installed bundles can be exported and imported without rebuilding, those same signed installed bundles can also be transported as local OCI image layouts and through OCI registries, execution attempts persist as host-owned records with host-minted durable IDs, and evidence persists as durable Guild objects with distinct blob and record identity.
+> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, Guild can run as a real MCP stdio server, a thin `guild-codex` helper can bootstrap a local Codex dogfood root and print the real stdio MCP config, signed installed bundles can be exported and imported without rebuilding, those same signed installed bundles can also be transported as local OCI image layouts and through OCI registries, execution attempts persist as host-owned records with host-minted durable IDs, and evidence persists as durable Guild objects with distinct blob and record identity.
 
 ## Why Guild Exists
 
@@ -32,6 +32,7 @@ Useful local proof commands:
 
 ```bash
 make test
+cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_http_json_local
 cargo run -p guild-mcp --example inspect_policy_local
@@ -41,6 +42,8 @@ cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example explain_recent_failures_local
+cargo run -p guild-mcp --example codex_explain_execution_local
+cargo run -p guild-mcp --example codex_explain_execution_tree_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_oci_local
 cargo run -p guild-mcp --example export_import_composite_local
@@ -121,6 +124,56 @@ The current MCP surface is intentionally small:
 - resource templates are exposed for `guild://executions/{execution_id}`, `guild://objects/records/{evidence_record_id}`, `guild://objects/sha256/{digest}`, `guild://queries/executions/recent/{limit}`, `guild://queries/executions/failures/recent/{limit}`, `guild://queries/executions/by-status/{status}/{limit}`, and `guild://queries/executions/by-skill/{namespace}/{name}/{limit}`
 
 Unsuccessful inspect executions that reached the real runtime path are surfaced as MCP tool errors with `isError: true`, while preserving the persisted execution record URI instead of collapsing it into an opaque protocol failure.
+
+## Codex Workflow
+
+Guild now ships one repo-native workflow for using the real stdio server from Codex without inventing a second path:
+
+```bash
+cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
+```
+
+That command:
+
+1. creates or resets a fresh local Guild root
+2. installs the example skills used by the recommended Codex dogfood flows
+3. prints the exact `guild-mcp-server` launch command
+4. prints a ready-to-use `codex mcp add ... -- <command>` registration command
+5. prints a matching `~/.codex/config.toml` or project `.codex/config.toml` snippet
+
+Codex's current config model supports both `~/.codex/config.toml` and project-scoped `.codex/config.toml`, with project config loaded only when the repo is trusted. Guild leans on that existing Codex behavior rather than adding a special integration hook.
+
+The printed Codex registration uses the existing stdio server directly:
+
+```bash
+codex mcp add guild-local --env GUILD_REGISTRY_ROOT=/absolute/path/to/target/dev-local-registry/codex-local -- cargo run -q -p guild-mcp --bin guild-mcp-server --
+```
+
+The matching config snippet uses the same repo `cwd`, the same `cargo run` launcher, and the same `GUILD_REGISTRY_ROOT` environment variable. If you only need the config again later, print it without reinstalling skills:
+
+```bash
+cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root target/dev-local-registry/codex-local
+```
+
+### Recommended Codex Dogfood Flows
+
+The two recommended local-first Codex flows stay entirely on the existing stdio MCP path and prove durable artifact reuse instead of protocol handshakes alone.
+
+1. Explain one execution.
+   Ask Codex to run `example/hello-inspect` through `guild.inspect`, then run `example/explain-execution` against the returned execution URI with a `read-resource` grant scoped to `guild://executions/` and `guild://objects/records/`.
+2. Explain one execution tree.
+   Ask Codex to run `example/hello-composite` through `guild.inspect`, then run `example/explain-execution-tree` against the returned root execution URI with `read-resource` scoped to `guild://executions/` and `guild://objects/records/`.
+
+The deterministic local smoke commands for those same flows are:
+
+```bash
+cargo run -p guild-mcp --example codex_explain_execution_local
+cargo run -p guild-mcp --example codex_explain_execution_tree_local
+```
+
+Those examples use the real stdio MCP server and a small local MCP client harness, so they stay deterministic even when a full authenticated Codex-in-the-loop run is impractical in CI.
+
+This milestone intentionally does not add MCP HTTP transport, subscriptions, more top-level MCP tools, new capability families, `plan`, or `apply`. Guild remains local-first, stdio-first, inspect-only, and resource-oriented.
 
 ## Integrity Model
 
@@ -207,6 +260,8 @@ What is real today:
 - one primitive `inspect-http-json` example that proves bounded HTTP fetches through `guild.inspect`
 - one inspect-only `summarize-execution-query` example that reads bounded execution-query resources and returns a deterministic structured report
 - real stdio MCP server support for `guild.inspect` and Guild URI resources
+- a thin `guild-codex` helper that bootstraps a local dogfood root and prints the real Codex stdio MCP config
+- deterministic MCP-path dogfood flows for `explain-execution` and `explain-execution-tree`
 - signed local bundle export and import with trust-store verification
 - local OCI image layout export and import as an additional transport for the same signed installed-state bundle semantics
 - OCI registry push and pull for that same signed installed-state transport without changing the local trust/signature gate on import

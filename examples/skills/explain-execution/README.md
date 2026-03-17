@@ -17,6 +17,7 @@ Canonical local proof flow:
 ```bash
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_failure_local
+cargo run -p guild-mcp --example codex_explain_execution_local
 ```
 
 That command:
@@ -27,6 +28,14 @@ That command:
 4. executes `explain-execution` against the stored URI through the same Wasmtime-backed path
 
 `explain_failure_local` uses the same skill to explain a persisted rejected execution record returned through an MCP error receipt URI.
+
+For real Codex dogfooding, first bootstrap a local Guild root with:
+
+```bash
+cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
+```
+
+Then add Guild to Codex with the printed stdio config and ask Codex to run `hello-inspect` followed by `explain-execution` against the returned execution URI. `codex_explain_execution_local` is the deterministic MCP-path smoke version of that same flow.
 
 Imported verified skills produce the same local execution resources. That means `explain-execution` can also be used against records created by the native signed-bundle, OCI image layout, and OCI registry portability proof flows after import.
 

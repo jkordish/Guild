@@ -15,12 +15,14 @@ What is materially real today:
 - durable execution IDs are host-minted, collision-resistant, and protected against silent overwrite
 - evidence persists as durable local Guild objects with distinct blob identity and per-emission evidence-record identity
 - Guild now runs as a real MCP server over stdio, not just an internal façade with MCP-shaped concepts
+- Guild now has a thin `guild-codex` helper that bootstraps a local Codex dogfood root and prints the exact stdio MCP config for the real server
 - Guild now has a real bounded `http-request` capability family in the active inspect slice
 - Guild can now export and import the same signed installed bundles either as native bundle directories, local OCI image layouts, or OCI registry artifacts
 - MCP resource reads and guest-side `read-resource` calls use the same local backend
 - bounded execution-query resources and templates now derive from that same local backend, so persisted executions can be discovered without already knowing an exact execution URI
 - a resource-aware explain skill can read stored execution and evidence artifacts through the Wasm host boundary, including failed and rejected records
 - a resource-aware query-summary skill can read bounded execution-query resources through the Wasm host boundary and return deterministic structured reports
+- deterministic Codex-oriented MCP-path smoke flows now exercise `explain-execution` and `explain-execution-tree` through the real stdio server
 - top-level unsuccessful inspect calls return host-issued execution receipts pointing at persisted `guild://executions/...` records
 - supported inspect-slice capability families now use typed host-enforced constraints
 - the canonical primitive HTTP proof skill is `inspect-http-json`, exercised through `guild.inspect` against a deterministic local server
@@ -50,6 +52,7 @@ Where the repository is now:
 - Parts of Phase 3 are already real: signed installed bundles, local publisher identity, local trust-store verification, and fail-closed import checks are implemented.
 - The integrity-hardening pass is complete for the current inspect-only substrate: host-minted execution IDs, create-only execution persistence, split evidence record identity, ambiguity rejection, atomic installs, unified host-owned denials, honest inspect capability surface, canonical Guild URI authz, and host-stamped timestamps are all in place.
 - Guild now also has a real stdio MCP server surface over that same runtime and storage path, with one honest public tool (`guild.inspect`) plus durable Guild resources.
+- Guild is now straightforward to connect to Codex over that same stdio surface: one helper command bootstraps a local dogfood root, prints the `codex mcp add ... -- <command>` registration, and prints the matching `config.toml` snippet.
 
 What this means in practice:
 
@@ -87,11 +90,13 @@ What this means in practice:
 - Replaced raw-prefix `read-resource` authorization with parsed canonical Guild URI scope matching and fail-closed URI validation.
 - Stamped durable execution provenance with real host-generated UTC start and finish timestamps across top-level and child records.
 - Added a real stdio MCP server entrypoint with honest initialize/capabilities, one public tool (`guild.inspect`), Guild URI resources, and resource templates.
+- Added a thin `guild-codex` workflow helper that bootstraps a fresh local Guild root for Codex, installs the recommended example skills, and prints the exact stdio launch/config snippets for the real `guild-mcp-server`.
 - Added a real host-mediated `http-request` capability family with typed host enforcement and a Wasmtime-backed outbound HTTP path behind the existing Guild guest ABI.
 - Added the primitive `inspect-http-json` example skill plus a local deterministic HTTP proof flow and regression coverage for denial, timeout, response-size, and nested child-grant reduction behavior.
 - Extended the local policy proof flow so it now contrasts trusted vs restricted imported HTTP authority under named profiles and uses `explain-execution` to summarize the persisted host-owned denial.
 - Mapped successful inspect calls to MCP tool results with `structuredContent`, text compatibility output, and execution/evidence resource links.
 - Mapped unsuccessful inspect executions to MCP tool errors with `isError: true` while preserving persisted execution receipt and record information.
+- Added deterministic Codex-oriented MCP-path dogfood flows for `explain-execution` and `explain-execution-tree`, plus startup/config regression coverage for the documented stdio workflow.
 - Raised crate-level lint strictness across the workspace to `clippy::all`, `clippy::pedantic`, `clippy::cargo`, and `clippy::perf`, then resolved the resulting warnings with API docs, `#[must_use]`, safer numeric conversions, smaller helper boundaries, and more explicit error handling.
 - Added honest crate package metadata for the local workspace crates so `clippy::cargo` checks now pass on descriptions, repository/readme linkage, keywords, and categories.
 - Followed through on the stricter test/example pass by cleaning the remaining `clippy::pedantic`, `clippy::cargo`, and `clippy::future_not_send` warnings in the MCP stdio harnesses and registry/runner test fixtures instead of suppressing them.
@@ -159,6 +164,7 @@ What this means in practice:
 ### MCP server surface
 
 - `guild-mcp-server` can be launched as a stdio MCP subprocess against a local Guild root.
+- `guild-codex` provides the supported local Codex setup path by bootstrapping a local root and printing the exact `codex mcp add ... -- <command>` and `config.toml` snippets for that same stdio server.
 - The active public MCP tool surface is intentionally minimal: one tool, `guild.inspect`.
 - `tools/list` publishes honest input and output schemas derived from the existing Guild-facing types.
 - `tools/call` for `guild.inspect` executes through the same `GuildMcpFacade -> registry -> runner -> Wasmtime` path as the direct Rust façade.
@@ -173,6 +179,8 @@ What this means in practice:
 Canonical local proof commands:
 
 ```bash
+cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
+cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root target/dev-local-registry/codex-local
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_http_json_local
 cargo run -p guild-mcp --example inspect_policy_local
@@ -181,6 +189,8 @@ cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example explain_recent_failures_local
+cargo run -p guild-mcp --example codex_explain_execution_local
+cargo run -p guild-mcp --example codex_explain_execution_tree_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_oci_local
 cargo run -p guild-mcp --example export_import_composite_local
@@ -203,6 +213,8 @@ What they prove:
 - `explain_execution_tree_local`: install `hello-inspect` and `hello-composite`, produce a stored parent/child execution tree, install `explain-execution-tree`, then walk that stored lineage through the same host-mediated resource path
 - `explain_failure_local`: trigger a persisted rejected execution, capture its receipt URI, then run `explain-execution` against that stored unsuccessful record
 - `explain_recent_failures_local`: produce a small deterministic set of succeeded, failed, and rejected executions, read `guild://queries/executions/failures/recent/10` through the host resource backend, then run `summarize-execution-query` against that same query URI through the Wasm host boundary
+- `codex_explain_execution_local`: bootstrap the recommended Codex dogfood skill set, launch the real stdio MCP server using the same `cargo run` command the helper prints for Codex, then execute the `hello-inspect -> explain-execution` flow through MCP and read both execution resources back through `resources/read`
+- `codex_explain_execution_tree_local`: bootstrap the recommended Codex dogfood skill set, launch the real stdio MCP server using that same documented stdio path, then execute the `hello-composite -> explain-execution-tree` flow through MCP and read both execution resources back through `resources/read`
 - `export_import_local`: install `hello-inspect` into registry A, generate a local publisher identity, export a signed installed bundle, trust that publisher in fresh registry B, import, resolve by `RequestedSkillRef`, and execute without rebuilding
 - `export_import_oci_local`: export the same installed signed bundle payload as an OCI image layout, trust/import it in fresh registry B, resolve by `RequestedSkillRef`, and execute without rebuilding
 - `export_import_composite_local`: export `hello-composite` together with its installed dependency closure as a signed bundle, trust the publisher in fresh registry B, and execute the composite plus child entirely from imported installed records
@@ -242,13 +254,17 @@ Current sharp edges worth remembering:
 
 ## Next Steps
 
-The clean next milestones after integrity hardening are:
+The clean next milestones after Codex dogfooding are:
 
-1. Expand capability enforcement deliberately
+1. Keep using the current stdio surface for real work
+   - treat the new Codex workflow as the source of ergonomics truth before widening the platform
+   - prefer shaving setup friction and clarifying receipts/resources over adding fresh substrate
+
+2. Expand capability enforcement deliberately
    - add more typed families only when there is a real host operation behind them
    - keep nested grant reduction conservative and explicit
 
-2. Build on portability
+3. Build on portability
    - treat installed bundles as the local transport unit future publication can build on
    - keep import/export focused on installed executable state instead of source packages
 
@@ -275,6 +291,7 @@ Current proof and validation commands:
 cargo fmt --all
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -W clippy::cargo -W clippy::future_not_send
+cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
 cargo run -p guild-mcp --example inspect_local
 cargo run -p guild-mcp --example inspect_http_json_local
 cargo run -p guild-mcp --example inspect_policy_local
@@ -283,6 +300,8 @@ cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example explain_recent_failures_local
+cargo run -p guild-mcp --example codex_explain_execution_local
+cargo run -p guild-mcp --example codex_explain_execution_tree_local
 cargo run -p guild-mcp --example export_import_local
 cargo run -p guild-mcp --example export_import_oci_local
 cargo run -p guild-mcp --example export_import_composite_local
@@ -326,6 +345,8 @@ Regression coverage now includes:
 - durable provenance timestamps on successful, failed, rejected, and child records
 - shared backend consistency between MCP resource reads and guest resource reads
 - real stdio MCP initialize/tools/resources flows against a subprocess server
+- the documented Codex stdio config shape and helper-generated `codex mcp add` workflow
+- deterministic MCP-path Codex dogfood flows for `explain-execution` and `explain-execution-tree`
 - strict workspace lint verification via `cargo clippy --workspace --all-targets --all-features -- -W clippy::pedantic -W clippy::cargo -W clippy::future_not_send`
 - MCP tool-error semantics preserving persisted execution receipts instead of collapsing them into raw protocol failures
 - bounded recent execution resource listing, bounded execution-query resource reads, and canonical Guild URI resource templates

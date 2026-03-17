@@ -27,6 +27,7 @@ Canonical local proof flow:
 
 ```bash
 cargo run -p guild-mcp --example explain_execution_tree_local
+cargo run -p guild-mcp --example codex_explain_execution_tree_local
 ```
 
 That command:
@@ -36,6 +37,14 @@ That command:
 3. runs `guild.inspect` to produce a stored parent and child execution tree
 4. installs `explain-execution-tree`
 5. executes `explain-execution-tree` against the stored root execution URI through the same Wasmtime-backed path
+
+For real Codex dogfooding, first bootstrap a local Guild root with:
+
+```bash
+cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
+```
+
+Then add Guild to Codex with the printed stdio config and ask Codex to run `hello-composite` followed by `explain-execution-tree` against the returned root execution URI. `codex_explain_execution_tree_local` is the deterministic MCP-path smoke version of that same flow.
 
 The required `read-resource` capability stays tightly scoped to local Guild execution URIs:
 

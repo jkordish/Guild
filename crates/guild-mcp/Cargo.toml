@@ -13,6 +13,21 @@ version.workspace = true
 name = "guild-mcp-server"
 path = "src/bin/guild-mcp-server.rs"
 
+[[bin]]
+name = "guild-codex"
+path = "src/bin/guild-codex.rs"
+test = false
+
+[[example]]
+name = "codex_explain_execution_local"
+path = "examples/codex_explain_execution_local.rs"
+test = false
+
+[[example]]
+name = "codex_explain_execution_tree_local"
+path = "examples/codex_explain_execution_tree_local.rs"
+test = false
+
 [dependencies]
 base64.workspace = true
 guild-registry = { path = "../guild-registry" }
