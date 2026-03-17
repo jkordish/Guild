@@ -174,11 +174,18 @@ fn http_capability_constraints_roundtrip_in_execution_context() {
                 constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
                     allowed_schemes: Some(vec![HttpScheme::Http]),
                     allowed_hosts: Some(vec!["127.0.0.1".into()]),
+                    allowed_host_suffixes: Some(vec!["example.com".into()]),
                     allowed_ports: Some(vec![8080]),
                     allowed_methods: Some(vec![HttpMethod::Get]),
                     allowed_path_prefixes: Some(vec!["/json".into()]),
                     max_timeout_ms: Some(2_000),
                     max_response_bytes: Some(4_096),
+                    follow_redirects: Some(true),
+                    max_redirects: Some(2),
+                    allow_loopback: Some(true),
+                    allow_link_local: None,
+                    allow_private_networks: None,
+                    allow_ip_literals: Some(true),
                 }),
             }],
         },
@@ -192,6 +199,18 @@ fn http_capability_constraints_roundtrip_in_execution_context() {
     assert_eq!(
         encoded["granted_capabilities"]["grants"][0]["constraints"]["allowed_hosts"][0],
         "127.0.0.1"
+    );
+    assert_eq!(
+        encoded["granted_capabilities"]["grants"][0]["constraints"]["allowed_host_suffixes"][0],
+        "example.com"
+    );
+    assert_eq!(
+        encoded["granted_capabilities"]["grants"][0]["constraints"]["follow_redirects"],
+        true
+    );
+    assert_eq!(
+        encoded["granted_capabilities"]["grants"][0]["constraints"]["allow_ip_literals"],
+        true
     );
 }
 
@@ -252,11 +271,18 @@ fn local_policy_config_roundtrips_with_rules() {
                                 HttpRequestConstraints {
                                     allowed_schemes: Some(vec![HttpScheme::Http]),
                                     allowed_hosts: Some(vec!["127.0.0.1".into()]),
+                                    allowed_host_suffixes: Some(vec!["example.com".into()]),
                                     allowed_ports: Some(vec![8080]),
                                     allowed_methods: Some(vec![HttpMethod::Get]),
                                     allowed_path_prefixes: Some(vec!["/json".into()]),
                                     max_timeout_ms: Some(2_000),
                                     max_response_bytes: Some(4_096),
+                                    follow_redirects: Some(true),
+                                    max_redirects: Some(2),
+                                    allow_loopback: Some(true),
+                                    allow_link_local: None,
+                                    allow_private_networks: None,
+                                    allow_ip_literals: Some(true),
                                 },
                             ),
                         }],
@@ -310,4 +336,36 @@ fn policy_decision_serializes_reasons() {
         encoded["reasons"][0]["code"],
         "policy-requested-capability-reduced"
     );
+}
+
+#[test]
+fn http_request_constraints_validate_redirect_and_host_shape() {
+    let invalid = HttpRequestConstraints {
+        allowed_schemes: Some(vec![HttpScheme::Http]),
+        allowed_hosts: Some(vec!["".into(), "http://example.com".into()]),
+        allowed_host_suffixes: Some(vec!["127.0.0.1".into(), ".example.com".into()]),
+        allowed_ports: Some(vec![8080]),
+        allowed_methods: Some(vec![HttpMethod::Get]),
+        allowed_path_prefixes: Some(vec!["/json".into()]),
+        max_timeout_ms: Some(2_000),
+        max_response_bytes: Some(4_096),
+        follow_redirects: Some(false),
+        max_redirects: Some(2),
+        allow_loopback: None,
+        allow_link_local: None,
+        allow_private_networks: None,
+        allow_ip_literals: None,
+    };
+
+    let errors = invalid.validate();
+    assert!(errors
+        .iter()
+        .any(|message| message.contains("allowed_hosts must not")));
+    assert!(errors
+        .iter()
+        .any(|message| message
+            .contains("allowed_host_suffixes entries must not use raw IP literals")));
+    assert!(errors
+        .iter()
+        .any(|message| message.contains("max_redirects requires follow_redirects")));
 }

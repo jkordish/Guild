@@ -673,6 +673,8 @@ pub struct HttpRequestConstraints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allowed_hosts: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed_host_suffixes: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allowed_ports: Option<Vec<u16>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allowed_methods: Option<Vec<HttpMethod>>,
@@ -682,6 +684,18 @@ pub struct HttpRequestConstraints {
     pub max_timeout_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_response_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub follow_redirects: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_redirects: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_loopback: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_link_local: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_private_networks: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_ip_literals: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -928,8 +942,22 @@ impl HttpRequestConstraints {
             }
 
             for host in hosts {
-                if host.trim().is_empty() {
-                    errors.push("allowed_hosts must not contain empty values".into());
+                if let Some(message) = validate_http_host_value(host, "allowed_hosts", true) {
+                    errors.push(message);
+                }
+            }
+        }
+
+        if let Some(suffixes) = &self.allowed_host_suffixes {
+            if suffixes.is_empty() {
+                errors.push("allowed_host_suffixes must not be empty when provided".into());
+            }
+
+            for suffix in suffixes {
+                if let Some(message) =
+                    validate_http_host_value(suffix, "allowed_host_suffixes", false)
+                {
+                    errors.push(message);
                 }
             }
         }
@@ -975,8 +1003,80 @@ impl HttpRequestConstraints {
             errors.push("max_response_bytes must be greater than zero when provided".into());
         }
 
+        if self.follow_redirects == Some(true) {
+            if matches!(self.max_redirects, None | Some(0)) {
+                errors.push(
+                    "max_redirects must be greater than zero when follow_redirects is true".into(),
+                );
+            }
+        } else if self.max_redirects.is_some() {
+            errors.push("max_redirects requires follow_redirects to be true".into());
+        }
+
         errors
     }
+}
+
+fn validate_http_host_value(value: &str, field: &str, allow_ip_literals: bool) -> Option<String> {
+    if value.trim().is_empty() {
+        return Some(format!("{field} must not contain empty values"));
+    }
+
+    if value != value.trim() {
+        return Some(format!(
+            "{field} entries must not contain leading or trailing whitespace"
+        ));
+    }
+
+    if value.contains("://")
+        || value.contains('/')
+        || value.contains('?')
+        || value.contains('#')
+        || value.contains('@')
+    {
+        return Some(format!(
+            "{field} entries must contain only canonical hostnames or IP literals without schemes, paths, fragments, queries, or credentials"
+        ));
+    }
+
+    if value.starts_with('.') || value.ends_with('.') {
+        return Some(format!("{field} entries must not begin or end with `.`"));
+    }
+
+    if value.parse::<std::net::IpAddr>().is_ok() {
+        if allow_ip_literals {
+            return None;
+        }
+
+        return Some(format!(
+            "{field} entries must not use raw IP literals; use canonical domain suffixes only"
+        ));
+    }
+
+    if value.contains(':') {
+        return Some(format!(
+            "{field} entries must not include ports; configure ports through allowed_ports"
+        ));
+    }
+
+    let labels = value.split('.').collect::<Vec<_>>();
+    if labels.iter().any(|label| label.is_empty()) {
+        return Some(format!("{field} entries must not contain empty DNS labels"));
+    }
+
+    if labels.iter().any(|label| {
+        !label
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            || label.starts_with('-')
+            || label.ends_with('-')
+    }) {
+        return Some(format!(
+            "{field} entries must use ASCII alphanumeric or `-` DNS labels"
+        ));
+    }
+
+    None
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]

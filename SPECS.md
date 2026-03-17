@@ -357,7 +357,7 @@ Guests MUST NOT mint, widen, or self-approve their own capabilities.
 
 The current repository enforces typed constraints for:
 
-- `http-request`: `allowed_schemes`, `allowed_hosts`, `allowed_ports`, `allowed_methods`, `allowed_path_prefixes`, `max_timeout_ms`, `max_response_bytes`
+- `http-request`: `allowed_schemes`, `allowed_hosts`, `allowed_host_suffixes`, `allowed_ports`, `allowed_methods`, `allowed_path_prefixes`, `max_timeout_ms`, `max_response_bytes`, `follow_redirects`, `max_redirects`, `allow_loopback`, `allow_link_local`, `allow_private_networks`, `allow_ip_literals`
 - `read-resource`: `uri_prefixes`, `resource_kinds`
 - `invoke-skill`: `aliases`
 - `emit-evidence`: `max_bytes`, `audiences`, `redactions`
@@ -367,7 +367,7 @@ Those are the currently implemented product names in the active Wasm inspect sli
 
 For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, `guild://objects/sha256/`, and `guild://queries/executions/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching.
 
-For `http-request`, the current repository exposes a bounded request/response model rather than ambient networking. The host MUST parse absolute HTTP or HTTPS URLs, enforce typed scheme/host/port/path/method constraints before dispatch, clamp timeout and response-size limits to host-owned bounds, and keep authorization denials host-owned. The current inspect slice supports bodyless `GET` and `HEAD` requests only, does not expose arbitrary request headers or request-body streaming, and returns a bounded typed response body to the guest.
+For `http-request`, the current repository exposes a bounded request/response model rather than ambient networking. The host MUST parse absolute HTTP or HTTPS URLs, reject embedded credentials, enforce typed scheme/host/domain-suffix/port/path/method constraints before dispatch, and clamp timeout and response-size limits to host-owned bounds. Redirect following MUST remain disabled unless the granted capability explicitly enables it with a bounded `max_redirects`, and every redirected hop MUST pass the same host-owned authorization path before dispatch. Loopback, link-local, private-network, and raw IP-literal destinations MUST fail closed unless the granted capability explicitly allows those destination classes. Authorization denials MUST remain host-owned. The current inspect slice supports bodyless `GET` and `HEAD` requests only, does not expose arbitrary request headers or request-body streaming, and returns a bounded typed response body to the guest.
 
 Shared contracts may mention broader capability families for future phases, but the active inspect slice MUST either prune unsupported families from the executable surface or reject them before execution. The current repository chooses preflight rejection.
 

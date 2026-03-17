@@ -64,7 +64,7 @@ The canonical local proof command is:
 cargo run -p guild-mcp --example inspect_http_json_local
 ```
 
-That example starts a deterministic local HTTP server, installs the primitive `inspect-http-json` skill, grants it bounded outbound HTTP authority through `guild.inspect`, prints the successful stored execution, then runs a denied host-mismatch request and prints the persisted rejected execution. The public MCP surface does not change; HTTP is exercised through `guild.inspect`, not a new MCP tool.
+That example starts a deterministic local HTTP server, installs the primitive `inspect-http-json` skill, grants it bounded outbound HTTP authority through `guild.inspect`, prints the successful stored execution, then runs a denied host-mismatch request and prints the persisted rejected execution. The bounded grant now makes loopback and raw IP-literal access explicit for the local proof flow, while the runtime keeps redirects disabled unless they are explicitly granted. The public MCP surface does not change; HTTP is exercised through `guild.inspect`, not a new MCP tool.
 
 ### Policy Proof Flow
 
@@ -76,7 +76,7 @@ The canonical local proof command is:
 cargo run -p guild-mcp --example inspect_policy_local
 ```
 
-That example installs `inspect-http-json`, exports it as a signed bundle, imports it into two fresh Guild roots with different publisher trust tiers, writes a local `policy.json` with named profiles plus a tenant binding, then proves two outcomes through the same `guild.inspect` surface: a trusted imported execution that keeps bounded HTTP authority and a restricted imported execution that is denied before guest start. It then runs `explain-execution` against the persisted denied execution URI to prove the denial remains host-owned, durable, and explainable through the same resource path. The persisted execution record retains the caller-requested capability set, the smaller host-granted set, the selected policy profile, the verification state, and the host-owned trust tier that influenced the decision.
+That example installs `inspect-http-json`, exports it as a signed bundle, imports it into two fresh Guild roots with different publisher trust tiers, writes a local `policy.json` with named profiles plus a tenant binding, then proves two outcomes through the same `guild.inspect` surface: a trusted imported execution that keeps bounded redirect authority and a restricted imported execution whose HTTP grant is reduced before guest start and then rejected by the host when a redirect arrives. It then runs `explain-execution` against the persisted denied execution URI to prove the denial remains host-owned, durable, and explainable through the same resource path. The persisted execution record retains the caller-requested capability set, the smaller host-granted set, the selected policy profile, the verification state, and the host-owned trust tier that influenced the decision.
 
 ### Artifact Query Proof Flow
 
@@ -120,7 +120,7 @@ The current inspect slice is intentionally strict about a few things:
 - host authorization denials persist as host-owned rejected executions instead of leaking into guest-owned failure semantics
 - the active Wasm inspect slice only supports `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; broader typed families are rejected before execution
 - `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
-- `http-request` is host-mediated, typed, bounded, and fail-closed; method, scheme, host, port, path, timeout, and response-size checks stay host-owned
+- `http-request` is host-mediated, typed, bounded, and fail-closed; method, scheme, host, domain suffix, port, path, redirect, timeout, response-size, loopback, private-network, link-local, and IP-literal checks stay host-owned
 - caller-requested capabilities are policy input, not final authority; a local `policy.json` plus host-owned defaults decide the granted capability set before execution
 - policy now selects a named local profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
 - policy reductions and rejections persist as host-owned execution metadata and stay visible to explain/debug flows

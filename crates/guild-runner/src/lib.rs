@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -27,7 +28,7 @@ use guild_types::{
     ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError, SkillOutput,
     TerminationDetail,
 };
-use http::header::CONTENT_TYPE;
+use http::header::{CONTENT_TYPE, LOCATION};
 use http::Request;
 use http_body_util::{BodyExt, Empty};
 use schemars::JsonSchema;
@@ -113,7 +114,7 @@ pub trait RuntimeHost: Send + Sync {
         request: &HttpRequest,
         timeout: Duration,
         max_response_bytes: u64,
-    ) -> Result<HttpResponse, SkillError>;
+    ) -> Result<HostHttpResponse, SkillError>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -251,6 +252,31 @@ struct ParsedHttpRequest {
     host: String,
     port: u16,
     path: String,
+    host_kind: ParsedHttpHost,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ParsedHttpHost {
+    Domain { loopback_name: bool },
+    IpLiteral(IpAddr),
+}
+
+impl ParsedHttpRequest {
+    fn ip_literal(&self) -> Option<IpAddr> {
+        match self.host_kind {
+            ParsedHttpHost::Domain { .. } => None,
+            ParsedHttpHost::IpLiteral(ip) => Some(ip),
+        }
+    }
+
+    fn is_loopback_name(&self) -> bool {
+        matches!(
+            self.host_kind,
+            ParsedHttpHost::Domain {
+                loopback_name: true
+            }
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -269,6 +295,21 @@ struct CandidateGrant {
 struct HttpExecutionPolicy {
     timeout: Duration,
     max_response_bytes: u64,
+    follow_redirects: bool,
+    max_redirects: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct HostHttpResponse {
+    response: HttpResponse,
+    redirect_location: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingRedirect {
+    from_url: String,
+    status: u16,
+    location: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -279,24 +320,43 @@ enum HttpGrantDenialKind {
     Port,
     Path,
     Timeout,
+    IpLiteral,
+    Loopback,
+    LinkLocal,
+    PrivateNetwork,
+    DestinationUnresolved,
 }
 
-const HTTP_DENIAL_METHOD: u8 = 1 << 0;
-const HTTP_DENIAL_SCHEME: u8 = 1 << 1;
-const HTTP_DENIAL_HOST: u8 = 1 << 2;
-const HTTP_DENIAL_PORT: u8 = 1 << 3;
-const HTTP_DENIAL_PATH: u8 = 1 << 4;
-const HTTP_DENIAL_TIMEOUT: u8 = 1 << 5;
+const HTTP_DENIAL_METHOD: u16 = 1 << 0;
+const HTTP_DENIAL_SCHEME: u16 = 1 << 1;
+const HTTP_DENIAL_HOST: u16 = 1 << 2;
+const HTTP_DENIAL_PORT: u16 = 1 << 3;
+const HTTP_DENIAL_PATH: u16 = 1 << 4;
+const HTTP_DENIAL_TIMEOUT: u16 = 1 << 5;
+const HTTP_DENIAL_IP_LITERAL: u16 = 1 << 6;
+const HTTP_DENIAL_LOOPBACK: u16 = 1 << 7;
+const HTTP_DENIAL_LINK_LOCAL: u16 = 1 << 8;
+const HTTP_DENIAL_PRIVATE_NETWORK: u16 = 1 << 9;
+const HTTP_DENIAL_DESTINATION_UNRESOLVED: u16 = 1 << 10;
+const HTTP_UNCONSTRAINED_MAX_REDIRECTS: u8 = 10;
 
 #[derive(Debug, Default, Clone, Copy)]
 struct HttpGrantState {
     authorized_timeout_ms: Option<u64>,
     authorized_response_bytes: Option<u64>,
-    denial_mask: u8,
+    authorized_follow_redirects: bool,
+    authorized_max_redirects: Option<u8>,
+    denial_mask: u16,
 }
 
 impl HttpGrantState {
-    fn authorize(&mut self, timeout_ms: u64, response_bytes: u64) {
+    fn authorize(
+        &mut self,
+        timeout_ms: u64,
+        response_bytes: u64,
+        follow_redirects: bool,
+        max_redirects: Option<u8>,
+    ) {
         self.authorized_timeout_ms = Some(
             self.authorized_timeout_ms
                 .map_or(timeout_ms, |current| current.max(timeout_ms)),
@@ -305,6 +365,15 @@ impl HttpGrantState {
             self.authorized_response_bytes
                 .map_or(response_bytes, |current| current.max(response_bytes)),
         );
+        if follow_redirects {
+            self.authorized_follow_redirects = true;
+            if let Some(max_redirects) = max_redirects {
+                self.authorized_max_redirects = Some(
+                    self.authorized_max_redirects
+                        .map_or(max_redirects, |current| current.max(max_redirects)),
+                );
+            }
+        }
     }
 
     fn note_denial(&mut self, denial: HttpGrantDenialKind) {
@@ -315,10 +384,15 @@ impl HttpGrantState {
             HttpGrantDenialKind::Port => HTTP_DENIAL_PORT,
             HttpGrantDenialKind::Path => HTTP_DENIAL_PATH,
             HttpGrantDenialKind::Timeout => HTTP_DENIAL_TIMEOUT,
+            HttpGrantDenialKind::IpLiteral => HTTP_DENIAL_IP_LITERAL,
+            HttpGrantDenialKind::Loopback => HTTP_DENIAL_LOOPBACK,
+            HttpGrantDenialKind::LinkLocal => HTTP_DENIAL_LINK_LOCAL,
+            HttpGrantDenialKind::PrivateNetwork => HTTP_DENIAL_PRIVATE_NETWORK,
+            HttpGrantDenialKind::DestinationUnresolved => HTTP_DENIAL_DESTINATION_UNRESOLVED,
         };
     }
 
-    fn saw_denial(&self, denial_mask: u8) -> bool {
+    fn saw_denial(&self, denial_mask: u16) -> bool {
         self.denial_mask & denial_mask != 0
     }
 }
@@ -832,25 +906,91 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
         &mut self,
         request: bindings::guild::skill::types::HttpRequestMessage,
     ) -> wasmtime::Result<Result<bindings::guild::skill::types::HttpResponseMessage, String>> {
-        let request = from_wit_http_request(request);
-        let parsed_request =
-            parse_http_request(&request).map_err(|denial| capability_denial_trap(&denial))?;
-        let policy = CapabilityEvaluator::authorize_http_request(
-            self.grants(),
-            &self.execution.budget,
-            self.network_requests,
-            &request,
-            &parsed_request,
-        )
-        .map_err(|denial| capability_denial_trap(&denial))?;
+        let mut request = from_wit_http_request(request);
+        let mut redirects_followed = 0_u8;
+        let mut redirect_context: Option<PendingRedirect> = None;
 
-        self.network_requests = self.network_requests.saturating_add(1);
-        match self
-            .host
-            .http_request(&request, policy.timeout, policy.max_response_bytes)
-        {
-            Ok(response) => Ok(Ok(to_wit_http_response(&response))),
-            Err(error) => Ok(Err(format!("{}: {}", error.code, error.message))),
+        loop {
+            let pending_redirect = redirect_context.take();
+            let parsed_request = parse_http_request(&request).map_err(|denial| {
+                let denial = pending_redirect.as_ref().map_or(denial.clone(), |pending| {
+                    redirect_location_invalid_denial(
+                        &pending.from_url,
+                        pending.status,
+                        &pending.location,
+                        &denial,
+                    )
+                });
+                capability_denial_trap(&denial)
+            })?;
+            let policy = CapabilityEvaluator::authorize_http_request(
+                self.grants(),
+                &self.execution.budget,
+                self.network_requests,
+                &request,
+                &parsed_request,
+            )
+            .map_err(|denial| {
+                let denial = pending_redirect.as_ref().map_or(denial.clone(), |pending| {
+                    redirect_target_not_granted_denial(
+                        &pending.from_url,
+                        pending.status,
+                        &pending.location,
+                        &request.url,
+                        &denial,
+                    )
+                });
+                capability_denial_trap(&denial)
+            })?;
+
+            self.network_requests = self.network_requests.saturating_add(1);
+            match self
+                .host
+                .http_request(&request, policy.timeout, policy.max_response_bytes)
+            {
+                Ok(response) => {
+                    if !is_redirect_status(response.response.status) {
+                        return Ok(Ok(to_wit_http_response(&response.response)));
+                    }
+
+                    let Some(location) = response.redirect_location else {
+                        let denial = redirect_location_missing_denial(
+                            &request.url,
+                            response.response.status,
+                        );
+                        return Err(capability_denial_trap(&denial));
+                    };
+
+                    if !policy.follow_redirects {
+                        let denial = redirect_not_allowed_denial(
+                            &request.url,
+                            response.response.status,
+                            &location,
+                        );
+                        return Err(capability_denial_trap(&denial));
+                    }
+
+                    if redirects_followed >= policy.max_redirects {
+                        let denial = redirect_hop_limit_denial(
+                            &request.url,
+                            response.response.status,
+                            &location,
+                            policy.max_redirects,
+                        );
+                        return Err(capability_denial_trap(&denial));
+                    }
+
+                    request = build_redirect_request(&request, &location)
+                        .map_err(|denial| capability_denial_trap(&denial))?;
+                    redirects_followed = redirects_followed.saturating_add(1);
+                    redirect_context = Some(PendingRedirect {
+                        from_url: response.response.url,
+                        status: response.response.status,
+                        location,
+                    });
+                }
+                Err(error) => return Ok(Err(format!("{}: {}", error.code, error.message))),
+            }
         }
     }
 
@@ -1419,23 +1559,8 @@ where
         envelope: &ResolvedExecutionEnvelope,
         error: &ExecutionError,
     ) -> PolicyDecision {
-        match status_from_error(error) {
-            ExecutionStatus::Rejected
-                if envelope.policy_decision.outcome == PolicyDecisionOutcome::Rejected =>
-            {
-                envelope.policy_decision.clone()
-            }
-            ExecutionStatus::Rejected => PolicyDecision {
-                outcome: PolicyDecisionOutcome::Rejected,
-                summary: error.message.clone(),
-                profile_name: envelope.policy_decision.profile_name.clone(),
-                trust_tier: envelope.policy_decision.trust_tier.clone(),
-                verification_state: envelope.policy_decision.verification_state.clone(),
-                reasons: Vec::new(),
-                detail: error.detail.as_deref().cloned(),
-            },
-            _ => envelope.policy_decision.clone(),
-        }
+        let _ = error;
+        envelope.policy_decision.clone()
     }
 
     fn load_evidence_records<R>(
@@ -1657,7 +1782,7 @@ where
         request: &HttpRequest,
         timeout: Duration,
         max_response_bytes: u64,
-    ) -> Result<HttpResponse, SkillError> {
+    ) -> Result<HostHttpResponse, SkillError> {
         execute_http_request(request, timeout, max_response_bytes)
     }
 }
@@ -2200,13 +2325,34 @@ fn reduce_grant_to_cap(
         return None;
     }
 
-    let requirement = CapabilityRequirement {
-        id: grant.id.clone(),
-        access: grant.access.clone(),
-        constraints: grant.constraints.clone(),
-        required: false,
+    let constraints = match (&cap.constraints, &grant.constraints) {
+        (CapabilityConstraints::None(_), _) | (_, CapabilityConstraints::None(_)) => {
+            grant.constraints.clone()
+        }
+        (CapabilityConstraints::HttpRequest(cap), CapabilityConstraints::HttpRequest(grant)) => {
+            CapabilityConstraints::HttpRequest(reduce_cap_http_request_constraints(cap, grant)?)
+        }
+        (CapabilityConstraints::ReadResource(cap), CapabilityConstraints::ReadResource(grant)) => {
+            CapabilityConstraints::ReadResource(
+                reduce_child_read_resource_constraints(cap, grant).ok()?,
+            )
+        }
+        (
+            CapabilityConstraints::InvokeDependency(cap),
+            CapabilityConstraints::InvokeDependency(grant),
+        ) => CapabilityConstraints::InvokeDependency(
+            reduce_child_invoke_dependency_constraints(cap, grant).ok()?,
+        ),
+        (CapabilityConstraints::EmitEvidence(cap), CapabilityConstraints::EmitEvidence(grant)) => {
+            CapabilityConstraints::EmitEvidence(
+                reduce_child_emit_evidence_constraints(cap, grant).ok()?,
+            )
+        }
+        (CapabilityConstraints::Log(cap), CapabilityConstraints::Log(grant)) => {
+            CapabilityConstraints::Log(reduce_child_log_constraints(cap, grant).ok()?)
+        }
+        _ => return None,
     };
-    let constraints = reduce_child_constraints(cap, &requirement).ok()?;
 
     Some(GrantedCapability {
         id: grant.id.clone(),
@@ -2455,13 +2601,30 @@ fn parse_http_request(request: &HttpRequest) -> Result<ParsedHttpRequest, Capabi
         }
     };
 
-    let host = url.host_str().ok_or_else(|| CapabilityDenial {
-        code: "http-request-url-invalid".into(),
-        message: "http-request URL must include a host".into(),
-        detail: serde_json::json!({
-            "url": request.url,
-        }),
-    })?;
+    let (host, host_kind) = match url.host() {
+        Some(url::Host::Domain(domain)) => {
+            let host = domain.to_ascii_lowercase();
+            let loopback_name = host == "localhost" || host.ends_with(".localhost");
+            (host, ParsedHttpHost::Domain { loopback_name })
+        }
+        Some(url::Host::Ipv4(address)) => (
+            address.to_string(),
+            ParsedHttpHost::IpLiteral(IpAddr::V4(address)),
+        ),
+        Some(url::Host::Ipv6(address)) => (
+            address.to_string(),
+            ParsedHttpHost::IpLiteral(IpAddr::V6(address)),
+        ),
+        None => {
+            return Err(CapabilityDenial {
+                code: "http-request-url-invalid".into(),
+                message: "http-request URL must include a host".into(),
+                detail: serde_json::json!({
+                    "url": request.url,
+                }),
+            });
+        }
+    };
     let port = url
         .port_or_known_default()
         .ok_or_else(|| CapabilityDenial {
@@ -2479,9 +2642,10 @@ fn parse_http_request(request: &HttpRequest) -> Result<ParsedHttpRequest, Capabi
 
     Ok(ParsedHttpRequest {
         scheme,
-        host: host.to_ascii_lowercase(),
+        host,
         port,
         path,
+        host_kind,
     })
 }
 
@@ -2489,7 +2653,7 @@ fn execute_http_request(
     request: &HttpRequest,
     timeout: Duration,
     max_response_bytes: u64,
-) -> Result<HttpResponse, SkillError> {
+) -> Result<HostHttpResponse, SkillError> {
     let parsed_request = parse_http_request(request).map_err(CapabilityDenial::into_skill_error)?;
     let http_request = Request::builder()
         .method(http_method(&request.method))
@@ -2524,6 +2688,22 @@ fn execute_http_request(
         .get(CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
+    let redirect_location = resp
+        .headers()
+        .get(LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    if is_redirect_status(status) {
+        return Ok(HostHttpResponse {
+            response: HttpResponse {
+                url: request.url.clone(),
+                status,
+                content_type,
+                body: Vec::new(),
+            },
+            redirect_location,
+        });
+    }
     let mut body = resp.into_body();
     let body = wasmtime_wasi::runtime::in_tokio(async move {
         let _worker = worker;
@@ -2557,11 +2737,14 @@ fn execute_http_request(
     })
     .map_err(|error| skill_error_from_wasi_http_error(&error, request, max_response_bytes))?;
 
-    Ok(HttpResponse {
-        url: request.url.clone(),
-        status,
-        content_type,
-        body,
+    Ok(HostHttpResponse {
+        response: HttpResponse {
+            url: request.url.clone(),
+            status,
+            content_type,
+            body,
+        },
+        redirect_location,
     })
 }
 
@@ -2619,6 +2802,40 @@ fn skill_error_from_wasi_http_error(
             "error": format!("{error:?}"),
         })),
     }
+}
+
+fn is_redirect_status(status: u16) -> bool {
+    matches!(status, 301 | 302 | 303 | 307 | 308)
+}
+
+fn build_redirect_request(
+    request: &HttpRequest,
+    location: &str,
+) -> Result<HttpRequest, CapabilityDenial> {
+    let current = Url::parse(&request.url).map_err(|error| CapabilityDenial {
+        code: "http-request-redirect-location-invalid".into(),
+        message: "http-request redirect source URL could not be reparsed safely".into(),
+        detail: serde_json::json!({
+            "url": request.url,
+            "location": location,
+            "error": error.to_string(),
+        }),
+    })?;
+    let redirected = current.join(location).map_err(|error| CapabilityDenial {
+        code: "http-request-redirect-location-invalid".into(),
+        message: "http-request redirect location was invalid".into(),
+        detail: serde_json::json!({
+            "url": request.url,
+            "location": location,
+            "error": error.to_string(),
+        }),
+    })?;
+
+    Ok(HttpRequest {
+        method: request.method.clone(),
+        url: redirected.to_string(),
+        timeout_ms: request.timeout_ms,
+    })
 }
 
 enum CapabilityOperation<'a> {
@@ -3089,105 +3306,238 @@ fn reduce_child_http_request_constraints(
     parent: &HttpRequestConstraints,
     required: &HttpRequestConstraints,
 ) -> Result<HttpRequestConstraints, CapabilityDenial> {
-    let allowed_schemes = reduce_required_enum_scope(
-        parent.allowed_schemes.as_ref(),
-        required.allowed_schemes.as_ref(),
-    )
-    .ok_or_else(|| CapabilityDenial {
-        code: "child-capability-mismatch".into(),
-        message: "child http-request schemes could not be reduced from the parent grant".into(),
-        detail: serde_json::json!({
-            "parent_constraints": parent,
-            "required_constraints": required,
-        }),
-    })?
-    .into_option();
-    let allowed_hosts = reduce_required_host_scope(
-        parent.allowed_hosts.as_ref(),
-        required.allowed_hosts.as_ref(),
-    )
-    .ok_or_else(|| CapabilityDenial {
-        code: "child-capability-mismatch".into(),
-        message: "child http-request hosts could not be reduced from the parent grant".into(),
-        detail: serde_json::json!({
-            "parent_constraints": parent,
-            "required_constraints": required,
-        }),
-    })?
-    .into_option();
-    let allowed_ports = reduce_required_enum_scope(
-        parent.allowed_ports.as_ref(),
-        required.allowed_ports.as_ref(),
-    )
-    .ok_or_else(|| CapabilityDenial {
-        code: "child-capability-mismatch".into(),
-        message: "child http-request ports could not be reduced from the parent grant".into(),
-        detail: serde_json::json!({
-            "parent_constraints": parent,
-            "required_constraints": required,
-        }),
-    })?
-    .into_option();
-    let allowed_methods = reduce_required_enum_scope(
-        parent.allowed_methods.as_ref(),
-        required.allowed_methods.as_ref(),
-    )
-    .ok_or_else(|| CapabilityDenial {
-        code: "child-capability-mismatch".into(),
-        message: "child http-request methods could not be reduced from the parent grant".into(),
-        detail: serde_json::json!({
-            "parent_constraints": parent,
-            "required_constraints": required,
-        }),
-    })?
-    .into_option();
-    let allowed_path_prefixes = reduce_required_path_prefix_scope(
-        parent.allowed_path_prefixes.as_ref(),
-        required.allowed_path_prefixes.as_ref(),
-    )
-    .ok_or_else(|| CapabilityDenial {
-        code: "child-capability-mismatch".into(),
-        message: "child http-request paths could not be reduced from the parent grant".into(),
-        detail: serde_json::json!({
-            "parent_constraints": parent,
-            "required_constraints": required,
-        }),
-    })?
-    .into_option();
-    let max_timeout_ms = reduce_required_max_bytes(parent.max_timeout_ms, required.max_timeout_ms)
-        .ok_or_else(|| CapabilityDenial {
-            code: "child-capability-mismatch".into(),
-            message: "child http-request max_timeout_ms could not be reduced from the parent grant"
-                .into(),
-            detail: serde_json::json!({
-                "parent_constraints": parent,
-                "required_constraints": required,
-            }),
-        })?
-        .into_option();
-    let max_response_bytes =
-        reduce_required_max_bytes(parent.max_response_bytes, required.max_response_bytes)
-            .ok_or_else(|| {
-                CapabilityDenial {
-        code: "child-capability-mismatch".into(),
-        message: "child http-request max_response_bytes could not be reduced from the parent grant"
-            .into(),
-        detail: serde_json::json!({
-            "parent_constraints": parent,
-            "required_constraints": required,
-        }),
-    }
-            })?
-            .into_option();
+    let core = reduce_child_http_core_constraints(parent, required)?;
+    let redirects = reduce_child_http_redirect_constraints(parent, required)?;
+    let destinations = reduce_child_http_destination_constraints(parent, required)?;
 
     Ok(HttpRequestConstraints {
+        allowed_schemes: core.allowed_schemes,
+        allowed_hosts: core.host_scope.hosts,
+        allowed_host_suffixes: core.host_scope.suffixes,
+        allowed_ports: core.allowed_ports,
+        allowed_methods: core.allowed_methods,
+        allowed_path_prefixes: core.allowed_path_prefixes,
+        max_timeout_ms: core.max_timeout_ms,
+        max_response_bytes: core.max_response_bytes,
+        follow_redirects: redirects.follow_redirects,
+        max_redirects: redirects.max_redirects,
+        allow_loopback: destinations.loopback,
+        allow_link_local: destinations.link_local,
+        allow_private_networks: destinations.private_networks,
+        allow_ip_literals: destinations.ip_literals,
+    })
+}
+
+fn reduce_cap_http_request_constraints(
+    cap: &HttpRequestConstraints,
+    grant: &HttpRequestConstraints,
+) -> Option<HttpRequestConstraints> {
+    let host_scope = reduce_required_host_scope(
+        cap.allowed_hosts.as_ref(),
+        cap.allowed_host_suffixes.as_ref(),
+        grant.allowed_hosts.as_ref(),
+        grant.allowed_host_suffixes.as_ref(),
+    )?;
+    let follow_redirects = reduce_cap_allow_flag(cap.follow_redirects, grant.follow_redirects);
+    let max_redirects = if allow_flag_enabled(follow_redirects) {
+        reduce_required_max_redirects(cap.max_redirects, grant.max_redirects)?.into_option()
+    } else {
+        None
+    };
+
+    Some(HttpRequestConstraints {
+        allowed_schemes: reduce_required_enum_scope(
+            cap.allowed_schemes.as_ref(),
+            grant.allowed_schemes.as_ref(),
+        )?
+        .into_option(),
+        allowed_hosts: host_scope.hosts,
+        allowed_host_suffixes: host_scope.suffixes,
+        allowed_ports: reduce_required_enum_scope(
+            cap.allowed_ports.as_ref(),
+            grant.allowed_ports.as_ref(),
+        )?
+        .into_option(),
+        allowed_methods: reduce_required_enum_scope(
+            cap.allowed_methods.as_ref(),
+            grant.allowed_methods.as_ref(),
+        )?
+        .into_option(),
+        allowed_path_prefixes: reduce_required_path_prefix_scope(
+            cap.allowed_path_prefixes.as_ref(),
+            grant.allowed_path_prefixes.as_ref(),
+        )?
+        .into_option(),
+        max_timeout_ms: reduce_required_max_bytes(cap.max_timeout_ms, grant.max_timeout_ms)?
+            .into_option(),
+        max_response_bytes: reduce_required_max_bytes(
+            cap.max_response_bytes,
+            grant.max_response_bytes,
+        )?
+        .into_option(),
+        follow_redirects,
+        max_redirects,
+        allow_loopback: reduce_cap_allow_flag(cap.allow_loopback, grant.allow_loopback),
+        allow_link_local: reduce_cap_allow_flag(cap.allow_link_local, grant.allow_link_local),
+        allow_private_networks: reduce_cap_allow_flag(
+            cap.allow_private_networks,
+            grant.allow_private_networks,
+        ),
+        allow_ip_literals: reduce_cap_allow_flag(cap.allow_ip_literals, grant.allow_ip_literals),
+    })
+}
+
+fn reduce_child_http_core_constraints(
+    parent: &HttpRequestConstraints,
+    required: &HttpRequestConstraints,
+) -> Result<ReducedChildHttpCore, CapabilityDenial> {
+    let allowed_schemes = reduce_child_http_constraint(
+        parent,
+        required,
+        "allowed_schemes",
+        "schemes",
+        reduce_required_enum_scope(
+            parent.allowed_schemes.as_ref(),
+            required.allowed_schemes.as_ref(),
+        ),
+    )?;
+    let host_scope = reduce_required_host_scope(
+        parent.allowed_hosts.as_ref(),
+        parent.allowed_host_suffixes.as_ref(),
+        required.allowed_hosts.as_ref(),
+        required.allowed_host_suffixes.as_ref(),
+    )
+    .ok_or_else(|| {
+        child_http_constraint_mismatch(parent, required, "allowed_hosts", "host scope")
+    })?;
+    let allowed_ports = reduce_child_http_constraint(
+        parent,
+        required,
+        "allowed_ports",
+        "ports",
+        reduce_required_enum_scope(
+            parent.allowed_ports.as_ref(),
+            required.allowed_ports.as_ref(),
+        ),
+    )?;
+    let allowed_methods = reduce_child_http_constraint(
+        parent,
+        required,
+        "allowed_methods",
+        "methods",
+        reduce_required_enum_scope(
+            parent.allowed_methods.as_ref(),
+            required.allowed_methods.as_ref(),
+        ),
+    )?;
+    let allowed_path_prefixes = reduce_child_http_constraint(
+        parent,
+        required,
+        "allowed_path_prefixes",
+        "paths",
+        reduce_required_path_prefix_scope(
+            parent.allowed_path_prefixes.as_ref(),
+            required.allowed_path_prefixes.as_ref(),
+        ),
+    )?;
+    let max_timeout_ms = reduce_child_http_constraint(
+        parent,
+        required,
+        "max_timeout_ms",
+        "max_timeout_ms",
+        reduce_required_max_bytes(parent.max_timeout_ms, required.max_timeout_ms),
+    )?;
+    let max_response_bytes = reduce_child_http_constraint(
+        parent,
+        required,
+        "max_response_bytes",
+        "max_response_bytes",
+        reduce_required_max_bytes(parent.max_response_bytes, required.max_response_bytes),
+    )?;
+
+    Ok(ReducedChildHttpCore {
         allowed_schemes,
-        allowed_hosts,
+        host_scope,
         allowed_ports,
         allowed_methods,
         allowed_path_prefixes,
         max_timeout_ms,
         max_response_bytes,
+    })
+}
+
+fn reduce_child_http_redirect_constraints(
+    parent: &HttpRequestConstraints,
+    required: &HttpRequestConstraints,
+) -> Result<ReducedChildHttpRedirects, CapabilityDenial> {
+    let follow_redirects = reduce_child_http_allow_flag(
+        parent,
+        required,
+        parent.follow_redirects,
+        required.follow_redirects,
+        "follow_redirects",
+        "redirect-following",
+    )?;
+    let max_redirects = if allow_flag_enabled(follow_redirects) {
+        reduce_child_http_constraint(
+            parent,
+            required,
+            "max_redirects",
+            "max_redirects",
+            reduce_required_max_redirects(parent.max_redirects, required.max_redirects),
+        )?
+    } else {
+        None
+    };
+
+    Ok(ReducedChildHttpRedirects {
+        follow_redirects,
+        max_redirects,
+    })
+}
+
+fn reduce_child_http_destination_constraints(
+    parent: &HttpRequestConstraints,
+    required: &HttpRequestConstraints,
+) -> Result<ReducedChildHttpDestinationFlags, CapabilityDenial> {
+    let allow_loopback = reduce_child_http_allow_flag(
+        parent,
+        required,
+        parent.allow_loopback,
+        required.allow_loopback,
+        "allow_loopback",
+        "loopback destinations",
+    )?;
+    let allow_link_local = reduce_child_http_allow_flag(
+        parent,
+        required,
+        parent.allow_link_local,
+        required.allow_link_local,
+        "allow_link_local",
+        "link-local destinations",
+    )?;
+    let allow_private_networks = reduce_child_http_allow_flag(
+        parent,
+        required,
+        parent.allow_private_networks,
+        required.allow_private_networks,
+        "allow_private_networks",
+        "private-network destinations",
+    )?;
+    let allow_ip_literals = reduce_child_http_allow_flag(
+        parent,
+        required,
+        parent.allow_ip_literals,
+        required.allow_ip_literals,
+        "allow_ip_literals",
+        "IP-literal destinations",
+    )?;
+
+    Ok(ReducedChildHttpDestinationFlags {
+        loopback: allow_loopback,
+        link_local: allow_link_local,
+        private_networks: allow_private_networks,
+        ip_literals: allow_ip_literals,
     })
 }
 
@@ -3334,9 +3684,11 @@ fn http_request_covers(grant: &HttpRequestConstraints, required: &HttpRequestCon
     enum_scope_covers(
         grant.allowed_schemes.as_ref(),
         required.allowed_schemes.as_ref(),
-    ) && string_scope_covers_casefold_exact(
+    ) && http_host_scope_covers(
         grant.allowed_hosts.as_ref(),
+        grant.allowed_host_suffixes.as_ref(),
         required.allowed_hosts.as_ref(),
+        required.allowed_host_suffixes.as_ref(),
     ) && enum_scope_covers(
         grant.allowed_ports.as_ref(),
         required.allowed_ports.as_ref(),
@@ -3348,6 +3700,26 @@ fn http_request_covers(grant: &HttpRequestConstraints, required: &HttpRequestCon
         required.allowed_path_prefixes.as_ref(),
     ) && max_bytes_covers(grant.max_timeout_ms, required.max_timeout_ms)
         && max_bytes_covers(grant.max_response_bytes, required.max_response_bytes)
+        && allow_flag_covers(grant.follow_redirects, required.follow_redirects)
+        && max_redirects_covers(
+            if allow_flag_enabled(grant.follow_redirects) {
+                grant.max_redirects
+            } else {
+                None
+            },
+            if allow_flag_enabled(required.follow_redirects) {
+                required.max_redirects
+            } else {
+                None
+            },
+        )
+        && allow_flag_covers(grant.allow_loopback, required.allow_loopback)
+        && allow_flag_covers(grant.allow_link_local, required.allow_link_local)
+        && allow_flag_covers(
+            grant.allow_private_networks,
+            required.allow_private_networks,
+        )
+        && allow_flag_covers(grant.allow_ip_literals, required.allow_ip_literals)
 }
 
 fn emit_evidence_covers(
@@ -3372,22 +3744,6 @@ fn string_scope_covers_exact(
         (Some(granted), Some(required)) => required
             .iter()
             .all(|value| granted.iter().any(|candidate| candidate == value)),
-    }
-}
-
-fn string_scope_covers_casefold_exact(
-    granted: Option<&Vec<String>>,
-    required: Option<&Vec<String>>,
-) -> bool {
-    match (granted, required) {
-        (_, None) | (None, Some(_)) => true,
-        (Some(granted), Some(required)) => {
-            let granted = canonicalize_host_scope(granted);
-            required.iter().all(|value| {
-                let value = value.to_ascii_lowercase();
-                granted.iter().any(|candidate| candidate == &value)
-            })
-        }
     }
 }
 
@@ -3434,9 +3790,111 @@ fn max_bytes_covers(granted: Option<u64>, required: Option<u64>) -> bool {
     }
 }
 
+fn max_redirects_covers(granted: Option<u8>, required: Option<u8>) -> bool {
+    match (granted, required) {
+        (_, None) | (None, Some(_)) => true,
+        (Some(granted), Some(required)) => granted >= required,
+    }
+}
+
+fn allow_flag_enabled(value: Option<bool>) -> bool {
+    value == Some(true)
+}
+
+fn allow_flag_covers(granted: Option<bool>, required: Option<bool>) -> bool {
+    !allow_flag_enabled(required) || allow_flag_enabled(granted)
+}
+
+fn reduce_optional_allow_flag(
+    parent: Option<bool>,
+    required: Option<bool>,
+) -> Option<ReducedConstraint<bool>> {
+    match required {
+        Some(false) => Some(ReducedConstraint::Restricted(false)),
+        Some(true) => {
+            if allow_flag_enabled(parent) {
+                Some(ReducedConstraint::Restricted(true))
+            } else {
+                None
+            }
+        }
+        None => Some(match parent {
+            Some(value) => ReducedConstraint::Restricted(value),
+            None => ReducedConstraint::Unbounded,
+        }),
+    }
+}
+
+fn reduce_cap_allow_flag(cap: Option<bool>, grant: Option<bool>) -> Option<bool> {
+    match cap {
+        Some(false) => Some(false),
+        Some(true) | None => grant,
+    }
+}
+
+fn http_host_scope_covers(
+    granted_hosts: Option<&Vec<String>>,
+    granted_suffixes: Option<&Vec<String>>,
+    required_hosts: Option<&Vec<String>>,
+    required_suffixes: Option<&Vec<String>>,
+) -> bool {
+    let granted_hosts = granted_hosts.map_or_else(Vec::new, |hosts| canonicalize_host_scope(hosts));
+    let granted_suffixes = granted_suffixes.map_or_else(Vec::new, |suffixes| {
+        canonicalize_host_suffix_scope(suffixes)
+    });
+
+    let required_hosts_ok = required_hosts.is_none_or(|hosts| {
+        canonicalize_host_scope(hosts).iter().all(|host| {
+            granted_hosts.iter().any(|candidate| candidate == host)
+                || (!is_ip_literal_host(host)
+                    && granted_suffixes
+                        .iter()
+                        .any(|suffix| domain_suffix_matches(host, suffix)))
+        })
+    });
+    let required_suffixes_ok = required_suffixes.is_none_or(|suffixes| {
+        canonicalize_host_suffix_scope(suffixes)
+            .iter()
+            .all(|suffix| {
+                granted_suffixes
+                    .iter()
+                    .any(|candidate| domain_suffix_matches(suffix, candidate))
+            })
+    });
+
+    required_hosts_ok && required_suffixes_ok
+}
+
 enum ReducedConstraint<T> {
     Unbounded,
     Restricted(T),
+}
+
+struct ReducedHostScope {
+    hosts: Option<Vec<String>>,
+    suffixes: Option<Vec<String>>,
+}
+
+struct ReducedChildHttpCore {
+    allowed_schemes: Option<Vec<HttpScheme>>,
+    host_scope: ReducedHostScope,
+    allowed_ports: Option<Vec<u16>>,
+    allowed_methods: Option<Vec<HttpMethod>>,
+    allowed_path_prefixes: Option<Vec<String>>,
+    max_timeout_ms: Option<u64>,
+    max_response_bytes: Option<u64>,
+}
+
+struct ReducedChildHttpRedirects {
+    follow_redirects: Option<bool>,
+    max_redirects: Option<u8>,
+}
+
+struct ReducedChildHttpDestinationFlags {
+    loopback: Option<bool>,
+    link_local: Option<bool>,
+    private_networks: Option<bool>,
+    ip_literals: Option<bool>,
 }
 
 impl<T> ReducedConstraint<T> {
@@ -3472,30 +3930,14 @@ fn reduce_required_exact_string_scope(
 }
 
 fn reduce_required_host_scope(
-    parent: Option<&Vec<String>>,
-    required: Option<&Vec<String>>,
-) -> Option<ReducedConstraint<Vec<String>>> {
-    match (parent, required) {
-        (None, None) => Some(ReducedConstraint::Unbounded),
-        (Some(parent), None) => Some(ReducedConstraint::Restricted(canonicalize_host_scope(
-            parent,
-        ))),
-        (None, Some(required)) => Some(ReducedConstraint::Restricted(canonicalize_host_scope(
-            required,
-        ))),
-        (Some(parent), Some(required)) => {
-            let parent = canonicalize_host_scope(parent);
-            let reduced = canonicalize_host_scope(required)
-                .into_iter()
-                .filter(|candidate| parent.iter().any(|host| host == candidate))
-                .collect::<Vec<_>>();
-            if reduced.is_empty() {
-                None
-            } else {
-                Some(ReducedConstraint::Restricted(reduced))
-            }
-        }
-    }
+    parent_hosts: Option<&Vec<String>>,
+    parent_suffixes: Option<&Vec<String>>,
+    required_hosts: Option<&Vec<String>>,
+    required_suffixes: Option<&Vec<String>>,
+) -> Option<ReducedHostScope> {
+    let hosts = reduce_required_http_hosts(parent_hosts, parent_suffixes, required_hosts).ok()?;
+    let suffixes = reduce_required_http_host_suffixes(parent_suffixes, required_suffixes).ok()?;
+    Some(ReducedHostScope { hosts, suffixes })
 }
 
 fn reduce_required_path_prefix_scope(
@@ -3525,7 +3967,20 @@ fn canonicalize_host_scope(hosts: &[String]) -> Vec<String> {
     let mut canonical = Vec::with_capacity(hosts.len());
 
     for host in hosts {
-        let host = host.to_ascii_lowercase();
+        let host = canonicalize_http_host(host);
+        if !canonical.contains(&host) {
+            canonical.push(host);
+        }
+    }
+
+    canonical
+}
+
+fn canonicalize_host_suffix_scope(hosts: &[String]) -> Vec<String> {
+    let mut canonical = Vec::with_capacity(hosts.len());
+
+    for host in hosts {
+        let host = canonicalize_http_host_suffix(host);
         if !canonical.contains(&host) {
             canonical.push(host);
         }
@@ -3618,6 +4073,129 @@ fn reduce_required_max_bytes(
             Some(ReducedConstraint::Restricted(required))
         }
         _ => None,
+    }
+}
+
+fn reduce_required_max_redirects(
+    parent: Option<u8>,
+    required: Option<u8>,
+) -> Option<ReducedConstraint<u8>> {
+    match (parent, required) {
+        (None, None) => Some(ReducedConstraint::Unbounded),
+        (Some(parent), None) => Some(ReducedConstraint::Restricted(parent)),
+        (None, Some(required)) => Some(ReducedConstraint::Restricted(required)),
+        (Some(parent), Some(required)) if parent >= required => {
+            Some(ReducedConstraint::Restricted(required))
+        }
+        _ => None,
+    }
+}
+
+fn reduce_required_http_hosts(
+    parent_hosts: Option<&Vec<String>>,
+    parent_suffixes: Option<&Vec<String>>,
+    required_hosts: Option<&Vec<String>>,
+) -> Result<Option<Vec<String>>, ()> {
+    let Some(required_hosts) = required_hosts else {
+        return Ok(parent_hosts.map(|hosts| canonicalize_host_scope(hosts)));
+    };
+
+    let required_hosts = canonicalize_host_scope(required_hosts);
+    if parent_hosts.is_none() && parent_suffixes.is_none() {
+        return Ok(Some(required_hosts));
+    }
+
+    let parent_hosts = parent_hosts.map_or_else(Vec::new, |hosts| canonicalize_host_scope(hosts));
+    let parent_suffixes = parent_suffixes.map_or_else(Vec::new, |suffixes| {
+        canonicalize_host_suffix_scope(suffixes)
+    });
+    let reduced = required_hosts
+        .into_iter()
+        .filter(|candidate| {
+            parent_hosts.iter().any(|host| host == candidate)
+                || (!is_ip_literal_host(candidate)
+                    && parent_suffixes
+                        .iter()
+                        .any(|suffix| domain_suffix_matches(candidate, suffix)))
+        })
+        .collect::<Vec<_>>();
+    if reduced.is_empty() {
+        Err(())
+    } else {
+        Ok(Some(reduced))
+    }
+}
+
+fn reduce_required_http_host_suffixes(
+    parent_suffixes: Option<&Vec<String>>,
+    required_suffixes: Option<&Vec<String>>,
+) -> Result<Option<Vec<String>>, ()> {
+    let Some(required_suffixes) = required_suffixes else {
+        return Ok(parent_suffixes.map(|suffixes| canonicalize_host_suffix_scope(suffixes)));
+    };
+
+    let required_suffixes = canonicalize_host_suffix_scope(required_suffixes);
+    let Some(parent_suffixes) = parent_suffixes else {
+        return Ok(Some(required_suffixes));
+    };
+
+    let parent_suffixes = canonicalize_host_suffix_scope(parent_suffixes);
+    let reduced = required_suffixes
+        .into_iter()
+        .filter(|candidate| {
+            parent_suffixes
+                .iter()
+                .any(|suffix| domain_suffix_matches(candidate, suffix))
+        })
+        .collect::<Vec<_>>();
+    if reduced.is_empty() {
+        Err(())
+    } else {
+        Ok(Some(reduced))
+    }
+}
+
+fn reduce_child_http_constraint<T>(
+    parent: &HttpRequestConstraints,
+    required: &HttpRequestConstraints,
+    field: &str,
+    label: &str,
+    reduced: Option<ReducedConstraint<T>>,
+) -> Result<Option<T>, CapabilityDenial> {
+    reduced
+        .ok_or_else(|| child_http_constraint_mismatch(parent, required, field, label))
+        .map(ReducedConstraint::into_option)
+}
+
+fn reduce_child_http_allow_flag(
+    parent_constraints: &HttpRequestConstraints,
+    required_constraints: &HttpRequestConstraints,
+    parent: Option<bool>,
+    required: Option<bool>,
+    field: &str,
+    label: &str,
+) -> Result<Option<bool>, CapabilityDenial> {
+    reduce_optional_allow_flag(parent, required)
+        .ok_or_else(|| {
+            child_http_constraint_mismatch(parent_constraints, required_constraints, field, label)
+        })
+        .map(ReducedConstraint::into_option)
+}
+
+fn child_http_constraint_mismatch(
+    parent: &HttpRequestConstraints,
+    required: &HttpRequestConstraints,
+    field: &str,
+    label: &str,
+) -> CapabilityDenial {
+    CapabilityDenial {
+        code: "child-capability-mismatch".into(),
+        message: format!("child http-request {label} could not be reduced from the parent grant"),
+        detail: serde_json::json!({
+            "field": field,
+            "parent_constraints": parent,
+            "required_constraints": required,
+        }),
     }
 }
 
@@ -4208,6 +4786,8 @@ fn authorize_unconstrained_http_grant(
     state.authorize(
         effective_timeout_ms(request.timeout_ms, None, budget.max_millis),
         effective_response_bytes(None, budget.max_output_bytes),
+        true,
+        Some(HTTP_UNCONSTRAINED_MAX_REDIRECTS),
     );
 }
 
@@ -4228,7 +4808,12 @@ fn evaluate_http_request_constraints(
         return;
     }
 
-    if !matches_http_host(constraints.allowed_hosts.as_ref(), &parsed_request.host) {
+    if !matches_http_host(
+        constraints.allowed_hosts.as_ref(),
+        constraints.allowed_host_suffixes.as_ref(),
+        &parsed_request.host,
+        parsed_request.ip_literal().is_some(),
+    ) {
         state.note_denial(HttpGrantDenialKind::Host);
         return;
     }
@@ -4255,6 +4840,24 @@ fn evaluate_http_request_constraints(
         return;
     }
 
+    if parsed_request.ip_literal().is_some() && !allow_flag_enabled(constraints.allow_ip_literals) {
+        state.note_denial(HttpGrantDenialKind::IpLiteral);
+        return;
+    }
+
+    if parsed_request.is_loopback_name() && !allow_flag_enabled(constraints.allow_loopback) {
+        state.note_denial(HttpGrantDenialKind::Loopback);
+        return;
+    }
+
+    match authorize_http_destination(parsed_request, constraints) {
+        Ok(()) => {}
+        Err(kind) => {
+            state.note_denial(kind);
+            return;
+        }
+    }
+
     state.authorize(
         effective_timeout_ms(
             request.timeout_ms,
@@ -4262,6 +4865,12 @@ fn evaluate_http_request_constraints(
             budget.max_millis,
         ),
         effective_response_bytes(constraints.max_response_bytes, budget.max_output_bytes),
+        allow_flag_enabled(constraints.follow_redirects),
+        if allow_flag_enabled(constraints.follow_redirects) {
+            constraints.max_redirects
+        } else {
+            None
+        },
     );
 }
 
@@ -4274,6 +4883,8 @@ fn finalize_http_request_authorization(
         (Some(timeout_ms), Some(max_response_bytes)) => Ok(HttpExecutionPolicy {
             timeout: Duration::from_millis(timeout_ms),
             max_response_bytes,
+            follow_redirects: state.authorized_follow_redirects,
+            max_redirects: state.authorized_max_redirects.unwrap_or(0),
         }),
         _ if state.saw_denial(HTTP_DENIAL_TIMEOUT) => Err(CapabilityDenial {
             code: "http-request-timeout-not-granted".into(),
@@ -4281,6 +4892,47 @@ fn finalize_http_request_authorization(
             detail: serde_json::json!({
                 "url": request.url,
                 "requested_timeout_ms": request.timeout_ms,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_PRIVATE_NETWORK) => Err(CapabilityDenial {
+            code: "http-request-private-network-not-granted".into(),
+            message: "http-request destination resolved to a private-network target that was not granted".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_LINK_LOCAL) => Err(CapabilityDenial {
+            code: "http-request-link-local-not-granted".into(),
+            message: "http-request destination resolved to a link-local target that was not granted".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_LOOPBACK) => Err(CapabilityDenial {
+            code: "http-request-loopback-not-granted".into(),
+            message: "http-request destination resolved to a loopback target that was not granted".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_IP_LITERAL) => Err(CapabilityDenial {
+            code: "http-request-ip-literal-not-granted".into(),
+            message: "http-request IP-literal destinations were not granted for this execution".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            }),
+        }),
+        _ if state.saw_denial(HTTP_DENIAL_DESTINATION_UNRESOLVED) => Err(CapabilityDenial {
+            code: "http-request-destination-unresolved".into(),
+            message: "http-request destination could not be resolved safely under the current host policy".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+                "port": parsed_request.port,
             }),
         }),
         _ if state.saw_denial(HTTP_DENIAL_PATH) => Err(CapabilityDenial {
@@ -4327,6 +4979,89 @@ fn finalize_http_request_authorization(
     }
 }
 
+fn authorize_http_destination(
+    parsed_request: &ParsedHttpRequest,
+    constraints: &HttpRequestConstraints,
+) -> Result<(), HttpGrantDenialKind> {
+    if parsed_request.ip_literal().is_none()
+        && allow_flag_enabled(constraints.allow_loopback)
+        && allow_flag_enabled(constraints.allow_link_local)
+        && allow_flag_enabled(constraints.allow_private_networks)
+    {
+        return Ok(());
+    }
+
+    let addresses = resolve_http_destination_addresses(parsed_request)?;
+    if addresses.iter().any(|address| {
+        matches!(
+            classify_destination_ip(*address),
+            HttpDestinationClass::Loopback
+        )
+    }) && !allow_flag_enabled(constraints.allow_loopback)
+    {
+        return Err(HttpGrantDenialKind::Loopback);
+    }
+    if addresses.iter().any(|address| {
+        matches!(
+            classify_destination_ip(*address),
+            HttpDestinationClass::LinkLocal
+        )
+    }) && !allow_flag_enabled(constraints.allow_link_local)
+    {
+        return Err(HttpGrantDenialKind::LinkLocal);
+    }
+    if addresses.iter().any(|address| {
+        matches!(
+            classify_destination_ip(*address),
+            HttpDestinationClass::PrivateNetwork
+        )
+    }) && !allow_flag_enabled(constraints.allow_private_networks)
+    {
+        return Err(HttpGrantDenialKind::PrivateNetwork);
+    }
+
+    Ok(())
+}
+
+fn resolve_http_destination_addresses(
+    parsed_request: &ParsedHttpRequest,
+) -> Result<Vec<IpAddr>, HttpGrantDenialKind> {
+    if let Some(ip) = parsed_request.ip_literal() {
+        return Ok(vec![ip]);
+    }
+
+    let resolved = (parsed_request.host.as_str(), parsed_request.port)
+        .to_socket_addrs()
+        .map_err(|_| HttpGrantDenialKind::DestinationUnresolved)?
+        .map(|address: SocketAddr| address.ip())
+        .collect::<Vec<_>>();
+    if resolved.is_empty() {
+        return Err(HttpGrantDenialKind::DestinationUnresolved);
+    }
+
+    Ok(resolved)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HttpDestinationClass {
+    Loopback,
+    LinkLocal,
+    PrivateNetwork,
+    Other,
+}
+
+fn classify_destination_ip(address: IpAddr) -> HttpDestinationClass {
+    match address {
+        IpAddr::V4(address) if address.is_loopback() => HttpDestinationClass::Loopback,
+        IpAddr::V6(address) if address.is_loopback() => HttpDestinationClass::Loopback,
+        IpAddr::V4(address) if address.is_link_local() => HttpDestinationClass::LinkLocal,
+        IpAddr::V6(address) if address.is_unicast_link_local() => HttpDestinationClass::LinkLocal,
+        IpAddr::V4(address) if address.is_private() => HttpDestinationClass::PrivateNetwork,
+        IpAddr::V6(address) if address.is_unique_local() => HttpDestinationClass::PrivateNetwork,
+        _ => HttpDestinationClass::Other,
+    }
+}
+
 fn matches_http_method(allowed: Option<&Vec<HttpMethod>>, method: &HttpMethod) -> bool {
     allowed.is_none_or(|methods| methods.iter().any(|candidate| candidate == method))
 }
@@ -4335,12 +5070,30 @@ fn matches_http_scheme(allowed: Option<&Vec<HttpScheme>>, scheme: &HttpScheme) -
     allowed.is_none_or(|schemes| schemes.iter().any(|candidate| candidate == scheme))
 }
 
-fn matches_http_host(allowed: Option<&Vec<String>>, host: &str) -> bool {
-    allowed.is_none_or(|hosts| {
-        hosts
+fn matches_http_host(
+    allowed_hosts: Option<&Vec<String>>,
+    allowed_suffixes: Option<&Vec<String>>,
+    host: &str,
+    is_ip_literal: bool,
+) -> bool {
+    if allowed_hosts.is_none() && allowed_suffixes.is_none() {
+        return true;
+    }
+
+    let canonical_host = canonicalize_http_host(host);
+    let exact_allowed = allowed_hosts.is_some_and(|hosts| {
+        canonicalize_host_scope(hosts)
             .iter()
-            .any(|candidate| candidate.eq_ignore_ascii_case(host))
-    })
+            .any(|candidate| candidate == &canonical_host)
+    });
+    let suffix_allowed = !is_ip_literal
+        && allowed_suffixes.is_some_and(|suffixes| {
+            canonicalize_host_suffix_scope(suffixes)
+                .iter()
+                .any(|suffix| domain_suffix_matches(&canonical_host, suffix))
+        });
+
+    exact_allowed || suffix_allowed
 }
 
 fn matches_http_port(allowed: Option<&Vec<u16>>, port: u16) -> bool {
@@ -4349,6 +5102,113 @@ fn matches_http_port(allowed: Option<&Vec<u16>>, port: u16) -> bool {
 
 fn matches_http_path(allowed: Option<&Vec<String>>, path: &str) -> bool {
     allowed.is_none_or(|prefixes| prefixes.iter().any(|prefix| path.starts_with(prefix)))
+}
+
+fn canonicalize_http_host(host: &str) -> String {
+    host.parse::<IpAddr>()
+        .map_or_else(|_| host.to_ascii_lowercase(), |address| address.to_string())
+}
+
+fn canonicalize_http_host_suffix(host: &str) -> String {
+    host.to_ascii_lowercase()
+}
+
+fn is_ip_literal_host(host: &str) -> bool {
+    host.parse::<IpAddr>().is_ok()
+}
+
+fn domain_suffix_matches(host: &str, suffix: &str) -> bool {
+    host == suffix
+        || host
+            .strip_suffix(suffix)
+            .is_some_and(|prefix| prefix.ends_with('.'))
+}
+
+fn redirect_not_allowed_denial(from_url: &str, status: u16, location: &str) -> CapabilityDenial {
+    CapabilityDenial {
+        code: "http-request-redirect-not-allowed".into(),
+        message: "http-request received a redirect but follow_redirects was not granted".into(),
+        detail: serde_json::json!({
+            "url": from_url,
+            "status": status,
+            "location": location,
+        }),
+    }
+}
+
+fn redirect_hop_limit_denial(
+    from_url: &str,
+    status: u16,
+    location: &str,
+    max_redirects: u8,
+) -> CapabilityDenial {
+    CapabilityDenial {
+        code: "http-request-redirect-hop-limit-exceeded".into(),
+        message: "http-request redirect chain exceeded the granted max_redirects limit".into(),
+        detail: serde_json::json!({
+            "url": from_url,
+            "status": status,
+            "location": location,
+            "max_redirects": max_redirects,
+        }),
+    }
+}
+
+fn redirect_location_missing_denial(from_url: &str, status: u16) -> CapabilityDenial {
+    CapabilityDenial {
+        code: "http-request-redirect-location-invalid".into(),
+        message: "http-request redirect response did not include a valid Location header".into(),
+        detail: serde_json::json!({
+            "url": from_url,
+            "status": status,
+        }),
+    }
+}
+
+fn redirect_location_invalid_denial(
+    from_url: &str,
+    status: u16,
+    location: &str,
+    cause: &CapabilityDenial,
+) -> CapabilityDenial {
+    CapabilityDenial {
+        code: "http-request-redirect-location-invalid".into(),
+        message: "http-request redirect location was invalid".into(),
+        detail: serde_json::json!({
+            "url": from_url,
+            "status": status,
+            "location": location,
+            "cause": {
+                "code": cause.code,
+                "message": cause.message,
+                "detail": cause.detail,
+            }
+        }),
+    }
+}
+
+fn redirect_target_not_granted_denial(
+    from_url: &str,
+    status: u16,
+    location: &str,
+    redirected_url: &str,
+    cause: &CapabilityDenial,
+) -> CapabilityDenial {
+    CapabilityDenial {
+        code: "http-request-redirect-target-not-granted".into(),
+        message: "http-request redirect target was outside the granted HTTP authority".into(),
+        detail: serde_json::json!({
+            "url": from_url,
+            "status": status,
+            "location": location,
+            "redirected_url": redirected_url,
+            "cause": {
+                "code": cause.code,
+                "message": cause.message,
+                "detail": cause.detail,
+            }
+        }),
+    }
 }
 
 fn effective_timeout_ms(

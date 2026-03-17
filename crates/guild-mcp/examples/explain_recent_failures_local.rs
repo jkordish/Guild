@@ -65,11 +65,18 @@ fn http_grant(host: &str, port: u16, path_prefix: &str, method: HttpMethod) -> G
         constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
             allowed_schemes: Some(vec![HttpScheme::Http]),
             allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_host_suffixes: None,
             allowed_ports: Some(vec![port]),
             allowed_methods: Some(vec![method]),
             allowed_path_prefixes: Some(vec![path_prefix.to_owned()]),
             max_timeout_ms: Some(2_000),
             max_response_bytes: Some(4_096),
+            follow_redirects: None,
+            max_redirects: None,
+            allow_loopback: Some(true),
+            allow_link_local: None,
+            allow_private_networks: None,
+            allow_ip_literals: Some(true),
         }),
     }
 }

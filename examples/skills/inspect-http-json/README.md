@@ -7,6 +7,8 @@ It:
 
 - accepts a bounded absolute URL
 - performs a host-mediated outbound HTTP request
+- inherits only the host-granted redirect and destination-class authority for
+  that execution
 - parses JSON deterministically
 - returns a structured summary plus selected JSON Pointer fields
 
@@ -20,6 +22,9 @@ Use the documented local proof flow in the repository README or:
 cargo run -p guild-mcp --example inspect_http_json_local
 ```
 
+That local proof flow uses an explicit loopback + IP-literal grant for the
+deterministic local server and also shows a denied host-mismatch execution.
+
 For the trust-tier-aware local policy proof flow that imports the same skill
 under different host-owned trust tiers and profile selections, then explains
 the persisted denial through `explain-execution`, use:
@@ -27,3 +32,7 @@ the persisted denial through `explain-execution`, use:
 ```bash
 cargo run -p guild-mcp --example inspect_policy_local
 ```
+
+That policy proof flow now demonstrates trusted imported redirect-following
+versus restricted imported redirect denial after the local policy profile caps
+the granted HTTP authority.

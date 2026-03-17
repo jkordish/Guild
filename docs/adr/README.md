@@ -15,6 +15,13 @@ Guild uses ADRs to record platform-shaping decisions and to queue the next contr
 - `0009-oci-image-layout-mapping.md` - accepted OCI image layout mapping for the existing signed installed-bundle transport without changing Guild's local trust model
 - `0010-oci-registry-transport.md` - accepted OCI registry push/pull for the existing signed installed-bundle transport without changing Guild's local trust model
 - `0011-bounded-artifact-query-resources.md` - accepted bounded execution-query resources over the canonical persisted execution store without widening the public MCP tool surface
+- `0012-capability-policy-layering-model.md` - accepted parent policy ADR defining requirements vs requests vs grants vs denials vs runtime enforcement
+- `0013-read-resource-policy-family.md` - accepted per-family policy contract for canonical Guild resource reads and bounded query resources
+- `0014-invoke-skill-policy-family.md` - accepted per-family policy contract for alias-scoped composite invocation and child grant reduction
+- `0015-emit-evidence-policy-family.md` - accepted per-family policy contract for host-mediated evidence emission and per-emission identity
+- `0016-log-write-policy-family.md` - accepted per-family policy contract for explicit severity-scoped guest logging
+- `0017-http-request-policy-family.md` - accepted per-family policy contract for bounded outbound HTTP authority in the active inspect slice
+- `0018-filesystem-policy-contract-not-yet-implemented.md` - accepted design-only guardrail ADR for future filesystem policy semantics without implying runtime support
 
 ## Backlog
 

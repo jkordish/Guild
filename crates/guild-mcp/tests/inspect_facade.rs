@@ -250,17 +250,39 @@ fn summarize_query_request(query_uri: &str) -> InspectRequest {
 }
 
 fn http_grant(host: &str, port: u16, path_prefix: &str, method: HttpMethod) -> GrantedCapability {
+    http_grant_with_options(host, port, &[path_prefix], method, None)
+}
+
+fn http_grant_with_options(
+    host: &str,
+    port: u16,
+    path_prefixes: &[&str],
+    method: HttpMethod,
+    max_redirects: Option<u8>,
+) -> GrantedCapability {
     GrantedCapability {
         id: CapabilityId::HttpRequest,
         access: CapabilityAccess::Read,
         constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
             allowed_schemes: Some(vec![HttpScheme::Http]),
             allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_host_suffixes: None,
             allowed_ports: Some(vec![port]),
             allowed_methods: Some(vec![method]),
-            allowed_path_prefixes: Some(vec![path_prefix.to_owned()]),
+            allowed_path_prefixes: Some(
+                path_prefixes
+                    .iter()
+                    .map(|prefix| (*prefix).to_owned())
+                    .collect(),
+            ),
             max_timeout_ms: Some(2_000),
             max_response_bytes: Some(4_096),
+            follow_redirects: max_redirects.map(|_| true),
+            max_redirects,
+            allow_loopback: Some(true),
+            allow_link_local: None,
+            allow_private_networks: None,
+            allow_ip_literals: Some(true),
         }),
     }
 }
@@ -364,7 +386,7 @@ fn deny_emit_evidence_for_actor_policy(actor_id: &str) -> LocalPolicyConfig {
     }
 }
 
-fn deny_http_for_restricted_imports_policy() -> LocalPolicyConfig {
+fn cap_http_redirects_for_restricted_imports_policy() -> LocalPolicyConfig {
     LocalPolicyConfig {
         default_profile: "trusted-networked".into(),
         profiles: vec![
@@ -377,13 +399,13 @@ fn deny_http_for_restricted_imports_policy() -> LocalPolicyConfig {
                 name: "restricted-networked".into(),
                 default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
                 rules: vec![PolicyRule {
-                    name: Some("deny-restricted-http".into()),
+                    name: Some("cap-restricted-http-redirects".into()),
                     skills: None,
                     publisher_ids: None,
                     trust_tiers: Some(vec![LocalTrustTier::Restricted]),
                     verification_states: Some(vec![InstalledVerificationState::VerifiedImport]),
                     applies_to: PolicyRuleTarget::Any,
-                    effect: PolicyRuleEffect::Deny,
+                    effect: PolicyRuleEffect::Cap,
                     capabilities: CapabilityGrantSet {
                         grants: vec![GrantedCapability {
                             id: CapabilityId::HttpRequest,
@@ -392,11 +414,18 @@ fn deny_http_for_restricted_imports_policy() -> LocalPolicyConfig {
                                 HttpRequestConstraints {
                                     allowed_schemes: None,
                                     allowed_hosts: None,
+                                    allowed_host_suffixes: None,
                                     allowed_ports: None,
                                     allowed_methods: None,
                                     allowed_path_prefixes: None,
                                     max_timeout_ms: None,
                                     max_response_bytes: None,
+                                    follow_redirects: Some(false),
+                                    max_redirects: None,
+                                    allow_loopback: None,
+                                    allow_link_local: None,
+                                    allow_private_networks: None,
+                                    allow_ip_literals: None,
                                 },
                             ),
                         }],
@@ -677,7 +706,7 @@ fn local_policy_can_vary_http_by_imported_trust_tier() {
     LocalRegistry::import_bundle(&registry_trusted, &bundle_root).unwrap();
     LocalRegistry::import_bundle(&registry_restricted, &bundle_root).unwrap();
 
-    let policy = deny_http_for_restricted_imports_policy();
+    let policy = cap_http_redirects_for_restricted_imports_policy();
     write_policy(&registry_trusted, &policy);
     write_policy(&registry_restricted, &policy);
 
@@ -692,18 +721,19 @@ fn local_policy_can_vary_http_by_imported_trust_tier() {
                 version_req: VersionRequirement::parse("^0.1").unwrap(),
             },
             serde_json::json!({
-                "url": server.json_url(),
+                "url": server.redirect_json_url(),
                 "method": "get",
                 "json_pointers": ["/message"],
             }),
             "tenant-1",
             "actor-1",
             CapabilityGrantSet {
-                grants: vec![http_grant(
+                grants: vec![http_grant_with_options(
                     http_test_server::HttpTestServer::host(),
                     server.port(),
-                    "/json",
+                    &["/redirect-json", "/json"],
                     HttpMethod::Get,
+                    Some(2),
                 )],
             },
         ))
@@ -739,31 +769,37 @@ fn local_policy_can_vary_http_by_imported_trust_tier() {
                 version_req: VersionRequirement::parse("^0.1").unwrap(),
             },
             serde_json::json!({
-                "url": server.json_url(),
+                "url": server.redirect_json_url(),
                 "method": "get",
                 "json_pointers": ["/message"],
             }),
             "tenant-restricted",
             "actor-1",
             CapabilityGrantSet {
-                grants: vec![http_grant(
+                grants: vec![http_grant_with_options(
                     http_test_server::HttpTestServer::host(),
                     server.port(),
-                    "/json",
+                    &["/redirect-json", "/json"],
                     HttpMethod::Get,
+                    Some(2),
                 )],
             },
         ))
         .unwrap_err();
 
-    assert_eq!(denied.code, "policy-denied");
+    assert_eq!(denied.code, "http-request-redirect-not-allowed");
     let receipt = denied
         .receipt
-        .expect("trust-tier-aware policy denial persists a receipt");
+        .expect("trust-tier-aware HTTP denial persists a receipt");
     let record: guild_types::ExecutionRecord =
         serde_json::from_slice(&restricted_facade.read_resource(&receipt.uri).unwrap().bytes)
             .unwrap();
+    assert_eq!(record.status, ExecutionStatus::Rejected);
     assert_eq!(record.policy_decision.profile_name, "restricted-networked");
+    assert_eq!(
+        record.policy_decision.outcome,
+        PolicyDecisionOutcome::Reduced
+    );
     assert_eq!(
         record.policy_decision.trust_tier,
         LocalTrustTier::Restricted
@@ -776,7 +812,16 @@ fn local_policy_can_vary_http_by_imported_trust_tier() {
         .policy_decision
         .reasons
         .iter()
-        .any(|reason| reason.code == "policy-profile-rule-deny"));
+        .any(|reason| reason.code == "policy-profile-rule-cap"));
+    let granted_http = record
+        .granted_capabilities
+        .grants
+        .iter()
+        .find(|grant| grant.id == CapabilityId::HttpRequest)
+        .and_then(|grant| grant.constraints.as_http_request())
+        .expect("restricted imported execution keeps a reduced http grant");
+    assert_eq!(granted_http.follow_redirects, Some(false));
+    assert_eq!(granted_http.max_redirects, None);
 }
 
 #[test]

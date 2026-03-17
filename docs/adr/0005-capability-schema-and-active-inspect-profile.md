@@ -62,7 +62,7 @@ Manifest requirements and host grants stay separate:
 
 The host enforces typed constraint coverage, not loose string matching:
 
-- `http-request` may constrain schemes, hosts, ports, methods, path prefixes, max timeout, and max response bytes
+- `http-request` may constrain schemes, exact hosts, domain suffixes, ports, methods, path prefixes, redirect following, timeout, response size, and explicit risky-destination allowances such as loopback, private-network, link-local, and raw IP literals
 - `read-resource` may constrain `uri_prefixes` and `resource_kinds`
 - `invoke-skill` may constrain dependency aliases
 - `emit-evidence` may constrain `max_bytes`, `audiences`, and `redactions`
@@ -72,7 +72,7 @@ The host enforces typed constraint coverage, not loose string matching:
 
 - the guest ABI stays Guild-shaped for now
 - the host implementation uses `wasmtime-wasi-http` behind a thin translation layer
-- the host parses absolute URLs and enforces typed scheme, host, port, path, method, timeout, and size constraints before or during dispatch as appropriate
+- the host parses absolute URLs and enforces typed scheme, host, domain-suffix, port, path, method, timeout, size, redirect, and risky-destination constraints before or during dispatch as appropriate
 - child execution receives only a reduced `http-request` grant derived from the parent slice
 - the public MCP surface stays at one tool, `guild.inspect`; HTTP is exercised through skill execution rather than new MCP tools
 
@@ -142,6 +142,13 @@ Costs and current limits:
 - `MEMORY.md`
 - `docs/adr/0001-guild-thesis.md`
 - `docs/adr/0003-guest-abi-vs-host-record-boundary.md`
+- `docs/adr/0012-capability-policy-layering-model.md`
+- `docs/adr/0013-read-resource-policy-family.md`
+- `docs/adr/0014-invoke-skill-policy-family.md`
+- `docs/adr/0015-emit-evidence-policy-family.md`
+- `docs/adr/0016-log-write-policy-family.md`
+- `docs/adr/0017-http-request-policy-family.md`
+- `docs/adr/0018-filesystem-policy-contract-not-yet-implemented.md`
 - `wit/guild-skill-v1.wit`
 - `crates/guild-types/src/lib.rs`
 - `crates/guild-manifest/src/lib.rs`

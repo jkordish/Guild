@@ -150,6 +150,8 @@ Costs and current limits:
 - `ARCHITECTURE.md`
 - `MEMORY.md`
 - `docs/adr/0005-capability-schema-and-active-inspect-profile.md`
+- `docs/adr/0012-capability-policy-layering-model.md`
+- `docs/adr/0017-http-request-policy-family.md`
 - `docs/adr/0006-execution-record-schema.md`
 - `crates/guild-types/src/lib.rs`
 - `crates/guild-registry/src/lib.rs`

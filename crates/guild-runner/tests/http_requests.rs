@@ -113,17 +113,60 @@ fn http_grant(
     max_timeout_ms: u64,
     max_response_bytes: u64,
 ) -> GrantedCapability {
+    http_grant_with_options(
+        host,
+        port,
+        &[path_prefix],
+        methods,
+        schemes,
+        max_timeout_ms,
+        max_response_bytes,
+        None,
+        Some(true),
+        None,
+        None,
+        Some(true),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn http_grant_with_options(
+    host: &str,
+    port: u16,
+    path_prefixes: &[&str],
+    methods: &[HttpMethod],
+    schemes: &[HttpScheme],
+    max_timeout_ms: u64,
+    max_response_bytes: u64,
+    max_redirects: Option<u8>,
+    allow_loopback: Option<bool>,
+    allow_link_local: Option<bool>,
+    allow_private_networks: Option<bool>,
+    allow_ip_literals: Option<bool>,
+) -> GrantedCapability {
     GrantedCapability {
         id: CapabilityId::HttpRequest,
         access: CapabilityAccess::Read,
         constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
             allowed_schemes: Some(schemes.to_vec()),
             allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_host_suffixes: None,
             allowed_ports: Some(vec![port]),
             allowed_methods: Some(methods.to_vec()),
-            allowed_path_prefixes: Some(vec![path_prefix.to_owned()]),
+            allowed_path_prefixes: Some(
+                path_prefixes
+                    .iter()
+                    .map(|path_prefix| (*path_prefix).to_owned())
+                    .collect(),
+            ),
             max_timeout_ms: Some(max_timeout_ms),
             max_response_bytes: Some(max_response_bytes),
+            follow_redirects: max_redirects.map(|_| true),
+            max_redirects,
+            allow_loopback,
+            allow_link_local,
+            allow_private_networks,
+            allow_ip_literals,
         }),
     }
 }
@@ -603,6 +646,148 @@ fn unauthorized_path_is_rejected_by_host_owned_http_denial() {
 }
 
 #[test]
+fn loopback_hostname_requires_explicit_loopback_allowance() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.localhost_json_url(), "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant_with_options(
+                "localhost",
+                server.port(),
+                &["/json"],
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-loopback-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 0);
+}
+
+#[test]
+fn ip_literal_requires_explicit_allowance() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.json_url(), "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant_with_options(
+                http_test_server::HttpTestServer::host(),
+                server.port(),
+                &["/json"],
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+                None,
+                Some(true),
+                None,
+                None,
+                None,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-ip-literal-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 0);
+}
+
+#[test]
+fn private_network_ip_requires_explicit_allowance() {
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": "http://192.168.10.20:8080/json", "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant_with_options(
+                "192.168.10.20",
+                8080,
+                &["/json"],
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+                None,
+                None,
+                None,
+                None,
+                Some(true),
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-private-network-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 0);
+}
+
+#[test]
+fn link_local_ip_requires_explicit_allowance() {
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": "http://169.254.10.20:8080/json", "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant_with_options(
+                "169.254.10.20",
+                8080,
+                &["/json"],
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+                None,
+                None,
+                None,
+                None,
+                Some(true),
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-link-local-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 0);
+}
+
+#[test]
 fn oversized_http_response_fails_with_explicit_host_bound() {
     let server = http_test_server::HttpTestServer::start();
     let registry = load_registry();
@@ -668,6 +853,156 @@ fn slow_http_response_times_out_with_explicit_host_bound() {
     assert_eq!(record.status, ExecutionStatus::Failed);
     assert_eq!(record.metrics.network_requests, 1);
     assert!(http_test_server::slow_response_ms() > 50);
+}
+
+#[test]
+fn redirect_is_denied_when_following_is_not_granted() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.redirect_json_url(), "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant_with_options(
+                http_test_server::HttpTestServer::host(),
+                server.port(),
+                &["/redirect-json", "/json"],
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+                None,
+                Some(true),
+                None,
+                None,
+                Some(true),
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-redirect-not-allowed");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 1);
+}
+
+#[test]
+fn redirect_target_must_still_be_granted() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.redirect_json_url(), "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant_with_options(
+                http_test_server::HttpTestServer::host(),
+                server.port(),
+                &["/redirect-json"],
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+                Some(2),
+                Some(true),
+                None,
+                None,
+                Some(true),
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-redirect-target-not-granted");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 1);
+}
+
+#[test]
+fn allowed_redirect_follows_bounded_hops() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let record = run_http_skill(
+        &registry,
+        &runner,
+        json!({
+            "url": server.redirect_json_url(),
+            "method": "get",
+            "json_pointers": ["/message"],
+        }),
+        CapabilityGrantSet {
+            grants: vec![http_grant_with_options(
+                http_test_server::HttpTestServer::host(),
+                server.port(),
+                &["/redirect-json", "/json"],
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+                Some(2),
+                Some(true),
+                None,
+                None,
+                Some(true),
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap();
+
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.metrics.network_requests, 2);
+    assert_eq!(
+        record.output.as_ref().unwrap().structured["selected_fields"][0]["value"],
+        Value::String("deterministic".into())
+    );
+}
+
+#[test]
+fn redirect_hop_limit_is_enforced() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({ "url": server.redirect_chain_url(), "method": "get" }),
+        CapabilityGrantSet {
+            grants: vec![http_grant_with_options(
+                http_test_server::HttpTestServer::host(),
+                server.port(),
+                &["/redirect-chain-1", "/redirect-chain-2", "/json"],
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+                Some(1),
+                Some(true),
+                None,
+                None,
+                Some(true),
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-request-redirect-hop-limit-exceeded");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.metrics.network_requests, 2);
 }
 
 #[test]

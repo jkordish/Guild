@@ -65,6 +65,18 @@ impl HttpTestServer {
     pub fn large_json_url(&self) -> String {
         self.url("/large")
     }
+
+    pub fn redirect_json_url(&self) -> String {
+        self.url("/redirect-json")
+    }
+
+    pub fn redirect_chain_url(&self) -> String {
+        self.url("/redirect-chain-1")
+    }
+
+    pub fn localhost_json_url(&self) -> String {
+        format!("http://localhost:{}/json", self.port())
+    }
 }
 
 impl Drop for HttpTestServer {
@@ -117,11 +129,38 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
     let method = parts.next().unwrap_or("GET");
     let path = parts.next().unwrap_or("/");
 
-    let (status_code, status_text, body, delay_ms) = match path {
-        "/json" => (200, "OK", JSON_BODY.to_owned(), 0),
-        "/slow" => (200, "OK", JSON_BODY.to_owned(), SLOW_RESPONSE_MS),
-        "/large" => (200, "OK", large_json_body(), 0),
-        _ => (404, "Not Found", "{\"error\":\"not-found\"}".to_owned(), 0),
+    let (status_code, status_text, body, delay_ms, location) = match path {
+        "/json" => (200, "OK", JSON_BODY.to_owned(), 0, None),
+        "/slow" => (200, "OK", JSON_BODY.to_owned(), SLOW_RESPONSE_MS, None),
+        "/large" => (200, "OK", large_json_body(), 0, None),
+        "/redirect-json" => (
+            302,
+            "Found",
+            "{\"redirect\":\"json\"}".to_owned(),
+            0,
+            Some("/json"),
+        ),
+        "/redirect-chain-1" => (
+            302,
+            "Found",
+            "{\"redirect\":\"chain-1\"}".to_owned(),
+            0,
+            Some("/redirect-chain-2"),
+        ),
+        "/redirect-chain-2" => (
+            302,
+            "Found",
+            "{\"redirect\":\"chain-2\"}".to_owned(),
+            0,
+            Some("/json"),
+        ),
+        _ => (
+            404,
+            "Not Found",
+            "{\"error\":\"not-found\"}".to_owned(),
+            0,
+            None,
+        ),
     };
 
     if delay_ms > 0 {
@@ -129,9 +168,13 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
     }
 
     let content_length = body.len();
-    let response_head = format!(
-        "HTTP/1.1 {status_code} {status_text}\r\nContent-Type: application/json\r\nContent-Length: {content_length}\r\nConnection: close\r\n\r\n"
+    let mut response_head = format!(
+        "HTTP/1.1 {status_code} {status_text}\r\nContent-Type: application/json\r\nContent-Length: {content_length}\r\nConnection: close\r\n"
     );
+    if let Some(location) = location {
+        response_head.push_str(&format!("Location: {location}\r\n"));
+    }
+    response_head.push_str("\r\n");
     stream.write_all(response_head.as_bytes())?;
     if method != "HEAD" {
         stream.write_all(body.as_bytes())?;

@@ -39,18 +39,30 @@ fn reset_registry_root(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn http_grant(host: &str, port: u16, path: &str) -> GrantedCapability {
+fn http_grant(
+    host: &str,
+    port: u16,
+    paths: &[&str],
+    max_redirects: Option<u8>,
+) -> GrantedCapability {
     GrantedCapability {
         id: CapabilityId::HttpRequest,
         access: CapabilityAccess::Read,
         constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
             allowed_schemes: Some(vec![HttpScheme::Http]),
             allowed_hosts: Some(vec![host.into()]),
+            allowed_host_suffixes: None,
             allowed_ports: Some(vec![port]),
             allowed_methods: Some(vec![HttpMethod::Get]),
-            allowed_path_prefixes: Some(vec![path.into()]),
+            allowed_path_prefixes: Some(paths.iter().map(|path| (*path).to_owned()).collect()),
             max_timeout_ms: Some(2_000),
             max_response_bytes: Some(8_192),
+            follow_redirects: max_redirects.map(|_| true),
+            max_redirects,
+            allow_loopback: Some(true),
+            allow_link_local: None,
+            allow_private_networks: None,
+            allow_ip_literals: Some(true),
         }),
     }
 }
@@ -95,7 +107,7 @@ fn write_policy(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 name: "restricted-networked".into(),
                 default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
                 rules: vec![PolicyRule {
-                    name: Some("deny-restricted-http".into()),
+                    name: Some("cap-restricted-http-redirects".into()),
                     skills: Some(vec![SkillKey {
                         namespace: "example".into(),
                         name: "inspect-http-json".into(),
@@ -104,7 +116,7 @@ fn write_policy(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
                     trust_tiers: Some(vec![LocalTrustTier::Restricted]),
                     verification_states: Some(vec![InstalledVerificationState::VerifiedImport]),
                     applies_to: PolicyRuleTarget::Any,
-                    effect: PolicyRuleEffect::Deny,
+                    effect: PolicyRuleEffect::Cap,
                     capabilities: CapabilityGrantSet {
                         grants: vec![GrantedCapability {
                             id: CapabilityId::HttpRequest,
@@ -113,11 +125,18 @@ fn write_policy(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
                                 HttpRequestConstraints {
                                     allowed_schemes: None,
                                     allowed_hosts: None,
+                                    allowed_host_suffixes: None,
                                     allowed_ports: None,
                                     allowed_methods: None,
                                     allowed_path_prefixes: None,
                                     max_timeout_ms: None,
                                     max_response_bytes: None,
+                                    follow_redirects: Some(false),
+                                    max_redirects: None,
+                                    allow_loopback: None,
+                                    allow_link_local: None,
+                                    allow_private_networks: None,
+                                    allow_ip_literals: None,
                                 },
                             ),
                         }],
@@ -218,7 +237,8 @@ fn inspect_http_request(
             grants: vec![http_grant(
                 http_test_server::HttpTestServer::host(),
                 port,
-                "/json",
+                &["/redirect-json", "/json"],
+                Some(2),
             )],
         },
     ))
@@ -271,7 +291,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let trusted = trusted_facade.inspect(inspect_http_request(
-        &server.json_url(),
+        &server.redirect_json_url(),
         "tenant-trusted",
         "actor-demo",
         server.port(),
@@ -286,7 +306,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let denied = restricted_facade
         .inspect(inspect_http_request(
-            &server.json_url(),
+            &server.redirect_json_url(),
             "tenant-restricted",
             "actor-demo",
             server.port(),
