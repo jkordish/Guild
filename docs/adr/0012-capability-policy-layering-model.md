@@ -66,6 +66,11 @@ The built-in default local profile is intentionally small:
 - reject execution before guest start if required capabilities are no longer
   covered
 
+When named policy rules reduce that starting point, the current repository uses
+typed family-specific ceilings rather than stringly matching. `cap` rules may
+split one broader grant into a narrower same-family union, while `deny` rules
+conservatively remove any grant that overlaps a denied typed ceiling.
+
 Policy selection and validation are fail-closed:
 
 - unreadable, unparseable, or invalid `policy.json` prevents policy load

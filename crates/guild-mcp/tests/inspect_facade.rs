@@ -118,20 +118,30 @@ fn prepared_registry_root() -> &'static PathBuf {
 }
 
 fn composite_request() -> InspectRequest {
+    example_request(
+        "hello-composite",
+        "actor-1",
+        vec![invoke_hello_grant(), emit_evidence_grant()],
+    )
+}
+
+fn example_request(
+    skill_name: &str,
+    actor_id: &str,
+    grants: Vec<GrantedCapability>,
+) -> InspectRequest {
     InspectRequest::new(
         RequestedSkillRef {
             key: SkillKey {
                 namespace: "example".into(),
-                name: "hello-composite".into(),
+                name: skill_name.into(),
             },
             version_req: VersionRequirement::parse("^0.1").unwrap(),
         },
         serde_json::json!({ "name": "Ada" }),
         "tenant-1",
-        "actor-1",
-        CapabilityGrantSet {
-            grants: vec![invoke_hello_grant(), emit_evidence_grant()],
-        },
+        actor_id,
+        CapabilityGrantSet { grants },
     )
 }
 
@@ -145,6 +155,108 @@ fn build_facade_for_root(root: &Path) -> GuildMcpFacade<LocalRegistry, WasmtimeR
         LocalRegistry::load(root).unwrap(),
         WasmtimeRuntimeAdapter::new().unwrap(),
     )
+}
+
+fn read_execution_record(
+    facade: &GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter>,
+    uri: &str,
+) -> ExecutionRecord {
+    let resource = facade.read_resource(uri).unwrap();
+    serde_json::from_slice(&resource.bytes).unwrap()
+}
+
+fn explain_structured_output(
+    facade: &GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter>,
+    uri: &str,
+) -> serde_json::Value {
+    facade
+        .inspect(explain_request(uri))
+        .unwrap()
+        .structured_content
+        .output
+        .expect("explain request returns output")
+        .structured
+}
+
+struct FailedInspectSnapshot {
+    code: String,
+    record: ExecutionRecord,
+    explained_output: serde_json::Value,
+}
+
+fn failed_inspect_snapshot(
+    facade: &GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter>,
+    skill_name: &str,
+    actor_id: &str,
+    grants: Vec<GrantedCapability>,
+    receipt_expectation: &str,
+) -> FailedInspectSnapshot {
+    let error = facade
+        .inspect(example_request(skill_name, actor_id, grants))
+        .unwrap_err();
+    let receipt = error.receipt.expect(receipt_expectation);
+
+    FailedInspectSnapshot {
+        code: error.code,
+        record: read_execution_record(facade, &receipt.uri),
+        explained_output: explain_structured_output(facade, &receipt.uri),
+    }
+}
+
+fn assert_policy_denied_snapshot(snapshot: &FailedInspectSnapshot) {
+    assert_eq!(snapshot.code, "policy-denied");
+    assert_eq!(
+        snapshot.record.policy_decision.outcome,
+        PolicyDecisionOutcome::Rejected
+    );
+    assert_eq!(
+        snapshot.record.termination.as_ref().unwrap().code,
+        "policy-denied"
+    );
+    assert_eq!(
+        snapshot.explained_output["termination"]["code"],
+        "policy-denied"
+    );
+    assert_eq!(
+        snapshot.explained_output["policy_decision"]["outcome"],
+        "rejected"
+    );
+}
+
+fn assert_unsupported_surface_snapshot(snapshot: &FailedInspectSnapshot) {
+    let termination = snapshot.record.termination.as_ref().unwrap();
+
+    assert_eq!(snapshot.code, "unsupported-runtime-surface");
+    assert_eq!(
+        snapshot.record.policy_decision.outcome,
+        PolicyDecisionOutcome::Allowed
+    );
+    assert_eq!(termination.code, "unsupported-runtime-surface");
+    assert_eq!(termination.phase, guild_types::ExecutionPhase::RuntimeLoad);
+    assert_eq!(
+        termination.detail.as_ref().unwrap()["classification"],
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(
+        termination.detail.as_ref().unwrap()["surface_kind"],
+        "component-import"
+    );
+    assert_eq!(
+        snapshot.explained_output["termination"]["code"],
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(
+        snapshot.explained_output["termination"]["detail"]["classification"],
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(
+        snapshot.explained_output["termination"]["detail"]["surface_kind"],
+        "component-import"
+    );
+    assert_eq!(
+        snapshot.explained_output["policy_decision"]["outcome"],
+        "allowed"
+    );
 }
 
 fn install_query_test_skills(root: &Path) {
@@ -790,8 +902,7 @@ fn local_policy_denial_persists_host_owned_rejection() {
 
     assert_eq!(error.code, "policy-denied");
     let receipt = error.receipt.expect("policy denial persists a receipt");
-    let record: guild_types::ExecutionRecord =
-        serde_json::from_slice(&facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+    let record = read_execution_record(&facade, &receipt.uri);
 
     assert_eq!(record.status, ExecutionStatus::Rejected);
     assert_eq!(
@@ -941,9 +1052,7 @@ fn local_policy_can_vary_http_by_imported_trust_tier() {
     let receipt = denied
         .receipt
         .expect("trust-tier-aware HTTP denial persists a receipt");
-    let record: guild_types::ExecutionRecord =
-        serde_json::from_slice(&restricted_facade.read_resource(&receipt.uri).unwrap().bytes)
-            .unwrap();
+    let record = read_execution_record(&restricted_facade, &receipt.uri);
     assert_eq!(record.status, ExecutionStatus::Rejected);
     assert_eq!(record.policy_decision.profile_name, "restricted-networked");
     assert_eq!(
@@ -1111,8 +1220,7 @@ fn filesystem_requested_capabilities_persist_host_owned_rejection() {
     let receipt = denied
         .receipt
         .expect("filesystem rejection persists a receipt");
-    let record: ExecutionRecord =
-        serde_json::from_slice(&facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+    let record = read_execution_record(&facade, &receipt.uri);
 
     assert_eq!(record.status, ExecutionStatus::Rejected);
     assert_eq!(
@@ -1191,8 +1299,7 @@ fn policy_profiles_cannot_enable_deferred_filesystem_runtime() {
     let receipt = denied
         .receipt
         .expect("filesystem policy rejection persists a receipt");
-    let record: ExecutionRecord =
-        serde_json::from_slice(&facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+    let record = read_execution_record(&facade, &receipt.uri);
 
     assert_eq!(record.policy_decision.profile_name, "filesystem-profile");
     assert_eq!(
@@ -1265,139 +1372,23 @@ fn unsupported_runtime_surface_rejections_remain_distinct_from_policy_denials() 
     );
 
     let facade = build_facade_for_root(&registry_root);
-    let policy_denied = facade
-        .inspect(InspectRequest::new(
-            RequestedSkillRef {
-                key: SkillKey {
-                    namespace: "example".into(),
-                    name: "hello-inspect".into(),
-                },
-                version_req: VersionRequirement::parse("^0.1").unwrap(),
-            },
-            serde_json::json!({ "name": "Ada" }),
-            "tenant-1",
-            "actor-blocked",
-            CapabilityGrantSet {
-                grants: vec![emit_evidence_grant()],
-            },
-        ))
-        .unwrap_err();
-    let unsupported = facade
-        .inspect(InspectRequest::new(
-            RequestedSkillRef {
-                key: SkillKey {
-                    namespace: "example".into(),
-                    name: "hello-inspect-broad-import".into(),
-                },
-                version_req: VersionRequirement::parse("^0.1").unwrap(),
-            },
-            serde_json::json!({ "name": "Ada" }),
-            "tenant-1",
-            "actor-1",
-            CapabilityGrantSet {
-                grants: vec![emit_evidence_grant()],
-            },
-        ))
-        .unwrap_err();
-
-    assert_eq!(policy_denied.code, "policy-denied");
-    assert_eq!(unsupported.code, "unsupported-runtime-surface");
-
-    let policy_receipt = policy_denied
-        .receipt
-        .expect("policy denial persists a receipt");
-    let unsupported_receipt = unsupported
-        .receipt
-        .expect("unsupported runtime surface persists a receipt");
-
-    let policy_record: ExecutionRecord =
-        serde_json::from_slice(&facade.read_resource(&policy_receipt.uri).unwrap().bytes).unwrap();
-    let unsupported_record: ExecutionRecord = serde_json::from_slice(
-        &facade
-            .read_resource(&unsupported_receipt.uri)
-            .unwrap()
-            .bytes,
-    )
-    .unwrap();
-
-    assert_eq!(
-        policy_record.policy_decision.outcome,
-        PolicyDecisionOutcome::Rejected
+    let policy_denied = failed_inspect_snapshot(
+        &facade,
+        "hello-inspect",
+        "actor-blocked",
+        vec![emit_evidence_grant()],
+        "policy denial persists a receipt",
     );
-    assert_eq!(
-        policy_record.termination.as_ref().unwrap().code,
-        "policy-denied"
-    );
-    assert_eq!(
-        unsupported_record.policy_decision.outcome,
-        PolicyDecisionOutcome::Allowed
-    );
-    assert_eq!(
-        unsupported_record.termination.as_ref().unwrap().code,
-        "unsupported-runtime-surface"
-    );
-    assert_eq!(
-        unsupported_record.termination.as_ref().unwrap().phase,
-        guild_types::ExecutionPhase::RuntimeLoad
-    );
-    assert_eq!(
-        unsupported_record
-            .termination
-            .as_ref()
-            .unwrap()
-            .detail
-            .as_ref()
-            .unwrap()["classification"],
-        "unsupported-runtime-surface"
-    );
-    assert_eq!(
-        unsupported_record
-            .termination
-            .as_ref()
-            .unwrap()
-            .detail
-            .as_ref()
-            .unwrap()["surface_kind"],
-        "component-import"
+    let unsupported = failed_inspect_snapshot(
+        &facade,
+        "hello-inspect-broad-import",
+        "actor-1",
+        vec![emit_evidence_grant()],
+        "unsupported runtime surface persists a receipt",
     );
 
-    let explained_policy = facade
-        .inspect(explain_request(&policy_receipt.uri))
-        .unwrap();
-    let explained_policy_output = explained_policy.structured_content.output.as_ref().unwrap();
-    let explained_unsupported = facade
-        .inspect(explain_request(&unsupported_receipt.uri))
-        .unwrap();
-    let explained_unsupported_output = explained_unsupported
-        .structured_content
-        .output
-        .as_ref()
-        .unwrap();
-
-    assert_eq!(
-        explained_policy_output.structured["termination"]["code"],
-        "policy-denied"
-    );
-    assert_eq!(
-        explained_policy_output.structured["policy_decision"]["outcome"],
-        "rejected"
-    );
-    assert_eq!(
-        explained_unsupported_output.structured["termination"]["code"],
-        "unsupported-runtime-surface"
-    );
-    assert_eq!(
-        explained_unsupported_output.structured["termination"]["detail"]["classification"],
-        "unsupported-runtime-surface"
-    );
-    assert_eq!(
-        explained_unsupported_output.structured["termination"]["detail"]["surface_kind"],
-        "component-import"
-    );
-    assert_eq!(
-        explained_unsupported_output.structured["policy_decision"]["outcome"],
-        "allowed"
-    );
+    assert_policy_denied_snapshot(&policy_denied);
+    assert_unsupported_surface_snapshot(&unsupported);
 }
 
 #[test]
@@ -1473,8 +1464,7 @@ fn local_policy_can_further_reduce_child_grants_without_widening() {
 
     assert_eq!(error.code, "child-invocation-failed");
     let receipt = error.receipt.expect("composite failure persists a receipt");
-    let parent: guild_types::ExecutionRecord =
-        serde_json::from_slice(&facade.read_resource(&receipt.uri).unwrap().bytes).unwrap();
+    let parent = read_execution_record(&facade, &receipt.uri);
 
     assert_eq!(parent.status, ExecutionStatus::Failed);
     assert_eq!(parent.child_executions.len(), 1);
@@ -1529,8 +1519,7 @@ fn mcp_can_read_persisted_rejected_execution_resources() {
 
     assert_eq!(error.code, "policy-denied");
     let receipt = error.receipt.expect("rejected execution exposes a receipt");
-    let resource = facade.read_resource(&receipt.uri).unwrap();
-    let record: guild_types::ExecutionRecord = serde_json::from_slice(&resource.bytes).unwrap();
+    let record = read_execution_record(&facade, &receipt.uri);
     assert_eq!(record.status, ExecutionStatus::Rejected);
     assert!(record.output.is_none());
 }
@@ -1558,8 +1547,7 @@ fn mcp_can_read_persisted_failed_execution_resources() {
 
     assert_eq!(error.code, "log-write-not-granted");
     let receipt = error.receipt.expect("failed execution exposes a receipt");
-    let resource = facade.read_resource(&receipt.uri).unwrap();
-    let record: guild_types::ExecutionRecord = serde_json::from_slice(&resource.bytes).unwrap();
+    let record = read_execution_record(&facade, &receipt.uri);
     assert_eq!(record.status, ExecutionStatus::Rejected);
     assert!(record.output.is_none());
 }
@@ -1769,8 +1757,7 @@ fn query_resource_reads_require_query_scope() {
     let receipt = error
         .receipt
         .expect("missing query scope should still persist a rejected execution");
-    let resource = facade.read_resource(&receipt.uri).unwrap();
-    let record: ExecutionRecord = serde_json::from_slice(&resource.bytes).unwrap();
+    let record = read_execution_record(&facade, &receipt.uri);
     assert_eq!(record.status, ExecutionStatus::Rejected);
     assert_eq!(record.termination.as_ref().unwrap().code, "policy-denied");
     assert!(

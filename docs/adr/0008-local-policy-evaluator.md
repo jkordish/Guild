@@ -64,6 +64,8 @@ Rules are also intentionally small:
 - effects of either `deny` or `cap`
 - an `applies_to` target of `requested`, `required`, or `any`
 - typed capability ceilings expressed with the existing capability grant model
+- `cap` may reduce one broader grant into a narrower same-family union, while
+  `deny` conservatively removes any grant that overlaps a denied typed ceiling
 
 This is not a general policy language. It is a local deterministic reduction
 layer.

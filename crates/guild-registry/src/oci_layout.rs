@@ -464,7 +464,7 @@ fn parse_and_validate_root_index(index_bytes: &[u8]) -> Result<OciDescriptor, Re
             "oci-layout-index-invalid",
             "OCI image index root descriptor must reference an OCI image manifest",
         )
-        .with_detail(root_descriptor.media_type.clone()));
+        .with_detail(root_descriptor.media_type.as_str()));
     }
 
     Ok(root_descriptor)
@@ -499,7 +499,7 @@ fn parse_and_validate_root_manifest(
             "oci-layout-manifest-invalid",
             "OCI root manifest config did not carry a Guild bundle index",
         )
-        .with_detail(manifest.config.media_type.clone()));
+        .with_detail(manifest.config.media_type.as_str()));
     }
 
     Ok(manifest)
@@ -1221,11 +1221,10 @@ where
         runtime.block_on(future)
     });
 
-    match handle.join() {
-        Ok(result) => result,
-        Err(_) => Err(RegistryError::new(
+    handle.join().unwrap_or_else(|_| {
+        Err(RegistryError::new(
             "oci-registry-runtime-panicked",
             "OCI registry transport worker panicked while processing the request",
-        )),
-    }
+        ))
+    })
 }

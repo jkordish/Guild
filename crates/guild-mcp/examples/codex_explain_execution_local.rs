@@ -4,11 +4,12 @@ use guild_mcp::codex::{bootstrap_codex_registry, codex_server_config};
 use guild_mcp::protocol::{CallToolResult, ReadResourceResult};
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
-    EvidenceAudience, ExecutionRecord, GrantedCapability, ReadResourceConstraints, RedactionClass,
-    ResourceKind,
+    EvidenceAudience, GrantedCapability, ReadResourceConstraints, RedactionClass, ResourceKind,
 };
 use serde_json::{Value, json};
 
+#[path = "../../../test-support/guild_inspect_helpers.rs"]
+mod guild_inspect_helpers;
 #[path = "../../../test-support/mcp_stdio_client.rs"]
 mod mcp_stdio_client;
 
@@ -51,35 +52,6 @@ fn execution_and_object_read_grant() -> Value {
     .expect("grant serializes")
 }
 
-fn inspect_request(skill_name: &str, input: Value, grants: Vec<Value>) -> Value {
-    json!({
-        "name": "guild.inspect",
-        "arguments": {
-            "skill": {
-                "key": {
-                    "namespace": "example",
-                    "name": skill_name,
-                },
-                "version_req": "^0.1",
-            },
-            "input": input,
-            "grants": {
-                "grants": grants,
-            }
-        }
-    })
-}
-
-fn parse_record(result: &CallToolResult) -> ExecutionRecord {
-    serde_json::from_value(
-        result
-            .structured_content
-            .clone()
-            .expect("inspect returns structured content"),
-    )
-    .expect("structured content is an execution record")
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bootstrap = bootstrap_codex_registry(local_registry_root(), true)?;
     let config = codex_server_config(&bootstrap.registry_root, "guild-local");
@@ -98,26 +70,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let hello_response: CallToolResult = mcp_stdio_client::parse_result(&client.request(
         "tools/call",
-        &inspect_request(
+        &guild_inspect_helpers::example_inspect_request(
             "hello-inspect",
-            json!({ "name": "Ada" }),
-            vec![emit_evidence_grant()],
+            &json!({ "name": "Ada" }),
+            &[emit_evidence_grant()],
         ),
     )?)?;
-    let hello_record = parse_record(&hello_response);
+    let hello_record = guild_inspect_helpers::parse_execution_record(&hello_response);
 
     let explain_response: CallToolResult = mcp_stdio_client::parse_result(&client.request(
         "tools/call",
-        &inspect_request(
+        &guild_inspect_helpers::example_inspect_request(
             "explain-execution",
-            json!({
+            &json!({
                 "execution_uri": hello_record.receipt.uri,
                 "include_first_evidence": true,
             }),
-            vec![execution_and_object_read_grant()],
+            &[execution_and_object_read_grant()],
         ),
     )?)?;
-    let explain_record = parse_record(&explain_response);
+    let explain_record = guild_inspect_helpers::parse_execution_record(&explain_response);
 
     let target_resource: ReadResourceResult = mcp_stdio_client::parse_result(&client.request(
         "resources/read",

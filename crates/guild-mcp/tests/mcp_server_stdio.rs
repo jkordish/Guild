@@ -11,12 +11,15 @@ use guild_mcp::protocol::{
 use guild_registry::LocalSourceInstaller;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
-    EvidenceAudience, ExecutionQueryResult, ExecutionRecord, ExecutionStatus, GrantedCapability,
+    EvidenceAudience, ExecutionQueryResult, ExecutionStatus, GrantedCapability,
     PolicyDecisionOutcome, ReadResourceConstraints, RedactionClass, RequestedSkillRef,
     ResourceKind, SkillKey, VersionRequirement,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
+
+#[path = "../../../test-support/guild_inspect_helpers.rs"]
+mod guild_inspect_helpers;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -153,36 +156,17 @@ impl Drop for McpHarness {
 }
 
 fn parse_result<T: DeserializeOwned>(response: &Value) -> T {
-    serde_json::from_value(response["result"].clone()).expect("response result parses")
-}
-
-fn parse_structured_record(result: &CallToolResult) -> ExecutionRecord {
-    serde_json::from_value(
-        result
-            .structured_content
-            .clone()
-            .expect("tool result includes structured content"),
-    )
-    .expect("structured content is an execution record")
+    serde_json::from_value(response["result"].clone()).unwrap_or_else(|error| {
+        panic!(
+            "response result parses: {error}; full response: {}",
+            serde_json::to_string_pretty(response).expect("response serializes for debugging"),
+        )
+    })
 }
 
 fn inspect_request(skill_name: &str, input: &Value, grants: &Value) -> Value {
-    json!({
-        "name": "guild.inspect",
-        "arguments": {
-            "skill": {
-                "key": {
-                    "namespace": "example",
-                    "name": skill_name,
-                },
-                "version_req": "^0.1",
-            },
-            "input": input,
-            "grants": {
-                "grants": grants,
-            }
-        }
-    })
+    let grant_slice = grants.as_array().map_or(&[][..], Vec::as_slice);
+    guild_inspect_helpers::example_inspect_request(skill_name, input, grant_slice)
 }
 
 fn emit_evidence_grant_json() -> Value {
@@ -280,7 +264,7 @@ fn guild_inspect_success_returns_structured_content_text_and_resource_links() {
         ),
     );
     let result: CallToolResult = parse_result(&response);
-    let record = parse_structured_record(&result);
+    let record = guild_inspect_helpers::parse_execution_record(&result);
 
     assert_eq!(result.is_error, None);
     assert_eq!(record.status, ExecutionStatus::Succeeded);
@@ -315,7 +299,7 @@ fn guild_inspect_rejection_returns_tool_error_with_persisted_receipt_record() {
         ),
     );
     let result: CallToolResult = parse_result(&response);
-    let record = parse_structured_record(&result);
+    let record = guild_inspect_helpers::parse_execution_record(&result);
 
     assert_eq!(result.is_error, Some(true));
     assert_eq!(record.status, ExecutionStatus::Rejected);
@@ -345,7 +329,7 @@ fn resources_read_returns_execution_evidence_payload_and_evidence_metadata_conte
         ),
     );
     let result: CallToolResult = parse_result(&response);
-    let record = parse_structured_record(&result);
+    let record = guild_inspect_helpers::parse_execution_record(&result);
 
     let execution_response =
         harness.request("resources/read", &json!({ "uri": record.receipt.uri }));
@@ -389,7 +373,7 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
         ),
     );
     let result: CallToolResult = parse_result(&response);
-    let record = parse_structured_record(&result);
+    let record = guild_inspect_helpers::parse_execution_record(&result);
 
     let templates_response = harness.request("resources/templates/list", &json!({}));
     let templates: ListResourceTemplatesResult = parse_result(&templates_response);
@@ -471,7 +455,7 @@ fn guest_and_mcp_reads_match_for_evidence_metadata_resources() {
             &json!([emit_evidence_grant_json()]),
         ),
     ));
-    let primitive = parse_structured_record(&primitive_result);
+    let primitive = guild_inspect_helpers::parse_execution_record(&primitive_result);
 
     let explain_result: CallToolResult = parse_result(&harness.request(
         "tools/call",
@@ -487,7 +471,7 @@ fn guest_and_mcp_reads_match_for_evidence_metadata_resources() {
             ])]),
         ),
     ));
-    let explained = parse_structured_record(&explain_result);
+    let explained = guild_inspect_helpers::parse_execution_record(&explain_result);
     let explained_output = explained.output.expect("explain tree returns output");
     let descriptor = &explained_output.structured["evidence_summary"]["resource_descriptors"][0];
     let metadata_uri = descriptor["metadata_uri"]

@@ -136,9 +136,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&fixture_root)?;
     let filesystem_source = write_filesystem_fixture(&fixture_root)?;
 
-    let installer = LocalSourceInstaller::new(&registry_root)?;
-    let installed = installer.install(&filesystem_source)?;
-    installer.install(explain_source_dir())?;
+    let source_installer = LocalSourceInstaller::new(&registry_root)?;
+    let installed_skill = source_installer.install(&filesystem_source)?;
+    source_installer.install(explain_source_dir())?;
 
     let registry = LocalRegistry::load(&registry_root)?;
     let facade = GuildMcpFacade::new(registry, WasmtimeRuntimeAdapter::new()?);
@@ -164,7 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .receipt
         .clone()
         .expect("filesystem rejection returns a persisted receipt");
-    println!("installed {}", installed.resolved_ref.digest);
+    println!("installed {}", installed_skill.resolved_ref.digest);
     println!("rejected execution URI: {}", receipt.uri);
     let rejected_resource = facade.read_resource(&receipt.uri)?;
     println!("{}", String::from_utf8(rejected_resource.bytes)?);

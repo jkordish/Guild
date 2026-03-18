@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::fmt::Write as FmtWrite;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
@@ -171,7 +172,8 @@ fn handle_connection(mut stream: TcpStream) -> std::io::Result<()> {
         "HTTP/1.1 {status_code} {status_text}\r\nContent-Type: application/json\r\nContent-Length: {content_length}\r\nConnection: close\r\n"
     );
     if let Some(location) = location {
-        response_head.push_str(&format!("Location: {location}\r\n"));
+        write!(&mut response_head, "Location: {location}\r\n")
+            .expect("writing into a String cannot fail");
     }
     response_head.push_str("\r\n");
     stream.write_all(response_head.as_bytes())?;

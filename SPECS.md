@@ -197,6 +197,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - caller-requested capabilities are evaluated through a host-owned local policy layer before execution
 - the current repository loads an optional `policy.json` from the Guild root and otherwise uses a built-in default local policy profile
 - local policy now selects a named profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
+- local policy `cap` rules may reduce a broader grant into a narrower same-family union, while `deny` rules conservatively remove any grant that overlaps a denied typed ceiling
 - bounded local execution-query resources expose deterministic views over persisted execution records through the same host-mediated resource backend used by guest `read-resource` and MCP `resources/read`
 - the host-owned projection into `guild-skill-inspect-v1` is explicit, centralized in the runner, and covered by contract tests
 - the inspect guest `ExecutionContext` is a bounded projection that intentionally omits `mode`, while durable request/policy/provenance state remains host-owned

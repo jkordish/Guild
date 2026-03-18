@@ -491,8 +491,8 @@ fn broader_guild_component_imports_are_rejected_before_guest_execution() {
     let temp = TempFixtureDir::new();
     let registry_root = temp.path().join("registry");
     let broad_source = write_broad_import_fixture(temp.path(), "hello-inspect-broad-import");
-    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
-    installer.install(&broad_source).unwrap();
+    let source_installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    source_installer.install(&broad_source).unwrap();
 
     let requested = RequestedSkillRef {
         key: SkillKey {
@@ -502,9 +502,9 @@ fn broader_guild_component_imports_are_rejected_before_guest_execution() {
         version_req: VersionRequirement::parse("^0.1").unwrap(),
     };
     let registry = LocalRegistry::load(&registry_root).unwrap();
-    let installed = registry.resolve(&requested).unwrap();
+    let installed_skill = registry.resolve(&requested).unwrap();
     assert_eq!(
-        guild_component_import_names(&installed.artifact_path),
+        guild_component_import_names(&installed_skill.artifact_path),
         vec![
             "guild:skill/host@1.0.0".to_owned(),
             "guild:skill/types@1.0.0".to_owned(),
@@ -526,7 +526,7 @@ fn broader_guild_component_imports_are_rejected_before_guest_execution() {
             idempotency_key: None,
             trace_id: "trace-broad-import".into(),
         },
-        resolved_skill: installed.resolved_ref.clone(),
+        resolved_skill: installed_skill.resolved_ref.clone(),
         granted_capabilities: CapabilityGrantSet {
             grants: vec![emit_evidence_grant(), log_info_grant()],
         },
@@ -544,7 +544,7 @@ fn broader_guild_component_imports_are_rejected_before_guest_execution() {
 
     let runner = build_runner();
     let error = runner
-        .execute(&registry, &installed, &envelope)
+        .execute(&registry, &installed_skill, &envelope)
         .unwrap_err();
 
     assert_eq!(error.code, "unsupported-runtime-surface");

@@ -297,7 +297,7 @@ struct PolicyEvaluationResult {
 #[derive(Debug, Clone)]
 struct CandidateGrant {
     grant: GrantedCapability,
-    covers_required: bool,
+    contributes_to_required: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1311,6 +1311,7 @@ where
             );
         }
 
+        let required_requirements = required_capability_requirements(installed);
         let mut reasons = Vec::new();
         let granted = match selection.profile.default_action {
             LocalPolicyDefaultAction::AllowRequestedDeclared => {
@@ -1322,12 +1323,13 @@ where
             }
         };
 
-        let mut granted = mark_required_grants(installed, &granted);
+        let mut granted = mark_required_grants_for_requirements(&granted, &required_requirements);
 
         for rule in &selection.profile.rules {
             if policy_rule_matches(rule, installed) {
                 granted =
                     apply_policy_rule(&selection.name, rule, &granted, installed, &mut reasons);
+                granted = reclassify_required_candidates(&granted, &required_requirements);
             }
         }
 
@@ -2118,29 +2120,46 @@ fn policy_profile_binding_matches(binding: &PolicyProfileBinding, request: &Call
     true
 }
 
-fn mark_required_grants(
-    installed: &InstalledSkill,
-    grants: &CapabilityGrantSet,
-) -> Vec<CandidateGrant> {
-    let required: Vec<_> = installed
+fn required_capability_requirements(installed: &InstalledSkill) -> Vec<CapabilityRequirement> {
+    installed
         .manifest
         .capabilities
         .iter()
         .filter(|requirement| requirement.required)
         .cloned()
-        .collect();
+        .collect()
+}
 
+fn mark_required_grants_for_requirements(
+    grants: &CapabilityGrantSet,
+    required: &[CapabilityRequirement],
+) -> Vec<CandidateGrant> {
     grants
         .grants
         .iter()
         .cloned()
         .map(|grant| CandidateGrant {
-            covers_required: required.iter().any(|requirement| {
-                CapabilityEvaluator::grant_covers_requirement(&grant, requirement)
-            }),
+            contributes_to_required: required
+                .iter()
+                .any(|requirement| grant_contributes_to_required_requirement(&grant, requirement)),
             grant,
         })
         .collect()
+}
+
+fn reclassify_required_candidates(
+    grants: &[CandidateGrant],
+    required: &[CapabilityRequirement],
+) -> Vec<CandidateGrant> {
+    let granted = candidate_grants_to_set(grants);
+    mark_required_grants_for_requirements(&granted, required)
+}
+
+fn grant_contributes_to_required_requirement(
+    grant: &GrantedCapability,
+    requirement: &CapabilityRequirement,
+) -> bool {
+    reduce_grant_to_requirement(grant, requirement).is_some()
 }
 
 fn candidate_grants_to_set(grants: &[CandidateGrant]) -> CapabilityGrantSet {
@@ -2206,8 +2225,8 @@ fn apply_policy_rule(
 fn policy_rule_target_matches(target: &PolicyRuleTarget, candidate: &CandidateGrant) -> bool {
     match target {
         PolicyRuleTarget::Any => true,
-        PolicyRuleTarget::Requested => !candidate.covers_required,
-        PolicyRuleTarget::Required => candidate.covers_required,
+        PolicyRuleTarget::Requested => !candidate.contributes_to_required,
+        PolicyRuleTarget::Required => candidate.contributes_to_required,
     }
 }
 
@@ -2230,7 +2249,7 @@ fn apply_policy_deny_rule(
             .capabilities
             .grants
             .iter()
-            .find(|rule_grant| policy_grant_matches(rule_grant, &candidate.grant))
+            .find(|rule_grant| policy_grant_overlaps(rule_grant, &candidate.grant))
         {
             reasons.push(PolicyReason {
                 code: "policy-profile-rule-deny".into(),
@@ -2283,35 +2302,10 @@ fn apply_policy_cap_rule(
             continue;
         }
 
-        let mut reduced = Some(candidate.grant.clone());
-        for rule_grant in matching {
-            reduced = reduced.and_then(|current| reduce_grant_to_cap(rule_grant, &current));
-        }
+        let reduced = reduce_grant_to_cap_set(&matching, &candidate.grant);
 
-        match reduced {
-            Some(reduced_grant) => {
-                if reduced_grant != candidate.grant {
-                    reasons.push(PolicyReason {
-                        code: "policy-profile-rule-cap".into(),
-                        message: "local policy profile reduced a capability grant before execution"
-                            .into(),
-                        detail: Some(serde_json::json!({
-                            "profile_name": profile_name,
-                            "rule": rule.name,
-                            "requested": candidate.grant,
-                            "granted": reduced_grant,
-                            "trust_tier": installed.trust.trust_tier,
-                            "verification_state": installed.trust.verification_state,
-                            "applies_to": rule.applies_to,
-                        })),
-                    });
-                }
-                filtered.push(CandidateGrant {
-                    grant: reduced_grant,
-                    covers_required: candidate.covers_required,
-                });
-            }
-            None => reasons.push(PolicyReason {
+        match reduced.as_slice() {
+            [] => reasons.push(PolicyReason {
                 code: "policy-profile-rule-cap".into(),
                 message: "local policy profile removed a capability grant before execution".into(),
                 detail: Some(serde_json::json!({
@@ -2323,6 +2317,48 @@ fn apply_policy_cap_rule(
                     "applies_to": rule.applies_to,
                 })),
             }),
+            [reduced_grant] => {
+                if *reduced_grant != candidate.grant {
+                    reasons.push(PolicyReason {
+                        code: "policy-profile-rule-cap".into(),
+                        message: "local policy profile reduced a capability grant before execution"
+                            .into(),
+                        detail: Some(serde_json::json!({
+                            "profile_name": profile_name,
+                            "rule": rule.name,
+                            "requested": candidate.grant,
+                            "granted": reduced,
+                            "trust_tier": installed.trust.trust_tier,
+                            "verification_state": installed.trust.verification_state,
+                            "applies_to": rule.applies_to,
+                        })),
+                    });
+                }
+                filtered.push(CandidateGrant {
+                    grant: reduced_grant.clone(),
+                    contributes_to_required: false,
+                });
+            }
+            _ => {
+                reasons.push(PolicyReason {
+                    code: "policy-profile-rule-cap".into(),
+                    message: "local policy profile reduced a capability grant before execution"
+                        .into(),
+                    detail: Some(serde_json::json!({
+                        "profile_name": profile_name,
+                        "rule": rule.name,
+                        "requested": candidate.grant,
+                        "granted": reduced,
+                        "trust_tier": installed.trust.trust_tier,
+                        "verification_state": installed.trust.verification_state,
+                        "applies_to": rule.applies_to,
+                    })),
+                });
+                filtered.extend(reduced.into_iter().map(|grant| CandidateGrant {
+                    grant,
+                    contributes_to_required: false,
+                }));
+            }
         }
     }
 
@@ -2412,15 +2448,23 @@ fn reduce_grant_to_cap(
     })
 }
 
-fn policy_grant_matches(rule_grant: &GrantedCapability, grant: &GrantedCapability) -> bool {
-    let requirement = CapabilityRequirement {
-        id: grant.id.clone(),
-        access: grant.access.clone(),
-        constraints: grant.constraints.clone(),
-        required: false,
-    };
+fn reduce_grant_to_cap_set(
+    caps: &[&GrantedCapability],
+    grant: &GrantedCapability,
+) -> Vec<GrantedCapability> {
+    let mut reduced = Vec::new();
 
-    CapabilityEvaluator::grant_covers_requirement(rule_grant, &requirement)
+    for cap in caps {
+        if let Some(reduced_grant) = reduce_grant_to_cap(cap, grant) {
+            push_unique_grant(&mut reduced, reduced_grant);
+        }
+    }
+
+    reduced
+}
+
+fn policy_grant_overlaps(rule_grant: &GrantedCapability, grant: &GrantedCapability) -> bool {
+    reduce_grant_to_cap(rule_grant, grant).is_some()
 }
 
 fn push_unique_grant(grants: &mut Vec<GrantedCapability>, grant: GrantedCapability) {
@@ -2916,6 +2960,89 @@ impl CapabilityEvaluator {
         grants: &CapabilityGrantSet,
         requirement: &CapabilityRequirement,
     ) -> bool {
+        if matches!(
+            (
+                &requirement.id,
+                &requirement.access,
+                &requirement.constraints
+            ),
+            (
+                CapabilityId::ReadResource,
+                CapabilityAccess::Read,
+                CapabilityConstraints::ReadResource(_),
+            )
+        ) {
+            let derived = Self::matching_grants(grants, &requirement.id, &requirement.access)
+                .into_iter()
+                .filter_map(|grant| reduce_grant_to_requirement(grant, requirement))
+                .collect::<Vec<_>>();
+
+            return match &requirement.constraints {
+                CapabilityConstraints::ReadResource(required) => {
+                    read_resource_grants_collectively_cover(&derived, required)
+                }
+                _ => false,
+            };
+        }
+
+        if matches!(
+            (
+                &requirement.id,
+                &requirement.access,
+                &requirement.constraints
+            ),
+            (
+                CapabilityId::InvokeSkill,
+                CapabilityAccess::Invoke,
+                CapabilityConstraints::InvokeDependency(_),
+            )
+        ) {
+            let matching = Self::matching_grants(grants, &requirement.id, &requirement.access);
+            if matching
+                .iter()
+                .any(|grant| matches!(grant.constraints, CapabilityConstraints::None(_)))
+            {
+                return true;
+            }
+
+            let derived = matching
+                .into_iter()
+                .filter_map(|grant| reduce_grant_to_requirement(grant, requirement))
+                .collect::<Vec<_>>();
+
+            return match &requirement.constraints {
+                CapabilityConstraints::InvokeDependency(required) => {
+                    invoke_dependency_grants_collectively_cover(&derived, required)
+                }
+                _ => false,
+            };
+        }
+
+        if matches!(
+            (
+                &requirement.id,
+                &requirement.access,
+                &requirement.constraints
+            ),
+            (
+                CapabilityId::LogWrite,
+                CapabilityAccess::Write,
+                CapabilityConstraints::Log(_),
+            )
+        ) {
+            let derived = Self::matching_grants(grants, &requirement.id, &requirement.access)
+                .into_iter()
+                .filter_map(|grant| reduce_grant_to_requirement(grant, requirement))
+                .collect::<Vec<_>>();
+
+            return match &requirement.constraints {
+                CapabilityConstraints::Log(required) => {
+                    log_grants_collectively_cover(&derived, required)
+                }
+                _ => false,
+            };
+        }
+
         grants
             .grants
             .iter()
@@ -3056,10 +3183,7 @@ impl CapabilityEvaluator {
 
         let kind_allowed = matching.iter().any(|grant| match &grant.constraints {
             CapabilityConstraints::None(_) => true,
-            CapabilityConstraints::ReadResource(constraints) => constraints
-                .resource_kinds
-                .as_ref()
-                .is_none_or(|kinds| kinds.contains(&kind)),
+            CapabilityConstraints::ReadResource(_) => read_resource_grant_allows_kind(grant, &kind),
             _ => false,
         });
 
@@ -3077,18 +3201,9 @@ impl CapabilityEvaluator {
             });
         }
 
-        let scope_allowed = matching.iter().any(|grant| match &grant.constraints {
-            CapabilityConstraints::None(_) => true,
-            CapabilityConstraints::ReadResource(constraints) => {
-                constraints.uri_prefixes.as_ref().is_none_or(|prefixes| {
-                    prefixes.iter().any(|prefix| {
-                        GuildResourceScope::parse(prefix)
-                            .is_ok_and(|scope| scope.matches(parsed_uri))
-                    })
-                })
-            }
-            _ => false,
-        });
+        let scope_allowed = matching
+            .iter()
+            .any(|grant| read_resource_grant_allows_uri(grant, parsed_uri));
 
         if scope_allowed {
             Ok(())
@@ -3283,6 +3398,48 @@ impl CapabilityEvaluator {
         let mut grants = Vec::new();
 
         for capability in child_capabilities {
+            if matches!(
+                (&capability.id, &capability.access, &capability.constraints),
+                (
+                    CapabilityId::ReadResource,
+                    CapabilityAccess::Read,
+                    CapabilityConstraints::ReadResource(_),
+                )
+            ) {
+                grants.extend(Self::derive_child_read_resource_grants(
+                    capability,
+                    parent_grants,
+                )?);
+                continue;
+            }
+
+            if matches!(
+                (&capability.id, &capability.access, &capability.constraints),
+                (
+                    CapabilityId::InvokeSkill,
+                    CapabilityAccess::Invoke,
+                    CapabilityConstraints::InvokeDependency(_),
+                )
+            ) {
+                grants.extend(Self::derive_child_invoke_dependency_grants(
+                    capability,
+                    parent_grants,
+                )?);
+                continue;
+            }
+
+            if matches!(
+                (&capability.id, &capability.access, &capability.constraints),
+                (
+                    CapabilityId::LogWrite,
+                    CapabilityAccess::Write,
+                    CapabilityConstraints::Log(_),
+                )
+            ) {
+                grants.extend(Self::derive_child_log_grants(capability, parent_grants)?);
+                continue;
+            }
+
             if let Some(parent_grant) = parent_grants
                 .grants
                 .iter()
@@ -3295,21 +3452,102 @@ impl CapabilityEvaluator {
                     constraints,
                 });
             } else if capability.required {
-                return Err(CapabilityDenial {
-                    code: "child-capability-mismatch".into(),
-                    message:
-                        "child invocation required capabilities that were not granted to the parent"
-                            .into(),
-                    detail: serde_json::json!({
-                        "id": capability.id,
-                        "access": capability.access,
-                        "constraints": capability.constraints,
-                    }),
-                });
+                return Err(Self::child_capability_mismatch_denial(capability));
             }
         }
 
         Ok(CapabilityGrantSet { grants })
+    }
+
+    fn derive_child_invoke_dependency_grants(
+        requirement: &CapabilityRequirement,
+        parent_grants: &CapabilityGrantSet,
+    ) -> Result<Vec<GrantedCapability>, CapabilityDenial> {
+        Self::derive_collective_child_grants(requirement, parent_grants, |grants, requirement| {
+            match &requirement.constraints {
+                CapabilityConstraints::InvokeDependency(required) => {
+                    invoke_dependency_grants_collectively_cover(grants, required)
+                }
+                _ => false,
+            }
+        })
+    }
+
+    fn derive_child_read_resource_grants(
+        requirement: &CapabilityRequirement,
+        parent_grants: &CapabilityGrantSet,
+    ) -> Result<Vec<GrantedCapability>, CapabilityDenial> {
+        Self::derive_collective_child_grants(requirement, parent_grants, |grants, requirement| {
+            match &requirement.constraints {
+                CapabilityConstraints::ReadResource(required) => {
+                    read_resource_grants_collectively_cover(grants, required)
+                }
+                _ => false,
+            }
+        })
+    }
+
+    fn derive_child_log_grants(
+        requirement: &CapabilityRequirement,
+        parent_grants: &CapabilityGrantSet,
+    ) -> Result<Vec<GrantedCapability>, CapabilityDenial> {
+        Self::derive_collective_child_grants(requirement, parent_grants, |grants, requirement| {
+            match &requirement.constraints {
+                CapabilityConstraints::Log(required) => {
+                    log_grants_collectively_cover(grants, required)
+                }
+                _ => false,
+            }
+        })
+    }
+
+    fn derive_collective_child_grants<F>(
+        requirement: &CapabilityRequirement,
+        parent_grants: &CapabilityGrantSet,
+        collective_cover: F,
+    ) -> Result<Vec<GrantedCapability>, CapabilityDenial>
+    where
+        F: Fn(&[GrantedCapability], &CapabilityRequirement) -> bool,
+    {
+        let mut grants = Vec::new();
+
+        for parent_grant in
+            Self::matching_grants(parent_grants, &requirement.id, &requirement.access)
+        {
+            let Ok(constraints) = reduce_child_constraints(parent_grant, requirement) else {
+                continue;
+            };
+
+            push_unique_grant(
+                &mut grants,
+                GrantedCapability {
+                    id: requirement.id.clone(),
+                    access: requirement.access.clone(),
+                    constraints,
+                },
+            );
+        }
+
+        let fully_covered = collective_cover(&grants, requirement);
+
+        if fully_covered || !requirement.required {
+            Ok(grants)
+        } else {
+            Err(Self::child_capability_mismatch_denial(requirement))
+        }
+    }
+
+    fn child_capability_mismatch_denial(requirement: &CapabilityRequirement) -> CapabilityDenial {
+        CapabilityDenial {
+            code: "child-capability-mismatch".into(),
+            message: "child invocation required capabilities that were not granted to the parent"
+                .into(),
+            detail: serde_json::json!({
+                "id": requirement.id,
+                "access": requirement.access,
+                "constraints": requirement.constraints,
+            }),
+        }
     }
 }
 
@@ -3746,7 +3984,7 @@ fn reduce_child_read_resource_constraints(
         }),
     })?
     .into_option();
-    let resource_kinds = reduce_required_enum_scope(
+    let resource_kinds = reduce_required_intersecting_enum_scope(
         parent.resource_kinds.as_ref(),
         required.resource_kinds.as_ref(),
     )
@@ -3836,16 +4074,17 @@ fn reduce_child_log_constraints(
     parent: &LogConstraints,
     required: &LogConstraints,
 ) -> Result<LogConstraints, CapabilityDenial> {
-    let levels = reduce_required_enum_scope(parent.levels.as_ref(), required.levels.as_ref())
-        .ok_or_else(|| CapabilityDenial {
-            code: "child-capability-mismatch".into(),
-            message: "child log levels could not be reduced from the parent grant".into(),
-            detail: serde_json::json!({
-                "parent_constraints": parent,
-                "required_constraints": required,
-            }),
-        })?
-        .into_option();
+    let levels =
+        reduce_required_intersecting_enum_scope(parent.levels.as_ref(), required.levels.as_ref())
+            .ok_or_else(|| CapabilityDenial {
+                code: "child-capability-mismatch".into(),
+                message: "child log levels could not be reduced from the parent grant".into(),
+                detail: serde_json::json!({
+                    "parent_constraints": parent,
+                    "required_constraints": required,
+                }),
+            })?
+            .into_option();
 
     Ok(LogConstraints { levels })
 }
@@ -3866,6 +4105,117 @@ fn invoke_dependency_covers(
     required: &InvokeDependencyConstraints,
 ) -> bool {
     string_scope_covers_exact(grant.aliases.as_ref(), required.aliases.as_ref())
+}
+
+fn invoke_dependency_grants_collectively_cover(
+    grants: &[GrantedCapability],
+    required: &InvokeDependencyConstraints,
+) -> bool {
+    if grants.is_empty() {
+        return false;
+    }
+
+    match &required.aliases {
+        None => grants.iter().any(|grant| {
+            matches!(
+                &grant.constraints,
+                CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                    aliases: None
+                })
+            )
+        }),
+        Some(required_aliases) => {
+            let mut covered_aliases = Vec::new();
+
+            for grant in grants {
+                let CapabilityConstraints::InvokeDependency(constraints) = &grant.constraints
+                else {
+                    continue;
+                };
+
+                let Some(aliases) = &constraints.aliases else {
+                    return true;
+                };
+
+                for alias in aliases {
+                    if !covered_aliases.contains(alias) {
+                        covered_aliases.push(alias.clone());
+                    }
+                }
+            }
+
+            required_aliases
+                .iter()
+                .all(|alias| covered_aliases.iter().any(|covered| covered == alias))
+        }
+    }
+}
+
+fn read_resource_grants_collectively_cover(
+    grants: &[GrantedCapability],
+    required: &ReadResourceConstraints,
+) -> bool {
+    if grants.is_empty() {
+        return false;
+    }
+
+    let prefixes_ok = required.uri_prefixes.as_ref().is_none_or(|prefixes| {
+        let Some(required_scopes) = parse_resource_scopes(prefixes) else {
+            return false;
+        };
+
+        required_scopes.iter().all(|required_scope| {
+            grants
+                .iter()
+                .any(|grant| read_resource_grant_allows_scope(grant, required_scope))
+        })
+    });
+    let kinds_ok = required
+        .resource_kinds
+        .as_ref()
+        .is_none_or(|required_kinds| {
+            required_kinds.iter().all(|required_kind| {
+                grants
+                    .iter()
+                    .any(|grant| read_resource_grant_allows_kind(grant, required_kind))
+            })
+        });
+
+    prefixes_ok && kinds_ok
+}
+
+fn read_resource_grant_allows_uri(
+    grant: &GrantedCapability,
+    parsed_uri: &GuildResourceUri,
+) -> bool {
+    read_resource_grant_allows_scope(grant, &parsed_uri.scope())
+}
+
+fn read_resource_grant_allows_scope(grant: &GrantedCapability, scope: &GuildResourceScope) -> bool {
+    match &grant.constraints {
+        CapabilityConstraints::None(_) => true,
+        CapabilityConstraints::ReadResource(constraints) => {
+            constraints.uri_prefixes.as_ref().is_none_or(|prefixes| {
+                parse_resource_scopes(prefixes)
+                    .is_some_and(|parsed_scopes| parsed_scopes.contains(scope))
+            }) && constraints
+                .resource_kinds
+                .as_ref()
+                .is_none_or(|kinds| kinds.contains(&scope.kind()))
+        }
+        _ => false,
+    }
+}
+
+fn read_resource_grant_allows_kind(grant: &GrantedCapability, kind: &ResourceKind) -> bool {
+    match &grant.constraints {
+        CapabilityConstraints::None(_) => true,
+        CapabilityConstraints::ReadResource(constraints) => constraints
+            .resource_kinds
+            .as_ref()
+            .is_none_or(|kinds| kinds.contains(kind)),
+        _ => false,
+    }
 }
 
 fn http_request_covers(grant: &HttpRequestConstraints, required: &HttpRequestConstraints) -> bool {
@@ -3923,16 +4273,36 @@ fn log_covers(grant: &LogConstraints, required: &LogConstraints) -> bool {
     enum_scope_covers(grant.levels.as_ref(), required.levels.as_ref())
 }
 
+fn log_grants_collectively_cover(grants: &[GrantedCapability], required: &LogConstraints) -> bool {
+    if grants.is_empty() {
+        return false;
+    }
+
+    required.levels.as_ref().is_none_or(|required_levels| {
+        required_levels.iter().all(|required_level| {
+            grants
+                .iter()
+                .any(|grant| log_grant_allows_level(grant, required_level))
+        })
+    })
+}
+
+fn log_grant_allows_level(grant: &GrantedCapability, level: &Severity) -> bool {
+    match &grant.constraints {
+        CapabilityConstraints::None(_) => true,
+        CapabilityConstraints::Log(constraints) => constraints
+            .levels
+            .as_ref()
+            .is_none_or(|levels| levels.contains(level)),
+        _ => false,
+    }
+}
+
 fn string_scope_covers_exact(
     granted: Option<&Vec<String>>,
     required: Option<&Vec<String>>,
 ) -> bool {
-    match (granted, required) {
-        (_, None) | (None, Some(_)) => true,
-        (Some(granted), Some(required)) => required
-            .iter()
-            .all(|value| granted.iter().any(|candidate| candidate == value)),
-    }
+    enum_scope_covers(granted, required)
 }
 
 fn path_prefix_scope_covers(granted: Option<&Vec<String>>, required: Option<&Vec<String>>) -> bool {
@@ -4098,6 +4468,13 @@ fn reduce_required_exact_string_scope(
     parent: Option<&Vec<String>>,
     required: Option<&Vec<String>>,
 ) -> Option<ReducedConstraint<Vec<String>>> {
+    reduce_required_intersecting_enum_scope(parent, required)
+}
+
+fn reduce_required_intersecting_enum_scope<T: Clone + PartialEq>(
+    parent: Option<&Vec<T>>,
+    required: Option<&Vec<T>>,
+) -> Option<ReducedConstraint<Vec<T>>> {
     match (parent, required) {
         (None, None) => Some(ReducedConstraint::Unbounded),
         (Some(parent), None) => Some(ReducedConstraint::Restricted(parent.clone())),
@@ -4105,7 +4482,7 @@ fn reduce_required_exact_string_scope(
         (Some(parent), Some(required)) => {
             let reduced = required
                 .iter()
-                .filter(|candidate| parent.iter().any(|prefix| candidate.starts_with(prefix)))
+                .filter(|candidate| parent.iter().any(|value| value == *candidate))
                 .cloned()
                 .collect::<Vec<_>>();
             if reduced.is_empty() {
@@ -5394,4 +5771,661 @@ fn effective_response_bytes(
     grant_max_response_bytes
         .unwrap_or(u64::MAX)
         .min(budget_max_output_bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CapabilityEvaluator, ReducedConstraint, invoke_dependency_grants_collectively_cover,
+        log_grants_collectively_cover, mark_required_grants_for_requirements,
+        policy_grant_overlaps, read_resource_grants_collectively_cover,
+        reduce_grant_to_cap_set,
+        reduce_required_exact_string_scope, string_scope_covers_exact,
+    };
+    use guild_types::{
+        CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
+        CapabilityRequirement, GrantedCapability, InvokeDependencyConstraints, LogConstraints,
+        ReadResourceConstraints, ResourceKind, Severity,
+    };
+
+    #[test]
+    fn exact_string_scope_reduction_requires_exact_membership() {
+        let parent = vec!["he".to_owned(), "world".to_owned()];
+        let required = vec!["hello".to_owned()];
+
+        let reduced = reduce_required_exact_string_scope(Some(&parent), Some(&required));
+
+        assert!(reduced.is_none());
+    }
+
+    #[test]
+    fn exact_string_scope_reduction_preserves_requested_exact_aliases() {
+        let parent = vec!["hello".to_owned(), "world".to_owned()];
+        let required = vec!["hello".to_owned()];
+
+        let reduced = reduce_required_exact_string_scope(Some(&parent), Some(&required));
+
+        assert!(matches!(
+            reduced,
+            Some(ReducedConstraint::Restricted(values)) if values == required
+        ));
+    }
+
+    #[test]
+    fn exact_string_scope_coverage_does_not_treat_prefixes_as_matches() {
+        let granted = vec!["he".to_owned()];
+        let required = vec!["hello".to_owned()];
+
+        assert!(!string_scope_covers_exact(Some(&granted), Some(&required)));
+        assert!(string_scope_covers_exact(None, Some(&required)));
+    }
+
+    #[test]
+    fn child_invoke_alias_derivation_can_union_across_parent_grants() {
+        let parent_grants = CapabilityGrantSet {
+            grants: vec![
+                GrantedCapability {
+                    id: CapabilityId::InvokeSkill,
+                    access: CapabilityAccess::Invoke,
+                    constraints: CapabilityConstraints::InvokeDependency(
+                        InvokeDependencyConstraints {
+                            aliases: Some(vec!["hello".to_owned()]),
+                        },
+                    ),
+                },
+                GrantedCapability {
+                    id: CapabilityId::InvokeSkill,
+                    access: CapabilityAccess::Invoke,
+                    constraints: CapabilityConstraints::InvokeDependency(
+                        InvokeDependencyConstraints {
+                            aliases: Some(vec!["report".to_owned()]),
+                        },
+                    ),
+                },
+            ],
+        };
+        let requirement = CapabilityRequirement {
+            id: CapabilityId::InvokeSkill,
+            access: CapabilityAccess::Invoke,
+            constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                aliases: Some(vec!["hello".to_owned(), "report".to_owned()]),
+            }),
+            required: true,
+        };
+
+        let derived = CapabilityEvaluator::derive_child_grants(&[requirement], &parent_grants)
+            .expect("union of parent invoke aliases satisfies child requirement");
+
+        assert_eq!(derived.grants.len(), 2);
+        assert!(invoke_dependency_grants_collectively_cover(
+            &derived.grants,
+            &InvokeDependencyConstraints {
+                aliases: Some(vec!["hello".to_owned(), "report".to_owned()]),
+            }
+        ));
+    }
+
+    #[test]
+    fn child_invoke_alias_derivation_fails_when_union_is_incomplete() {
+        let parent_grants = CapabilityGrantSet {
+            grants: vec![GrantedCapability {
+                id: CapabilityId::InvokeSkill,
+                access: CapabilityAccess::Invoke,
+                constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                    aliases: Some(vec!["hello".to_owned()]),
+                }),
+            }],
+        };
+        let requirement = CapabilityRequirement {
+            id: CapabilityId::InvokeSkill,
+            access: CapabilityAccess::Invoke,
+            constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                aliases: Some(vec!["hello".to_owned(), "report".to_owned()]),
+            }),
+            required: true,
+        };
+
+        let error = CapabilityEvaluator::derive_child_grants(&[requirement], &parent_grants)
+            .expect_err("partial invoke alias coverage should fail required child requirements");
+
+        assert_eq!(error.code, "child-capability-mismatch");
+    }
+
+    #[test]
+    fn invoke_requirement_coverage_can_union_across_multiple_parent_grants() {
+        let grants = CapabilityGrantSet {
+            grants: vec![
+                GrantedCapability {
+                    id: CapabilityId::InvokeSkill,
+                    access: CapabilityAccess::Invoke,
+                    constraints: CapabilityConstraints::InvokeDependency(
+                        InvokeDependencyConstraints {
+                            aliases: Some(vec!["hello".to_owned()]),
+                        },
+                    ),
+                },
+                GrantedCapability {
+                    id: CapabilityId::InvokeSkill,
+                    access: CapabilityAccess::Invoke,
+                    constraints: CapabilityConstraints::InvokeDependency(
+                        InvokeDependencyConstraints {
+                            aliases: Some(vec!["report".to_owned()]),
+                        },
+                    ),
+                },
+            ],
+        };
+        let requirement = CapabilityRequirement {
+            id: CapabilityId::InvokeSkill,
+            access: CapabilityAccess::Invoke,
+            constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                aliases: Some(vec!["hello".to_owned(), "report".to_owned()]),
+            }),
+            required: true,
+        };
+
+        assert!(CapabilityEvaluator::grants_cover_requirement(
+            &grants,
+            &requirement
+        ));
+    }
+
+    #[test]
+    fn child_read_resource_derivation_can_union_across_parent_grants() {
+        let parent_grants = CapabilityGrantSet {
+            grants: vec![
+                GrantedCapability {
+                    id: CapabilityId::ReadResource,
+                    access: CapabilityAccess::Read,
+                    constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                        uri_prefixes: Some(vec!["guild://executions/".to_owned()]),
+                        resource_kinds: Some(vec![ResourceKind::Execution]),
+                    }),
+                },
+                GrantedCapability {
+                    id: CapabilityId::ReadResource,
+                    access: CapabilityAccess::Read,
+                    constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                        uri_prefixes: Some(vec!["guild://queries/executions/".to_owned()]),
+                        resource_kinds: Some(vec![ResourceKind::Query]),
+                    }),
+                },
+            ],
+        };
+        let requirement = CapabilityRequirement {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec![
+                    "guild://executions/".to_owned(),
+                    "guild://queries/executions/".to_owned(),
+                ]),
+                resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Query]),
+            }),
+            required: true,
+        };
+
+        let derived = CapabilityEvaluator::derive_child_grants(&[requirement], &parent_grants)
+            .expect("union of parent read-resource grants satisfies child requirement");
+
+        assert_eq!(derived.grants.len(), 2);
+        assert!(read_resource_grants_collectively_cover(
+            &derived.grants,
+            &ReadResourceConstraints {
+                uri_prefixes: Some(vec![
+                    "guild://executions/".to_owned(),
+                    "guild://queries/executions/".to_owned(),
+                ]),
+                resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Query]),
+            }
+        ));
+    }
+
+    #[test]
+    fn child_read_resource_derivation_fails_when_union_is_incomplete() {
+        let parent_grants = CapabilityGrantSet {
+            grants: vec![GrantedCapability {
+                id: CapabilityId::ReadResource,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(vec!["guild://executions/".to_owned()]),
+                    resource_kinds: Some(vec![ResourceKind::Execution]),
+                }),
+            }],
+        };
+        let requirement = CapabilityRequirement {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec![
+                    "guild://executions/".to_owned(),
+                    "guild://queries/executions/".to_owned(),
+                ]),
+                resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Query]),
+            }),
+            required: true,
+        };
+
+        let error = CapabilityEvaluator::derive_child_grants(&[requirement], &parent_grants)
+            .expect_err("partial read-resource coverage should fail required child requirements");
+
+        assert_eq!(error.code, "child-capability-mismatch");
+    }
+
+    #[test]
+    fn read_resource_requirement_coverage_can_union_across_multiple_parent_grants() {
+        let grants = CapabilityGrantSet {
+            grants: vec![
+                GrantedCapability {
+                    id: CapabilityId::ReadResource,
+                    access: CapabilityAccess::Read,
+                    constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                        uri_prefixes: Some(vec!["guild://executions/".to_owned()]),
+                        resource_kinds: Some(vec![ResourceKind::Execution]),
+                    }),
+                },
+                GrantedCapability {
+                    id: CapabilityId::ReadResource,
+                    access: CapabilityAccess::Read,
+                    constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                        uri_prefixes: Some(vec!["guild://queries/executions/".to_owned()]),
+                        resource_kinds: Some(vec![ResourceKind::Query]),
+                    }),
+                },
+            ],
+        };
+        let requirement = CapabilityRequirement {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec![
+                    "guild://executions/".to_owned(),
+                    "guild://queries/executions/".to_owned(),
+                ]),
+                resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Query]),
+            }),
+            required: true,
+        };
+
+        assert!(CapabilityEvaluator::grants_cover_requirement(
+            &grants,
+            &requirement
+        ));
+    }
+
+    #[test]
+    fn child_log_level_derivation_can_union_across_parent_grants() {
+        let parent_grants = CapabilityGrantSet {
+            grants: vec![
+                GrantedCapability {
+                    id: CapabilityId::LogWrite,
+                    access: CapabilityAccess::Write,
+                    constraints: CapabilityConstraints::Log(LogConstraints {
+                        levels: Some(vec![Severity::Info]),
+                    }),
+                },
+                GrantedCapability {
+                    id: CapabilityId::LogWrite,
+                    access: CapabilityAccess::Write,
+                    constraints: CapabilityConstraints::Log(LogConstraints {
+                        levels: Some(vec![Severity::Error]),
+                    }),
+                },
+            ],
+        };
+        let requirement = CapabilityRequirement {
+            id: CapabilityId::LogWrite,
+            access: CapabilityAccess::Write,
+            constraints: CapabilityConstraints::Log(LogConstraints {
+                levels: Some(vec![Severity::Info, Severity::Error]),
+            }),
+            required: true,
+        };
+
+        let derived = CapabilityEvaluator::derive_child_grants(&[requirement], &parent_grants)
+            .expect("union of parent log grants satisfies child requirement");
+
+        assert_eq!(derived.grants.len(), 2);
+        assert!(log_grants_collectively_cover(
+            &derived.grants,
+            &LogConstraints {
+                levels: Some(vec![Severity::Info, Severity::Error]),
+            }
+        ));
+    }
+
+    #[test]
+    fn child_log_level_derivation_fails_when_union_is_incomplete() {
+        let parent_grants = CapabilityGrantSet {
+            grants: vec![GrantedCapability {
+                id: CapabilityId::LogWrite,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::Log(LogConstraints {
+                    levels: Some(vec![Severity::Info]),
+                }),
+            }],
+        };
+        let requirement = CapabilityRequirement {
+            id: CapabilityId::LogWrite,
+            access: CapabilityAccess::Write,
+            constraints: CapabilityConstraints::Log(LogConstraints {
+                levels: Some(vec![Severity::Info, Severity::Error]),
+            }),
+            required: true,
+        };
+
+        let error = CapabilityEvaluator::derive_child_grants(&[requirement], &parent_grants)
+            .expect_err("partial log coverage should fail required child requirements");
+
+        assert_eq!(error.code, "child-capability-mismatch");
+    }
+
+    #[test]
+    fn log_requirement_coverage_can_union_across_multiple_parent_grants() {
+        let grants = CapabilityGrantSet {
+            grants: vec![
+                GrantedCapability {
+                    id: CapabilityId::LogWrite,
+                    access: CapabilityAccess::Write,
+                    constraints: CapabilityConstraints::Log(LogConstraints {
+                        levels: Some(vec![Severity::Info]),
+                    }),
+                },
+                GrantedCapability {
+                    id: CapabilityId::LogWrite,
+                    access: CapabilityAccess::Write,
+                    constraints: CapabilityConstraints::Log(LogConstraints {
+                        levels: Some(vec![Severity::Error]),
+                    }),
+                },
+            ],
+        };
+        let requirement = CapabilityRequirement {
+            id: CapabilityId::LogWrite,
+            access: CapabilityAccess::Write,
+            constraints: CapabilityConstraints::Log(LogConstraints {
+                levels: Some(vec![Severity::Info, Severity::Error]),
+            }),
+            required: true,
+        };
+
+        assert!(CapabilityEvaluator::grants_cover_requirement(
+            &grants,
+            &requirement
+        ));
+    }
+
+    #[test]
+    fn required_grant_marking_treats_union_read_resource_grants_as_required() {
+        let grants = CapabilityGrantSet {
+            grants: vec![
+                GrantedCapability {
+                    id: CapabilityId::ReadResource,
+                    access: CapabilityAccess::Read,
+                    constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                        uri_prefixes: Some(vec!["guild://executions/".to_owned()]),
+                        resource_kinds: Some(vec![ResourceKind::Execution]),
+                    }),
+                },
+                GrantedCapability {
+                    id: CapabilityId::ReadResource,
+                    access: CapabilityAccess::Read,
+                    constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                        uri_prefixes: Some(vec!["guild://queries/executions/".to_owned()]),
+                        resource_kinds: Some(vec![ResourceKind::Query]),
+                    }),
+                },
+            ],
+        };
+        let required = vec![CapabilityRequirement {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec![
+                    "guild://executions/".to_owned(),
+                    "guild://queries/executions/".to_owned(),
+                ]),
+                resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Query]),
+            }),
+            required: true,
+        }];
+
+        let candidates = mark_required_grants_for_requirements(&grants, &required);
+
+        assert_eq!(candidates.len(), 2);
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.contributes_to_required)
+        );
+    }
+
+    #[test]
+    fn required_grant_marking_treats_union_log_grants_as_required() {
+        let grants = CapabilityGrantSet {
+            grants: vec![
+                GrantedCapability {
+                    id: CapabilityId::LogWrite,
+                    access: CapabilityAccess::Write,
+                    constraints: CapabilityConstraints::Log(LogConstraints {
+                        levels: Some(vec![Severity::Info]),
+                    }),
+                },
+                GrantedCapability {
+                    id: CapabilityId::LogWrite,
+                    access: CapabilityAccess::Write,
+                    constraints: CapabilityConstraints::Log(LogConstraints {
+                        levels: Some(vec![Severity::Error]),
+                    }),
+                },
+            ],
+        };
+        let required = vec![CapabilityRequirement {
+            id: CapabilityId::LogWrite,
+            access: CapabilityAccess::Write,
+            constraints: CapabilityConstraints::Log(LogConstraints {
+                levels: Some(vec![Severity::Info, Severity::Error]),
+            }),
+            required: true,
+        }];
+
+        let candidates = mark_required_grants_for_requirements(&grants, &required);
+
+        assert_eq!(candidates.len(), 2);
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.contributes_to_required)
+        );
+    }
+
+    #[test]
+    fn required_grant_marking_leaves_nonrequired_fragments_unmarked_after_split() {
+        let grants = CapabilityGrantSet {
+            grants: vec![
+                GrantedCapability {
+                    id: CapabilityId::ReadResource,
+                    access: CapabilityAccess::Read,
+                    constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                        uri_prefixes: Some(vec!["guild://executions/".to_owned()]),
+                        resource_kinds: Some(vec![ResourceKind::Execution]),
+                    }),
+                },
+                GrantedCapability {
+                    id: CapabilityId::ReadResource,
+                    access: CapabilityAccess::Read,
+                    constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                        uri_prefixes: Some(vec!["guild://queries/executions/".to_owned()]),
+                        resource_kinds: Some(vec![ResourceKind::Query]),
+                    }),
+                },
+            ],
+        };
+        let required = vec![CapabilityRequirement {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec!["guild://executions/".to_owned()]),
+                resource_kinds: Some(vec![ResourceKind::Execution]),
+            }),
+            required: true,
+        }];
+
+        let candidates = mark_required_grants_for_requirements(&grants, &required);
+
+        assert_eq!(candidates.len(), 2);
+        assert!(candidates[0].contributes_to_required);
+        assert!(!candidates[1].contributes_to_required);
+    }
+
+    #[test]
+    fn cap_reduction_can_split_read_resource_grants_into_a_union() {
+        let candidate = GrantedCapability {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec![
+                    "guild://executions/".to_owned(),
+                    "guild://queries/executions/".to_owned(),
+                ]),
+                resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Query]),
+            }),
+        };
+        let caps = [
+            GrantedCapability {
+                id: CapabilityId::ReadResource,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(vec!["guild://executions/".to_owned()]),
+                    resource_kinds: Some(vec![ResourceKind::Execution]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::ReadResource,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(vec!["guild://queries/executions/".to_owned()]),
+                    resource_kinds: Some(vec![ResourceKind::Query]),
+                }),
+            },
+        ];
+        let cap_refs = caps.iter().collect::<Vec<_>>();
+
+        let reduced = reduce_grant_to_cap_set(&cap_refs, &candidate);
+
+        assert_eq!(reduced.len(), 2);
+        assert!(reduced.iter().any(|grant| {
+            matches!(
+                &grant.constraints,
+                CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(prefixes),
+                    resource_kinds: Some(kinds),
+                }) if prefixes == &vec!["guild://executions/".to_owned()]
+                    && kinds == &vec![ResourceKind::Execution]
+            )
+        }));
+        assert!(reduced.iter().any(|grant| {
+            matches!(
+                &grant.constraints,
+                CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(prefixes),
+                    resource_kinds: Some(kinds),
+                }) if prefixes == &vec!["guild://queries/executions/".to_owned()]
+                    && kinds == &vec![ResourceKind::Query]
+            )
+        }));
+    }
+
+    #[test]
+    fn cap_reduction_can_split_log_grants_into_a_union() {
+        let candidate = GrantedCapability {
+            id: CapabilityId::LogWrite,
+            access: CapabilityAccess::Write,
+            constraints: CapabilityConstraints::Log(LogConstraints {
+                levels: Some(vec![Severity::Info, Severity::Error]),
+            }),
+        };
+        let caps = [
+            GrantedCapability {
+                id: CapabilityId::LogWrite,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::Log(LogConstraints {
+                    levels: Some(vec![Severity::Info]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::LogWrite,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::Log(LogConstraints {
+                    levels: Some(vec![Severity::Error]),
+                }),
+            },
+        ];
+        let cap_refs = caps.iter().collect::<Vec<_>>();
+
+        let reduced = reduce_grant_to_cap_set(&cap_refs, &candidate);
+
+        assert_eq!(reduced.len(), 2);
+        assert!(reduced.iter().any(|grant| {
+            matches!(
+                &grant.constraints,
+                CapabilityConstraints::Log(LogConstraints { levels: Some(levels) })
+                    if levels == &vec![Severity::Info]
+            )
+        }));
+        assert!(reduced.iter().any(|grant| {
+            matches!(
+                &grant.constraints,
+                CapabilityConstraints::Log(LogConstraints { levels: Some(levels) })
+                    if levels == &vec![Severity::Error]
+            )
+        }));
+    }
+
+    #[test]
+    fn policy_deny_overlap_matches_broader_read_resource_grants() {
+        let rule_grant = GrantedCapability {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec!["guild://executions/".to_owned()]),
+                resource_kinds: Some(vec![ResourceKind::Execution]),
+            }),
+        };
+        let candidate = GrantedCapability {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec![
+                    "guild://executions/".to_owned(),
+                    "guild://queries/executions/".to_owned(),
+                ]),
+                resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Query]),
+            }),
+        };
+
+        assert!(policy_grant_overlaps(&rule_grant, &candidate));
+    }
+
+    #[test]
+    fn policy_deny_overlap_ignores_disjoint_read_resource_grants() {
+        let rule_grant = GrantedCapability {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec!["guild://executions/".to_owned()]),
+                resource_kinds: Some(vec![ResourceKind::Execution]),
+            }),
+        };
+        let candidate = GrantedCapability {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec!["guild://queries/executions/".to_owned()]),
+                resource_kinds: Some(vec![ResourceKind::Query]),
+            }),
+        };
+
+        assert!(!policy_grant_overlaps(&rule_grant, &candidate));
+    }
 }

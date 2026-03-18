@@ -435,7 +435,7 @@ fn policy_decision_serializes_reasons() {
 fn http_request_constraints_validate_redirect_and_host_shape() {
     let invalid = HttpRequestConstraints {
         allowed_schemes: Some(vec![HttpScheme::Http]),
-        allowed_hosts: Some(vec!["".into(), "http://example.com".into()]),
+        allowed_hosts: Some(vec![String::new(), "http://example.com".into()]),
         allowed_host_suffixes: Some(vec!["127.0.0.1".into(), ".example.com".into()]),
         allowed_ports: Some(vec![8080]),
         allowed_methods: Some(vec![HttpMethod::Get]),

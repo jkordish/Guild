@@ -581,7 +581,7 @@ impl LocalRegistry {
             publisher: bundle.publisher.clone(),
             scheme: signature.scheme.clone(),
             bundle_sha256: signature.bundle_sha256.clone(),
-            signature: signature.clone(),
+            signature,
         };
         validate_import_targets(&root, &validated, &verification)?;
         let staging_root = reset_import_staging_root(&root)?;
@@ -615,7 +615,6 @@ impl LocalRegistry {
                 }
                 if target_dir.exists() {
                     write_json(&installed_verification_path(&target_dir), &verification)?;
-                    imported.push(load_imported_bundle_skill(&root, &target_dir)?);
                 } else {
                     fs::rename(&staged_dir, &target_dir).map_err(|error| {
                         RegistryError::new(
@@ -628,9 +627,9 @@ impl LocalRegistry {
                             "cause": error.to_string(),
                         }))
                     })?;
-                    write_json(&installed_verification_path(&target_dir), &verification)?;
-                    imported.push(load_imported_bundle_skill(&root, &target_dir)?);
                 }
+                write_json(&installed_verification_path(&target_dir), &verification)?;
+                imported.push(load_imported_bundle_skill(&root, &target_dir)?);
             }
 
             Ok(imported)
@@ -1066,7 +1065,7 @@ impl SkillRegistry for LocalRegistry {
         let record_path = evidence_record_path(&self.root, &evidence_record_id);
         let record = EvidenceRecord {
             uri: record_uri.clone(),
-            blob_uri: blob_uri.clone(),
+            blob_uri,
             mime_type: request.mime_type.clone(),
             sha256: digest_label.clone(),
             size_bytes: request.payload.len() as u64,
@@ -3587,7 +3586,7 @@ fn load_verification_record(
             "verification-invalid",
             "installed verification metadata used an unsupported signature format version",
         )
-        .with_detail(verification.signature.format_version.clone()));
+        .with_detail(verification.signature.format_version.as_str()));
     }
 
     if verification.scheme != verification.signature.scheme {

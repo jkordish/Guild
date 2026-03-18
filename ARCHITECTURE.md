@@ -551,6 +551,9 @@ The current repository now uses a small local-first policy layer instead of trea
 - child execution starts from the parent-derived subset and is then re-evaluated by the same host policy path, so policy can narrow but never widen authority
 
 The default local profile keeps current example flows working by allowing only caller-requested grants that fit the declared capability surface of the resolved local dependency tree. Named profiles then reduce or deny from that starting point using typed capability ceilings plus host-owned trust metadata. In the current repository, `http-request` is the primary higher-risk family used to prove trust-tier-aware reductions and denials.
+`cap` rules may split a broader same-family grant into a narrower union, while
+`deny` rules conservatively remove any grant that overlaps a denied typed
+ceiling rather than silently missing a broader request.
 
 `filesystem` is now also explicit in that host-side policy vocabulary, but only as a deferred family. Profiles may reference it in typed rules, and manifests may declare it, yet the runner still fails closed before guest start if filesystem survives policy into the final granted set for the active inspect slice.
 
