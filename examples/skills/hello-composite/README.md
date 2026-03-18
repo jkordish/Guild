@@ -25,6 +25,8 @@ Implementation notes:
 Run it locally from the repository root:
 
 ```bash
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/hello-composite install examples/skills/hello-inspect
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/hello-composite install examples/skills/hello-composite
 cargo run -p guild-mcp --example inspect_composite_local
 ```
 
@@ -39,7 +41,7 @@ That command:
 
 1. installs `hello-inspect`
 2. installs `hello-composite`
-3. resolves the composite by `RequestedSkillRef`
+3. resolves the public `skill://example/hello-composite@^0.1` ref to installed executable state
 4. executes it through `guild.inspect`
 5. reads back the parent execution, child execution, and child evidence resources
 
@@ -52,7 +54,7 @@ Both execution records carry host-stamped timestamps, and the child lineage is p
 3. exports `hello-composite` together with its transitive installed dependency closure as a signed bundle
 4. trusts that publisher in fresh registry B
 5. imports the verified bundle into registry B
-6. resolves `hello-composite` by `RequestedSkillRef`
+6. resolves `skill://example/hello-composite@^0.1`
 7. executes the parent and child entirely from imported installed records
 
 `export_import_composite_oci_local` proves the same dependency-closure portability contract through an OCI image layout:
@@ -62,7 +64,7 @@ Both execution records carry host-stamped timestamps, and the child lineage is p
 3. exports `hello-composite` together with its transitive installed dependency closure as an OCI image layout
 4. trusts that publisher in fresh registry B
 5. imports the verified OCI layout into registry B
-6. resolves `hello-composite` by `RequestedSkillRef`
+6. resolves `skill://example/hello-composite@^0.1`
 7. executes the parent and child entirely from imported installed records
 
 `push_pull_composite_oci_registry_local` proves the same dependency-closure portability contract through a real local OCI registry:
@@ -72,7 +74,7 @@ Both execution records carry host-stamped timestamps, and the child lineage is p
 3. publishes `hello-composite` together with its transitive installed dependency closure to a local OCI registry
 4. trusts that publisher in fresh registry B
 5. pulls the verified artifact into registry B through the normal local trust/signature gate
-6. resolves `hello-composite` by `RequestedSkillRef`
+6. resolves `skill://example/hello-composite@^0.1`
 7. executes the parent and child entirely from pulled installed records
 
 The working example uses:

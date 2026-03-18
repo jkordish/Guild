@@ -20,7 +20,7 @@ Current architecture highlights worth knowing before you follow older notes:
 - caller-requested capabilities now flow through a local host-owned policy evaluator before execution starts
 - that evaluator now derives a host-owned local trust tier and selects named profiles by actor and/or tenant before deciding grants
 - read-resource auth uses canonical parsed Guild URI scopes
-- `guild-mcp-server` is now a real stdio MCP façade over the same inspect/runtime/resource path
+- `guild mcp serve --stdio` is now the canonical stdio MCP façade over the same inspect/runtime/resource path
 - installed-state portability now includes the native signed bundle directory, a local OCI image layout mapping, and OCI registry transport, all of which still import through the same trust/signature checks
 - bounded execution-query resources now derive from the same persisted execution backend seen by guest `read-resource` and MCP `resources/read`
 
@@ -28,4 +28,6 @@ Read next:
 
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 - [`../SPECS.md`](../SPECS.md)
+- [`command-language.md`](command-language.md)
+- [`testing.md`](testing.md)
 - [`adr/README.md`](adr/README.md)

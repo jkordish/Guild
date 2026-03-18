@@ -47,6 +47,12 @@ pub struct SkillKey {
     pub name: String,
 }
 
+impl fmt::Display for SkillKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.namespace, self.name)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SkillVersion(pub Version);
 
@@ -193,6 +199,78 @@ impl JsonSchema for VersionRequirement {
 pub struct RequestedSkillRef {
     pub key: SkillKey,
     pub version_req: VersionRequirement,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestedSkillRefParseError {
+    message: String,
+}
+
+impl RequestedSkillRefParseError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for RequestedSkillRefParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for RequestedSkillRefParseError {}
+
+impl fmt::Display for RequestedSkillRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "skill://{}@{}", self.key, self.version_req)
+    }
+}
+
+impl FromStr for RequestedSkillRef {
+    type Err = RequestedSkillRefParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let input = s.trim();
+        if input.is_empty() {
+            return Err(RequestedSkillRefParseError::new(
+                "skill reference cannot be empty",
+            ));
+        }
+
+        let input = input.strip_prefix("skill://").unwrap_or(input);
+        let (key, version_req) = input.rsplit_once('@').ok_or_else(|| {
+            RequestedSkillRefParseError::new(
+                "skill reference must look like skill://<namespace>/<name>@<version>",
+            )
+        })?;
+        let (namespace, name) = key.split_once('/').ok_or_else(|| {
+            RequestedSkillRefParseError::new(
+                "skill reference must include both a namespace and name",
+            )
+        })?;
+
+        if namespace.is_empty() || name.is_empty() || name.contains('/') {
+            return Err(RequestedSkillRefParseError::new(
+                "skill reference must look like skill://<namespace>/<name>@<version>",
+            ));
+        }
+
+        let version_req = VersionRequirement::parse(version_req).map_err(|error| {
+            RequestedSkillRefParseError::new(format!(
+                "skill version requirement was invalid: {error}"
+            ))
+        })?;
+
+        Ok(Self {
+            key: SkillKey {
+                namespace: namespace.to_owned(),
+                name: name.to_owned(),
+            },
+            version_req,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
@@ -1381,6 +1459,45 @@ pub enum LocalTrustTier {
     LocalDev,
     TrustedImported,
     Restricted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalTrustTierParseError {
+    value: String,
+}
+
+impl fmt::Display for LocalTrustTierParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unknown local trust tier `{}`", self.value)
+    }
+}
+
+impl std::error::Error for LocalTrustTierParseError {}
+
+impl fmt::Display for LocalTrustTier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            Self::LocalDev => "local-dev",
+            Self::TrustedImported => "trusted-imported",
+            Self::Restricted => "restricted",
+        };
+        f.write_str(label)
+    }
+}
+
+impl FromStr for LocalTrustTier {
+    type Err = LocalTrustTierParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "local-dev" => Ok(Self::LocalDev),
+            "trusted-imported" => Ok(Self::TrustedImported),
+            "restricted" => Ok(Self::Restricted),
+            _ => Err(LocalTrustTierParseError {
+                value: s.to_owned(),
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]

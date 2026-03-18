@@ -35,6 +35,8 @@ This directory is the source fixture for the example skill:
 Run it locally from the repository root:
 
 ```bash
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/hello-inspect install examples/skills/hello-inspect
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/hello-inspect inspect skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
 cargo run -p guild-mcp --example inspect_local
 ```
 
@@ -59,7 +61,7 @@ That command:
 
 1. builds the guest from `skill-rust/`
 2. installs it into its own cleaned subdirectory under `target/dev-local-registry/`
-3. resolves it by `RequestedSkillRef`
+3. resolves the public `skill://example/hello-inspect@^0.1` ref to installed executable state
 4. executes it through `guild.inspect`
 5. reads back the stored execution and evidence resources
 
@@ -72,7 +74,7 @@ The stored execution URI is host-issued. Any caller-supplied request ID is prese
 3. exports a signed portable bundle from the installed record
 4. trusts that publisher in fresh registry B
 5. imports the verified bundle into registry B
-6. resolves `hello-inspect` by `RequestedSkillRef` in registry B
+6. resolves `skill://example/hello-inspect@^0.1` in registry B
 7. executes it through the normal Wasmtime-backed path without rebuilding
 
 `export_import_oci_local` proves the same portability contract through a local OCI image layout instead of the native bundle directory:
@@ -82,7 +84,7 @@ The stored execution URI is host-issued. Any caller-supplied request ID is prese
 3. exports the installed signed bundle payload as an OCI image layout
 4. trusts that publisher in fresh registry B
 5. imports the verified OCI layout into registry B
-6. resolves `hello-inspect` by `RequestedSkillRef` in registry B
+6. resolves `skill://example/hello-inspect@^0.1` in registry B
 7. executes it through the normal Wasmtime-backed path without rebuilding
 
 `signed_import_failures_local` proves the negative path:
@@ -102,7 +104,7 @@ The stored execution URI is host-issued. Any caller-supplied request ID is prese
 3. publishes the OCI-mapped signed installed bundle to a local OCI registry
 4. trusts that publisher in fresh registry B
 5. pulls the artifact from the registry and re-runs the same local trust/signature verification before installation
-6. resolves `hello-inspect` by `RequestedSkillRef` in registry B
+6. resolves `skill://example/hello-inspect@^0.1` in registry B
 7. executes it through the normal Wasmtime-backed path without rebuilding
 
 `signed_pull_oci_registry_failures_local` proves the same fail-closed behavior for OCI registry transport:

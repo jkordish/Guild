@@ -22,7 +22,7 @@ Current contract highlights worth knowing before you follow older notes:
 - `http-request` is now a real bounded host capability behind `guild.inspect`, not a separate MCP tool, and its host/domain/path/redirect/private-network controls are enforced by the Rust host boundary rather than guest code
 - caller-requested capabilities are now local policy input; the host decides the final granted set before execution
 - local policy now selects named profiles by actor and/or tenant and records the host-owned trust tier and verification state used for the decision
-- `guild-mcp-server` now exposes one honest stdio MCP tool (`guild.inspect`) plus Guild URI resources and templates
+- `guild mcp serve --stdio` now exposes one honest stdio MCP tool (`guild.inspect`) plus Guild URI resources and templates
 - installed-state portability now has three transport shapes over the same signed payload: the native signed bundle directory, a local OCI image layout, and OCI registry push/pull
 - bounded execution-query resources now live under `guild://queries/executions/...` and are exposed through Guild resources and templates rather than new MCP tools
 
@@ -30,5 +30,7 @@ Read next:
 
 - [`../SPECS.md`](../SPECS.md)
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
+- [`command-language.md`](command-language.md)
+- [`testing.md`](testing.md)
 - [`spec-delta-guest-abi-host-record-boundary.md`](spec-delta-guest-abi-host-record-boundary.md)
 - [`adr/README.md`](adr/README.md)

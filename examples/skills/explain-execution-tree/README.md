@@ -26,6 +26,9 @@ Evidence handling stays intentionally small:
 Canonical local proof flow:
 
 ```bash
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/hello-inspect
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/hello-composite
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree inspect skill://example/hello-composite@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"invoke-skill","access":"write","constraints":{"aliases":["hello"]}},{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
 cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example codex_explain_execution_tree_local
@@ -35,7 +38,7 @@ That command:
 
 1. installs `hello-inspect`
 2. installs `hello-composite`
-3. runs `guild.inspect` to produce a stored parent and child execution tree
+3. runs `guild inspect` to produce a stored parent and child execution tree under durable `guild://executions/...` URIs
 4. installs `explain-execution-tree`
 5. executes `explain-execution-tree` against the stored root execution URI through the same Wasmtime-backed path
 

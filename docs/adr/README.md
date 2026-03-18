@@ -22,6 +22,7 @@ Guild uses ADRs to record platform-shaping decisions and to queue the next contr
 - `0016-log-write-policy-family.md` - accepted per-family policy contract for explicit severity-scoped guest logging
 - `0017-http-request-policy-family.md` - accepted per-family policy contract for bounded outbound HTTP authority in the active inspect slice
 - `0018-filesystem-policy-contract-not-yet-implemented.md` - accepted design-only guardrail ADR for future filesystem policy semantics without implying runtime support
+- `0019-thin-guild-cli.md` - accepted thin first-class `guild` CLI contract for real local inspect/read/install/transport/trust/MCP workflows
 
 ## Backlog
 

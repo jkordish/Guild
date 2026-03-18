@@ -4,9 +4,9 @@
 
 Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages operational know-how as versioned, capability-scoped, portable skills that can be resolved, executed, inspected, and shared without giving guests ambient authority.
 
-> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, Guild can run as a real MCP stdio server, a thin `guild-codex` helper can bootstrap a local Codex dogfood root, print the real stdio MCP config, and run deterministic Codex smoke flows, signed installed bundles can be exported and imported without rebuilding, those same signed installed bundles can also be transported as local OCI image layouts and through OCI registries, execution attempts persist as host-owned records with host-minted durable IDs, evidence persists as durable Guild objects with distinct blob and record identity, and inspect/debug skills can now explain denied authority, compare two executions, and dry-run stored HTTP authority from durable records.
+> Status: pre-alpha. The current repository has a real local inspect-first vertical slice: source skills install into digest-pinned executable state, `skill://...` refs resolve before execution, Wasm component skills run through Wasmtime, execution and evidence artifacts persist under `guild://...`, signed installed bundles can move through native bundle, OCI layout, and OCI registry transport, and the real stdio MCP server still exposes one stable public tool: `guild.inspect`.
 
-## Why Guild Exists
+## Why Guild
 
 Guild is opinionated about a few things:
 
@@ -18,209 +18,132 @@ Guild is opinionated about a few things:
 
 The goal is a platform for portable, auditable, reusable skills, not a pile of tool wrappers glued together by vibes.
 
-## Current Proof Path
+## Real CLI
 
-The current repository proves a narrow but real path:
+Guild now has one real first-class local CLI: `guild`.
 
-1. build and install a source skill into local installed state
-2. resolve a `RequestedSkillRef` to a digest-pinned executable artifact
-3. execute it through the Wasm runtime with host-decided granted capabilities
-4. persist `ExecutionRecord` and `EvidenceRef` artifacts under local Guild URIs
-5. optionally export the installed skill as a signed portable transport unit and import it into a fresh Guild root through the native signed bundle directory, a local OCI image layout, or an OCI registry
-
-Useful local proof commands:
+If `guild` is already on your `PATH`, use it directly. From the repository, use the repo-local wrapper:
 
 ```bash
-make test
-cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
-cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root target/dev-local-registry/codex-local
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
-cargo run -p guild-mcp --example inspect_local
-cargo run -p guild-mcp --example inspect_http_json_local
-cargo run -p guild-mcp --example inspect_policy_local
-cargo run -p guild-mcp --example filesystem_rejection_local
-cargo run -p guild-mcp --example inspect_composite_local
-cargo run -p guild-mcp --example explain_execution_local
-cargo run -p guild-mcp --example explain_execution_tree_local
-cargo run -p guild-mcp --example explain_failure_local
-cargo run -p guild-mcp --example explain_recent_failures_local
-cargo run -p guild-mcp --example codex_explain_execution_local
-cargo run -p guild-mcp --example codex_explain_execution_tree_local
-cargo run -p guild-mcp --example export_import_local
-cargo run -p guild-mcp --example export_import_oci_local
-cargo run -p guild-mcp --example export_import_composite_local
-cargo run -p guild-mcp --example export_import_composite_oci_local
-cargo run -p guild-mcp --example signed_import_failures_local
-cargo run -p guild-mcp --example signed_import_oci_failures_local
-cargo run -p guild-mcp --example push_pull_oci_registry_local
-cargo run -p guild-mcp --example push_pull_composite_oci_registry_local
-cargo run -p guild-mcp --example signed_pull_oci_registry_failures_local
-cargo run -p guild-mcp --example mcp_stdio_local
+cargo run -q -p guild-mcp --bin guild -- ...
 ```
 
-Additional examples cover bounded local HTTP inspection, trust-tier-aware local policy profiles, explicit deferred filesystem-contract rejection, bounded execution-query resources, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, local OCI image layout portability, OCI registry portability, and tampered or untrusted import rejection.
+The current local command surface is:
 
-### Authority Debug Skills
+- `guild inspect`
+- `guild read`
+- `guild install`
+- `guild export`
+- `guild import`
+- `guild push`
+- `guild pull`
+- `guild trust ...`
+- `guild mcp serve --stdio`
 
-Guild now also has three operator-facing inspect/debug skills over the existing durable execution store:
+Intentionally deferred:
 
-- `explain-capability-denial` reads one stored execution and makes requested vs granted vs denied or reduced capability state explicit
-- `diff-execution-authority` compares two stored executions and highlights the authority differences that changed the outcome
-- `explain-http-authority` dry-runs one candidate HTTP request against the stored granted HTTP authority of an execution without performing the request
+- `guild build`
+- `guild deploy`
 
-All three run through `guild.inspect`, read durable execution resources through `read-resource`, and keep the public MCP surface unchanged.
+The canonical command and URI grammar lives at [`docs/command-language.md`](docs/command-language.md).
 
-### HTTP Proof Flow
+## Quickstart
 
-Guild now has one real new inspect-slice capability family: `http-request`.
+Guild requires a local registry root for CLI operations. Pass `--registry-root <path>` or set `GUILD_REGISTRY_ROOT`.
 
-The canonical local proof command is:
+### Install, Inspect, Read
 
 ```bash
-cargo run -p guild-mcp --example inspect_http_json_local
+export GUILD_REGISTRY_ROOT=target/dev-local-registry/hello
+
+cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
+
+cargo run -q -p guild-mcp --bin guild -- inspect \
+  skill://example/hello-inspect@^0.1 \
+  --input-json '{"name":"Ada"}' \
+  --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
+  --json
+
+cargo run -q -p guild-mcp --bin guild -- read guild://executions/<execution-id>
 ```
 
-That example starts a deterministic local HTTP server, installs the primitive `inspect-http-json` skill, grants it bounded outbound HTTP authority through `guild.inspect`, prints the successful stored execution, then runs a denied host-mismatch request and prints the persisted rejected execution. The bounded grant now makes loopback and raw IP-literal access explicit for the local proof flow, while the runtime keeps redirects disabled unless they are explicitly granted. The public MCP surface does not change; HTTP is exercised through `guild.inspect`, not a new MCP tool.
+What that flow shows:
 
-### Policy Proof Flow
+- `install` builds source into installed executable state
+- `inspect` executes a human-facing `skill://...` ref through the real Guild path
+- success returns a durable `guild://executions/...` receipt
+- `read` goes back through the same resource backend used by MCP and guest `read-resource`
 
-Guild now also has a real local host-owned policy evaluator with named profiles and host-owned local trust tiers.
-
-The canonical local proof command is:
+### Trust And Transport
 
 ```bash
-cargo run -p guild-mcp --example inspect_policy_local
+cargo run -q -p guild-mcp --bin guild -- trust generate \
+  --publisher-id local.example \
+  --display-name "Local Example" \
+  --output target/dev-local-registry/local.example.json
+
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/a export bundle \
+  skill://example/hello-inspect@^0.1 \
+  --signer target/dev-local-registry/local.example.json \
+  --output target/dev-local-registry/bundle
+
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b trust add \
+  --identity-file target/dev-local-registry/local.example.json
+
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b import bundle \
+  target/dev-local-registry/bundle
 ```
 
-That example installs `inspect-http-json`, exports it as a signed bundle, imports it into two fresh Guild roots with different publisher trust tiers, writes a local `policy.json` with named profiles plus a tenant binding, then proves a small authority-debugging story through the same `guild.inspect` surface: a trusted imported execution that keeps bounded redirect authority, a restricted-root execution under the unrestricted profile, and a restricted imported execution whose HTTP grant is reduced before guest start and then rejected by the host when a redirect arrives. It then runs `explain-execution`, `explain-capability-denial`, `diff-execution-authority`, and `explain-http-authority` against those persisted execution URIs to prove the denial, profile selection, trust metadata, and dry-run HTTP authority remain host-owned, durable, and explainable through the same resource path.
+That flow stays honest to the substrate:
 
-### Filesystem Rejection Proof Flow
+- export/import operate on installed signed bundle semantics, not source directories
+- trust is explicit and local
+- OCI transport uses the same installed signed bundle contract carried through another transport shape
 
-Guild now also exposes an explicit host-side filesystem capability contract while keeping runtime filesystem access deferred.
+## MCP And Codex
 
-The canonical local proof command is:
+Guild ships a real stdio MCP server through the same CLI:
 
 ```bash
-cargo run -p guild-mcp --example filesystem_rejection_local
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/mcp-local mcp serve --stdio
 ```
 
-That example builds a temporary `hello-inspect` variant whose manifest declares the typed filesystem contract, requests a matching filesystem grant through `guild.inspect`, shows the host-owned rejected execution record, and then runs `explain-execution` against that persisted receipt. The contract is real in the host-side manifest and policy surface, but the active Wasm inspect slice still rejects filesystem before guest start. No guest filesystem import, preopened directory, or host file IO is added in this milestone.
-
-### Artifact Query Proof Flow
-
-Guild now also exposes one bounded local execution-query layer through Guild resources and resource templates, not through a sprawl of new MCP tools.
-
-The canonical local proof command is:
-
-```bash
-cargo run -p guild-mcp --example explain_recent_failures_local
-```
-
-That example produces a small deterministic set of stored executions with different outcomes, reads `guild://queries/executions/failures/recent/10` directly through the host resource backend, then runs the new inspect-only `summarize-execution-query` skill against that same query URI through `guild.inspect`. The result is a structured report over canonical execution URIs, statuses, policy reasons, and evidence presence. Query reads remain host-mediated, bounded, and capability-scoped; the public MCP tool surface still does not grow.
-
-## MCP Server
-
-Guild now ships a real stdio MCP server entrypoint:
-
-```bash
-cargo run -p guild-mcp --bin guild-mcp-server -- --registry-root target/dev-local-registry/mcp-stdio-local
-```
-
-The current MCP surface is intentionally small:
+The public MCP surface is intentionally small:
 
 - one public tool: `guild.inspect`
-- a bounded `resources/list` view of recent execution records
-- durable Guild execution records are exposed through `resources/read`
-- durable evidence-record payload URIs, evidence-record metadata URIs, and blob URIs are exposed through `resources/read`
-- bounded execution-query results are exposed through `resources/read`
-- resource templates are exposed for `guild://executions/{execution_id}`, `guild://objects/records/{evidence_record_id}`, `guild://objects/records/{evidence_record_id}/metadata`, `guild://objects/sha256/{digest}`, `guild://queries/executions/recent/{limit}`, `guild://queries/executions/failures/recent/{limit}`, `guild://queries/executions/by-status/{status}/{limit}`, and `guild://queries/executions/by-skill/{namespace}/{name}/{limit}`
+- Guild execution, evidence, object, and bounded query resources through `resources/read`
 
-Unsuccessful inspect executions that reached the real runtime path are surfaced as MCP tool errors with `isError: true`, while preserving the persisted execution record URI instead of collapsing it into an opaque protocol failure.
-
-## Codex Workflow
-
-Guild now ships one repo-native workflow for using the real stdio server from Codex without inventing a second path:
+For Codex, Guild keeps one helper path instead of inventing a second server model:
 
 ```bash
 cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
-```
-
-That command:
-
-1. creates or resets a fresh local Guild root
-2. installs the example skills used by the recommended Codex dogfood flows plus the current authority-debug helpers for manual operator inspection
-3. prints the exact `guild-mcp-server` launch command
-4. prints a project-scoped `.codex/config.toml` snippet for the real stdio server
-5. prints a ready-to-use `codex mcp add ... -- <command>` convenience registration command
-6. prints exact follow-up `guild-codex smoke` commands for the two recommended dogfood flows
-
-Codex's current config model supports both `~/.codex/config.toml` and project-scoped `.codex/config.toml`, with project config loaded only when the repo is trusted. Guild leans on that existing Codex behavior rather than adding a special integration hook.
-
-The printed Codex registration uses the existing stdio server directly:
-
-```bash
-codex mcp add guild-local --env GUILD_REGISTRY_ROOT=/absolute/path/to/target/dev-local-registry/codex-local -- cargo run -q --manifest-path /absolute/path/to/Guild/crates/guild-mcp/Cargo.toml --bin guild-mcp-server --
-```
-
-The matching config snippet is the recommended path for trusted repos. It uses the same launcher, keeps the repo `cwd` explicit, and shares the same `GUILD_REGISTRY_ROOT` environment variable. The printed `codex mcp add` command is still useful as a convenience path, but the launcher itself is now cwd-independent because it uses an explicit Cargo manifest path. If you only need the config again later, print it without reinstalling skills:
-
-```bash
 cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root target/dev-local-registry/codex-local
 ```
 
-### Recommended Codex Dogfood Flows
+`guild-codex` remains the helper for bootstrap, deterministic scenario prep, and smoke flows. The real local server launch it prints is `guild mcp serve --stdio`.
 
-The two recommended local-first Codex flows stay entirely on the existing stdio MCP path and prove durable artifact reuse instead of protocol handshakes alone.
+## What Is Real Today
 
-1. Explain one execution.
-   Ask Codex to run `example/hello-inspect` through `guild.inspect`, then run `example/explain-execution` against the returned execution URI with a `read-resource` grant scoped to `guild://executions/` and `guild://objects/records/`.
-2. Explain one execution tree.
-   Ask Codex to run `example/hello-composite` through `guild.inspect`, then run `example/explain-execution-tree` against the returned root execution URI with `read-resource` scoped to `guild://executions/` and `guild://objects/records/`.
+The current repository already has:
 
-The deterministic local smoke commands for those same flows are:
+- source-to-installed lifecycle with atomic local installs
+- `RequestedSkillRef -> ResolvedSkillRef` execution boundaries
+- real Wasmtime-backed Wasm component execution
+- inspect-only primitive and composite skills
+- alias-scoped child dependency invocation
+- durable host-owned execution and evidence records under `guild://...`
+- guest-side `read-resource` over the same backend MCP uses
+- explain/debug skills over persisted artifacts
+- signed local bundle export/import with local trust verification
+- OCI image layout and OCI registry transport for that same installed signed bundle contract
+- a real stdio MCP server with one stable public tool, `guild.inspect`
 
-```bash
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
-```
-
-The lower-level compatibility proof commands still exist:
-
-```bash
-cargo run -p guild-mcp --example codex_explain_execution_local
-cargo run -p guild-mcp --example codex_explain_execution_tree_local
-```
-
-Those examples now wrap the same shared smoke path used by `guild-codex`, so they stay deterministic even when a full authenticated Codex-in-the-loop run is impractical in CI.
-
-This milestone intentionally does not add MCP HTTP transport, subscriptions, more top-level MCP tools, new capability families, `plan`, or `apply`. Guild remains local-first, stdio-first, inspect-only, and resource-oriented.
-
-## Integrity Model
-
-The current inspect slice is intentionally strict about a few things:
-
-- durable execution IDs are minted by the host; caller-supplied IDs are correlation data only
-- `EvidenceRef` identifies a host-issued evidence record URI for a single emission, while payload blobs remain content-addressed by digest
-- `guild://objects/records/{evidence_record_id}` remains the compatibility payload-dereference URI for one evidence emission, while `guild://objects/records/{evidence_record_id}/metadata` now exposes the host-owned `EvidenceRecord` JSON directly through the same backend
-- requested resolution fails closed if the same skill key and version exist under multiple digests
-- local source installs stage and validate in a temporary directory before an atomic move into installed state
-- host authorization denials persist as host-owned rejected executions instead of leaking into guest-owned failure semantics
-- the active Wasm inspect ABI now instantiates inspect skills only against `guild-skill-inspect-v1`, which exposes only `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
-- broader typed families remain in shared host vocabulary, but unsupported capability imports are absent from the active inspect guest ABI and broader Guild component imports now fail closed as host-owned `unsupported-runtime-surface` rejections rather than degrading into generic runtime failures
-- `filesystem` is now an explicit typed host-side capability contract with named roots, guest-path prefixes, host-path concepts, and read/write/create/append operations, but the active inspect slice still rejects it before guest start
-- `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
-- `http-request` is host-mediated, typed, bounded, and fail-closed; method, scheme, host, domain suffix, port, path, redirect, timeout, response-size, loopback, private-network, link-local, and IP-literal checks stay host-owned
-- the host-to-guest inspect projection is explicit: the richer durable execution model stays host-owned, while the guest sees the inspect-only execution context and the full active HTTP grant shape
-- caller-requested capabilities are policy input, not final authority; a local `policy.json` plus host-owned defaults decide the granted capability set before execution
-- policy now selects a named local profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
-- policy reductions and rejections persist as host-owned execution metadata and stay visible to explain/debug flows
-- durable execution records now carry host-stamped start and finish timestamps
-- bounded local execution-query resources now derive deterministically from the same persisted execution store used by explain/debug flows
-- the stdio MCP server exposes only `guild.inspect` plus honest Guild resource reads; HTTP transports and subscriptions remain deferred
+For the exhaustive proof commands, regression sweeps, and example-by-example smoke flows, see [`docs/testing.md`](docs/testing.md).
 
 ## Canonical Docs
 
+- [`docs/command-language.md`](docs/command-language.md) - canonical public CLI verbs, URI grammar, and terminal snippets
+- [`docs/testing.md`](docs/testing.md) - local proof commands, verification commands, and smoke workflows
 - [`SPECS.md`](SPECS.md) - normative contract and conformance requirements
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) - practical system view and data flow
 - [`docs/adr/README.md`](docs/adr/README.md) - ADR index and follow-on ADR backlog
@@ -228,92 +151,3 @@ The current inspect slice is intentionally strict about a few things:
 - [`docs/roadmap.md`](docs/roadmap.md) - phased build priorities
 
 Compatibility wrappers remain at [`docs/contracts.md`](docs/contracts.md) and [`docs/architecture.md`](docs/architecture.md) so existing links keep working.
-
-## Repository Map
-
-```text
-.
-├── README.md
-├── SPECS.md
-├── ARCHITECTURE.md
-├── AGENTS.md
-├── CONTRIBUTING.md
-├── Cargo.toml
-├── docs/
-│   ├── adr/
-│   ├── architecture.md
-│   ├── contracts.md
-│   └── roadmap.md
-├── wit/
-│   └── guild-skill-v1.wit
-├── examples/
-│   └── skills/
-└── crates/
-    ├── guild-types/
-    ├── guild-manifest/
-    ├── guild-registry/
-    ├── guild-runner/
-    ├── guild-mcp/
-    └── guild-sdk-rust/
-```
-
-Current crate responsibilities:
-
-- `guild-types`: shared types for identities, capabilities, execution, and evidence
-- `guild-manifest`: source and installed manifest model
-- `guild-registry`: local installation, native signed-bundle flow, OCI image layout flow, OCI registry transport flow, resolution, and Guild resource persistence
-- `guild-runner`: runtime orchestration, capability checks, and execution boundary
-- `guild-mcp`: stable facade surface, stdio MCP server, and local proof examples
-- `guild-sdk-rust`: guest authoring support for Rust-based skills
-
-## Current Scope
-
-What is real today:
-
-- source-to-installed manifest lifecycle
-- digest-pinned local resolution
-- Wasmtime-backed Wasm component execution
-- real host-mediated outbound HTTP execution through the Wasmtime runtime path
-- typed capability enforcement for the implemented host imports
-- explicit host-side filesystem contract modeling plus preflight rejection guardrails for the deferred family
-- local file-backed policy evaluation with named profiles, actor/tenant bindings, and host-owned trust tiers that can allow, reduce, or reject caller-requested capabilities before execution
-- host-minted durable execution IDs with create-only execution persistence
-- durable execution persistence with host-stamped timestamps
-- split evidence blob and evidence-record persistence
-- composite child invocation with durable lineage
-- one primitive `inspect-http-json` example that proves bounded HTTP fetches through `guild.inspect`
-- one inspect-only `summarize-execution-query` example that reads bounded execution-query resources and returns a deterministic structured report
-- real stdio MCP server support for `guild.inspect` and Guild URI resources
-- a thin `guild-codex` helper that bootstraps a local dogfood root, prints the real Codex stdio MCP config, and runs deterministic smoke flows
-- deterministic MCP-path dogfood flows for `explain-execution` and `explain-execution-tree`
-- signed local bundle export and import with trust-store verification
-- local OCI image layout export and import as an additional transport for the same signed installed-state bundle semantics
-- OCI registry push and pull for that same signed installed-state transport without changing the local trust/signature gate on import
-- bounded local execution-query resources and templates over the same backend used by guest `read-resource` and MCP `resources/read`
-
-What is still deferred:
-
-- remote or distributed policy beyond the local host-owned evaluator
-- a broader policy language beyond the current typed local `policy.json` profile model
-- filesystem runtime support, preopened directories, and host file IO for guests
-- subscriptions, list-changed notifications, full-text search, and broader evidence-specific query surfaces
-- full `plan` mode
-- `apply` mode
-- Sigstore, transparency logs, remote trust distribution, and broader publication/discovery infrastructure
-
-## Development
-
-Workspace commands:
-
-```bash
-make check
-make test
-make fmt
-make clippy
-```
-
-The canonical example flows install into cleaned subdirectories under `target/dev-local-registry/` so proof runs stay isolated from one another.
-
-## Naming
-
-The name **Guild** implies shared operational knowledge made durable and reusable.

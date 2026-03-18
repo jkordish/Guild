@@ -7,22 +7,29 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::str::FromStr;
 
 use guild_registry::{
-    InstalledSkill, LocalRegistry, LocalSourceInstaller, RegistryError, SkillRegistry,
+    InstalledSkill, LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller, RegistryError,
+    SkillRegistry, execution_query_resource_uri,
 };
+use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
-    CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
-    EvidenceAudience, ExecutionRecord, GrantedCapability, InvokeDependencyConstraints,
-    ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResourceKind, SkillKey,
-    VersionRequirement,
+    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
+    EmitEvidenceConstraints, EvidenceAudience, ExecutionQueryResource, ExecutionRecord,
+    GrantedCapability, HttpMethod, HttpRequestConstraints, HttpScheme, InstalledVerificationState,
+    InvokeDependencyConstraints, LocalPolicyConfig, LocalTrustTier, PolicyProfile,
+    PolicyProfileBinding, PolicyRule, PolicyRuleEffect, PolicyRuleTarget, ReadResourceConstraints,
+    RedactionClass, RequestedSkillRef, ResourceKind, SkillKey, VersionRequirement,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::SERVER_BINARY_NAME;
 use crate::protocol::{
     CallToolResult, InitializeResult, PROTOCOL_VERSION_2025_11_25, ReadResourceResult,
 };
+use crate::{CLI_BINARY_NAME, GuildMcpFacade, InspectRequest, McpError};
+
+#[path = "../../../test-support/http_test_server.rs"]
+mod http_test_server;
 
 pub const CODEX_WORKFLOW_BINARY_NAME: &str = "guild-codex";
 pub const DEFAULT_CODEX_SERVER_NAME: &str = "guild-local";
@@ -30,7 +37,7 @@ const DEFAULT_CODEX_REGISTRY_ROOT: &str = "target/dev-local-registry/codex-local
 const GUILD_MCP_MANIFEST_RELATIVE_PATH: &str = "crates/guild-mcp/Cargo.toml";
 const EXAMPLE_NAMESPACE: &str = "example";
 const EXAMPLE_VERSION_REQUIREMENT: &str = "^0.1";
-const DEFAULT_CODEX_SKILLS: [&str; 7] = [
+const DEFAULT_CODEX_SKILLS: [&str; 9] = [
     "hello-inspect",
     "hello-composite",
     "explain-execution",
@@ -38,13 +45,33 @@ const DEFAULT_CODEX_SKILLS: [&str; 7] = [
     "explain-capability-denial",
     "diff-execution-authority",
     "explain-http-authority",
+    "inspect-http-json",
+    "summarize-execution-query",
 ];
+const RECENT_FAILURE_TRIAGE_SKILLS: [&str; 3] = [
+    "inspect-http-json",
+    "summarize-execution-query",
+    "explain-execution",
+];
+const POLICY_DENIAL_DEBUG_SKILLS: [&str; 4] = [
+    "explain-execution",
+    "explain-capability-denial",
+    "diff-execution-authority",
+    "explain-http-authority",
+];
+const EXECUTION_TREE_SCENARIO_SKILLS: [&str; 3] =
+    ["hello-inspect", "hello-composite", "explain-execution-tree"];
 const EXPLAIN_EXECUTION_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::ExplainExecution];
 const EXPLAIN_EXECUTION_TREE_ONLY: [CodexSmokeSelection; 1] =
     [CodexSmokeSelection::ExplainExecutionTree];
-const ALL_CODEX_SMOKE_FLOWS: [CodexSmokeSelection; 2] = [
+const RECENT_FAILURE_TRIAGE_ONLY: [CodexSmokeSelection; 1] =
+    [CodexSmokeSelection::RecentFailureTriage];
+const POLICY_DENIAL_DEBUG_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::PolicyDenialDebug];
+const ALL_CODEX_SMOKE_FLOWS: [CodexSmokeSelection; 4] = [
     CodexSmokeSelection::ExplainExecution,
     CodexSmokeSelection::ExplainExecutionTree,
+    CodexSmokeSelection::RecentFailureTriage,
+    CodexSmokeSelection::PolicyDenialDebug,
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -85,9 +112,122 @@ pub struct CodexBootstrapOutput {
     Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[serde(rename_all = "kebab-case")]
+pub enum CodexScenarioSelection {
+    RecentFailureTriage,
+    PolicyDenialDebug,
+    ExecutionTree,
+}
+
+impl std::fmt::Display for CodexScenarioSelection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::RecentFailureTriage => "recent-failure-triage",
+            Self::PolicyDenialDebug => "policy-denial-debug",
+            Self::ExecutionTree => "execution-tree",
+        };
+        f.write_str(value)
+    }
+}
+
+impl FromStr for CodexScenarioSelection {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "recent-failure-triage" => Ok(Self::RecentFailureTriage),
+            "policy-denial-debug" => Ok(Self::PolicyDenialDebug),
+            "execution-tree" => Ok(Self::ExecutionTree),
+            _ => Err(format!(
+                "unknown scenario `{value}`; expected recent-failure-triage, policy-denial-debug, or execution-tree"
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct CodexScenarioSummary {
+    pub registry_root: PathBuf,
+    pub scenario: CodexScenarioSelection,
+    pub installed_skills: Vec<BootstrappedSkill>,
+    pub subject_execution_uris: Vec<String>,
+    #[serde(default)]
+    pub comparison_execution_uris: Vec<String>,
+    #[serde(default)]
+    pub query_uris: Vec<String>,
+    #[serde(default)]
+    pub candidate_urls: Vec<String>,
+    pub recommended_codex_ask: String,
+}
+
+impl CodexScenarioSummary {
+    #[must_use]
+    pub fn render_text(&self) -> String {
+        let mut output = String::new();
+        let _ = writeln!(output, "Guild Codex scenario ready.");
+        let _ = writeln!(output, "registry root: {}", self.registry_root.display());
+        let _ = writeln!(output, "scenario: {}", self.scenario);
+
+        if !self.installed_skills.is_empty() {
+            let _ = writeln!(output);
+            let _ = writeln!(output, "installed skills:");
+            for skill in &self.installed_skills {
+                let _ = writeln!(
+                    output,
+                    "- {}/{}@{} ({})",
+                    skill.namespace, skill.name, skill.version, skill.digest
+                );
+            }
+        }
+
+        if !self.subject_execution_uris.is_empty() {
+            let _ = writeln!(output);
+            let _ = writeln!(output, "subject execution URIs:");
+            for uri in &self.subject_execution_uris {
+                let _ = writeln!(output, "- {uri}");
+            }
+        }
+
+        if !self.comparison_execution_uris.is_empty() {
+            let _ = writeln!(output);
+            let _ = writeln!(output, "comparison execution URIs:");
+            for uri in &self.comparison_execution_uris {
+                let _ = writeln!(output, "- {uri}");
+            }
+        }
+
+        if !self.query_uris.is_empty() {
+            let _ = writeln!(output);
+            let _ = writeln!(output, "query URIs:");
+            for uri in &self.query_uris {
+                let _ = writeln!(output, "- {uri}");
+            }
+        }
+
+        if !self.candidate_urls.is_empty() {
+            let _ = writeln!(output);
+            let _ = writeln!(output, "candidate URLs:");
+            for url in &self.candidate_urls {
+                let _ = writeln!(output, "- {url}");
+            }
+        }
+
+        let _ = writeln!(output);
+        let _ = writeln!(output, "recommended Codex ask:");
+        let _ = writeln!(output, "{}", self.recommended_codex_ask);
+
+        output.trim_end().into()
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[serde(rename_all = "kebab-case")]
 pub enum CodexSmokeSelection {
     ExplainExecution,
     ExplainExecutionTree,
+    RecentFailureTriage,
+    PolicyDenialDebug,
     All,
 }
 
@@ -97,6 +237,8 @@ impl CodexSmokeSelection {
         match self {
             Self::ExplainExecution => &EXPLAIN_EXECUTION_ONLY,
             Self::ExplainExecutionTree => &EXPLAIN_EXECUTION_TREE_ONLY,
+            Self::RecentFailureTriage => &RECENT_FAILURE_TRIAGE_ONLY,
+            Self::PolicyDenialDebug => &POLICY_DENIAL_DEBUG_ONLY,
             Self::All => &ALL_CODEX_SMOKE_FLOWS,
         }
     }
@@ -107,6 +249,8 @@ impl std::fmt::Display for CodexSmokeSelection {
         let value = match self {
             Self::ExplainExecution => "explain-execution",
             Self::ExplainExecutionTree => "explain-execution-tree",
+            Self::RecentFailureTriage => "recent-failure-triage",
+            Self::PolicyDenialDebug => "policy-denial-debug",
             Self::All => "all",
         };
         f.write_str(value)
@@ -120,9 +264,11 @@ impl FromStr for CodexSmokeSelection {
         match value {
             "explain-execution" => Ok(Self::ExplainExecution),
             "explain-execution-tree" => Ok(Self::ExplainExecutionTree),
+            "recent-failure-triage" => Ok(Self::RecentFailureTriage),
+            "policy-denial-debug" => Ok(Self::PolicyDenialDebug),
             "all" => Ok(Self::All),
             _ => Err(format!(
-                "unknown flow `{value}`; expected explain-execution, explain-execution-tree, or all"
+                "unknown flow `{value}`; expected explain-execution, explain-execution-tree, recent-failure-triage, policy-denial-debug, or all"
             )),
         }
     }
@@ -133,6 +279,12 @@ pub struct CodexSmokeFlowSummary {
     pub flow: CodexSmokeSelection,
     pub subject_execution_uri: String,
     pub report_execution_uri: String,
+    #[serde(default)]
+    pub additional_report_execution_uris: Vec<String>,
+    #[serde(default)]
+    pub comparison_execution_uris: Vec<String>,
+    #[serde(default)]
+    pub subject_query_uri: Option<String>,
     pub subject_resource_items: usize,
     pub report_resource_items: usize,
     pub subject_emitted_evidence: usize,
@@ -175,6 +327,21 @@ impl CodexSmokeSummary {
                 "report execution uri: {}",
                 flow.report_execution_uri
             );
+            if !flow.additional_report_execution_uris.is_empty() {
+                let _ = writeln!(output, "additional report execution URIs:");
+                for uri in &flow.additional_report_execution_uris {
+                    let _ = writeln!(output, "- {uri}");
+                }
+            }
+            if !flow.comparison_execution_uris.is_empty() {
+                let _ = writeln!(output, "comparison execution URIs:");
+                for uri in &flow.comparison_execution_uris {
+                    let _ = writeln!(output, "- {uri}");
+                }
+            }
+            if let Some(query_uri) = &flow.subject_query_uri {
+                let _ = writeln!(output, "subject query uri: {query_uri}");
+            }
             let _ = writeln!(
                 output,
                 "subject resource contents: {} item(s)",
@@ -259,6 +426,31 @@ impl From<std::io::Error> for CodexWorkflowError {
     }
 }
 
+impl From<McpError> for CodexWorkflowError {
+    fn from(value: McpError) -> Self {
+        let receipt = value.receipt.as_ref().map(|receipt| {
+            json!({
+                "uri": receipt.uri,
+                "execution_id": receipt.execution_id,
+            })
+        });
+        let mut error = Self::new(value.code, value.message);
+        let detail = match (value.detail, receipt) {
+            (Some(detail), Some(receipt)) => Some(json!({
+                "detail": detail,
+                "receipt": receipt,
+            })),
+            (Some(detail), None) => Some(*detail),
+            (None, Some(receipt)) => Some(json!({ "receipt": receipt })),
+            (None, None) => None,
+        };
+        if let Some(detail) = detail {
+            error = error.with_detail(detail);
+        }
+        error
+    }
+}
+
 impl From<serde_json::Error> for CodexWorkflowError {
     fn from(value: serde_json::Error) -> Self {
         Self::new("codex-workflow-json", "failed to encode or decode JSON")
@@ -312,6 +504,8 @@ pub fn recommended_smoke_commands(registry_root: impl AsRef<Path>) -> Vec<String
     [
         CodexSmokeSelection::ExplainExecution,
         CodexSmokeSelection::ExplainExecutionTree,
+        CodexSmokeSelection::RecentFailureTriage,
+        CodexSmokeSelection::PolicyDenialDebug,
     ]
     .into_iter()
     .map(|flow| {
@@ -337,20 +531,38 @@ pub fn bootstrap_codex_registry(
 ) -> Result<CodexBootstrapSummary, RegistryError> {
     let repo_root = repo_root();
     let registry_root = prepare_registry_root(registry_root, reset)?;
-    let installer = LocalSourceInstaller::new(&registry_root)?;
-
-    let mut skills = Vec::with_capacity(DEFAULT_CODEX_SKILLS.len());
-    for skill_dir in DEFAULT_CODEX_SKILLS {
-        let installed_skill =
-            installer.install(repo_root.join("examples/skills").join(skill_dir))?;
-        skills.push(summarize_installed_skill(skill_dir, installed_skill));
-    }
+    let skills = ensure_example_skills_installed(&registry_root, &DEFAULT_CODEX_SKILLS)?;
 
     Ok(CodexBootstrapSummary {
         repo_root,
         registry_root,
         skills,
     })
+}
+
+/// Prepare one deterministic local Codex dogfood scenario and return the
+/// resulting execution/query URIs plus one recommended Codex ask string.
+///
+/// # Errors
+///
+/// Returns an error if the requested registry root cannot be opened, the
+/// required example skills cannot be installed, or the scenario cannot be
+/// seeded into durable Guild resources.
+pub fn prepare_codex_scenario(
+    registry_root: impl AsRef<Path>,
+    scenario: CodexScenarioSelection,
+) -> Result<CodexScenarioSummary, CodexWorkflowError> {
+    let registry_root = absolute_path(registry_root);
+
+    match scenario {
+        CodexScenarioSelection::RecentFailureTriage => {
+            prepare_recent_failure_triage_scenario(&registry_root)
+        }
+        CodexScenarioSelection::PolicyDenialDebug => {
+            prepare_policy_denial_debug_scenario(&registry_root)
+        }
+        CodexScenarioSelection::ExecutionTree => prepare_execution_tree_scenario(&registry_root),
+    }
 }
 
 #[must_use]
@@ -376,8 +588,11 @@ pub fn codex_server_config(
             "--manifest-path".into(),
             manifest_path.to_string_lossy().into_owned(),
             "--bin".into(),
-            SERVER_BINARY_NAME.into(),
+            CLI_BINARY_NAME.into(),
             "--".into(),
+            "mcp".into(),
+            "serve".into(),
+            "--stdio".into(),
         ],
         env,
     }
@@ -485,7 +700,7 @@ pub fn run_codex_smoke(
         .flows()
         .iter()
         .copied()
-        .map(|flow| run_single_codex_smoke_flow(&mut client, flow))
+        .map(|flow| run_single_codex_smoke_flow(&registry_root, &mut client, flow))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(CodexSmokeSummary {
@@ -589,6 +804,7 @@ fn required_skill_names_for_flow(flow: CodexSmokeSelection) -> &'static [&'stati
         CodexSmokeSelection::ExplainExecutionTree => {
             &["hello-inspect", "hello-composite", "explain-execution-tree"]
         }
+        CodexSmokeSelection::RecentFailureTriage | CodexSmokeSelection::PolicyDenialDebug => &[],
         CodexSmokeSelection::All => unreachable!("all expands before per-flow validation"),
     }
 }
@@ -605,12 +821,19 @@ fn requested_example_skill_ref(skill_name: &str) -> RequestedSkillRef {
 }
 
 fn run_single_codex_smoke_flow(
+    registry_root: &Path,
     client: &mut McpStdioClient,
     flow: CodexSmokeSelection,
 ) -> Result<CodexSmokeFlowSummary, CodexWorkflowError> {
     match flow {
         CodexSmokeSelection::ExplainExecution => run_explain_execution_smoke(client),
         CodexSmokeSelection::ExplainExecutionTree => run_explain_execution_tree_smoke(client),
+        CodexSmokeSelection::RecentFailureTriage => {
+            run_recent_failure_triage_smoke(registry_root, client)
+        }
+        CodexSmokeSelection::PolicyDenialDebug => {
+            run_policy_denial_debug_smoke(registry_root, client)
+        }
         CodexSmokeSelection::All => unreachable!("all expands before per-flow execution"),
     }
 }
@@ -658,6 +881,9 @@ fn run_explain_execution_smoke(
         flow: CodexSmokeSelection::ExplainExecution,
         subject_execution_uri: hello_record.receipt.uri,
         report_execution_uri: explain_record.receipt.uri,
+        additional_report_execution_uris: Vec::new(),
+        comparison_execution_uris: Vec::new(),
+        subject_query_uri: None,
         subject_resource_items: target_resource.contents.len(),
         report_resource_items: report_resource.contents.len(),
         subject_emitted_evidence: hello_record.emitted_evidence.len(),
@@ -721,6 +947,9 @@ fn run_explain_execution_tree_smoke(
         flow: CodexSmokeSelection::ExplainExecutionTree,
         subject_execution_uri: composite_record.receipt.uri,
         report_execution_uri: explain_record.receipt.uri,
+        additional_report_execution_uris: Vec::new(),
+        comparison_execution_uris: Vec::new(),
+        subject_query_uri: None,
         subject_resource_items: subject_resource.contents.len(),
         report_resource_items: report_resource.contents.len(),
         subject_emitted_evidence: composite_record.emitted_evidence.len(),
@@ -737,8 +966,735 @@ fn run_explain_execution_tree_smoke(
     })
 }
 
-fn emit_evidence_grant() -> Value {
-    serde_json::to_value(GrantedCapability {
+type LocalFacade = GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter>;
+
+fn run_recent_failure_triage_smoke(
+    registry_root: &Path,
+    client: &mut McpStdioClient,
+) -> Result<CodexSmokeFlowSummary, CodexWorkflowError> {
+    let scenario =
+        prepare_codex_scenario(registry_root, CodexScenarioSelection::RecentFailureTriage)?;
+    let subject_execution_uri = scenario
+        .subject_execution_uris
+        .first()
+        .cloned()
+        .ok_or_else(|| {
+            CodexWorkflowError::new(
+                "codex-smoke-missing-subject-execution",
+                "recent-failure-triage scenario did not produce a subject execution URI",
+            )
+        })?;
+    let query_uri = scenario.query_uris.first().cloned().ok_or_else(|| {
+        CodexWorkflowError::new(
+            "codex-smoke-missing-query-uri",
+            "recent-failure-triage scenario did not produce a query URI",
+        )
+    })?;
+
+    let summarize_response_value = client.request(
+        "tools/call",
+        &example_inspect_request(
+            "summarize-execution-query",
+            &json!({ "query_uri": query_uri }),
+            &[query_read_grant()],
+        ),
+    )?;
+    let summarize_response: CallToolResult =
+        McpStdioClient::parse_result(&summarize_response_value)?;
+    let summarize_record = parse_execution_record(&summarize_response)?;
+    let summarize_output = output_structured_value(
+        &summarize_record,
+        "codex-smoke-query-summary-missing-output",
+        "summarize-execution-query did not return structured output",
+    )?;
+    let returned_matches = summarize_output
+        .get("returned_matches")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            CodexWorkflowError::new(
+                "codex-smoke-query-summary-invalid",
+                "summarize-execution-query did not report returned_matches",
+            )
+        })?;
+    if returned_matches == 0 {
+        return Err(CodexWorkflowError::new(
+            "codex-smoke-query-summary-empty",
+            "recent-failure-triage summary returned zero matches",
+        ));
+    }
+
+    let subject_resource_value =
+        client.request("resources/read", &json!({ "uri": subject_execution_uri }))?;
+    let subject_resource: ReadResourceResult =
+        McpStdioClient::parse_result(&subject_resource_value)?;
+    let report_resource_value = client.request(
+        "resources/read",
+        &json!({ "uri": summarize_record.receipt.uri }),
+    )?;
+    let report_resource: ReadResourceResult = McpStdioClient::parse_result(&report_resource_value)?;
+
+    Ok(CodexSmokeFlowSummary {
+        flow: CodexSmokeSelection::RecentFailureTriage,
+        subject_execution_uri,
+        report_execution_uri: summarize_record.receipt.uri,
+        additional_report_execution_uris: Vec::new(),
+        comparison_execution_uris: scenario
+            .subject_execution_uris
+            .iter()
+            .skip(1)
+            .cloned()
+            .chain(scenario.comparison_execution_uris.iter().cloned())
+            .collect(),
+        subject_query_uri: Some(query_uri),
+        subject_resource_items: subject_resource.contents.len(),
+        report_resource_items: report_resource.contents.len(),
+        subject_emitted_evidence: 0,
+        subject_child_executions: 0,
+        report_summary: summarize_record
+            .output
+            .ok_or_else(|| {
+                CodexWorkflowError::new(
+                    "codex-smoke-report-missing-output",
+                    "summarize-execution-query did not return skill output",
+                )
+            })?
+            .summary,
+    })
+}
+
+fn run_policy_denial_debug_smoke(
+    registry_root: &Path,
+    client: &mut McpStdioClient,
+) -> Result<CodexSmokeFlowSummary, CodexWorkflowError> {
+    let inputs = prepare_policy_denial_smoke_inputs(registry_root)?;
+    let denial_record = run_capability_denial_report(client, &inputs.denied_execution_uri)?;
+    let diff_record = run_authority_diff_report(
+        client,
+        &inputs.trusted_execution_uri,
+        &inputs.restricted_execution_uri,
+    )?;
+    let http_record =
+        run_http_authority_report(client, &inputs.denied_execution_uri, &inputs.candidate_url)?;
+    let (subject_resource_items, report_resource_items) = read_subject_and_report_resource_counts(
+        client,
+        &inputs.denied_execution_uri,
+        &denial_record.receipt.uri,
+    )?;
+
+    Ok(CodexSmokeFlowSummary {
+        flow: CodexSmokeSelection::PolicyDenialDebug,
+        subject_execution_uri: inputs.denied_execution_uri,
+        report_execution_uri: denial_record.receipt.uri,
+        additional_report_execution_uris: vec![
+            diff_record.receipt.uri.clone(),
+            http_record.receipt.uri.clone(),
+        ],
+        comparison_execution_uris: inputs.comparison_execution_uris,
+        subject_query_uri: None,
+        subject_resource_items,
+        report_resource_items,
+        subject_emitted_evidence: 0,
+        subject_child_executions: 0,
+        report_summary: denial_record
+            .output
+            .ok_or_else(|| {
+                CodexWorkflowError::new(
+                    "codex-smoke-report-missing-output",
+                    "explain-capability-denial did not return skill output",
+                )
+            })?
+            .summary,
+    })
+}
+
+struct PolicyDenialSmokeInputs {
+    denied_execution_uri: String,
+    trusted_execution_uri: String,
+    restricted_execution_uri: String,
+    candidate_url: String,
+    comparison_execution_uris: Vec<String>,
+}
+
+fn prepare_policy_denial_smoke_inputs(
+    registry_root: &Path,
+) -> Result<PolicyDenialSmokeInputs, CodexWorkflowError> {
+    let scenario =
+        prepare_codex_scenario(registry_root, CodexScenarioSelection::PolicyDenialDebug)?;
+    Ok(PolicyDenialSmokeInputs {
+        denied_execution_uri: scenario
+            .subject_execution_uris
+            .first()
+            .cloned()
+            .ok_or_else(|| {
+                CodexWorkflowError::new(
+                    "codex-smoke-missing-subject-execution",
+                    "policy-denial-debug scenario did not produce a denied execution URI",
+                )
+            })?,
+        trusted_execution_uri: scenario
+            .comparison_execution_uris
+            .first()
+            .cloned()
+            .ok_or_else(|| {
+                CodexWorkflowError::new(
+                    "codex-smoke-missing-comparison-execution",
+                    "policy-denial-debug scenario did not produce the trusted imported execution URI",
+                )
+            })?,
+        restricted_execution_uri: scenario
+            .comparison_execution_uris
+            .get(1)
+            .cloned()
+            .ok_or_else(|| {
+                CodexWorkflowError::new(
+                    "codex-smoke-missing-comparison-execution",
+                    "policy-denial-debug scenario did not produce the restricted imported execution URI",
+                )
+            })?,
+        candidate_url: scenario.candidate_urls.last().cloned().ok_or_else(|| {
+            CodexWorkflowError::new(
+                "codex-smoke-missing-candidate-url",
+                "policy-denial-debug scenario did not provide a candidate HTTP URL",
+            )
+        })?,
+        comparison_execution_uris: scenario.comparison_execution_uris,
+    })
+}
+
+fn run_capability_denial_report(
+    client: &mut McpStdioClient,
+    execution_uri: &str,
+) -> Result<ExecutionRecord, CodexWorkflowError> {
+    let response_value = client.request(
+        "tools/call",
+        &example_inspect_request(
+            "explain-capability-denial",
+            &json!({ "execution_uri": execution_uri }),
+            &[execution_read_grant()],
+        ),
+    )?;
+    let response: CallToolResult = McpStdioClient::parse_result(&response_value)?;
+    let record = parse_execution_record(&response)?;
+    let output = output_structured_value(
+        &record,
+        "codex-smoke-denial-report-missing-output",
+        "explain-capability-denial did not return structured output",
+    )?;
+    if output
+        .get("primary_reason")
+        .filter(|value| !value.is_null())
+        .is_none()
+    {
+        return Err(CodexWorkflowError::new(
+            "codex-smoke-denial-report-invalid",
+            "capability denial report did not include a primary_reason",
+        ));
+    }
+    Ok(record)
+}
+
+fn run_authority_diff_report(
+    client: &mut McpStdioClient,
+    left_execution_uri: &str,
+    right_execution_uri: &str,
+) -> Result<ExecutionRecord, CodexWorkflowError> {
+    let response_value = client.request(
+        "tools/call",
+        &example_inspect_request(
+            "diff-execution-authority",
+            &json!({
+                "left_execution_uri": left_execution_uri,
+                "right_execution_uri": right_execution_uri,
+            }),
+            &[execution_read_grant()],
+        ),
+    )?;
+    let response: CallToolResult = McpStdioClient::parse_result(&response_value)?;
+    let record = parse_execution_record(&response)?;
+    let output = output_structured_value(
+        &record,
+        "codex-smoke-authority-diff-missing-output",
+        "diff-execution-authority did not return structured output",
+    )?;
+    if output
+        .get("likely_authority_drivers")
+        .and_then(Value::as_array)
+        .is_none()
+    {
+        return Err(CodexWorkflowError::new(
+            "codex-smoke-authority-diff-invalid",
+            "authority diff did not include likely_authority_drivers",
+        ));
+    }
+    Ok(record)
+}
+
+fn run_http_authority_report(
+    client: &mut McpStdioClient,
+    execution_uri: &str,
+    candidate_url: &str,
+) -> Result<ExecutionRecord, CodexWorkflowError> {
+    let response_value = client.request(
+        "tools/call",
+        &example_inspect_request(
+            "explain-http-authority",
+            &json!({
+                "execution_uri": execution_uri,
+                "candidate_request": {
+                    "url": candidate_url,
+                    "method": "get",
+                    "timeout_ms": 500,
+                },
+            }),
+            &[execution_read_grant()],
+        ),
+    )?;
+    let response: CallToolResult = McpStdioClient::parse_result(&response_value)?;
+    let record = parse_execution_record(&response)?;
+    let output = output_structured_value(
+        &record,
+        "codex-smoke-http-authority-missing-output",
+        "explain-http-authority did not return structured output",
+    )?;
+    if output
+        .get("evaluation_status")
+        .and_then(Value::as_str)
+        .is_none()
+    {
+        return Err(CodexWorkflowError::new(
+            "codex-smoke-http-authority-invalid",
+            "HTTP authority report did not include evaluation_status",
+        ));
+    }
+    Ok(record)
+}
+
+fn read_subject_and_report_resource_counts(
+    client: &mut McpStdioClient,
+    subject_execution_uri: &str,
+    report_execution_uri: &str,
+) -> Result<(usize, usize), CodexWorkflowError> {
+    let subject_resource_value =
+        client.request("resources/read", &json!({ "uri": subject_execution_uri }))?;
+    let subject_resource: ReadResourceResult =
+        McpStdioClient::parse_result(&subject_resource_value)?;
+    let report_resource_value =
+        client.request("resources/read", &json!({ "uri": report_execution_uri }))?;
+    let report_resource: ReadResourceResult = McpStdioClient::parse_result(&report_resource_value)?;
+    Ok((
+        subject_resource.contents.len(),
+        report_resource.contents.len(),
+    ))
+}
+
+fn ensure_example_skills_installed(
+    registry_root: &Path,
+    skill_dirs: &[&str],
+) -> Result<Vec<BootstrappedSkill>, RegistryError> {
+    let installer = LocalSourceInstaller::new(registry_root)?;
+    let repo_root = repo_root();
+
+    skill_dirs
+        .iter()
+        .map(|skill_dir| {
+            let installed_skill =
+                installer.install(repo_root.join("examples/skills").join(skill_dir))?;
+            Ok(summarize_installed_skill(skill_dir, installed_skill))
+        })
+        .collect()
+}
+
+fn prepare_recent_failure_triage_scenario(
+    registry_root: &Path,
+) -> Result<CodexScenarioSummary, CodexWorkflowError> {
+    let installed_skills =
+        ensure_example_skills_installed(registry_root, &RECENT_FAILURE_TRIAGE_SKILLS)?;
+    let server = http_test_server::HttpTestServer::start();
+    let facade = local_facade(registry_root)?;
+
+    let success = inspect_success_record(
+        &facade,
+        inspect_http_json_request(
+            &server.json_url(),
+            "get",
+            "tenant-dev",
+            "actor-dev",
+            vec![http_request_granted_capability(
+                http_test_server::HttpTestServer::host(),
+                server.port(),
+                &["/json"],
+                Some(vec![HttpMethod::Get]),
+                None,
+            )],
+        ),
+    )?;
+    let failed = inspect_expected_error_record(
+        &facade,
+        inspect_http_json_request(
+            &server.json_url(),
+            "post",
+            "tenant-dev",
+            "actor-dev",
+            vec![http_request_granted_capability(
+                http_test_server::HttpTestServer::host(),
+                server.port(),
+                &["/json"],
+                Some(vec![HttpMethod::Get]),
+                None,
+            )],
+        ),
+        "recent-failure-triage failed HTTP execution",
+    )?;
+    let rejected = inspect_expected_error_record(
+        &facade,
+        inspect_http_json_request(
+            &server.json_url(),
+            "get",
+            "tenant-dev",
+            "actor-dev",
+            Vec::new(),
+        ),
+        "recent-failure-triage rejected HTTP execution",
+    )?;
+    let query_uri =
+        execution_query_resource_uri(&ExecutionQueryResource::FailuresRecent { limit: 10 });
+
+    Ok(CodexScenarioSummary {
+        registry_root: registry_root.to_path_buf(),
+        scenario: CodexScenarioSelection::RecentFailureTriage,
+        installed_skills,
+        subject_execution_uris: vec![rejected.receipt.uri.clone(), failed.receipt.uri.clone()],
+        comparison_execution_uris: vec![success.receipt.uri],
+        query_uris: vec![query_uri.clone()],
+        candidate_urls: vec![server.json_url()],
+        recommended_codex_ask: format!(
+            "Summarize recent failures from {query_uri} using example/summarize-execution-query, then explain one of the stored failed or rejected executions if the query summary needs a deeper root-cause read."
+        ),
+    })
+}
+
+struct PreparedPolicyDenialBundle {
+    installed_skills: Vec<BootstrappedSkill>,
+    existing_inspect_http_digest: Option<String>,
+    bundle_root: PathBuf,
+    identity: LocalPublisherIdentity,
+}
+
+fn prepare_policy_denial_debug_scenario(
+    registry_root: &Path,
+) -> Result<CodexScenarioSummary, CodexWorkflowError> {
+    let prepared = prepare_policy_denial_bundle(registry_root)?;
+    let publisher_id = prepared.identity.publisher.id.clone();
+    with_restored_policy_denial_support(registry_root, &publisher_id, || {
+        seed_policy_denial_debug_summary(registry_root, prepared)
+    })
+}
+
+fn prepare_policy_denial_bundle(
+    registry_root: &Path,
+) -> Result<PreparedPolicyDenialBundle, CodexWorkflowError> {
+    let installed_skills =
+        ensure_example_skills_installed(registry_root, &POLICY_DENIAL_DEBUG_SKILLS)?;
+    let support_root = policy_support_root(registry_root);
+    if support_root.exists() {
+        fs::remove_dir_all(&support_root)?;
+    }
+    fs::create_dir_all(&support_root)?;
+
+    let source_root = support_root.join("source-root");
+    let bundle_root = support_root.join("bundle");
+    let identity_path = support_root.join("publisher.json");
+
+    let source_installer = LocalSourceInstaller::new(&source_root)?;
+    let source_skill = source_installer.install(example_skill_source_dir("inspect-http-json"))?;
+    let identity = LocalPublisherIdentity::generate(source_skill.manifest.publisher.clone())?;
+    identity.save(&identity_path)?;
+    let registry = LocalRegistry::load(&source_root)?;
+    registry.export_bundle(&source_skill.resolved_ref, false, &bundle_root, &identity)?;
+
+    let existing_inspect_http_digest = LocalRegistry::load(registry_root)?
+        .resolve(&requested_example_skill_ref("inspect-http-json"))
+        .ok()
+        .map(|installed| installed.resolved_ref.digest);
+
+    Ok(PreparedPolicyDenialBundle {
+        installed_skills,
+        existing_inspect_http_digest,
+        bundle_root,
+        identity,
+    })
+}
+
+fn with_restored_policy_denial_support<T>(
+    registry_root: &Path,
+    publisher_id: &str,
+    operation: impl FnOnce() -> Result<T, CodexWorkflowError>,
+) -> Result<T, CodexWorkflowError> {
+    let policy_path = registry_root.join("policy.json");
+    let policy_backup = read_optional_file(&policy_path)?;
+    let publisher_path = trusted_publisher_file_path(registry_root, publisher_id);
+    let publisher_backup = read_optional_file(&publisher_path)?;
+    let result = operation();
+    let restore_policy = restore_optional_file(&policy_path, policy_backup.as_deref());
+    let restore_publisher = restore_optional_file(&publisher_path, publisher_backup.as_deref());
+    match result {
+        Ok(value) => {
+            restore_policy?;
+            restore_publisher?;
+            Ok(value)
+        }
+        Err(error) => {
+            let _ = restore_policy;
+            let _ = restore_publisher;
+            Err(error)
+        }
+    }
+}
+
+fn seed_policy_denial_debug_summary(
+    registry_root: &Path,
+    mut prepared: PreparedPolicyDenialBundle,
+) -> Result<CodexScenarioSummary, CodexWorkflowError> {
+    let server = http_test_server::HttpTestServer::start();
+    LocalRegistry::trust_publisher(
+        registry_root,
+        &prepared
+            .identity
+            .trusted_record_with_tier(LocalTrustTier::TrustedImported),
+    )?;
+    LocalRegistry::import_bundle(registry_root, &prepared.bundle_root)?;
+    write_policy_config(registry_root)?;
+
+    let trusted = inspect_success_record(
+        &local_facade(registry_root)?,
+        policy_http_request(
+            &server.redirect_json_url(),
+            "tenant-trusted",
+            "actor-demo",
+            server.port(),
+        ),
+    )?;
+
+    LocalRegistry::trust_publisher(
+        registry_root,
+        &prepared
+            .identity
+            .trusted_record_with_tier(LocalTrustTier::Restricted),
+    )?;
+
+    let restricted_allowed = inspect_success_record(
+        &local_facade(registry_root)?,
+        policy_http_request(
+            &server.redirect_json_url(),
+            "tenant-trusted",
+            "actor-demo",
+            server.port(),
+        ),
+    )?;
+    let denied = inspect_expected_error_record(
+        &local_facade(registry_root)?,
+        policy_http_request(
+            &server.redirect_json_url(),
+            "tenant-restricted",
+            "actor-demo",
+            server.port(),
+        ),
+        "policy-denial-debug restricted tenant redirect denial",
+    )?;
+
+    append_imported_http_skill_if_needed(registry_root, &mut prepared)?;
+
+    Ok(CodexScenarioSummary {
+        registry_root: registry_root.to_path_buf(),
+        scenario: CodexScenarioSelection::PolicyDenialDebug,
+        installed_skills: prepared.installed_skills,
+        subject_execution_uris: vec![denied.receipt.uri.clone()],
+        comparison_execution_uris: vec![
+            trusted.receipt.uri.clone(),
+            restricted_allowed.receipt.uri.clone(),
+        ],
+        query_uris: Vec::new(),
+        candidate_urls: vec![
+            server.redirect_json_url(),
+            server.json_url(),
+            server.localhost_json_url(),
+        ],
+        recommended_codex_ask: format!(
+            "Compare the trusted imported execution {} with the restricted imported execution {}, explain why stored execution {} was denied, and dry-run whether direct GET requests to {} and {} should be allowed.",
+            trusted.receipt.uri,
+            restricted_allowed.receipt.uri,
+            denied.receipt.uri,
+            server.json_url(),
+            server.localhost_json_url(),
+        ),
+    })
+}
+
+fn append_imported_http_skill_if_needed(
+    registry_root: &Path,
+    prepared: &mut PreparedPolicyDenialBundle,
+) -> Result<(), CodexWorkflowError> {
+    let imported_skill = LocalRegistry::load(registry_root)?
+        .resolve(&requested_example_skill_ref("inspect-http-json"))?;
+    if prepared.existing_inspect_http_digest.as_deref()
+        != Some(imported_skill.resolved_ref.digest.as_str())
+    {
+        prepared.installed_skills.push(summarize_installed_skill(
+            "inspect-http-json",
+            imported_skill,
+        ));
+    }
+    Ok(())
+}
+
+fn prepare_execution_tree_scenario(
+    registry_root: &Path,
+) -> Result<CodexScenarioSummary, CodexWorkflowError> {
+    let installed_skills =
+        ensure_example_skills_installed(registry_root, &EXECUTION_TREE_SCENARIO_SKILLS)?;
+    let facade = local_facade(registry_root)?;
+    let root_execution = inspect_success_record(
+        &facade,
+        InspectRequest::new(
+            requested_example_skill_ref("hello-composite"),
+            json!({ "name": "Ada" }),
+            "tenant-dev",
+            "actor-dev",
+            CapabilityGrantSet {
+                grants: vec![
+                    invoke_dependency_granted_capability(&["hello"]),
+                    emit_evidence_granted_capability(),
+                ],
+            },
+        ),
+    )?;
+
+    Ok(CodexScenarioSummary {
+        registry_root: registry_root.to_path_buf(),
+        scenario: CodexScenarioSelection::ExecutionTree,
+        installed_skills,
+        subject_execution_uris: vec![root_execution.receipt.uri.clone()],
+        comparison_execution_uris: Vec::new(),
+        query_uris: Vec::new(),
+        candidate_urls: Vec::new(),
+        recommended_codex_ask: format!(
+            "Run example/explain-execution-tree against {} and identify the first failing or denied node, or confirm that the current stored tree is clean.",
+            root_execution.receipt.uri
+        ),
+    })
+}
+
+fn local_facade(registry_root: &Path) -> Result<LocalFacade, CodexWorkflowError> {
+    let registry = LocalRegistry::load(registry_root)?;
+    let runtime = WasmtimeRuntimeAdapter::new().map_err(|error| {
+        CodexWorkflowError::new(
+            "codex-scenario-runtime-init-failed",
+            "failed to initialize the Wasmtime runtime for Codex scenario prep",
+        )
+        .with_detail(json!({ "error": error.to_string() }))
+    })?;
+    Ok(GuildMcpFacade::new(registry, runtime))
+}
+
+fn inspect_success_record(
+    facade: &LocalFacade,
+    request: InspectRequest,
+) -> Result<ExecutionRecord, CodexWorkflowError> {
+    Ok(facade.inspect(request)?.structured_content)
+}
+
+fn inspect_expected_error_record(
+    facade: &LocalFacade,
+    request: InspectRequest,
+    expectation: &str,
+) -> Result<ExecutionRecord, CodexWorkflowError> {
+    match facade.inspect(request) {
+        Ok(response) => Err(CodexWorkflowError::new(
+            "codex-scenario-expected-error",
+            "scenario expected a persisted unsuccessful execution but the call succeeded",
+        )
+        .with_detail(json!({
+            "expectation": expectation,
+            "execution_uri": response.structured_content.receipt.uri,
+        }))),
+        Err(error) => load_execution_record_from_error(facade, &error, expectation),
+    }
+}
+
+fn load_execution_record_from_error(
+    facade: &LocalFacade,
+    error: &McpError,
+    expectation: &str,
+) -> Result<ExecutionRecord, CodexWorkflowError> {
+    let receipt = error.receipt.as_ref().ok_or_else(|| {
+        CodexWorkflowError::new(
+            "codex-scenario-missing-receipt",
+            "scenario expected a persisted execution receipt for the failed call",
+        )
+        .with_detail(json!({
+            "expectation": expectation,
+            "code": error.code,
+            "message": error.message,
+        }))
+    })?;
+    load_execution_record_from_uri(facade, &receipt.uri)
+}
+
+fn load_execution_record_from_uri(
+    facade: &LocalFacade,
+    execution_uri: &str,
+) -> Result<ExecutionRecord, CodexWorkflowError> {
+    let resource = facade.read_resource(execution_uri)?;
+    serde_json::from_slice(&resource.bytes).map_err(|error| {
+        CodexWorkflowError::new(
+            "codex-scenario-record-parse-failed",
+            "persisted execution resource did not contain valid JSON",
+        )
+        .with_detail(json!({
+            "execution_uri": execution_uri,
+            "json_error": error.to_string(),
+        }))
+    })
+}
+
+fn inspect_http_json_request(
+    url: &str,
+    method: &str,
+    tenant_id: &str,
+    actor_id: &str,
+    grants: Vec<GrantedCapability>,
+) -> InspectRequest {
+    InspectRequest::new(
+        requested_example_skill_ref("inspect-http-json"),
+        json!({
+            "url": url,
+            "method": method,
+            "json_pointers": ["/message"],
+        }),
+        tenant_id,
+        actor_id,
+        CapabilityGrantSet { grants },
+    )
+}
+
+fn policy_http_request(url: &str, tenant_id: &str, actor_id: &str, port: u16) -> InspectRequest {
+    inspect_http_json_request(
+        url,
+        "get",
+        tenant_id,
+        actor_id,
+        vec![http_request_granted_capability(
+            http_test_server::HttpTestServer::host(),
+            port,
+            &["/redirect-json", "/json"],
+            Some(vec![HttpMethod::Get]),
+            Some(2),
+        )],
+    )
+}
+
+fn emit_evidence_granted_capability() -> GrantedCapability {
+    GrantedCapability {
         id: CapabilityId::EmitEvidence,
         access: CapabilityAccess::Write,
         constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
@@ -746,12 +1702,11 @@ fn emit_evidence_grant() -> Value {
             audiences: Some(vec![EvidenceAudience::User]),
             redactions: Some(vec![RedactionClass::None]),
         }),
-    })
-    .expect("grant serializes")
+    }
 }
 
-fn execution_and_object_read_grant() -> Value {
-    serde_json::to_value(GrantedCapability {
+fn execution_and_object_read_granted_capability() -> GrantedCapability {
+    GrantedCapability {
         id: CapabilityId::ReadResource,
         access: CapabilityAccess::Read,
         constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
@@ -761,20 +1716,211 @@ fn execution_and_object_read_grant() -> Value {
             ]),
             resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Object]),
         }),
-    })
-    .expect("grant serializes")
+    }
+}
+
+fn execution_read_granted_capability() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec!["guild://executions/".into()]),
+            resource_kinds: Some(vec![ResourceKind::Execution]),
+        }),
+    }
+}
+
+fn query_read_granted_capability() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec!["guild://queries/executions/".into()]),
+            resource_kinds: Some(vec![ResourceKind::Query]),
+        }),
+    }
+}
+
+fn invoke_dependency_granted_capability(aliases: &[&str]) -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::InvokeSkill,
+        access: CapabilityAccess::Invoke,
+        constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+            aliases: Some(aliases.iter().map(|alias| (*alias).to_owned()).collect()),
+        }),
+    }
+}
+
+fn http_request_granted_capability(
+    host: &str,
+    port: u16,
+    paths: &[&str],
+    methods: Option<Vec<HttpMethod>>,
+    max_redirects: Option<u8>,
+) -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::HttpRequest,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+            allowed_schemes: Some(vec![HttpScheme::Http]),
+            allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_host_suffixes: None,
+            allowed_ports: Some(vec![port]),
+            allowed_methods: methods,
+            allowed_path_prefixes: Some(paths.iter().map(|path| (*path).to_owned()).collect()),
+            max_timeout_ms: Some(2_000),
+            max_response_bytes: Some(8_192),
+            follow_redirects: max_redirects.map(|_| true),
+            max_redirects,
+            allow_loopback: Some(true),
+            allow_link_local: None,
+            allow_private_networks: None,
+            allow_ip_literals: Some(true),
+        }),
+    }
+}
+
+fn granted_capability_value(grant: GrantedCapability) -> Value {
+    serde_json::to_value(grant).expect("grant serializes")
+}
+
+fn output_structured_value(
+    record: &ExecutionRecord,
+    code: &str,
+    message: &str,
+) -> Result<Value, CodexWorkflowError> {
+    let output = record.output.as_ref().ok_or_else(|| {
+        CodexWorkflowError::new(code, message).with_detail(json!({
+            "execution_uri": record.receipt.uri,
+        }))
+    })?;
+    Ok(output.structured.clone())
+}
+
+fn example_skill_source_dir(skill_dir: &str) -> PathBuf {
+    repo_root().join("examples/skills").join(skill_dir)
+}
+
+fn policy_support_root(registry_root: &Path) -> PathBuf {
+    registry_root
+        .join(".codex-scenarios")
+        .join("policy-denial-debug")
+}
+
+fn read_optional_file(path: &Path) -> Result<Option<Vec<u8>>, CodexWorkflowError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(fs::read(path)?))
+}
+
+fn restore_optional_file(path: &Path, contents: Option<&[u8]>) -> Result<(), CodexWorkflowError> {
+    match contents {
+        Some(bytes) => {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(path, bytes)?;
+        }
+        None if path.exists() => {
+            fs::remove_file(path)?;
+        }
+        None => {}
+    }
+    Ok(())
+}
+
+fn trusted_publisher_file_path(root: &Path, publisher_id: &str) -> PathBuf {
+    root.join("trust")
+        .join("publishers")
+        .join(format!("{publisher_id}.json"))
+}
+
+fn write_policy_config(root: &Path) -> Result<(), CodexWorkflowError> {
+    fs::create_dir_all(root)?;
+    let policy = LocalPolicyConfig {
+        default_profile: "trusted-networked".into(),
+        profiles: vec![
+            PolicyProfile {
+                name: "trusted-networked".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: Vec::new(),
+            },
+            PolicyProfile {
+                name: "restricted-networked".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: vec![PolicyRule {
+                    name: Some("cap-restricted-http-redirects".into()),
+                    skills: Some(vec![SkillKey {
+                        namespace: EXAMPLE_NAMESPACE.into(),
+                        name: "inspect-http-json".into(),
+                    }]),
+                    publisher_ids: None,
+                    trust_tiers: Some(vec![LocalTrustTier::Restricted]),
+                    verification_states: Some(vec![InstalledVerificationState::VerifiedImport]),
+                    applies_to: PolicyRuleTarget::Any,
+                    effect: PolicyRuleEffect::Cap,
+                    capabilities: guild_types::CapabilityGrantSet {
+                        grants: vec![GrantedCapability {
+                            id: CapabilityId::HttpRequest,
+                            access: CapabilityAccess::Read,
+                            constraints: CapabilityConstraints::HttpRequest(
+                                HttpRequestConstraints {
+                                    allowed_schemes: None,
+                                    allowed_hosts: None,
+                                    allowed_host_suffixes: None,
+                                    allowed_ports: None,
+                                    allowed_methods: None,
+                                    allowed_path_prefixes: None,
+                                    max_timeout_ms: None,
+                                    max_response_bytes: None,
+                                    follow_redirects: Some(false),
+                                    max_redirects: None,
+                                    allow_loopback: None,
+                                    allow_link_local: None,
+                                    allow_private_networks: None,
+                                    allow_ip_literals: None,
+                                },
+                            ),
+                        }],
+                    },
+                }],
+            },
+        ],
+        bindings: vec![PolicyProfileBinding {
+            name: Some("restricted-tenant".into()),
+            actor_ids: None,
+            tenant_ids: Some(vec!["tenant-restricted".into()]),
+            profile: "restricted-networked".into(),
+        }],
+        ..LocalPolicyConfig::default()
+    };
+    fs::write(
+        root.join("policy.json"),
+        serde_json::to_vec_pretty(&policy)?,
+    )?;
+    Ok(())
+}
+
+fn emit_evidence_grant() -> Value {
+    granted_capability_value(emit_evidence_granted_capability())
+}
+
+fn execution_and_object_read_grant() -> Value {
+    granted_capability_value(execution_and_object_read_granted_capability())
+}
+
+fn execution_read_grant() -> Value {
+    granted_capability_value(execution_read_granted_capability())
+}
+
+fn query_read_grant() -> Value {
+    granted_capability_value(query_read_granted_capability())
 }
 
 fn invoke_and_evidence_grants() -> Vec<Value> {
     vec![
-        serde_json::to_value(GrantedCapability {
-            id: CapabilityId::InvokeSkill,
-            access: CapabilityAccess::Invoke,
-            constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
-                aliases: Some(vec!["hello".into()]),
-            }),
-        })
-        .expect("grant serializes"),
+        granted_capability_value(invoke_dependency_granted_capability(&["hello"])),
         emit_evidence_grant(),
     ]
 }

@@ -1,30 +1,19 @@
 use std::path::{Path, PathBuf};
 
+use guild_mcp::codex::{CodexScenarioSelection, prepare_codex_scenario};
 use guild_mcp::{GuildMcpFacade, InspectRequest};
-use guild_registry::{LocalRegistry, LocalSourceInstaller, execution_query_resource_uri};
+use guild_registry::LocalRegistry;
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
-    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    ExecutionQueryResource, GrantedCapability, HttpMethod, HttpRequestConstraints, HttpScheme,
+    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId, GrantedCapability,
     ReadResourceConstraints, RequestedSkillRef, ResourceKind, SkillKey, VersionRequirement,
 };
-
-#[path = "../../../test-support/http_test_server.rs"]
-mod http_test_server;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
         .expect("repository root exists")
-}
-
-fn inspect_http_source_dir() -> PathBuf {
-    repo_root().join("examples/skills/inspect-http-json")
-}
-
-fn summarize_query_source_dir() -> PathBuf {
-    repo_root().join("examples/skills/summarize-execution-query")
 }
 
 fn local_registry_root() -> PathBuf {
@@ -38,13 +27,28 @@ fn reset_registry_root(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn inspect_http_skill() -> RequestedSkillRef {
-    RequestedSkillRef {
-        key: SkillKey {
-            namespace: "example".into(),
-            name: "inspect-http-json".into(),
-        },
-        version_req: VersionRequirement::parse("^0.1").expect("example version requirement parses"),
+fn query_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec!["guild://queries/executions/".into()]),
+            resource_kinds: Some(vec![ResourceKind::Query]),
+        }),
+    }
+}
+
+fn execution_and_object_read_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec![
+                "guild://executions/".into(),
+                "guild://objects/records/".into(),
+            ]),
+            resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Object]),
+        }),
     }
 }
 
@@ -58,111 +62,32 @@ fn summarize_query_skill() -> RequestedSkillRef {
     }
 }
 
-fn http_grant(host: &str, port: u16, path_prefix: &str, method: HttpMethod) -> GrantedCapability {
-    GrantedCapability {
-        id: CapabilityId::HttpRequest,
-        access: CapabilityAccess::Read,
-        constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
-            allowed_schemes: Some(vec![HttpScheme::Http]),
-            allowed_hosts: Some(vec![host.to_owned()]),
-            allowed_host_suffixes: None,
-            allowed_ports: Some(vec![port]),
-            allowed_methods: Some(vec![method]),
-            allowed_path_prefixes: Some(vec![path_prefix.to_owned()]),
-            max_timeout_ms: Some(2_000),
-            max_response_bytes: Some(4_096),
-            follow_redirects: None,
-            max_redirects: None,
-            allow_loopback: Some(true),
-            allow_link_local: None,
-            allow_private_networks: None,
-            allow_ip_literals: Some(true),
-        }),
+fn explain_execution_skill() -> RequestedSkillRef {
+    RequestedSkillRef {
+        key: SkillKey {
+            namespace: "example".into(),
+            name: "explain-execution".into(),
+        },
+        version_req: VersionRequirement::parse("^0.1").expect("example version requirement parses"),
     }
 }
 
-fn query_grant() -> GrantedCapability {
-    GrantedCapability {
-        id: CapabilityId::ReadResource,
-        access: CapabilityAccess::Read,
-        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
-            uri_prefixes: Some(vec!["guild://queries/executions/".into()]),
-            resource_kinds: Some(vec![ResourceKind::Query]),
-        }),
-    }
-}
-
-#[allow(clippy::too_many_lines)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let server = http_test_server::HttpTestServer::start();
     let registry_root = local_registry_root();
     reset_registry_root(&registry_root)?;
+    let scenario =
+        prepare_codex_scenario(&registry_root, CodexScenarioSelection::RecentFailureTriage)?;
 
-    let installer = LocalSourceInstaller::new(&registry_root)?;
-    let inspect_http = installer.install(inspect_http_source_dir())?;
+    let facade = GuildMcpFacade::new(
+        LocalRegistry::load(&registry_root)?,
+        WasmtimeRuntimeAdapter::new()?,
+    );
 
-    let registry = LocalRegistry::load(&registry_root)?;
-    let facade = GuildMcpFacade::new(registry, WasmtimeRuntimeAdapter::new()?);
-
-    let succeeded = facade.inspect(InspectRequest::new(
-        inspect_http_skill(),
-        serde_json::json!({
-            "url": server.json_url(),
-            "method": "get",
-            "json_pointers": ["/message"],
-        }),
-        "tenant-dev",
-        "actor-dev",
-        CapabilityGrantSet {
-            grants: vec![http_grant(
-                http_test_server::HttpTestServer::host(),
-                server.port(),
-                "/json",
-                HttpMethod::Get,
-            )],
-        },
-    ))?;
-
-    let failed = facade
-        .inspect(InspectRequest::new(
-            inspect_http_skill(),
-            serde_json::json!({
-                "url": server.json_url(),
-                "method": "post",
-            }),
-            "tenant-dev",
-            "actor-dev",
-            CapabilityGrantSet {
-                grants: vec![http_grant(
-                    http_test_server::HttpTestServer::host(),
-                    server.port(),
-                    "/json",
-                    HttpMethod::Get,
-                )],
-            },
-        ))
-        .expect_err("invalid method should persist a failed execution");
-
-    let rejected = facade
-        .inspect(InspectRequest::new(
-            inspect_http_skill(),
-            serde_json::json!({
-                "url": server.json_url(),
-                "method": "get",
-            }),
-            "tenant-dev",
-            "actor-dev",
-            CapabilityGrantSet::default(),
-        ))
-        .expect_err("missing HTTP grant should persist a rejected execution");
-
-    let query_uri =
-        execution_query_resource_uri(&ExecutionQueryResource::FailuresRecent { limit: 10 });
-    let query_resource = facade.read_resource(&query_uri)?;
-
-    let summarize_query = installer.install(summarize_query_source_dir())?;
-    let registry = LocalRegistry::load(&registry_root)?;
-    let facade = GuildMcpFacade::new(registry, WasmtimeRuntimeAdapter::new()?);
+    let query_uri = scenario
+        .query_uris
+        .first()
+        .expect("recent-failure scenario prepares one query URI");
+    let query_resource = facade.read_resource(query_uri)?;
     let summary = facade.inspect(InspectRequest::new(
         summarize_query_skill(),
         serde_json::json!({
@@ -175,34 +100,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     ))?;
 
-    println!(
-        "installed inspect-http-json {}",
-        inspect_http.resolved_ref.digest
-    );
-    println!(
-        "installed summarize-execution-query {}",
-        summarize_query.resolved_ref.digest
-    );
-    println!(
-        "successful execution URI: {}",
-        succeeded.structured_content.receipt.uri
-    );
-    println!(
-        "failed execution URI: {}",
-        failed
-            .receipt
-            .as_ref()
-            .expect("failed execution returns a persisted receipt")
-            .uri
-    );
-    println!(
-        "rejected execution URI: {}",
-        rejected
-            .receipt
-            .as_ref()
-            .expect("rejected execution returns a persisted receipt")
-            .uri
-    );
+    let follow_up_execution_uri = scenario
+        .subject_execution_uris
+        .first()
+        .expect("recent-failure scenario prepares one subject execution URI");
+    let follow_up = facade.inspect(InspectRequest::new(
+        explain_execution_skill(),
+        serde_json::json!({
+            "execution_uri": follow_up_execution_uri,
+            "include_first_evidence": false,
+        }),
+        "tenant-dev",
+        "actor-dev",
+        CapabilityGrantSet {
+            grants: vec![execution_and_object_read_grant()],
+        },
+    ))?;
+
+    for installed in &scenario.installed_skills {
+        println!(
+            "installed {}:{} {}",
+            installed.namespace, installed.name, installed.digest
+        );
+    }
+    if let Some(success_uri) = scenario.comparison_execution_uris.first() {
+        println!("successful execution URI: {success_uri}");
+    }
+    for (index, subject_uri) in scenario.subject_execution_uris.iter().enumerate() {
+        println!("subject execution URI {}: {}", index + 1, subject_uri);
+    }
     println!("query resource URI: {}", query_resource.uri);
     println!("{}", String::from_utf8(query_resource.bytes)?);
     println!("{}", summary.summary);
@@ -210,6 +136,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         serde_json::to_string_pretty(&summary.structured_content)?
     );
+    println!("follow-up execution URI: {follow_up_execution_uri}");
+    println!("{}", follow_up.summary);
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&follow_up.structured_content)?
+    );
+    println!("recommended Codex ask: {}", scenario.recommended_codex_ask);
 
     Ok(())
 }

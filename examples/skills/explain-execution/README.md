@@ -15,6 +15,9 @@ The skill expects an execution URI and can optionally read the first linked evid
 Canonical local proof flow:
 
 ```bash
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution install examples/skills/hello-inspect
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution inspect skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution read guild://executions/<execution-id>
 cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_failure_local
@@ -24,7 +27,7 @@ cargo run -p guild-mcp --example codex_explain_execution_local
 That command:
 
 1. installs `hello-inspect`
-2. runs `guild.inspect` to produce a stored execution URI
+2. runs `guild inspect` to produce a stored `guild://executions/...` URI
 3. installs `explain-execution`
 4. executes `explain-execution` against the stored URI through the same Wasmtime-backed path
 

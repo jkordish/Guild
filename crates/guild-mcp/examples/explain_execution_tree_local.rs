@@ -1,13 +1,12 @@
 use std::path::{Path, PathBuf};
 
+use guild_mcp::codex::{CodexScenarioSelection, prepare_codex_scenario};
 use guild_mcp::{GuildMcpFacade, InspectRequest};
-use guild_registry::{LocalRegistry, LocalSourceInstaller};
+use guild_registry::LocalRegistry;
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
-    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, GrantedCapability, InvokeDependencyConstraints,
-    ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResourceKind, SkillKey,
-    VersionRequirement,
+    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId, GrantedCapability,
+    ReadResourceConstraints, RequestedSkillRef, ResourceKind, SkillKey, VersionRequirement,
 };
 
 fn repo_root() -> PathBuf {
@@ -15,18 +14,6 @@ fn repo_root() -> PathBuf {
         .join("../..")
         .canonicalize()
         .expect("repository root exists")
-}
-
-fn primitive_source_dir() -> PathBuf {
-    repo_root().join("examples/skills/hello-inspect")
-}
-
-fn composite_source_dir() -> PathBuf {
-    repo_root().join("examples/skills/hello-composite")
-}
-
-fn explain_tree_source_dir() -> PathBuf {
-    repo_root().join("examples/skills/explain-execution-tree")
 }
 
 fn local_registry_root() -> PathBuf {
@@ -40,63 +27,47 @@ fn reset_registry_root(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn execution_and_object_read_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec![
+                "guild://executions/".into(),
+                "guild://objects/records/".into(),
+            ]),
+            resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Object]),
+        }),
+    }
+}
+
+fn explain_tree_skill() -> RequestedSkillRef {
+    RequestedSkillRef {
+        key: SkillKey {
+            namespace: "example".into(),
+            name: "explain-execution-tree".into(),
+        },
+        version_req: VersionRequirement::parse("^0.1").expect("example version requirement parses"),
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry_root = local_registry_root();
     reset_registry_root(&registry_root)?;
-    let installer = LocalSourceInstaller::new(&registry_root)?;
-    let primitive = installer.install(primitive_source_dir())?;
-    let composite = installer.install(composite_source_dir())?;
+    let scenario = prepare_codex_scenario(&registry_root, CodexScenarioSelection::ExecutionTree)?;
 
-    let registry = LocalRegistry::load(&registry_root)?;
-    let facade = GuildMcpFacade::new(registry, WasmtimeRuntimeAdapter::new()?);
-    let inspected = facade.inspect(InspectRequest::new(
-        RequestedSkillRef {
-            key: SkillKey {
-                namespace: "example".into(),
-                name: "hello-composite".into(),
-            },
-            version_req: VersionRequirement::parse("^0.1")?,
-        },
-        serde_json::json!({ "name": "Ada" }),
-        "tenant-dev",
-        "actor-dev",
-        CapabilityGrantSet {
-            grants: vec![
-                GrantedCapability {
-                    id: CapabilityId::InvokeSkill,
-                    access: CapabilityAccess::Invoke,
-                    constraints: CapabilityConstraints::InvokeDependency(
-                        InvokeDependencyConstraints {
-                            aliases: Some(vec!["hello".into()]),
-                        },
-                    ),
-                },
-                GrantedCapability {
-                    id: CapabilityId::EmitEvidence,
-                    access: CapabilityAccess::Write,
-                    constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
-                        max_bytes: Some(65_536),
-                        audiences: Some(vec![EvidenceAudience::User]),
-                        redactions: Some(vec![RedactionClass::None]),
-                    }),
-                },
-            ],
-        },
-    ))?;
-
-    let explain_tree = installer.install(explain_tree_source_dir())?;
-    let registry = LocalRegistry::load(&registry_root)?;
-    let facade = GuildMcpFacade::new(registry, WasmtimeRuntimeAdapter::new()?);
+    let facade = GuildMcpFacade::new(
+        LocalRegistry::load(&registry_root)?,
+        WasmtimeRuntimeAdapter::new()?,
+    );
+    let root_execution_uri = scenario
+        .subject_execution_uris
+        .first()
+        .expect("execution-tree scenario prepares one root execution URI");
     let explanation = facade.inspect(InspectRequest::new(
-        RequestedSkillRef {
-            key: SkillKey {
-                namespace: "example".into(),
-                name: "explain-execution-tree".into(),
-            },
-            version_req: VersionRequirement::parse("^0.1")?,
-        },
+        explain_tree_skill(),
         serde_json::json!({
-            "execution_uri": inspected.structured_content.receipt.uri,
+            "execution_uri": root_execution_uri,
             "max_depth": 4,
             "max_nodes": 32,
             "include_evidence_resources": true,
@@ -104,30 +75,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "tenant-dev",
         "actor-dev",
         CapabilityGrantSet {
-            grants: vec![GrantedCapability {
-                id: CapabilityId::ReadResource,
-                access: CapabilityAccess::Read,
-                constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
-                    uri_prefixes: Some(vec![
-                        "guild://executions/".into(),
-                        "guild://objects/records/".into(),
-                    ]),
-                    resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Object]),
-                }),
-            }],
+            grants: vec![execution_and_object_read_grant()],
         },
     ))?;
 
-    println!("installed primitive {}", primitive.resolved_ref.digest);
-    println!("installed composite {}", composite.resolved_ref.digest);
-    println!(
-        "installed explain-tree {}",
-        explain_tree.resolved_ref.digest
-    );
-    println!(
-        "root execution URI: {}",
-        inspected.structured_content.receipt.uri
-    );
+    for installed in &scenario.installed_skills {
+        println!(
+            "installed {}:{} {}",
+            installed.namespace, installed.name, installed.digest
+        );
+    }
+    println!("root execution URI: {root_execution_uri}");
     println!(
         "tree explanation execution URI: {}",
         explanation.structured_content.receipt.uri
@@ -139,6 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .expect("tree explanation returns output");
     println!("{}", serde_json::to_string_pretty(&report.structured)?);
+    println!("recommended Codex ask: {}", scenario.recommended_codex_ask);
 
     Ok(())
 }

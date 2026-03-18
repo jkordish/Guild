@@ -19,10 +19,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub mod cli;
 pub mod codex;
 pub mod protocol;
 pub mod server;
 
+pub const CLI_BINARY_NAME: &str = "guild";
 pub const SERVER_NAME: &str = "guild-mcp";
 pub const SERVER_BINARY_NAME: &str = "guild-mcp-server";
 pub const INSPECT_TOOL: &str = "guild.inspect";

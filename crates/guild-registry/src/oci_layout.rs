@@ -1059,14 +1059,7 @@ fn single_annotation(key: &str, value: &str) -> BTreeMap<String, String> {
 }
 
 fn registry_reference_string(reference: &OciRegistryReference) -> String {
-    match &reference.target {
-        OciRegistryTarget::Tag(tag) => {
-            format!("{}/{}:{tag}", reference.registry, reference.repository)
-        }
-        OciRegistryTarget::Digest(digest) => {
-            format!("{}/{}@{digest}", reference.registry, reference.repository)
-        }
-    }
+    reference.to_string()
 }
 
 fn reference_with_digest(reference: &OciRegistryReference, digest: String) -> OciRegistryReference {
@@ -1078,18 +1071,16 @@ fn reference_with_digest(reference: &OciRegistryReference, digest: String) -> Oc
 }
 
 fn parse_registry_reference(reference: &OciRegistryReference) -> Result<Reference, RegistryError> {
-    registry_reference_string(reference)
-        .parse::<Reference>()
-        .map_err(|error| {
-            RegistryError::new(
-                "oci-registry-reference-invalid",
-                "failed to parse the OCI registry reference",
-            )
-            .with_detail(serde_json::json!({
-                "reference": registry_reference_string(reference),
-                "cause": error.to_string(),
-            }))
-        })
+    reference.to_string().parse::<Reference>().map_err(|error| {
+        RegistryError::new(
+            "oci-registry-reference-invalid",
+            "failed to parse the OCI registry reference",
+        )
+        .with_detail(serde_json::json!({
+            "reference": reference.to_string(),
+            "cause": error.to_string(),
+        }))
+    })
 }
 
 fn build_registry_client(

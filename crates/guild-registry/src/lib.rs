@@ -11,6 +11,7 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
@@ -155,6 +156,102 @@ pub struct OciRegistryReference {
     pub registry: String,
     pub repository: String,
     pub target: OciRegistryTarget,
+}
+
+impl fmt::Display for OciRegistryReference {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.target {
+            OciRegistryTarget::Tag(tag) => write!(f, "{}/{}:{tag}", self.registry, self.repository),
+            OciRegistryTarget::Digest(digest) => {
+                write!(f, "{}/{}@{digest}", self.registry, self.repository)
+            }
+        }
+    }
+}
+
+impl FromStr for OciRegistryReference {
+    type Err = RegistryError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let input = s.trim();
+        if input.is_empty() {
+            return Err(RegistryError::new(
+                "oci-registry-reference-invalid",
+                "OCI registry reference cannot be empty",
+            ));
+        }
+
+        input.parse::<oci_client::Reference>().map_err(|error| {
+            RegistryError::new(
+                "oci-registry-reference-invalid",
+                "failed to parse the OCI registry reference",
+            )
+            .with_detail(serde_json::json!({
+                "reference": input,
+                "cause": error.to_string(),
+            }))
+        })?;
+
+        let (name, target) = if let Some((name, digest)) = input.rsplit_once('@') {
+            if digest.is_empty() {
+                return Err(RegistryError::new(
+                    "oci-registry-reference-invalid",
+                    "OCI registry digest reference was missing the digest suffix",
+                )
+                .with_detail(serde_json::json!({ "reference": input })));
+            }
+            (name, OciRegistryTarget::Digest(digest.to_owned()))
+        } else {
+            let slash = input.rfind('/').ok_or_else(|| {
+                RegistryError::new(
+                    "oci-registry-reference-invalid",
+                    "OCI registry reference must include a registry host and repository path",
+                )
+                .with_detail(serde_json::json!({ "reference": input }))
+            })?;
+            let target_separator = input[(slash + 1)..]
+                .rfind(':')
+                .map(|index| slash + 1 + index);
+            let colon = target_separator.ok_or_else(|| {
+                RegistryError::new(
+                    "oci-registry-reference-invalid",
+                    "OCI registry reference must include either a tag or digest",
+                )
+                .with_detail(serde_json::json!({ "reference": input }))
+            })?;
+            let tag = &input[(colon + 1)..];
+            if tag.is_empty() {
+                return Err(RegistryError::new(
+                    "oci-registry-reference-invalid",
+                    "OCI registry tag reference was missing the tag suffix",
+                )
+                .with_detail(serde_json::json!({ "reference": input })));
+            }
+            (&input[..colon], OciRegistryTarget::Tag(tag.to_owned()))
+        };
+
+        let (registry, repository) = name.split_once('/').ok_or_else(|| {
+            RegistryError::new(
+                "oci-registry-reference-invalid",
+                "OCI registry reference must include a registry host and repository path",
+            )
+            .with_detail(serde_json::json!({ "reference": input }))
+        })?;
+
+        if registry.is_empty() || repository.is_empty() {
+            return Err(RegistryError::new(
+                "oci-registry-reference-invalid",
+                "OCI registry reference must include a registry host and repository path",
+            )
+            .with_detail(serde_json::json!({ "reference": input })));
+        }
+
+        Ok(Self {
+            registry: registry.to_owned(),
+            repository: repository.to_owned(),
+            target,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -499,6 +596,65 @@ impl LocalRegistry {
             &trusted_publisher_path(root.as_ref(), &publisher.publisher.id),
             publisher,
         )
+    }
+
+    /// List trusted publisher records stored under a local Guild root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the trust store cannot be scanned or any trusted
+    /// publisher record cannot be read or validated.
+    pub fn list_trusted_publishers(
+        root: impl AsRef<Path>,
+    ) -> Result<Vec<TrustedPublisherRecord>, RegistryError> {
+        let root = ensure_registry_layout(root)?;
+        let publishers_root = trusted_publishers_root(&root);
+        if !publishers_root.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut publishers = Vec::new();
+        for entry in WalkDir::new(&publishers_root).min_depth(1).max_depth(1) {
+            let entry = entry.map_err(|error| {
+                RegistryError::new(
+                    "trusted-publisher-scan-failed",
+                    "failed while scanning trusted publisher records",
+                )
+                .with_detail(error.to_string())
+            })?;
+
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            publishers.push(read_trusted_publisher_record(entry.path())?);
+        }
+
+        publishers.sort_by(|left, right| left.publisher.id.cmp(&right.publisher.id));
+        Ok(publishers)
+    }
+
+    /// Remove a trusted publisher record from a local Guild root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the trust store cannot be prepared or the record
+    /// cannot be removed.
+    pub fn remove_trusted_publisher(
+        root: impl AsRef<Path>,
+        publisher_id: &str,
+    ) -> Result<bool, RegistryError> {
+        let root = ensure_registry_layout(root)?;
+        let path = trusted_publisher_path(&root, publisher_id);
+        match fs::remove_file(path) {
+            Ok(()) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(RegistryError::new(
+                "trusted-publisher-remove-failed",
+                "failed to remove trusted publisher record",
+            )
+            .with_detail(error.to_string())),
+        }
     }
 
     /// Export an installed skill, and optionally its dependency closure, as a signed bundle.
@@ -3358,13 +3514,24 @@ fn load_trusted_publisher(
     publisher_id: &str,
 ) -> Result<TrustedPublisherRecord, RegistryError> {
     let path = trusted_publisher_path(root, publisher_id);
-    let contents = fs::read_to_string(&path).map_err(|error| {
+    read_trusted_publisher_record_with_not_found_detail(&path, publisher_id)
+}
+
+fn read_trusted_publisher_record(path: &Path) -> Result<TrustedPublisherRecord, RegistryError> {
+    read_trusted_publisher_record_with_not_found_detail(path, path.display().to_string())
+}
+
+fn read_trusted_publisher_record_with_not_found_detail(
+    path: &Path,
+    not_found_detail: impl Into<Value>,
+) -> Result<TrustedPublisherRecord, RegistryError> {
+    let contents = fs::read_to_string(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             RegistryError::new(
                 "bundle-publisher-untrusted",
                 "signed bundle publisher was not trusted by the target Guild root",
             )
-            .with_detail(publisher_id.to_owned())
+            .with_detail(not_found_detail.into())
         } else {
             RegistryError::new(
                 "trusted-publisher-read-failed",

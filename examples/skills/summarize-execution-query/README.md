@@ -13,6 +13,8 @@ Canonical local proof flow:
 
 ```bash
 cargo run -p guild-mcp --example explain_recent_failures_local
+# after that deterministic setup has seeded records:
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/recent-failures read guild://queries/executions/failures/recent/10
 ```
 
 That command:

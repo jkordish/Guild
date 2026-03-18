@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use guild_mcp::codex::{
-    CodexBootstrapOutput, CodexSmokeSelection, DEFAULT_CODEX_SERVER_NAME, bootstrap_codex_registry,
-    codex_server_config, default_registry_root, print_config_command, recommended_proof_commands,
-    recommended_smoke_commands, run_codex_smoke,
+    CodexBootstrapOutput, CodexScenarioSelection, CodexSmokeSelection, DEFAULT_CODEX_SERVER_NAME,
+    bootstrap_codex_registry, codex_server_config, default_registry_root, prepare_codex_scenario,
+    print_config_command, recommended_proof_commands, recommended_smoke_commands, run_codex_smoke,
 };
 
 fn main() -> ExitCode {
@@ -53,6 +53,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
+        Some(Command::Scenario(options)) => {
+            let summary = prepare_codex_scenario(&options.registry_root, options.scenario)?;
+            if options.json {
+                println!("{}", serde_json::to_string_pretty(&summary)?);
+            } else {
+                println!("{}", summary.render_text());
+            }
+            Ok(())
+        }
         Some(Command::Smoke(options)) => {
             let summary = run_codex_smoke(&options.registry_root, options.name, options.flow)?;
             if options.json {
@@ -69,6 +78,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 enum Command {
     Bootstrap(WorkflowOptions),
     PrintConfig(WorkflowOptions),
+    Scenario(ScenarioOptions),
     Smoke(SmokeOptions),
 }
 
@@ -85,6 +95,13 @@ struct SmokeOptions {
     registry_root: PathBuf,
     name: String,
     flow: CodexSmokeSelection,
+    json: bool,
+}
+
+#[derive(Debug)]
+struct ScenarioOptions {
+    registry_root: PathBuf,
+    scenario: CodexScenarioSelection,
     json: bool,
 }
 
@@ -110,6 +127,10 @@ fn parse_args(
             .map(Command::PrintConfig)
             .map(Some)
             .or_else(handle_help_request),
+        "scenario" => parse_scenario_options(args)
+            .map(Command::Scenario)
+            .map(Some)
+            .or_else(handle_help_request),
         "smoke" => parse_smoke_options(args)
             .map(Command::Smoke)
             .map(Some)
@@ -119,7 +140,7 @@ fn parse_args(
 }
 
 fn print_usage() {
-    println!("usage: guild-codex <bootstrap|print-config|smoke> [options]");
+    println!("usage: guild-codex <bootstrap|print-config|scenario|smoke> [options]");
     println!();
     println!(
         "bootstrap      create a local Guild root for Codex and install the default dogfood skills"
@@ -128,7 +149,10 @@ fn print_usage() {
         "print-config   print the Codex MCP config and launch snippets for an existing or planned Guild root"
     );
     println!(
-        "smoke          run one or both deterministic Codex dogfood flows against an existing Guild root"
+        "scenario       seed one deterministic Codex dogfood scenario and print the resulting Guild URIs"
+    );
+    println!(
+        "smoke          run one or more deterministic Codex dogfood flows against an existing Guild root"
     );
 }
 
@@ -222,6 +246,47 @@ fn parse_smoke_options(
             "--help" | "-h" => return Err("help requested".into()),
             _ => return Err(format!("unexpected argument `{argument}`").into()),
         }
+    }
+
+    Ok(options)
+}
+
+fn parse_scenario_options(
+    args: impl IntoIterator<Item = String>,
+) -> Result<ScenarioOptions, Box<dyn std::error::Error>> {
+    let mut options = ScenarioOptions {
+        registry_root: default_registry_root(),
+        scenario: CodexScenarioSelection::RecentFailureTriage,
+        json: false,
+    };
+    let mut scenario_explicit = false;
+
+    let mut args = args.into_iter();
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--registry-root" => {
+                let Some(value) = args.next() else {
+                    return Err("--registry-root requires a following path argument".into());
+                };
+                options.registry_root = PathBuf::from(value);
+            }
+            "--scenario" => {
+                let Some(value) = args.next() else {
+                    return Err("--scenario requires a following scenario name".into());
+                };
+                options.scenario = value.parse()?;
+                scenario_explicit = true;
+            }
+            "--json" => {
+                options.json = true;
+            }
+            "--help" | "-h" => return Err("help requested".into()),
+            _ => return Err(format!("unexpected argument `{argument}`").into()),
+        }
+    }
+
+    if !scenario_explicit {
+        return Err("--scenario is required for guild-codex scenario".into());
     }
 
     Ok(options)
