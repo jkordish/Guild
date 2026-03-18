@@ -50,6 +50,7 @@ mod bindings {
         imports: { default: trappable },
     });
 }
+mod inspect_projection;
 
 const INSPECT_WORLD_ENTRYPOINT: &str = "guild-skill-inspect-v1";
 
@@ -628,17 +629,18 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
         input: &Value,
         host: Arc<dyn RuntimeHost>,
     ) -> Result<RuntimeOutcome, RuntimeFailure> {
-        let wit_context = match project_execution_context_to_inspect_abi(context) {
-            Ok(context) => context,
-            Err(error) => {
-                return Err(RuntimeFailure {
-                    error: Box::new(error),
-                    emitted_evidence: Vec::new(),
-                    child_executions: Vec::new(),
-                    network_requests: 0,
-                });
-            }
-        };
+        let wit_context =
+            match inspect_projection::project_execution_context_to_inspect_abi(context) {
+                Ok(context) => context,
+                Err(error) => {
+                    return Err(RuntimeFailure {
+                        error: Box::new(error),
+                        emitted_evidence: Vec::new(),
+                        child_executions: Vec::new(),
+                        network_requests: 0,
+                    });
+                }
+            };
         let (mut store, instance) =
             self.instantiate(installed, context, host)
                 .map_err(|error| RuntimeFailure {
@@ -4442,209 +4444,6 @@ fn write_canonical_json(value: &Value, output: &mut String) {
     }
 }
 
-fn project_execution_context_to_inspect_abi(
-    context: &ExecutionContext,
-) -> Result<bindings::guild::skill::inspect_types::ExecutionContext, ExecutionError> {
-    if context.mode != ExecutionMode::Inspect {
-        return Err(ExecutionError::new(
-            "inspect-abi-mode-mismatch",
-            "guild-skill-inspect-v1 can only project inspect executions into the guest ABI",
-        )
-        .with_detail(serde_json::json!({
-            "mode": context.mode,
-        }))
-        .with_phase(ExecutionPhase::Validation));
-    }
-
-    Ok(bindings::guild::skill::inspect_types::ExecutionContext {
-        execution_id: context.execution_id.clone(),
-        trace_id: context.trace_id.clone(),
-        tenant_id: context.tenant_id.clone(),
-        skill: project_resolved_skill_ref_to_inspect_abi(&context.skill),
-        input_sha256: context.input_sha256.clone(),
-        now_utc: context.now_utc.clone(),
-        budget: bindings::guild::skill::inspect_types::Budget {
-            max_millis: context.budget.max_millis,
-            max_memory_bytes: context.budget.max_memory_bytes,
-            max_output_bytes: context.budget.max_output_bytes,
-            max_network_requests: context.budget.max_network_requests,
-            max_child_executions: context.budget.max_child_executions,
-        },
-        granted_capabilities: context
-            .granted_capabilities
-            .grants
-            .iter()
-            .map(project_granted_capability_to_inspect_abi)
-            .collect::<Result<Vec<_>, _>>()?,
-    })
-}
-
-fn project_resolved_skill_ref_to_inspect_abi(
-    skill: &ResolvedSkillRef,
-) -> bindings::guild::skill::inspect_types::ResolvedSkillRef {
-    bindings::guild::skill::inspect_types::ResolvedSkillRef {
-        key: bindings::guild::skill::inspect_types::SkillKey {
-            namespace: skill.key.namespace.clone(),
-            name: skill.key.name.clone(),
-        },
-        version: skill.version.to_string(),
-        digest: skill.digest.clone(),
-    }
-}
-
-fn project_granted_capability_to_inspect_abi(
-    grant: &GrantedCapability,
-) -> Result<bindings::guild::skill::inspect_types::GrantedCapability, ExecutionError> {
-    Ok(bindings::guild::skill::inspect_types::GrantedCapability {
-        id: project_capability_id_to_inspect_abi(&grant.id)?,
-        access: project_capability_access_to_inspect_abi(&grant.access),
-        constraints: project_capability_constraints_to_inspect_abi(&grant.id, &grant.constraints)?,
-    })
-}
-
-fn project_capability_id_to_inspect_abi(
-    id: &CapabilityId,
-) -> Result<bindings::guild::skill::inspect_types::CapabilityId, ExecutionError> {
-    match id {
-        CapabilityId::HttpRequest => Ok(bindings::guild::skill::inspect_types::CapabilityId::HttpRequest),
-        CapabilityId::ReadResource => Ok(bindings::guild::skill::inspect_types::CapabilityId::ReadResource),
-        CapabilityId::InvokeSkill => Ok(bindings::guild::skill::inspect_types::CapabilityId::InvokeSkill),
-        CapabilityId::EmitEvidence => Ok(bindings::guild::skill::inspect_types::CapabilityId::EmitEvidence),
-        CapabilityId::LogWrite => Ok(bindings::guild::skill::inspect_types::CapabilityId::LogWrite),
-        CapabilityId::Filesystem => Err(ExecutionError::new(
-            "filesystem-runtime-not-supported",
-            "filesystem capability contracts are not implemented in the active Wasm inspect slice",
-        )
-        .with_detail(serde_json::json!({
-            "id": id,
-        }))
-        .with_phase(ExecutionPhase::Validation)),
-        CapabilityId::GetSecret
-        | CapabilityId::CacheRead
-        | CapabilityId::CacheWrite
-        | CapabilityId::MonotonicClock
-        | CapabilityId::WallClock => Err(ExecutionError::new(
-            "unsupported-runtime-surface",
-            "guild-skill-inspect-v1 only projects the active inspect capability families into the guest ABI",
-        )
-        .with_detail(serde_json::json!({
-            "id": id,
-        }))
-        .with_phase(ExecutionPhase::Validation)),
-    }
-}
-
-fn project_capability_access_to_inspect_abi(
-    access: &CapabilityAccess,
-) -> bindings::guild::skill::inspect_types::CapabilityAccess {
-    match access {
-        CapabilityAccess::Read => bindings::guild::skill::inspect_types::CapabilityAccess::Read,
-        CapabilityAccess::Write => bindings::guild::skill::inspect_types::CapabilityAccess::Write,
-        CapabilityAccess::Invoke => bindings::guild::skill::inspect_types::CapabilityAccess::Invoke,
-    }
-}
-
-fn project_capability_constraints_to_inspect_abi(
-    id: &CapabilityId,
-    constraints: &CapabilityConstraints,
-) -> Result<bindings::guild::skill::inspect_types::CapabilityConstraints, ExecutionError> {
-    match constraints {
-        CapabilityConstraints::None(_) => {
-            Ok(bindings::guild::skill::inspect_types::CapabilityConstraints::None)
-        }
-        CapabilityConstraints::Filesystem(value) => Err(ExecutionError::new(
-            "filesystem-runtime-not-supported",
-            "filesystem capability contracts are not implemented in the active Wasm inspect slice",
-        )
-        .with_detail(serde_json::json!({
-            "id": id,
-            "constraints": value,
-        }))
-        .with_phase(ExecutionPhase::Validation)),
-        CapabilityConstraints::HttpRequest(value) => {
-            Ok(project_http_request_constraints_to_inspect_abi(value))
-        }
-        CapabilityConstraints::ReadResource(value) => Ok(
-            bindings::guild::skill::inspect_types::CapabilityConstraints::ReadResource(
-                bindings::guild::skill::inspect_types::ReadResourceConstraints {
-                    uri_prefixes: value.uri_prefixes.clone(),
-                    resource_kinds: value
-                        .resource_kinds
-                        .as_ref()
-                        .map(|kinds| kinds.iter().map(to_wit_resource_kind).collect()),
-                },
-            ),
-        ),
-        CapabilityConstraints::InvokeDependency(value) => Ok(
-            bindings::guild::skill::inspect_types::CapabilityConstraints::InvokeDependency(
-                bindings::guild::skill::inspect_types::InvokeDependencyConstraints {
-                    aliases: value.aliases.clone(),
-                },
-            ),
-        ),
-        CapabilityConstraints::EmitEvidence(value) => {
-            Ok(
-                bindings::guild::skill::inspect_types::CapabilityConstraints::EmitEvidence(
-                    bindings::guild::skill::inspect_types::EmitEvidenceConstraints {
-                        max_bytes: value.max_bytes,
-                        audiences: value.audiences.as_ref().map(|audiences| {
-                            audiences.iter().map(to_wit_evidence_audience).collect()
-                        }),
-                        redactions: value.redactions.as_ref().map(|redactions| {
-                            redactions.iter().map(to_wit_redaction_class).collect()
-                        }),
-                    },
-                ),
-            )
-        }
-        CapabilityConstraints::Log(value) => Ok(
-            bindings::guild::skill::inspect_types::CapabilityConstraints::Log(
-                bindings::guild::skill::inspect_types::LogConstraints {
-                    levels: value
-                        .levels
-                        .as_ref()
-                        .map(|levels| levels.iter().map(to_wit_severity).collect()),
-                },
-            ),
-        ),
-    }
-}
-
-fn project_http_request_constraints_to_inspect_abi(
-    value: &HttpRequestConstraints,
-) -> bindings::guild::skill::inspect_types::CapabilityConstraints {
-    bindings::guild::skill::inspect_types::CapabilityConstraints::HttpRequest(
-        bindings::guild::skill::inspect_types::HttpRequestConstraints {
-            allowed_schemes: value
-                .allowed_schemes
-                .as_ref()
-                .map(|schemes| schemes.iter().map(to_wit_http_scheme).collect()),
-            allowed_hosts: value
-                .allowed_hosts
-                .as_ref()
-                .map(|hosts| canonicalize_host_scope(hosts)),
-            allowed_host_suffixes: value
-                .allowed_host_suffixes
-                .as_ref()
-                .map(|hosts| canonicalize_host_scope(hosts)),
-            allowed_ports: value.allowed_ports.clone(),
-            allowed_methods: value
-                .allowed_methods
-                .as_ref()
-                .map(|methods| methods.iter().map(to_wit_http_method).collect()),
-            allowed_path_prefixes: value.allowed_path_prefixes.clone(),
-            max_timeout_ms: value.max_timeout_ms,
-            max_response_bytes: value.max_response_bytes,
-            follow_redirects: value.follow_redirects,
-            max_redirects: value.max_redirects,
-            allow_loopback: value.allow_loopback,
-            allow_link_local: value.allow_link_local,
-            allow_private_networks: value.allow_private_networks,
-            allow_ip_literals: value.allow_ip_literals,
-        },
-    )
-}
-
 fn from_wit_skill_output(
     output: bindings::guild::skill::inspect_types::SkillOutput,
 ) -> Result<SkillOutput, ExecutionError> {
@@ -4709,20 +4508,6 @@ fn from_wit_http_method(method: bindings::guild::skill::inspect_types::HttpMetho
     match method {
         bindings::guild::skill::inspect_types::HttpMethod::Get => HttpMethod::Get,
         bindings::guild::skill::inspect_types::HttpMethod::Head => HttpMethod::Head,
-    }
-}
-
-fn to_wit_http_method(method: &HttpMethod) -> bindings::guild::skill::inspect_types::HttpMethod {
-    match method {
-        HttpMethod::Get => bindings::guild::skill::inspect_types::HttpMethod::Get,
-        HttpMethod::Head => bindings::guild::skill::inspect_types::HttpMethod::Head,
-    }
-}
-
-fn to_wit_http_scheme(scheme: &HttpScheme) -> bindings::guild::skill::inspect_types::HttpScheme {
-    match scheme {
-        HttpScheme::Http => bindings::guild::skill::inspect_types::HttpScheme::Http,
-        HttpScheme::Https => bindings::guild::skill::inspect_types::HttpScheme::Https,
     }
 }
 
@@ -4878,16 +4663,6 @@ fn to_wit_evidence(evidence: &EvidenceRef) -> bindings::guild::skill::inspect_ty
         audience: to_wit_evidence_audience(&evidence.audience),
         redaction: to_wit_redaction_class(&evidence.redaction),
         freshness: evidence.freshness.clone(),
-    }
-}
-
-fn to_wit_resource_kind(
-    kind: &ResourceKind,
-) -> bindings::guild::skill::inspect_types::ResourceKind {
-    match kind {
-        ResourceKind::Execution => bindings::guild::skill::inspect_types::ResourceKind::Execution,
-        ResourceKind::Object => bindings::guild::skill::inspect_types::ResourceKind::Object,
-        ResourceKind::Query => bindings::guild::skill::inspect_types::ResourceKind::Query,
     }
 }
 

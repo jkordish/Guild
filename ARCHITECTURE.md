@@ -24,6 +24,7 @@ The key layering rule is now explicit:
 - `guild-skill-inspect-v1` is the active inspect ABI world inside that package
 - Rust host types are the richer durable platform model
 - translation between those layers is explicit and host-owned
+- the active inspect projection boundary is centralized in the runner
 - MCP transport authorization remains separate from Guild runtime capability grants
 
 ## 2. High-Level Component Model
@@ -260,7 +261,14 @@ The active Wasm inspect slice is intentionally smaller than the broader shared t
 
 The broader shared Rust type surface now also includes an explicit typed `filesystem` family for future work. That host-side contract models named roots, guest-path prefixes, host-path concepts, and explicit read/write/create/append operations so manifests, caller intent, and local policy can describe filesystem authority intentionally. The current inspect guest ABI does not expose filesystem imports or preopened directories, and the active Wasm inspect slice rejects any manifest or granted filesystem capability before guest start.
 
-The host-to-guest projection boundary is explicit in the runner. The host retains the richer durable `ExecutionContext`, `GrantedCapability`, and policy metadata model, then projects only the inspect-visible subset into `guild-skill-inspect-v1` before guest start. In the current repository that inspect projection includes the full active `http-request` grant shape, while omitting broader future capability families and inspect-irrelevant execution-mode surface.
+The host-to-guest projection boundary is explicit in the runner. The host retains the richer durable `ExecutionContext`, `GrantedCapability`, request, policy, and evidence metadata model, then projects only the inspect-visible subset into `guild-skill-inspect-v1` before guest start through one centralized inspect-projection layer.
+
+That projection is intentionally not an isomorphism:
+
+- inspect guest `ExecutionContext` omits `mode` because the inspect world is inspect-only by contract
+- current active grant projections for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are full at the current guest-visible grant-shape level
+- host-owned `CallerRequest.requested_capabilities`, `PolicyDecision`, provenance, termination detail, `EvidenceRecord`, and child lineage stay outside the guest ABI and remain canonical in durable records
+- explain/debug flows that need the full truth read `ExecutionRecord`, `EvidenceRecord`, and Guild resources rather than guessing from guest-visible context
 
 `http-request` is implemented as a thin Guild host adapter over `wasmtime-wasi-http`. The guest ABI remains Guild-shaped for this milestone, while the host path uses Wasmtime's real outbound HTTP support underneath. The host parses the absolute URL, enforces typed method/scheme/host/domain-suffix/port/path constraints before dispatch, classifies and blocks loopback, link-local, private-network, and raw IP-literal targets unless explicitly granted, and keeps redirects disabled unless the grant explicitly enables bounded following. Every redirected hop is re-authorized against the same granted HTTP slice and execution budget before dispatch, and the runtime persists host-owned denials or bounded failures without widening the MCP public surface.
 

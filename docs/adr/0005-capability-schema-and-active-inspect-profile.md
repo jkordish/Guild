@@ -51,6 +51,13 @@ That world exposes only the active inspect imports and only the active capabilit
 IDs. Secret, cache, clock, and filesystem imports are not part of the inspect
 guest ABI.
 
+The active inspect runner also owns one explicit host-to-guest projection layer.
+In the current repository that means:
+
+- inspect guest `ExecutionContext` is a bounded subset and intentionally omits `mode`
+- current active grant projections for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are all full at the current guest-visible grant-shape level
+- host-owned request intent, `PolicyDecision`, provenance, and durable evidence metadata remain outside the guest ABI and are read through durable records or Guild resources when needed
+
 That preflight rule applies to both:
 
 - manifest-declared capability requirements
@@ -164,6 +171,7 @@ Costs and current limits:
 - `crates/guild-types/src/lib.rs`
 - `crates/guild-manifest/src/lib.rs`
 - `crates/guild-runner/src/lib.rs`
+- `crates/guild-runner/src/inspect_projection.rs`
 - `crates/guild-runner/tests/inspect_slice.rs`
 - `crates/guild-runner/tests/resource_reads.rs`
 - `crates/guild-runner/tests/composition.rs`

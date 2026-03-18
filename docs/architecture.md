@@ -14,7 +14,8 @@ Current architecture highlights worth knowing before you follow older notes:
 - inspect-mode Wasm guests now instantiate against `guild-skill-inspect-v1`, so unsupported capability imports are absent from the active inspect ABI and still rejected before execution if they appear in host-side grants/manifests
 - the shared host-side capability surface now includes a typed deferred `filesystem` family, and the active inspect slice still rejects it before guest start rather than pretending runtime file access exists
 - bounded `http-request` execution is now part of that active inspect slice through the same Wasmtime runtime path, including host/domain/path enforcement, explicit redirect policy, and fail-closed loopback/private-network blocking unless policy grants those destinations
-- the runner now uses an explicit host-to-guest inspect projection boundary rather than incidental field dropping when mapping durable host grants into the active guest ABI
+- the runner now uses one explicit host-to-guest inspect projection boundary rather than incidental field dropping when mapping durable host grants into the active guest ABI
+- that projection keeps guest `ExecutionContext` as a bounded subset, projects the current five active family grant shapes fully, and leaves policy/provenance/evidence-record truth in durable host records
 - caller-requested capabilities now flow through a local host-owned policy evaluator before execution starts
 - that evaluator now derives a host-owned local trust tier and selects named profiles by actor and/or tenant before deciding grants
 - read-resource auth uses canonical parsed Guild URI scopes

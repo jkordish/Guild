@@ -32,6 +32,11 @@ The current typed policy dimensions are:
 - `audiences`
 - `redactions`
 
+Projection into `guild-skill-inspect-v1` is full for the current
+`emit-evidence` grant shape. Host-issued evidence-record identity, blob
+deduplication state, producing-execution linkage, and durable evidence metadata
+remain outside the guest ABI.
+
 Authorization is host-owned and per emission:
 
 - no `emit-evidence` grant means denial
@@ -128,4 +133,3 @@ Costs and limits:
 - `crates/guild-runner/tests/inspect_slice.rs`
 - `crates/guild-runner/tests/composition.rs`
 - `examples/skills/explain-execution/README.md`
-

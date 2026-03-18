@@ -43,6 +43,10 @@ The current scope roots are exact canonical Guild prefixes:
 - `uri_prefixes`
 - `resource_kinds`
 
+Projection into `guild-skill-inspect-v1` is full for the current
+`read-resource` grant shape. Host-only URI parsing, canonical scope matching,
+backend lookup, and any future read-ledger state remain outside the guest ABI.
+
 Those constraints are host-validated and host-interpreted:
 
 - `uri_prefixes` must parse as canonical Guild scope roots
@@ -143,4 +147,3 @@ Costs and limits:
 - `crates/guild-runner/tests/resource_reads.rs`
 - `examples/skills/explain-execution/README.md`
 - `examples/skills/summarize-execution-query/README.md`
-

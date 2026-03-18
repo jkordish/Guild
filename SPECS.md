@@ -154,10 +154,19 @@ Guild freezes the guest and host contract boundary as follows:
 - Rust host types are the canonical durable platform model.
 - Translation between those layers MUST be explicit and tested.
 - projection from the richer host model into the active inspect ABI MUST be host-owned, named, and fail-closed.
+- the active inspect projection boundary MUST be centralized rather than scattered through runtime call paths.
 - Guest-visible types SHOULD stay small and focused on execution context, capability imports, `SkillOutput`, and `SkillError`.
 - Host-owned records such as `ExecutionRecord`, `ExecutionReceipt`, `EvidenceRecord`, `PolicyDecision`, provenance, and termination detail MUST NOT be pushed into WIT return types.
 - Guild runtime capability grants MUST remain distinct from MCP transport authorization.
 - unsupported future capability families MUST NOT appear as available host imports in the active inspect world.
+
+In the active inspect slice, the current projection contract is:
+
+- inspect guest `ExecutionContext` is a bounded subset of the richer host execution model
+- `ExecutionContext.mode` is intentionally omitted because `guild-skill-inspect-v1` is inspect-only by world contract
+- current active grant projections for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are full at the current guest-visible grant-shape level
+- host-owned request intent, `PolicyDecision`, provenance, termination detail, durable evidence metadata, and child lineage remain host truth rather than guest ABI truth
+- explain/debug flows that need full truth MUST read host-owned records or Guild resources rather than inferring that state from guest-visible context
 
 ## 9. Current Repository Baseline
 
@@ -186,7 +195,9 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - the current repository loads an optional `policy.json` from the Guild root and otherwise uses a built-in default local policy profile
 - local policy now selects a named profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
 - bounded local execution-query resources expose deterministic views over persisted execution records through the same host-mediated resource backend used by guest `read-resource` and MCP `resources/read`
-- the host-owned projection into `guild-skill-inspect-v1` is explicit, including the full active `http-request` grant shape visible to guests
+- the host-owned projection into `guild-skill-inspect-v1` is explicit, centralized in the runner, and covered by contract tests
+- the inspect guest `ExecutionContext` is a bounded projection that intentionally omits `mode`, while durable request/policy/provenance state remains host-owned
+- the current active grant shapes for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are all projected fully into the inspect guest ABI
 
 The current repository does not yet implement full `plan` mode, remote or distributed policy, or `apply` mode.
 

@@ -25,6 +25,7 @@ What is materially real today:
 - deterministic Codex-oriented MCP-path smoke flows now exercise `explain-execution` and `explain-execution-tree` through the real stdio server
 - top-level unsuccessful inspect calls return host-issued execution receipts pointing at persisted `guild://executions/...` records
 - supported inspect-slice capability families now use typed host-enforced constraints
+- the active inspect slice now has one centralized host-to-guest projection layer with contract tests
 - the canonical primitive HTTP proof skill is `inspect-http-json`, exercised through `guild.inspect` against a deterministic local server
 - unsupported capability families are rejected before execution in the active inspect slice
 - `read-resource` authorization now matches parsed canonical Guild URI scopes instead of loose raw string prefixes
@@ -134,7 +135,8 @@ What this means in practice:
 - `ExecutionContext` carries explicit `CapabilityGrantSet` data into the guest together with a host-minted durable execution ID.
 - The runner still executes only resolved refs and still globally rejects `apply`.
 - The host now evaluates typed constraints for `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`.
-- The runner now projects the richer durable host execution model into the inspect guest ABI explicitly before guest start.
+- The runner now projects the richer durable host execution model into the inspect guest ABI explicitly through one centralized inspect projection layer before guest start.
+- Inspect guest `ExecutionContext` is a bounded subset that intentionally omits `mode`, while the current active family grant shapes for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` project fully.
 - Unsupported capability families in the broader shared contract are rejected before execution in the active inspect slice, and unsupported imports are absent from the active inspect guest ABI itself.
 - Host authorization denials across runner checks, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log` are classified through one host-owned rejection model.
 - Durable successful, failed, and rejected execution records now carry host-stamped start and finish timestamps.

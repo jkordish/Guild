@@ -9,9 +9,11 @@ use guild_types::{
     AbiVersion, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
     CapabilityId, CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, EvidenceRef,
     ExecutionMode, ExecutionStatus, FilesystemConstraints, FilesystemOperation, FilesystemRoot,
-    GrantedCapability, HttpMethod, HttpRequestConstraints, HttpScheme, LogConstraints,
-    PolicyDecision, PolicyDecisionOutcome, RedactionClass, RequestedSkillRef,
-    ResolvedExecutionEnvelope, Severity, SkillKey, VersionRequirement,
+    GrantedCapability, HttpMethod, HttpRequestConstraints, HttpScheme, InstalledVerificationState,
+    InvokeDependencyConstraints, LocalTrustTier, LogConstraints, PolicyDecision,
+    PolicyDecisionOutcome, PolicyReason, ReadResourceConstraints, RedactionClass,
+    RequestedSkillRef, ResolvedExecutionEnvelope, ResourceKind, Severity, SkillKey,
+    VersionRequirement,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -138,6 +140,30 @@ fn log_info_grant() -> GrantedCapability {
         access: CapabilityAccess::Write,
         constraints: CapabilityConstraints::Log(LogConstraints {
             levels: Some(vec![Severity::Info]),
+        }),
+    }
+}
+
+fn read_resource_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec![
+                "guild://executions/".into(),
+                "guild://queries/executions/".into(),
+            ]),
+            resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Query]),
+        }),
+    }
+}
+
+fn invoke_dependency_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::InvokeSkill,
+        access: CapabilityAccess::Invoke,
+        constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+            aliases: Some(vec!["child".into()]),
         }),
     }
 }
@@ -865,6 +891,135 @@ fn inspect_guest_projection_exposes_full_active_http_grant_shape() {
     assert_eq!(granted["allow_link_local"], false);
     assert_eq!(granted["allow_private_networks"], false);
     assert_eq!(granted["allow_ip_literals"], true);
+}
+
+#[test]
+fn inspect_guest_projection_exposes_each_active_family_shape() {
+    let grants = CapabilityGrantSet {
+        grants: vec![
+            emit_evidence_grant(),
+            log_info_grant(),
+            read_resource_grant(),
+            invoke_dependency_grant(),
+            http_projection_grant(),
+        ],
+    };
+    let (installed, request) = sample_request(grants, ExecutionMode::Inspect);
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let record = runner.execute(&registry, &installed, &request).unwrap();
+    let granted = record.output.as_ref().unwrap().structured["granted_capabilities"]["grants"]
+        .as_array()
+        .expect("granted capabilities are projected as an array");
+
+    assert_eq!(granted.len(), 5);
+    assert_eq!(granted[0]["id"], "emit-evidence");
+    assert_eq!(granted[0]["constraints"]["max_bytes"], 65_536);
+    assert_eq!(granted[0]["constraints"]["audiences"][0], "user");
+    assert_eq!(granted[0]["constraints"]["redactions"][0], "none");
+
+    assert_eq!(granted[1]["id"], "log-write");
+    assert_eq!(granted[1]["constraints"]["levels"][0], "info");
+
+    assert_eq!(granted[2]["id"], "read-resource");
+    assert_eq!(
+        granted[2]["constraints"]["uri_prefixes"][0],
+        "guild://executions/"
+    );
+    assert_eq!(
+        granted[2]["constraints"]["uri_prefixes"][1],
+        "guild://queries/executions/"
+    );
+    assert_eq!(granted[2]["constraints"]["resource_kinds"][0], "execution");
+    assert_eq!(granted[2]["constraints"]["resource_kinds"][1], "query");
+
+    assert_eq!(granted[3]["id"], "invoke-skill");
+    assert_eq!(granted[3]["constraints"]["aliases"][0], "child");
+
+    assert_eq!(granted[4]["id"], "http-request");
+    assert_eq!(granted[4]["constraints"]["allowed_hosts"][0], "127.0.0.1");
+    assert_eq!(
+        granted[4]["constraints"]["allowed_host_suffixes"][0],
+        "example.com"
+    );
+    assert_eq!(granted[4]["constraints"]["follow_redirects"], true);
+}
+
+#[test]
+fn durable_host_records_keep_richer_truth_than_the_guest_projection() {
+    let registry = load_registry();
+    let installed = registry.resolve(&requested_skill()).unwrap();
+    let runner = build_runner();
+    let mut request = envelope_for(
+        &installed,
+        "exec-reduced",
+        "trace-reduced",
+        json!({"name": "Ada"}),
+        CapabilityGrantSet {
+            grants: vec![emit_evidence_grant()],
+        },
+        ExecutionMode::Inspect,
+    );
+    request.request.requested_capabilities = CapabilityGrantSet {
+        grants: vec![emit_evidence_grant(), log_info_grant()],
+    };
+    request.policy_decision = PolicyDecision {
+        outcome: PolicyDecisionOutcome::Reduced,
+        summary: "local policy removed optional log-write before guest start".into(),
+        profile_name: "restricted".into(),
+        trust_tier: LocalTrustTier::Restricted,
+        verification_state: InstalledVerificationState::VerifiedImport,
+        reasons: vec![PolicyReason {
+            code: "policy-cap-reduced".into(),
+            message: "optional log-write was removed from the final guest grant set".into(),
+            detail: Some(json!({
+                "requested_capability": "log-write",
+                "granted_capabilities": ["emit-evidence"],
+            })),
+        }],
+        detail: Some(json!({
+            "host_only_truth": {
+                "requested_capability_count": 2,
+                "granted_capability_count": 1,
+            }
+        })),
+    };
+
+    let record = runner.execute(&registry, &installed, &request).unwrap();
+    let output = record.output.as_ref().expect("execution succeeded");
+    let guest_grants = output.structured["granted_capabilities"]["grants"]
+        .as_array()
+        .expect("guest-visible granted capabilities are projected");
+
+    assert_eq!(
+        record.policy_decision.outcome,
+        PolicyDecisionOutcome::Reduced
+    );
+    assert_eq!(record.request.requested_capabilities.grants.len(), 2);
+    assert_eq!(record.granted_capabilities.grants.len(), 1);
+    assert_eq!(record.policy_decision.profile_name, "restricted");
+    assert_eq!(
+        record.policy_decision.trust_tier,
+        LocalTrustTier::Restricted
+    );
+    assert_eq!(
+        record.policy_decision.verification_state,
+        InstalledVerificationState::VerifiedImport
+    );
+    assert_eq!(record.policy_decision.reasons.len(), 1);
+    assert!(record.policy_decision.detail.is_some());
+
+    assert_eq!(guest_grants.len(), 1);
+    assert_eq!(guest_grants[0]["id"], "emit-evidence");
+    assert!(
+        output.structured.get("policy_decision").is_none(),
+        "guest-visible inspect output should not receive host policy state implicitly"
+    );
+    assert!(
+        output.structured.get("requested_capabilities").is_none(),
+        "guest-visible inspect output should not receive caller-requested capability state implicitly"
+    );
 }
 
 #[test]

@@ -42,6 +42,11 @@ The current typed policy dimension is:
 
 - `aliases`
 
+Projection into `guild-skill-inspect-v1` is full for the current
+`invoke-skill` grant shape. Installed dependency pinning, child grant
+reduction, child policy decisions, and durable child execution records remain
+host-owned state outside the guest ABI.
+
 Alias semantics are bounded:
 
 - if `aliases` is omitted on a grant, the grant is unbounded only across the

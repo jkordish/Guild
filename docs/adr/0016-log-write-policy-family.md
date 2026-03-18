@@ -20,6 +20,10 @@ The current typed policy dimension is:
 
 - `levels`
 
+Projection into `guild-skill-inspect-v1` is full for the current `log-write`
+grant shape. Sink selection, any future durable log storage, and other
+host-owned telemetry handling remain outside the guest ABI.
+
 Today, `levels` are the only policy-relevant logging knob. The current
 repository does not treat categories, namespaces, sinks, structured fields, or
 message content as separate policy dimensions.
@@ -95,4 +99,3 @@ Costs and limits:
 - `crates/guild-runner/tests/inspect_slice.rs`
 - `crates/guild-runner/tests/composition.rs`
 - `examples/skills/hello-inspect/README.md`
-

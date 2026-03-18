@@ -86,6 +86,11 @@ These are not suggestions.
    - `ARCHITECTURE.md` when execution shape or trust boundaries change
    - example manifests if affected
 
+9. **Host truth and guest ABI truth are not the same thing.**
+   - Durable records stay canonical for policy, provenance, requested-vs-granted state, and evidence metadata.
+   - The active inspect guest ABI only receives the named host-owned projection.
+   - If you change inspect-visible data shapes, update the centralized projection layer, its tests, and the docs together.
+
 ## Repository map
 
 - `SPECS.md`: normative repository contract
@@ -118,6 +123,7 @@ The repository now has a real local inspect-only path:
 - the active inspect-slice capability families `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are actually executable; unsupported families fail before execution
 - the shared host-side capability vocabulary now also includes an explicit typed deferred `filesystem` family, and the active inspect slice rejects filesystem before guest start rather than implying guest file IO exists
 - inspect-mode Wasm skills now target the dedicated `guild-skill-inspect-v1` world; broader future imports must stay out of inspect manifests and the active inspect runtime path
+- the active inspect host-to-guest projection now lives in one explicit runner layer; inspect guest `ExecutionContext` is a bounded subset, while the current five active family grant shapes project fully
 - resolved execution attempts persist under local Guild URIs on success, failure, and rejection with host-minted durable IDs and host-stamped timestamps
 - evidence emitted through the Wasm boundary persists as content-addressed blobs plus host-issued per-emission evidence records
 - `read-resource` authorization uses canonical parsed Guild URI scopes rather than loose raw string prefix checks

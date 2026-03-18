@@ -25,6 +25,7 @@ Guild freezes the boundary model as follows:
 4. Translation between those layers is explicit, centralized, and tested.
 5. The guest ABI stays intentionally small.
 6. Host-owned durable records stay out of WIT return types.
+7. The active inspect projection is a named family-specific projection contract, not an accidental subset.
 
 Concretely, this means:
 
@@ -36,7 +37,9 @@ Concretely, this means:
   - `SkillError`
 - active inspect truth:
   - Wasm inspect skills target `guild-skill-inspect-v1`
-  - the host projects the richer durable execution model into that inspect ABI explicitly
+  - the host projects the richer durable execution model into that inspect ABI explicitly through one centralized runner projection layer
+  - inspect guest `ExecutionContext` is a bounded subset and intentionally omits `mode`
+  - current active grant shapes for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` project fully at the current guest-visible grant-shape level
   - unsupported future capability imports do not appear in the active inspect world
 - host-owned runtime and durable surface:
   - `CallerRequest`
@@ -47,6 +50,8 @@ Concretely, this means:
   - `PolicyDecision`
   - termination or rejection detail
   - provenance, metrics, and Guild resource URIs
+
+When callers or explain/debug flows need the full truth, they must read host-owned records or Guild resources. They must not infer policy, provenance, or requested-vs-granted state from the guest ABI alone.
 
 Additional required consequences:
 
@@ -78,3 +83,7 @@ Negative:
 ADR 0002 remains accepted history and still records the original split between skill-authored output and host-owned execution records.
 
 ADR 0003 is the authoritative refinement of that split. When `0002` and current code leave room for interpretation, this ADR wins.
+
+Current implementation reference:
+
+- `crates/guild-runner/src/inspect_projection.rs`

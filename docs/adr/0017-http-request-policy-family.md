@@ -43,6 +43,11 @@ The current typed policy dimensions are:
 - `allow_private_networks`
 - `allow_ip_literals`
 
+Projection into `guild-skill-inspect-v1` is full for the current
+`http-request` grant shape. URL parsing, host/suffix canonicalization,
+destination classification, redirect-hop evaluation, budget clamping, and
+denial provenance remain host-owned runtime state rather than guest ABI state.
+
 Authorization is host-owned and split into parse, grant, and execution-budget
 steps:
 
