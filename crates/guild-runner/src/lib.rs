@@ -5778,8 +5778,7 @@ mod tests {
     use super::{
         CapabilityEvaluator, ReducedConstraint, invoke_dependency_grants_collectively_cover,
         log_grants_collectively_cover, mark_required_grants_for_requirements,
-        policy_grant_overlaps, read_resource_grants_collectively_cover,
-        reduce_grant_to_cap_set,
+        policy_grant_overlaps, read_resource_grants_collectively_cover, reduce_grant_to_cap_set,
         reduce_required_exact_string_scope, string_scope_covers_exact,
     };
     use guild_types::{

@@ -15,6 +15,7 @@ The skill expects an execution URI and can optionally read the first linked evid
 Canonical local proof flow:
 
 ```bash
+cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example codex_explain_execution_local
@@ -36,6 +37,14 @@ cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev
 ```
 
 Then add Guild to Codex with the printed stdio config and ask Codex to run `hello-inspect` followed by `explain-execution` against the returned execution URI. `codex_explain_execution_local` is the deterministic MCP-path smoke version of that same flow.
+
+If you want the same deterministic flow without leaving the helper, run:
+
+```bash
+cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
+```
+
+`codex_explain_execution_local` remains as the lower-level compatibility smoke command and now wraps that same shared helper path.
 
 Imported verified skills produce the same local execution resources. That means `explain-execution` can also be used against records created by the native signed-bundle, OCI image layout, and OCI registry portability proof flows after import.
 

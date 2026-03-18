@@ -26,6 +26,7 @@ Evidence handling stays intentionally small:
 Canonical local proof flow:
 
 ```bash
+cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example codex_explain_execution_tree_local
 ```
@@ -45,6 +46,14 @@ cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev
 ```
 
 Then add Guild to Codex with the printed stdio config and ask Codex to run `hello-composite` followed by `explain-execution-tree` against the returned root execution URI. `codex_explain_execution_tree_local` is the deterministic MCP-path smoke version of that same flow.
+
+If you want the same deterministic flow without leaving the helper, run:
+
+```bash
+cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
+```
+
+`codex_explain_execution_tree_local` remains as the lower-level compatibility smoke command and now wraps that same shared helper path.
 
 The required `read-resource` capability stays tightly scoped to local Guild execution URIs:
 

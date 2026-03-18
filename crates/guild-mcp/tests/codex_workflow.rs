@@ -1,21 +1,12 @@
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use guild_mcp::codex::{
-    CodexBootstrapOutput, CodexServerConfig, bootstrap_codex_registry, codex_server_config,
+    CodexBootstrapOutput, CodexServerConfig, CodexSmokeSelection, CodexSmokeSummary,
+    bootstrap_codex_registry, codex_server_config, guild_mcp_manifest_path,
 };
-use guild_mcp::protocol::{CallToolResult, ReadResourceResult};
-use guild_types::{
-    CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
-    EvidenceAudience, ExecutionStatus, GrantedCapability, InvokeDependencyConstraints,
-    ReadResourceConstraints, RedactionClass, ResourceKind,
-};
-use serde_json::{Value, json};
 
-#[path = "../../../test-support/guild_inspect_helpers.rs"]
-mod guild_inspect_helpers;
 #[path = "../../../test-support/mcp_stdio_client.rs"]
 mod mcp_stdio_client;
 
@@ -54,94 +45,35 @@ impl Drop for TempRegistryRoot {
     }
 }
 
-fn emit_evidence_grant() -> Value {
-    serde_json::to_value(GrantedCapability {
-        id: CapabilityId::EmitEvidence,
-        access: CapabilityAccess::Write,
-        constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
-            max_bytes: Some(65_536),
-            audiences: Some(vec![EvidenceAudience::User]),
-            redactions: Some(vec![RedactionClass::None]),
-        }),
-    })
-    .unwrap()
-}
-
-fn execution_and_object_read_grant() -> Value {
-    serde_json::to_value(GrantedCapability {
-        id: CapabilityId::ReadResource,
-        access: CapabilityAccess::Read,
-        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
-            uri_prefixes: Some(vec![
-                "guild://executions/".into(),
-                "guild://objects/records/".into(),
-            ]),
-            resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Object]),
-        }),
-    })
-    .unwrap()
-}
-
-fn invoke_and_evidence_grants() -> Vec<Value> {
-    vec![
-        serde_json::to_value(GrantedCapability {
-            id: CapabilityId::InvokeSkill,
-            access: CapabilityAccess::Invoke,
-            constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
-                aliases: Some(vec!["hello".into()]),
-            }),
-        })
-        .unwrap(),
-        emit_evidence_grant(),
-    ]
-}
-
 fn spawn_documented_server(
     config: &CodexServerConfig,
 ) -> Result<mcp_stdio_client::McpStdioClient, Box<dyn std::error::Error>> {
     mcp_stdio_client::McpStdioClient::spawn(&config.command, &config.args, &config.cwd, &config.env)
 }
 
-fn spawn_built_server(
-    registry_root: &Path,
-) -> Result<mcp_stdio_client::McpStdioClient, Box<dyn std::error::Error>> {
-    let args = vec![
-        "--registry-root".into(),
-        registry_root.to_string_lossy().into_owned(),
-    ];
-    mcp_stdio_client::McpStdioClient::spawn(
-        env!("CARGO_BIN_EXE_guild-mcp-server"),
-        &args,
-        &repo_root(),
-        &BTreeMap::new(),
-    )
+fn run_guild_codex_json(args: &[&str]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let output = Command::new("cargo")
+        .current_dir(repo_root())
+        .args(["run", "-q", "-p", "guild-mcp", "--bin", "guild-codex", "--"])
+        .args(args)
+        .output()?;
+
+    assert!(output.status.success(), "{output:?}");
+    Ok(output.stdout)
 }
 
 #[test]
 fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
     let temp_root = TempRegistryRoot::new("guild-codex-bootstrap");
-    let output = Command::new("cargo")
-        .current_dir(repo_root())
-        .args([
-            "run",
-            "-q",
-            "-p",
-            "guild-mcp",
-            "--bin",
-            "guild-codex",
-            "--",
-            "bootstrap",
-            "--registry-root",
-        ])
-        .arg(temp_root.path())
-        .args(["--reset", "--json"])
-        .output()
-        .unwrap();
-
-    assert!(output.status.success(), "{output:?}");
-
-    let payload: CodexBootstrapOutput =
-        serde_json::from_slice(&output.stdout).expect("bootstrap JSON parses");
+    let stdout = run_guild_codex_json(&[
+        "bootstrap",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--reset",
+        "--json",
+    ])
+    .unwrap();
+    let payload: CodexBootstrapOutput = serde_json::from_slice(&stdout).unwrap();
     let skill_names = payload
         .bootstrap
         .skills
@@ -162,13 +94,13 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
     assert_eq!(
         payload.config.args,
         vec![
-            "run",
-            "-q",
-            "-p",
-            "guild-mcp",
-            "--bin",
-            "guild-mcp-server",
-            "--"
+            "run".to_owned(),
+            "-q".to_owned(),
+            "--manifest-path".to_owned(),
+            guild_mcp_manifest_path().to_string_lossy().into_owned(),
+            "--bin".to_owned(),
+            "guild-mcp-server".to_owned(),
+            "--".to_owned(),
         ]
     );
     assert_eq!(
@@ -181,6 +113,20 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
                 .into_owned()
         )
     );
+    assert_eq!(
+        payload.print_config_command,
+        format!(
+            "cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root {}",
+            payload.bootstrap.registry_root.to_string_lossy()
+        )
+    );
+    assert_eq!(payload.recommended_smoke_commands.len(), 2);
+    assert!(
+        payload
+            .recommended_smoke_commands
+            .iter()
+            .all(|command| command.contains("guild-codex -- smoke"))
+    );
     assert!(
         payload
             .recommended_proof_commands
@@ -191,9 +137,9 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
         payload
             .config
             .codex_mcp_add_command()
-            .contains("codex mcp add")
+            .contains("--manifest-path")
     );
-    assert!(payload.config.config_toml().contains("[mcp_servers."));
+    assert!(payload.config.config_toml().contains("cwd = "));
 }
 
 #[test]
@@ -208,132 +154,95 @@ fn documented_config_can_launch_the_stdio_server() {
 }
 
 #[test]
-fn codex_explain_execution_flow_over_mcp_server_produces_resources() {
+fn guild_codex_smoke_explain_execution_json_produces_resources() {
     let temp_root = TempRegistryRoot::new("guild-codex-explain");
-    let bootstrap = bootstrap_codex_registry(temp_root.path(), true).unwrap();
-    let mut client = spawn_built_server(&bootstrap.registry_root).unwrap();
-    client.initialize("guild-codex-explain-smoke").unwrap();
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
-    let hello_response: CallToolResult = mcp_stdio_client::parse_result(
-        &client
-            .request(
-                "tools/call",
-                &guild_inspect_helpers::example_inspect_request(
-                    "hello-inspect",
-                    &json!({ "name": "Ada" }),
-                    &[emit_evidence_grant()],
-                ),
-            )
-            .unwrap(),
-    )
+    let stdout = run_guild_codex_json(&[
+        "smoke",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--flow",
+        "explain-execution",
+        "--json",
+    ])
     .unwrap();
-    let hello_record = guild_inspect_helpers::parse_execution_record(&hello_response);
+    let payload: CodexSmokeSummary = serde_json::from_slice(&stdout).unwrap();
 
-    let explain_response: CallToolResult = mcp_stdio_client::parse_result(
-        &client
-            .request(
-                "tools/call",
-                &guild_inspect_helpers::example_inspect_request(
-                    "explain-execution",
-                    &json!({
-                        "execution_uri": hello_record.receipt.uri,
-                        "include_first_evidence": true,
-                    }),
-                    &[execution_and_object_read_grant()],
-                ),
-            )
-            .unwrap(),
-    )
-    .unwrap();
-    let explain_record = guild_inspect_helpers::parse_execution_record(&explain_response);
-
-    let target_resource: ReadResourceResult = mcp_stdio_client::parse_result(
-        &client
-            .request(
-                "resources/read",
-                &json!({ "uri": hello_record.receipt.uri }),
-            )
-            .unwrap(),
-    )
-    .unwrap();
-    let explanation_resource: ReadResourceResult = mcp_stdio_client::parse_result(
-        &client
-            .request(
-                "resources/read",
-                &json!({ "uri": explain_record.receipt.uri }),
-            )
-            .unwrap(),
-    )
-    .unwrap();
-
-    assert_eq!(hello_record.status, ExecutionStatus::Succeeded);
-    assert_eq!(explain_record.status, ExecutionStatus::Succeeded);
-    assert!(!hello_record.emitted_evidence.is_empty());
-    assert_eq!(target_resource.contents.len(), 1);
-    assert_eq!(explanation_resource.contents.len(), 1);
+    assert_eq!(
+        payload.requested_flow,
+        CodexSmokeSelection::ExplainExecution
+    );
+    assert_eq!(payload.flows.len(), 1);
+    assert_eq!(payload.flows[0].flow, CodexSmokeSelection::ExplainExecution);
+    assert_eq!(payload.flows[0].subject_resource_items, 1);
+    assert_eq!(payload.flows[0].report_resource_items, 1);
+    assert!(payload.flows[0].subject_emitted_evidence > 0);
+    assert!(
+        payload.flows[0]
+            .report_summary
+            .contains("Explained stored execution")
+    );
 }
 
 #[test]
-fn codex_explain_execution_tree_flow_over_mcp_server_produces_resources() {
+fn guild_codex_smoke_explain_execution_tree_json_produces_resources() {
     let temp_root = TempRegistryRoot::new("guild-codex-tree");
-    let bootstrap = bootstrap_codex_registry(temp_root.path(), true).unwrap();
-    let mut client = spawn_built_server(&bootstrap.registry_root).unwrap();
-    client.initialize("guild-codex-tree-smoke").unwrap();
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
-    let composite_response: CallToolResult = mcp_stdio_client::parse_result(
-        &client
-            .request(
-                "tools/call",
-                &guild_inspect_helpers::example_inspect_request(
-                    "hello-composite",
-                    &json!({ "name": "Ada" }),
-                    &invoke_and_evidence_grants(),
-                ),
-            )
-            .unwrap(),
-    )
+    let stdout = run_guild_codex_json(&[
+        "smoke",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--flow",
+        "explain-execution-tree",
+        "--json",
+    ])
     .unwrap();
-    let composite_record = guild_inspect_helpers::parse_execution_record(&composite_response);
+    let payload: CodexSmokeSummary = serde_json::from_slice(&stdout).unwrap();
 
-    let tree_response: CallToolResult = mcp_stdio_client::parse_result(
-        &client
-            .request(
-                "tools/call",
-                &guild_inspect_helpers::example_inspect_request(
-                    "explain-execution-tree",
-                    &json!({
-                        "execution_uri": composite_record.receipt.uri,
-                        "max_depth": 4,
-                        "max_nodes": 32,
-                        "include_evidence_resources": true,
-                    }),
-                    &[execution_and_object_read_grant()],
-                ),
-            )
-            .unwrap(),
-    )
-    .unwrap();
-    let tree_record = guild_inspect_helpers::parse_execution_record(&tree_response);
+    assert_eq!(
+        payload.requested_flow,
+        CodexSmokeSelection::ExplainExecutionTree
+    );
+    assert_eq!(payload.flows.len(), 1);
+    assert_eq!(
+        payload.flows[0].flow,
+        CodexSmokeSelection::ExplainExecutionTree
+    );
+    assert_eq!(payload.flows[0].subject_resource_items, 1);
+    assert_eq!(payload.flows[0].report_resource_items, 1);
+    assert!(payload.flows[0].subject_child_executions > 0);
+    assert!(!payload.flows[0].report_summary.is_empty());
+}
 
-    let root_resource: ReadResourceResult = mcp_stdio_client::parse_result(
-        &client
-            .request(
-                "resources/read",
-                &json!({ "uri": composite_record.receipt.uri }),
-            )
-            .unwrap(),
-    )
-    .unwrap();
-    let tree_resource: ReadResourceResult = mcp_stdio_client::parse_result(
-        &client
-            .request("resources/read", &json!({ "uri": tree_record.receipt.uri }))
-            .unwrap(),
-    )
-    .unwrap();
+#[test]
+fn guild_codex_smoke_all_runs_both_documented_flows() {
+    let temp_root = TempRegistryRoot::new("guild-codex-all");
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
-    assert_eq!(composite_record.status, ExecutionStatus::Succeeded);
-    assert_eq!(tree_record.status, ExecutionStatus::Succeeded);
-    assert!(!composite_record.child_executions.is_empty());
-    assert_eq!(root_resource.contents.len(), 1);
-    assert_eq!(tree_resource.contents.len(), 1);
+    let stdout = run_guild_codex_json(&[
+        "smoke",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--flow",
+        "all",
+        "--json",
+    ])
+    .unwrap();
+    let payload: CodexSmokeSummary = serde_json::from_slice(&stdout).unwrap();
+    let flow_names = payload
+        .flows
+        .iter()
+        .map(|flow| flow.flow)
+        .collect::<Vec<_>>();
+
+    assert_eq!(payload.requested_flow, CodexSmokeSelection::All);
+    assert_eq!(
+        flow_names,
+        vec![
+            CodexSmokeSelection::ExplainExecution,
+            CodexSmokeSelection::ExplainExecutionTree,
+        ]
+    );
 }

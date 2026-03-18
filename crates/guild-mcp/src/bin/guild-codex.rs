@@ -6,8 +6,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use guild_mcp::codex::{
-    CodexBootstrapOutput, DEFAULT_CODEX_SERVER_NAME, bootstrap_codex_registry, codex_server_config,
-    default_registry_root, recommended_proof_commands,
+    CodexBootstrapOutput, CodexSmokeSelection, DEFAULT_CODEX_SERVER_NAME, bootstrap_codex_registry,
+    codex_server_config, default_registry_root, print_config_command, recommended_proof_commands,
+    recommended_smoke_commands, run_codex_smoke,
 };
 
 fn main() -> ExitCode {
@@ -31,8 +32,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let config = codex_server_config(&bootstrap.registry_root, options.name);
             if options.json {
                 let output = CodexBootstrapOutput {
+                    print_config_command: print_config_command(&bootstrap.registry_root),
                     bootstrap,
                     config,
+                    recommended_smoke_commands: recommended_smoke_commands(&options.registry_root),
                     recommended_proof_commands: recommended_proof_commands(),
                 };
                 println!("{}", serde_json::to_string_pretty(&output)?);
@@ -50,6 +53,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
+        Some(Command::Smoke(options)) => {
+            let summary = run_codex_smoke(&options.registry_root, options.name, options.flow)?;
+            if options.json {
+                println!("{}", serde_json::to_string_pretty(&summary)?);
+            } else {
+                println!("{}", summary.render_text());
+            }
+            Ok(())
+        }
     }
 }
 
@@ -57,6 +69,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 enum Command {
     Bootstrap(WorkflowOptions),
     PrintConfig(WorkflowOptions),
+    Smoke(SmokeOptions),
 }
 
 #[derive(Debug)]
@@ -64,6 +77,14 @@ struct WorkflowOptions {
     registry_root: PathBuf,
     name: String,
     reset: bool,
+    json: bool,
+}
+
+#[derive(Debug)]
+struct SmokeOptions {
+    registry_root: PathBuf,
+    name: String,
+    flow: CodexSmokeSelection,
     json: bool,
 }
 
@@ -80,6 +101,51 @@ fn parse_args(
         return Ok(None);
     }
 
+    match subcommand.as_str() {
+        "bootstrap" => parse_workflow_options(args, true)
+            .map(Command::Bootstrap)
+            .map(Some)
+            .or_else(handle_help_request),
+        "print-config" => parse_workflow_options(args, false)
+            .map(Command::PrintConfig)
+            .map(Some)
+            .or_else(handle_help_request),
+        "smoke" => parse_smoke_options(args)
+            .map(Command::Smoke)
+            .map(Some)
+            .or_else(handle_help_request),
+        _ => Err(format!("unknown subcommand `{subcommand}`").into()),
+    }
+}
+
+fn print_usage() {
+    println!("usage: guild-codex <bootstrap|print-config|smoke> [options]");
+    println!();
+    println!(
+        "bootstrap      create a local Guild root for Codex and install the default dogfood skills"
+    );
+    println!(
+        "print-config   print the Codex MCP config and launch snippets for an existing or planned Guild root"
+    );
+    println!(
+        "smoke          run one or both deterministic Codex dogfood flows against an existing Guild root"
+    );
+}
+
+fn handle_help_request(
+    error: Box<dyn std::error::Error>,
+) -> Result<Option<Command>, Box<dyn std::error::Error>> {
+    if error.to_string() == "help requested" {
+        Ok(None)
+    } else {
+        Err(error)
+    }
+}
+
+fn parse_workflow_options(
+    args: impl IntoIterator<Item = String>,
+    allow_reset: bool,
+) -> Result<WorkflowOptions, Box<dyn std::error::Error>> {
     let mut options = WorkflowOptions {
         registry_root: default_registry_root(),
         name: DEFAULT_CODEX_SERVER_NAME.into(),
@@ -87,6 +153,7 @@ fn parse_args(
         json: false,
     };
 
+    let mut args = args.into_iter();
     while let Some(argument) = args.next() {
         match argument.as_str() {
             "--registry-root" => {
@@ -101,35 +168,63 @@ fn parse_args(
                 };
                 options.name = value;
             }
-            "--reset" => {
+            "--reset" if allow_reset => {
                 options.reset = true;
+            }
+            "--reset" => {
+                return Err("--reset is only valid for bootstrap".into());
             }
             "--json" => {
                 options.json = true;
             }
-            "--help" | "-h" => return Ok(None),
+            "--help" | "-h" => return Err("help requested".into()),
             _ => return Err(format!("unexpected argument `{argument}`").into()),
         }
     }
 
-    match subcommand.as_str() {
-        "bootstrap" => Ok(Some(Command::Bootstrap(options))),
-        "print-config" => Ok(Some(Command::PrintConfig(options))),
-        _ => Err(format!("unknown subcommand `{subcommand}`").into()),
-    }
+    Ok(options)
 }
 
-fn print_usage() {
-    println!(
-        "usage: guild-codex <bootstrap|print-config> [--registry-root <path>] [--name <server-name>] [--reset] [--json]"
-    );
-    println!();
-    println!(
-        "bootstrap      create a local Guild root for Codex and install the default dogfood skills"
-    );
-    println!(
-        "print-config   print the Codex MCP config and launch snippets for an existing or planned Guild root"
-    );
+fn parse_smoke_options(
+    args: impl IntoIterator<Item = String>,
+) -> Result<SmokeOptions, Box<dyn std::error::Error>> {
+    let mut options = SmokeOptions {
+        registry_root: default_registry_root(),
+        name: DEFAULT_CODEX_SERVER_NAME.into(),
+        flow: CodexSmokeSelection::All,
+        json: false,
+    };
+
+    let mut args = args.into_iter();
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "--registry-root" => {
+                let Some(value) = args.next() else {
+                    return Err("--registry-root requires a following path argument".into());
+                };
+                options.registry_root = PathBuf::from(value);
+            }
+            "--name" => {
+                let Some(value) = args.next() else {
+                    return Err("--name requires a following server name".into());
+                };
+                options.name = value;
+            }
+            "--flow" => {
+                let Some(value) = args.next() else {
+                    return Err("--flow requires a following flow name".into());
+                };
+                options.flow = value.parse()?;
+            }
+            "--json" => {
+                options.json = true;
+            }
+            "--help" | "-h" => return Err("help requested".into()),
+            _ => return Err(format!("unexpected argument `{argument}`").into()),
+        }
+    }
+
+    Ok(options)
 }
 
 fn print_bootstrap_output(
@@ -150,7 +245,13 @@ fn print_bootstrap_output(
     println!();
     print_config_output(config);
     println!();
-    println!("recommended deterministic MCP-path smoke commands:");
+    println!("recommended next commands:");
+    println!("- {}", print_config_command(&bootstrap.registry_root));
+    for command in recommended_smoke_commands(&bootstrap.registry_root) {
+        println!("- {command}");
+    }
+    println!();
+    println!("compatibility proof commands:");
     for command in recommended_proof_commands() {
         println!("- {command}");
     }
@@ -160,9 +261,13 @@ fn print_config_output(config: &guild_mcp::codex::CodexServerConfig) {
     println!("manual server launch:");
     println!("{}", config.manual_server_command());
     println!();
-    println!("Codex CLI registration:");
+    println!("project-scoped config snippet (recommended for trusted repos):");
+    println!("{}", config.config_toml());
+    println!();
+    println!("Codex CLI registration (convenience path):");
     println!("{}", config.codex_mcp_add_command());
     println!();
-    println!("config snippet for ~/.codex/config.toml or .codex/config.toml:");
-    println!("{}", config.config_toml());
+    println!(
+        "the launcher uses an explicit Cargo manifest path, so it does not depend on the current working directory"
+    );
 }
