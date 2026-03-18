@@ -159,6 +159,7 @@ Guild freezes the guest and host contract boundary as follows:
 - Host-owned records such as `ExecutionRecord`, `ExecutionReceipt`, `EvidenceRecord`, `PolicyDecision`, provenance, and termination detail MUST NOT be pushed into WIT return types.
 - Guild runtime capability grants MUST remain distinct from MCP transport authorization.
 - unsupported future capability families MUST NOT appear as available host imports in the active inspect world.
+- broader Guild component imports outside the active inspect allowlist MUST either be impossible by construction in the active inspect runtime path or be rejected by the host as `unsupported-runtime-surface` before guest execution continues.
 
 In the active inspect slice, the current projection contract is:
 
@@ -189,7 +190,8 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - requested resolution fails closed if a single key and version maps to multiple installed digests
 - supported typed capability families in the active Wasm inspect slice are currently `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
 - inspect-mode Wasm skills now declare `runtime.entrypoint = guild-skill-inspect-v1` together with `runtime.guest_abi_version = guild-skill-inspect-v1`
-- the active Wasm inspect runtime instantiates only the `guild-skill-inspect-v1` world, so unsupported imports such as secret, cache, clock, and filesystem surface are absent from the active inspect guest ABI
+- the active Wasm inspect runtime instantiates only the `guild-skill-inspect-v1` world, so unsupported capability imports such as secret, cache, clock, and filesystem surface are absent from the active inspect guest ABI
+- the active Wasm inspect runtime also preflights Guild component imports and allows only `guild:skill/inspect-types@1.0.0` and `guild:skill/inspect-host@1.0.0`; broader Guild import surfaces fail closed as host-owned `unsupported-runtime-surface` rejections rather than degrading into generic component instantiation failures
 - the shared host-side capability vocabulary now also includes an explicit typed `filesystem` family, but the active Wasm inspect slice still rejects filesystem before execution and the inspect guest ABI does not expose filesystem imports in this milestone
 - caller-requested capabilities are evaluated through a host-owned local policy layer before execution
 - the current repository loads an optional `policy.json` from the Guild root and otherwise uses a built-in default local policy profile
@@ -367,6 +369,12 @@ If a guest attempts an ungranted operation, the host MUST deny it in a way that 
 
 Authorization denials MUST remain host-owned outcomes. A capability denial MUST NOT be silently recast as a guest-domain skill failure.
 
+### 12.4a Unsupported runtime surface
+
+If execution reaches a broader or currently unsupported runtime surface in the active inspect path, the host MUST classify that outcome distinctly from policy denial and from operational runtime failure.
+
+In the current repository this is a host-owned rejected execution with termination detail classified as `unsupported-runtime-surface`. The deferred filesystem contract currently uses the more specific host-owned code `filesystem-runtime-not-supported` inside that same unsupported-runtime-surface classification.
+
 ### 12.5 No self-escalation
 
 Guests MUST NOT mint, widen, or self-approve their own capabilities.
@@ -385,6 +393,8 @@ The current repository enforces typed constraints for:
 Those are the current typed product names in shared host-side contracts. Unknown fields, wrong-family constraint shapes, empty scoped lists, and vague `filesystem` entries without explicit root contracts are validation errors.
 
 For `filesystem`, `CapabilityAccess::Read` roots may only declare `read` operations, while `CapabilityAccess::Write` roots may only declare `write`, `create`, or `append` operations. The contract exists so manifests, caller intent, and local policy can represent filesystem authority intentionally, but the current guest ABI does not expose filesystem imports and the active Wasm inspect slice MUST reject any manifest or granted filesystem capability before guest execution.
+
+Unsupported runtime surface outcomes are not policy denials. If policy allowed the request but the active inspect runtime still rejects a broader capability family or broader Guild import surface, the persisted `PolicyDecision` remains the host-owned policy truth while the termination detail carries the host-owned unsupported-runtime-surface classification.
 
 For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, `guild://objects/sha256/`, and `guild://queries/executions/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching.
 

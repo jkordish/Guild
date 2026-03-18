@@ -17,6 +17,8 @@ use guild_types::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use wasmtime::component::Component;
+use wasmtime::{Config, Engine};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -283,6 +285,123 @@ fn copy_dir_recursive(source: &Path, destination: &Path) {
     }
 }
 
+fn component_engine() -> Engine {
+    let mut config = Config::new();
+    config.wasm_component_model(true);
+    Engine::new(&config).unwrap()
+}
+
+fn guild_component_import_names(component_path: &Path) -> Vec<String> {
+    let engine = component_engine();
+    let component = Component::from_file(&engine, component_path).unwrap();
+    let mut imports: Vec<_> = component
+        .component_type()
+        .imports(&engine)
+        .filter(|(name, _)| name.starts_with("guild:skill/"))
+        .map(|(name, _)| name.to_owned())
+        .collect();
+    imports.sort();
+    imports
+}
+
+fn broad_world_fixture_source() -> &'static str {
+    r#"use serde_json::{json, Value};
+use wit_bindgen::generate;
+
+const _: &str = include_str!("../../../../../wit/guild-skill-v1.wit");
+
+generate!({
+    path: "../../../../wit",
+    world: "guild-skill",
+});
+
+use crate::exports::guild::skill::skill::{
+    ExecutionContext, Guest, Json, SkillError, SkillOutput,
+};
+use crate::guild::skill::host;
+use crate::guild::skill::types::{EvidenceAudience, EvidenceEmissionRequest, RedactionClass};
+
+struct HelloInspectBroadImport;
+
+impl Guest for HelloInspectBroadImport {
+    fn run(ctx: ExecutionContext, input: Json) -> Result<SkillOutput, SkillError> {
+        let parsed_input: Value = serde_json::from_str(&input).map_err(|error| SkillError {
+            code: "invalid-input".into(),
+            message: "input JSON could not be parsed".into(),
+            retryable: false,
+            detail: Some(json!({ "error": error.to_string() }).to_string()),
+        })?;
+
+        let payload = serde_json::to_vec(&json!({
+            "kind": "broad-import-fixture",
+            "execution_id": ctx.execution_id,
+            "input": parsed_input,
+        }))
+        .map_err(|error| SkillError {
+            code: "evidence-payload-invalid".into(),
+            message: "fixture evidence payload could not be serialized".into(),
+            retryable: false,
+            detail: Some(json!({ "error": error.to_string() }).to_string()),
+        })?;
+
+        let evidence = host::emit_evidence(&EvidenceEmissionRequest {
+            payload,
+            mime_type: "application/json".into(),
+            title: Some("broad-import fixture".into()),
+            audience: EvidenceAudience::User,
+            redaction: RedactionClass::None,
+            freshness: Some("deterministic".into()),
+        })
+        .map_err(|message| SkillError {
+            code: "emit-evidence-failed".into(),
+            message: "host failed to persist fixture evidence".into(),
+            retryable: false,
+            detail: Some(json!({ "error": message }).to_string()),
+        })?;
+
+        Ok(SkillOutput {
+            summary: "Broad world fixture executed".into(),
+            structured: json!({
+                "message": "broad import fixture",
+                "execution_id": ctx.execution_id,
+            })
+            .to_string(),
+            diagnostics: Vec::new(),
+            effects: Vec::new(),
+            evidence: vec![evidence],
+        })
+    }
+}
+
+export!(HelloInspectBroadImport with_types_in self);
+"#
+}
+
+fn write_broad_import_fixture(root: &Path, skill_name: &str) -> PathBuf {
+    let workspace_root = root.join("workspace");
+    let source_root = workspace_root.join(format!("examples/skills/{skill_name}"));
+    copy_dir_recursive(&example_skill_dir(), &source_root);
+    copy_dir_recursive(&repo_root().join("wit"), &workspace_root.join("wit"));
+
+    let manifest_path = source_root.join("manifest.json");
+    let mut manifest: guild_manifest::SourceSkillManifest =
+        serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+    manifest.key.name = skill_name.into();
+    manifest.display_name = format!("{} Broad Import", manifest.display_name);
+    manifest.description =
+        "A fixture that compiles the broad Guild world under an inspect manifest.".into();
+    fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let lib_path = source_root.join("skill-rust/src/lib.rs");
+    fs::write(lib_path, broad_world_fixture_source()).unwrap();
+
+    source_root
+}
+
 #[test]
 fn wit_stays_aligned_with_skill_visible_execution_context() {
     let wit = include_str!("../../../wit/guild-skill-v1.wit");
@@ -351,6 +470,110 @@ fn wit_stays_aligned_with_skill_visible_execution_context() {
             "inspect WIT contract unexpectedly contains `{forbidden}`"
         );
     }
+}
+
+#[test]
+fn active_inspect_artifacts_only_import_the_inspect_host_interface() {
+    let registry = load_registry();
+    let installed = registry.resolve(&requested_skill()).unwrap();
+
+    assert_eq!(
+        guild_component_import_names(&installed.artifact_path),
+        vec![
+            "guild:skill/inspect-host@1.0.0".to_owned(),
+            "guild:skill/inspect-types@1.0.0".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn broader_guild_component_imports_are_rejected_before_guest_execution() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry");
+    let broad_source = write_broad_import_fixture(temp.path(), "hello-inspect-broad-import");
+    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    installer.install(&broad_source).unwrap();
+
+    let requested = RequestedSkillRef {
+        key: SkillKey {
+            namespace: "example".into(),
+            name: "hello-inspect-broad-import".into(),
+        },
+        version_req: VersionRequirement::parse("^0.1").unwrap(),
+    };
+    let registry = LocalRegistry::load(&registry_root).unwrap();
+    let installed = registry.resolve(&requested).unwrap();
+    assert_eq!(
+        guild_component_import_names(&installed.artifact_path),
+        vec![
+            "guild:skill/host@1.0.0".to_owned(),
+            "guild:skill/types@1.0.0".to_owned(),
+        ]
+    );
+
+    let envelope = ResolvedExecutionEnvelope {
+        request: CallerRequest {
+            request_id: "broad-import-request".into(),
+            skill: requested,
+            tenant_id: "tenant-1".into(),
+            actor_id: "actor-1".into(),
+            mode: ExecutionMode::Inspect,
+            input: json!({ "name": "Ada" }),
+            budget: guild_types::Budget::default(),
+            requested_capabilities: CapabilityGrantSet {
+                grants: vec![emit_evidence_grant(), log_info_grant()],
+            },
+            idempotency_key: None,
+            trace_id: "trace-broad-import".into(),
+        },
+        resolved_skill: installed.resolved_ref.clone(),
+        granted_capabilities: CapabilityGrantSet {
+            grants: vec![emit_evidence_grant(), log_info_grant()],
+        },
+        policy_decision: PolicyDecision {
+            outcome: PolicyDecisionOutcome::Allowed,
+            summary: "local policy granted requested capabilities".into(),
+            profile_name: "default".into(),
+            trust_tier: guild_types::LocalTrustTier::LocalDev,
+            verification_state: guild_types::InstalledVerificationState::LocalSource,
+            reasons: Vec::new(),
+            detail: None,
+        },
+        parent_execution_id: None,
+    };
+
+    let runner = build_runner();
+    let error = runner
+        .execute(&registry, &installed, &envelope)
+        .unwrap_err();
+
+    assert_eq!(error.code, "unsupported-runtime-surface");
+    let receipt = error
+        .receipt
+        .expect("unsupported component import rejection is persisted");
+    let stored = registry
+        .load_execution_record(&receipt.execution_id)
+        .unwrap();
+    assert_eq!(stored.status, ExecutionStatus::Rejected);
+    let termination = stored.termination.as_ref().unwrap();
+    assert_eq!(termination.phase, guild_types::ExecutionPhase::RuntimeLoad);
+    assert_eq!(termination.code, "unsupported-runtime-surface");
+    assert_eq!(
+        termination.detail.as_ref().unwrap()["classification"],
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(
+        termination.detail.as_ref().unwrap()["surface_kind"],
+        "component-import"
+    );
+    assert_eq!(
+        termination.detail.as_ref().unwrap()["surface_id"],
+        "guild:skill/host@1.0.0"
+    );
+    assert_eq!(
+        stored.policy_decision.outcome,
+        PolicyDecisionOutcome::Allowed
+    );
 }
 
 #[test]
@@ -1038,6 +1261,14 @@ fn unsupported_manifest_capabilities_are_rejected_before_execution() {
     let error = runner.execute(&registry, &installed, &request).unwrap_err();
 
     assert_eq!(error.code, "unsupported-runtime-surface");
+    assert_eq!(
+        error
+            .receipt
+            .as_ref()
+            .expect("unsupported manifest capability rejection is persisted")
+            .status,
+        ExecutionStatus::Rejected
+    );
     let receipt = error
         .receipt
         .expect("unsupported manifest capability rejection is persisted");
@@ -1045,6 +1276,16 @@ fn unsupported_manifest_capabilities_are_rejected_before_execution() {
         .load_execution_record(&receipt.execution_id)
         .unwrap();
     assert_eq!(stored.status, ExecutionStatus::Rejected);
+    assert_eq!(
+        stored
+            .termination
+            .as_ref()
+            .unwrap()
+            .detail
+            .as_ref()
+            .unwrap()["classification"],
+        "unsupported-runtime-surface"
+    );
 }
 
 #[test]
@@ -1074,6 +1315,16 @@ fn filesystem_manifest_capabilities_are_rejected_before_execution() {
         stored.termination.as_ref().unwrap().phase,
         guild_types::ExecutionPhase::Validation
     );
+    assert_eq!(
+        stored
+            .termination
+            .as_ref()
+            .unwrap()
+            .detail
+            .as_ref()
+            .unwrap()["classification"],
+        "unsupported-runtime-surface"
+    );
 }
 
 #[test]
@@ -1100,5 +1351,15 @@ fn filesystem_grants_are_rejected_before_execution() {
     assert_eq!(
         stored.termination.as_ref().unwrap().phase,
         guild_types::ExecutionPhase::Validation
+    );
+    assert_eq!(
+        stored
+            .termination
+            .as_ref()
+            .unwrap()
+            .detail
+            .as_ref()
+            .unwrap()["classification"],
+        "unsupported-runtime-surface"
     );
 }

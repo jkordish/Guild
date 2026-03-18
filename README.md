@@ -185,7 +185,7 @@ The current inspect slice is intentionally strict about a few things:
 - local source installs stage and validate in a temporary directory before an atomic move into installed state
 - host authorization denials persist as host-owned rejected executions instead of leaking into guest-owned failure semantics
 - the active Wasm inspect ABI now instantiates inspect skills only against `guild-skill-inspect-v1`, which exposes only `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
-- broader typed families remain in shared host vocabulary, but unsupported imports are absent from the active inspect guest ABI rather than degrading into inspect-time `not implemented` traps
+- broader typed families remain in shared host vocabulary, but unsupported capability imports are absent from the active inspect guest ABI and broader Guild component imports now fail closed as host-owned `unsupported-runtime-surface` rejections rather than degrading into generic runtime failures
 - `filesystem` is now an explicit typed host-side capability contract with named roots, guest-path prefixes, host-path concepts, and read/write/create/append operations, but the active inspect slice still rejects it before guest start
 - `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
 - `http-request` is host-mediated, typed, bounded, and fail-closed; method, scheme, host, domain suffix, port, path, redirect, timeout, response-size, loopback, private-network, link-local, and IP-literal checks stay host-owned

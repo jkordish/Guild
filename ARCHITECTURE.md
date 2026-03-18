@@ -259,6 +259,8 @@ The current repository uses a Wasmtime-backed Wasm component adapter for the wor
 
 The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution, and their host imports are absent from `guild-skill-inspect-v1`, so the active runtime surface stays honest by construction.
 
+The runtime now also preflights Guild component imports before instantiation. In the active inspect path, only `guild:skill/inspect-types@1.0.0` and `guild:skill/inspect-host@1.0.0` are allowed. If an artifact still exposes a broader Guild import surface, the host rejects it as `unsupported-runtime-surface` during runtime load instead of letting it collapse into a generic component-instantiation failure.
+
 The broader shared Rust type surface now also includes an explicit typed `filesystem` family for future work. That host-side contract models named roots, guest-path prefixes, host-path concepts, and explicit read/write/create/append operations so manifests, caller intent, and local policy can describe filesystem authority intentionally. The current inspect guest ABI does not expose filesystem imports or preopened directories, and the active Wasm inspect slice rejects any manifest or granted filesystem capability before guest start.
 
 The host-to-guest projection boundary is explicit in the runner. The host retains the richer durable `ExecutionContext`, `GrantedCapability`, request, policy, and evidence metadata model, then projects only the inspect-visible subset into `guild-skill-inspect-v1` before guest start through one centralized inspect-projection layer.
@@ -649,7 +651,7 @@ The current repository implements a real but intentionally narrow slice of this 
 - bounded execution-query resources and templates derive from that same persisted execution store and are readable through the same backend by guests and MCP clients
 - composite skills invoke declared child dependencies by alias through the same host boundary
 - resource-aware inspect skills can explain stored execution trees by walking persisted child lineage and bounded evidence descriptors through existing Guild execution and object-record URIs, and can summarize bounded execution-query resources without learning a second backend
-- supported capability families in the active inspect slice are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; unsupported families are rejected before execution
+- supported capability families in the active inspect slice are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; unsupported families are rejected before execution, and broader Guild component imports are rejected as host-owned `unsupported-runtime-surface`
 - `guild.inspect` in `guild-mcp` rides that same registry, runner, and storage path
 - `guild-mcp-server` exposes that same path over stdio MCP with one public tool plus Guild execution, evidence, and bounded execution-query resources
 

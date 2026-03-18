@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use url::Url;
-use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
+use wasmtime::component::{Component, HasSelf, Linker, ResourceTable, types::ComponentItem};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::bindings::http::types::ErrorCode as WasiHttpErrorCode;
@@ -53,6 +53,12 @@ mod bindings {
 mod inspect_projection;
 
 const INSPECT_WORLD_ENTRYPOINT: &str = "guild-skill-inspect-v1";
+const ACTIVE_INSPECT_GUILD_IMPORTS: [&str; 2] = [
+    "guild:skill/inspect-types@1.0.0",
+    "guild:skill/inspect-host@1.0.0",
+];
+const GUILD_COMPONENT_IMPORT_PREFIX: &str = "guild:skill/";
+const UNSUPPORTED_RUNTIME_SURFACE_CLASSIFICATION: &str = "unsupported-runtime-surface";
 
 pub trait RuntimeAdapter: Send + Sync {
     fn kind(&self) -> RuntimeKind;
@@ -548,6 +554,58 @@ impl WasmtimeRuntimeAdapter {
         Ok(Self { engine })
     }
 
+    fn validate_component_import_surface(
+        &self,
+        component: &Component,
+    ) -> Result<(), ExecutionError> {
+        let observed_guild_imports: Vec<_> = component
+            .component_type()
+            .imports(&self.engine)
+            .filter(|(name, _)| name.starts_with(GUILD_COMPONENT_IMPORT_PREFIX))
+            .map(|(name, item)| {
+                serde_json::json!({
+                    "name": name,
+                    "kind": component_item_kind(&item),
+                })
+            })
+            .collect();
+
+        let unexpected_guild_imports: Vec<_> = observed_guild_imports
+            .iter()
+            .filter(|entry| {
+                !ACTIVE_INSPECT_GUILD_IMPORTS.contains(
+                    &entry
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                )
+            })
+            .cloned()
+            .collect();
+
+        if unexpected_guild_imports.is_empty() {
+            return Ok(());
+        }
+
+        let rejected_import = unexpected_guild_imports
+            .iter()
+            .find_map(|entry| {
+                let name = entry.get("name").and_then(Value::as_str)?;
+                name.contains("/host@").then_some(name)
+            })
+            .or_else(|| {
+                unexpected_guild_imports
+                    .iter()
+                    .find_map(|entry| entry.get("name").and_then(Value::as_str))
+            })
+            .unwrap_or("unknown-component-import");
+        Err(unsupported_component_import_runtime_surface_error(
+            rejected_import,
+            &observed_guild_imports,
+            &unexpected_guild_imports,
+        ))
+    }
+
     fn instantiate(
         &self,
         installed: &InstalledSkill,
@@ -575,6 +633,7 @@ impl WasmtimeRuntimeAdapter {
                 .with_detail(error.to_string())
                 .with_phase(ExecutionPhase::RuntimeLoad)
             })?;
+        self.validate_component_import_surface(&component)?;
 
         let mut linker = Linker::<WasmStoreState>::new(&self.engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker).map_err(|error| {
@@ -1380,7 +1439,7 @@ where
             return Ok(());
         }
 
-        let unsupported_manifest_capabilities: Vec<_> = installed
+        let unsupported_capabilities: Vec<_> = installed
             .manifest
             .capabilities
             .iter()
@@ -1388,57 +1447,40 @@ where
                 !is_supported_wasm_inspect_capability(&requirement.id, &requirement.access)
             })
             .map(|requirement| {
-                serde_json::json!({
-                    "id": requirement.id,
-                    "access": requirement.access,
-                    "constraints": requirement.constraints,
-                    "required": requirement.required,
-                })
+                capability_surface_entry(
+                    "manifest",
+                    &requirement.id,
+                    &requirement.access,
+                    &requirement.constraints,
+                    Some(requirement.required),
+                )
             })
+            .chain(
+                grants
+                    .grants
+                    .iter()
+                    .filter(|grant| !is_supported_wasm_inspect_capability(&grant.id, &grant.access))
+                    .map(|grant| {
+                        capability_surface_entry(
+                            "grant",
+                            &grant.id,
+                            &grant.access,
+                            &grant.constraints,
+                            None,
+                        )
+                    }),
+            )
             .collect();
 
-        let unsupported_grants: Vec<_> = grants
-            .grants
-            .iter()
-            .filter(|grant| !is_supported_wasm_inspect_capability(&grant.id, &grant.access))
-            .map(|grant| {
-                serde_json::json!({
-                    "id": grant.id,
-                    "access": grant.access,
-                    "constraints": grant.constraints,
-                })
-            })
-            .collect();
-
-        if unsupported_manifest_capabilities.is_empty() && unsupported_grants.is_empty() {
+        if unsupported_capabilities.is_empty() {
             return Ok(());
         }
 
-        let includes_filesystem = unsupported_surface_includes_filesystem(
-            &unsupported_manifest_capabilities,
-            &unsupported_grants,
-        );
-        let (code, message) = if includes_filesystem {
-            (
-                "filesystem-runtime-not-supported",
-                "filesystem capability contracts are not implemented in the active Wasm inspect slice",
-            )
-        } else {
-            (
-                "unsupported-runtime-surface",
-                "Wasm inspect execution only supports the active capability allowlist",
-            )
-        };
-
-        Err(ExecutionError::new(code, message)
-            .with_detail(serde_json::json!({
-                "runtime_kind": self.runtime.kind(),
-                "supported_capabilities": supported_wasm_inspect_capabilities(),
-                "unsupported_manifest_capabilities": unsupported_manifest_capabilities,
-                "unsupported_grants": unsupported_grants,
-                "deferred_filesystem_contract": includes_filesystem,
-            }))
-            .with_phase(ExecutionPhase::Validation))
+        Err(unsupported_capability_runtime_surface_error(
+            ExecutionPhase::Validation,
+            "runtime-surface-validation",
+            &unsupported_capabilities,
+        ))
     }
 
     fn validate_resolved_ref(
@@ -2481,6 +2523,10 @@ fn duration_ms(duration: std::time::Duration) -> u64 {
 }
 
 fn status_from_error(error: &ExecutionError) -> ExecutionStatus {
+    if is_unsupported_runtime_surface_error(error) {
+        return ExecutionStatus::Rejected;
+    }
+
     match error.phase.clone().unwrap_or(ExecutionPhase::RuntimeExec) {
         ExecutionPhase::Validation | ExecutionPhase::Grant | ExecutionPhase::Mode => {
             ExecutionStatus::Rejected
@@ -4341,6 +4387,22 @@ fn child_http_constraint_mismatch(
     }
 }
 
+fn capability_surface_entry(
+    origin: &'static str,
+    id: &CapabilityId,
+    access: &CapabilityAccess,
+    constraints: &CapabilityConstraints,
+    required: Option<bool>,
+) -> Value {
+    serde_json::json!({
+        "origin": origin,
+        "id": id,
+        "access": access,
+        "constraints": constraints,
+        "required": required,
+    })
+}
+
 fn is_supported_wasm_inspect_capability(id: &CapabilityId, access: &CapabilityAccess) -> bool {
     matches!(
         (id, access),
@@ -4365,18 +4427,129 @@ fn supported_wasm_inspect_capabilities() -> Vec<Value> {
     ]
 }
 
-fn unsupported_surface_includes_filesystem(
-    unsupported_manifest_capabilities: &[Value],
-    unsupported_grants: &[Value],
-) -> bool {
-    unsupported_manifest_capabilities
+fn unsupported_surface_includes_filesystem(entries: &[Value]) -> bool {
+    entries.iter().any(|entry| {
+        entry
+            .get("id")
+            .is_some_and(|id| id == &serde_json::json!(CapabilityId::Filesystem))
+    })
+}
+
+fn unsupported_runtime_surface_detail(
+    surface_kind: &'static str,
+    surface_id: impl Into<String>,
+    detail: &Value,
+) -> Value {
+    serde_json::json!({
+        "classification": UNSUPPORTED_RUNTIME_SURFACE_CLASSIFICATION,
+        "surface_kind": surface_kind,
+        "surface_id": surface_id.into(),
+        "active_runtime": {
+            "kind": RuntimeKind::WasmComponent,
+            "entrypoint": INSPECT_WORLD_ENTRYPOINT,
+            "guest_abi_version": AbiVersion::GuildSkillInspectV1,
+        },
+        "detail": detail,
+    })
+}
+
+fn unsupported_runtime_surface_error(
+    code: &'static str,
+    message: &'static str,
+    phase: ExecutionPhase,
+    surface_kind: &'static str,
+    surface_id: impl Into<String>,
+    detail: &Value,
+) -> ExecutionError {
+    ExecutionError::new(code, message)
+        .with_detail(unsupported_runtime_surface_detail(
+            surface_kind,
+            surface_id,
+            detail,
+        ))
+        .with_phase(phase)
+}
+
+fn unsupported_capability_runtime_surface_error(
+    phase: ExecutionPhase,
+    source: &'static str,
+    unsupported_capabilities: &[Value],
+) -> ExecutionError {
+    let includes_filesystem = unsupported_surface_includes_filesystem(unsupported_capabilities);
+    let (code, message) = if includes_filesystem {
+        (
+            "filesystem-runtime-not-supported",
+            "filesystem capability contracts are not implemented in the active Wasm inspect slice",
+        )
+    } else {
+        (
+            "unsupported-runtime-surface",
+            "Wasm inspect execution only supports the active capability allowlist",
+        )
+    };
+    let surface_id = unsupported_capabilities
         .iter()
-        .chain(unsupported_grants.iter())
-        .any(|entry| {
-            entry
-                .get("id")
-                .is_some_and(|id| id == &serde_json::json!(CapabilityId::Filesystem))
-        })
+        .find_map(|entry| entry.get("id").and_then(Value::as_str))
+        .map_or_else(
+            || "multiple-capability-families".to_owned(),
+            std::borrow::ToOwned::to_owned,
+        );
+
+    unsupported_runtime_surface_error(
+        code,
+        message,
+        phase,
+        "capability-family",
+        surface_id,
+        &serde_json::json!({
+            "source": source,
+            "supported_capabilities": supported_wasm_inspect_capabilities(),
+            "unsupported_capabilities": unsupported_capabilities,
+            "deferred_filesystem_contract": includes_filesystem,
+        }),
+    )
+}
+
+fn component_item_kind(item: &ComponentItem) -> &'static str {
+    match item {
+        ComponentItem::ComponentFunc(_) => "component-func",
+        ComponentItem::CoreFunc(_) => "core-func",
+        ComponentItem::Module(_) => "module",
+        ComponentItem::Component(_) => "component",
+        ComponentItem::ComponentInstance(_) => "component-instance",
+        ComponentItem::Type(_) => "type",
+        ComponentItem::Resource(_) => "resource",
+    }
+}
+
+fn unsupported_component_import_runtime_surface_error(
+    rejected_import: &str,
+    observed_guild_imports: &[Value],
+    unexpected_guild_imports: &[Value],
+) -> ExecutionError {
+    unsupported_runtime_surface_error(
+        "unsupported-runtime-surface",
+        "Wasm inspect execution only supports the active inspect Guild host import surface",
+        ExecutionPhase::RuntimeLoad,
+        "component-import",
+        rejected_import,
+        &serde_json::json!({
+            "source": "component-import-preflight",
+            "allowed_guild_imports": ACTIVE_INSPECT_GUILD_IMPORTS,
+            "observed_guild_imports": observed_guild_imports,
+            "unexpected_guild_imports": unexpected_guild_imports,
+        }),
+    )
+}
+
+fn is_unsupported_runtime_surface_error(error: &ExecutionError) -> bool {
+    error.detail.as_deref().is_some_and(|detail| {
+        detail.get("classification").and_then(Value::as_str)
+            == Some(UNSUPPORTED_RUNTIME_SURFACE_CLASSIFICATION)
+    }) || matches!(
+        error.code.as_str(),
+        "unsupported-runtime-surface" | "filesystem-runtime-not-supported"
+    )
 }
 
 const CAPABILITY_DENIAL_TRAP_PREFIX: &str = "guild-capability-denial:";

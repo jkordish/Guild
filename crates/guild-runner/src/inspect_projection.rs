@@ -11,10 +11,15 @@ use guild_types::{
 use serde::Serialize;
 use serde_json::json;
 
-use super::{ExecutionError, bindings, canonicalize_host_scope, canonicalize_host_suffix_scope};
+use super::{
+    ExecutionError, bindings, canonicalize_host_scope, canonicalize_host_suffix_scope,
+    capability_surface_entry, is_supported_wasm_inspect_capability,
+    unsupported_capability_runtime_surface_error,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) enum InspectProjectionCompleteness {
+    #[cfg(test)]
     Full,
     BoundedSubset,
 }
@@ -26,6 +31,7 @@ pub(crate) struct InspectExecutionContextProjectionContract {
     pub rationale: &'static str,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct InspectCapabilityProjectionContract {
     pub capability_id: CapabilityId,
@@ -41,6 +47,7 @@ static EXECUTION_CONTEXT_PROJECTION_CONTRACT: InspectExecutionContextProjectionC
         rationale: "guild-skill-inspect-v1 is inspect-only, so the guest does not receive a redundant mode field",
     };
 
+#[cfg(test)]
 static ACTIVE_CAPABILITY_PROJECTION_CONTRACTS: [InspectCapabilityProjectionContract; 5] = [
     InspectCapabilityProjectionContract {
         capability_id: CapabilityId::ReadResource,
@@ -83,14 +90,6 @@ pub(crate) fn execution_context_projection_contract()
 pub(crate) fn active_capability_projection_contracts()
 -> &'static [InspectCapabilityProjectionContract] {
     &ACTIVE_CAPABILITY_PROJECTION_CONTRACTS
-}
-
-fn capability_projection_contract(
-    id: &CapabilityId,
-) -> Option<&'static InspectCapabilityProjectionContract> {
-    ACTIVE_CAPABILITY_PROJECTION_CONTRACTS
-        .iter()
-        .find(|contract| contract.capability_id == *id)
 }
 
 pub(crate) fn project_execution_context_to_inspect_abi(
@@ -147,8 +146,23 @@ fn project_resolved_skill_ref_to_inspect_abi(
 fn project_granted_capability_to_inspect_abi(
     grant: &GrantedCapability,
 ) -> Result<bindings::guild::skill::inspect_types::GrantedCapability, ExecutionError> {
+    if !is_supported_wasm_inspect_capability(&grant.id, &grant.access) {
+        let unsupported = capability_surface_entry(
+            "projection",
+            &grant.id,
+            &grant.access,
+            &grant.constraints,
+            None,
+        );
+        return Err(unsupported_capability_runtime_surface_error(
+            ExecutionPhase::Validation,
+            "inspect-projection",
+            &[unsupported],
+        ));
+    }
+
     Ok(bindings::guild::skill::inspect_types::GrantedCapability {
-        id: project_capability_id_to_inspect_abi(&grant.id)?,
+        id: project_capability_id_to_inspect_abi(&grant.id),
         access: project_capability_access_to_inspect_abi(&grant.access),
         constraints: project_capability_constraints_to_inspect_abi(&grant.id, &grant.constraints)?,
     })
@@ -156,53 +170,23 @@ fn project_granted_capability_to_inspect_abi(
 
 fn project_capability_id_to_inspect_abi(
     id: &CapabilityId,
-) -> Result<bindings::guild::skill::inspect_types::CapabilityId, ExecutionError> {
-    if capability_projection_contract(id).is_some() {
-        return Ok(match id {
-            CapabilityId::HttpRequest => {
-                bindings::guild::skill::inspect_types::CapabilityId::HttpRequest
-            }
-            CapabilityId::ReadResource => {
-                bindings::guild::skill::inspect_types::CapabilityId::ReadResource
-            }
-            CapabilityId::InvokeSkill => {
-                bindings::guild::skill::inspect_types::CapabilityId::InvokeSkill
-            }
-            CapabilityId::EmitEvidence => {
-                bindings::guild::skill::inspect_types::CapabilityId::EmitEvidence
-            }
-            CapabilityId::LogWrite => bindings::guild::skill::inspect_types::CapabilityId::LogWrite,
-            _ => unreachable!("active capability projection contracts must stay in sync"),
-        });
-    }
-
+) -> bindings::guild::skill::inspect_types::CapabilityId {
     match id {
-        CapabilityId::Filesystem => Err(ExecutionError::new(
-            "filesystem-runtime-not-supported",
-            "filesystem capability contracts are not implemented in the active Wasm inspect slice",
-        )
-        .with_detail(json!({
-            "id": id,
-        }))
-        .with_phase(ExecutionPhase::Validation)),
-        CapabilityId::GetSecret
-        | CapabilityId::CacheRead
-        | CapabilityId::CacheWrite
-        | CapabilityId::MonotonicClock
-        | CapabilityId::WallClock => Err(ExecutionError::new(
-            "unsupported-runtime-surface",
-            "guild-skill-inspect-v1 only projects the active inspect capability families into the guest ABI",
-        )
-        .with_detail(json!({
-            "id": id,
-        }))
-        .with_phase(ExecutionPhase::Validation)),
-        CapabilityId::HttpRequest
-        | CapabilityId::ReadResource
-        | CapabilityId::InvokeSkill
-        | CapabilityId::EmitEvidence
-        | CapabilityId::LogWrite => unreachable!(
-            "active inspect capability families should have returned through the explicit projection-contract path"
+        CapabilityId::HttpRequest => {
+            bindings::guild::skill::inspect_types::CapabilityId::HttpRequest
+        }
+        CapabilityId::ReadResource => {
+            bindings::guild::skill::inspect_types::CapabilityId::ReadResource
+        }
+        CapabilityId::InvokeSkill => {
+            bindings::guild::skill::inspect_types::CapabilityId::InvokeSkill
+        }
+        CapabilityId::EmitEvidence => {
+            bindings::guild::skill::inspect_types::CapabilityId::EmitEvidence
+        }
+        CapabilityId::LogWrite => bindings::guild::skill::inspect_types::CapabilityId::LogWrite,
+        _ => unreachable!(
+            "unsupported capability families should be rejected before inspect projection"
         ),
     }
 }
@@ -226,8 +210,8 @@ fn project_capability_constraints_to_inspect_abi(
             Ok(bindings::guild::skill::inspect_types::CapabilityConstraints::None)
         }
         CapabilityConstraints::Filesystem(value) => Err(ExecutionError::new(
-            "filesystem-runtime-not-supported",
-            "filesystem capability contracts are not implemented in the active Wasm inspect slice",
+            "capability-constraints-invalid",
+            "supported inspect capability projected with unsupported filesystem constraints",
         )
         .with_detail(json!({
             "id": id,
@@ -733,6 +717,14 @@ mod tests {
         let unsupported_error = project_granted_capability_to_inspect_abi(&unsupported)
             .expect_err("cache-read must stay outside the inspect ABI");
         assert_eq!(unsupported_error.code, "unsupported-runtime-surface");
+        assert_eq!(
+            unsupported_error.detail.as_ref().unwrap()["classification"],
+            "unsupported-runtime-surface"
+        );
+        assert_eq!(
+            unsupported_error.detail.as_ref().unwrap()["surface_kind"],
+            "capability-family"
+        );
 
         let filesystem = GrantedCapability {
             id: CapabilityId::Filesystem,
@@ -744,6 +736,14 @@ mod tests {
         let filesystem_error = project_granted_capability_to_inspect_abi(&filesystem)
             .expect_err("filesystem must stay outside the active inspect ABI");
         assert_eq!(filesystem_error.code, "filesystem-runtime-not-supported");
+        assert_eq!(
+            filesystem_error.detail.as_ref().unwrap()["classification"],
+            "unsupported-runtime-surface"
+        );
+        assert_eq!(
+            filesystem_error.detail.as_ref().unwrap()["surface_kind"],
+            "capability-family"
+        );
     }
 
     #[test]

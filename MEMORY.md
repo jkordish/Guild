@@ -28,6 +28,7 @@ What is materially real today:
 - the active inspect slice now has one centralized host-to-guest projection layer with contract tests
 - the canonical primitive HTTP proof skill is `inspect-http-json`, exercised through `guild.inspect` against a deterministic local server
 - unsupported capability families are rejected before execution in the active inspect slice
+- broader Guild component imports in the active inspect runtime path now fail closed as host-owned `unsupported-runtime-surface` rejections instead of generic runtime load failures
 - `read-resource` authorization now matches parsed canonical Guild URI scopes instead of loose raw string prefixes
 - same-version / different-digest requested resolution now fails closed instead of silently picking an artifact
 - local source installs are staged and atomic instead of destructive pre-delete operations
@@ -52,6 +53,7 @@ Where the repository is now:
 - Parts of Phase 2 are already real: composite execution, alias-scoped child invocation, and durable child lineage are working.
 - Parts of Phase 3 are already real: signed installed bundles, local publisher identity, local trust-store verification, and fail-closed import checks are implemented.
 - The integrity-hardening pass is complete for the current inspect-only substrate: host-minted execution IDs, create-only execution persistence, split evidence record identity, ambiguity rejection, atomic installs, unified host-owned denials, honest inspect capability surface, canonical Guild URI authz, and host-stamped timestamps are all in place.
+- The remaining unsupported-import ambiguity in the active inspect slice is now closed: broader capability imports stay absent from the inspect ABI, broader Guild component imports are preflighted, and unsupported runtime surface is persisted distinctly from policy denial and operational runtime failure.
 - Guild now also has a real stdio MCP server surface over that same runtime and storage path, with one honest public tool (`guild.inspect`) plus durable Guild resources.
 - Guild is now straightforward to connect to Codex over that same stdio surface: one helper command bootstraps a local dogfood root, prints the `codex mcp add ... -- <command>` registration, and prints the matching `config.toml` snippet.
 
@@ -138,6 +140,7 @@ What this means in practice:
 - The runner now projects the richer durable host execution model into the inspect guest ABI explicitly through one centralized inspect projection layer before guest start.
 - Inspect guest `ExecutionContext` is a bounded subset that intentionally omits `mode`, while the current active family grant shapes for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` project fully.
 - Unsupported capability families in the broader shared contract are rejected before execution in the active inspect slice, and unsupported imports are absent from the active inspect guest ABI itself.
+- Broader Guild component imports in the active inspect path are rejected during runtime-load preflight as host-owned `unsupported-runtime-surface` outcomes instead of generic component-instantiation failures.
 - Host authorization denials across runner checks, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log` are classified through one host-owned rejection model.
 - Durable successful, failed, and rejected execution records now carry host-stamped start and finish timestamps.
 

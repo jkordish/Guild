@@ -373,6 +373,104 @@ fn write_filesystem_fixture(root: &Path, skill_name: &str, required: bool) -> Pa
     source_root
 }
 
+fn broad_world_fixture_source() -> &'static str {
+    r#"use serde_json::{json, Value};
+use wit_bindgen::generate;
+
+const _: &str = include_str!("../../../../../wit/guild-skill-v1.wit");
+
+generate!({
+    path: "../../../../wit",
+    world: "guild-skill",
+});
+
+use crate::exports::guild::skill::skill::{
+    ExecutionContext, Guest, Json, SkillError, SkillOutput,
+};
+use crate::guild::skill::host;
+use crate::guild::skill::types::{EvidenceAudience, EvidenceEmissionRequest, RedactionClass};
+
+struct HelloInspectBroadImport;
+
+impl Guest for HelloInspectBroadImport {
+    fn run(ctx: ExecutionContext, input: Json) -> Result<SkillOutput, SkillError> {
+        let parsed_input: Value = serde_json::from_str(&input).map_err(|error| SkillError {
+            code: "invalid-input".into(),
+            message: "input JSON could not be parsed".into(),
+            retryable: false,
+            detail: Some(json!({ "error": error.to_string() }).to_string()),
+        })?;
+
+        let payload = serde_json::to_vec(&json!({
+            "kind": "broad-import-fixture",
+            "execution_id": ctx.execution_id,
+            "input": parsed_input,
+        }))
+        .map_err(|error| SkillError {
+            code: "evidence-payload-invalid".into(),
+            message: "fixture evidence payload could not be serialized".into(),
+            retryable: false,
+            detail: Some(json!({ "error": error.to_string() }).to_string()),
+        })?;
+
+        let evidence = host::emit_evidence(&EvidenceEmissionRequest {
+            payload,
+            mime_type: "application/json".into(),
+            title: Some("broad-import fixture".into()),
+            audience: EvidenceAudience::User,
+            redaction: RedactionClass::None,
+            freshness: Some("deterministic".into()),
+        })
+        .map_err(|message| SkillError {
+            code: "emit-evidence-failed".into(),
+            message: "host failed to persist fixture evidence".into(),
+            retryable: false,
+            detail: Some(json!({ "error": message }).to_string()),
+        })?;
+
+        Ok(SkillOutput {
+            summary: "Broad world fixture executed".into(),
+            structured: json!({
+                "message": "broad import fixture",
+                "execution_id": ctx.execution_id,
+            })
+            .to_string(),
+            diagnostics: Vec::new(),
+            effects: Vec::new(),
+            evidence: vec![evidence],
+        })
+    }
+}
+
+export!(HelloInspectBroadImport with_types_in self);
+"#
+}
+
+fn write_broad_import_fixture(root: &Path, skill_name: &str) -> PathBuf {
+    let workspace_root = root.join("workspace");
+    let source_root = workspace_root.join(format!("examples/skills/{skill_name}"));
+    copy_dir_recursive(&example_source_dir(), &source_root);
+    copy_dir_recursive(&wit_dir(), &workspace_root.join("wit"));
+
+    let manifest_path = source_root.join("manifest.json");
+    let mut manifest: SourceSkillManifest =
+        serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+    manifest.key.name = skill_name.into();
+    manifest.display_name = format!("{} Broad Import", manifest.display_name);
+    manifest.description =
+        "A fixture that compiles the broad Guild world under an inspect manifest.".into();
+    fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let lib_path = source_root.join("skill-rust/src/lib.rs");
+    fs::write(lib_path, broad_world_fixture_source()).unwrap();
+
+    source_root
+}
+
 fn write_policy(root: &Path, policy: &LocalPolicyConfig) {
     fs::create_dir_all(root).unwrap();
     fs::write(
@@ -1145,6 +1243,160 @@ fn explain_skill_can_summarize_persisted_filesystem_rejections() {
     assert_eq!(
         explained_output.structured["termination"]["code"],
         "filesystem-runtime-not-supported"
+    );
+}
+
+#[test]
+fn unsupported_runtime_surface_rejections_remain_distinct_from_policy_denials() {
+    let temp = TempFixtureDir::new("guild-unsupported-runtime-surface");
+    let registry_root = temp.path().join("registry");
+    let installer = LocalSourceInstaller::new(&registry_root).unwrap();
+    installer.install(example_source_dir()).unwrap();
+    installer
+        .install(write_broad_import_fixture(
+            temp.path(),
+            "hello-inspect-broad-import",
+        ))
+        .unwrap();
+    installer.install(explain_source_dir()).unwrap();
+    write_policy(
+        &registry_root,
+        &deny_emit_evidence_for_actor_policy("actor-blocked"),
+    );
+
+    let facade = build_facade_for_root(&registry_root);
+    let policy_denied = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-blocked",
+            CapabilityGrantSet {
+                grants: vec![emit_evidence_grant()],
+            },
+        ))
+        .unwrap_err();
+    let unsupported = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect-broad-import".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![emit_evidence_grant()],
+            },
+        ))
+        .unwrap_err();
+
+    assert_eq!(policy_denied.code, "policy-denied");
+    assert_eq!(unsupported.code, "unsupported-runtime-surface");
+
+    let policy_receipt = policy_denied
+        .receipt
+        .expect("policy denial persists a receipt");
+    let unsupported_receipt = unsupported
+        .receipt
+        .expect("unsupported runtime surface persists a receipt");
+
+    let policy_record: ExecutionRecord =
+        serde_json::from_slice(&facade.read_resource(&policy_receipt.uri).unwrap().bytes).unwrap();
+    let unsupported_record: ExecutionRecord = serde_json::from_slice(
+        &facade
+            .read_resource(&unsupported_receipt.uri)
+            .unwrap()
+            .bytes,
+    )
+    .unwrap();
+
+    assert_eq!(
+        policy_record.policy_decision.outcome,
+        PolicyDecisionOutcome::Rejected
+    );
+    assert_eq!(
+        policy_record.termination.as_ref().unwrap().code,
+        "policy-denied"
+    );
+    assert_eq!(
+        unsupported_record.policy_decision.outcome,
+        PolicyDecisionOutcome::Allowed
+    );
+    assert_eq!(
+        unsupported_record.termination.as_ref().unwrap().code,
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(
+        unsupported_record.termination.as_ref().unwrap().phase,
+        guild_types::ExecutionPhase::RuntimeLoad
+    );
+    assert_eq!(
+        unsupported_record
+            .termination
+            .as_ref()
+            .unwrap()
+            .detail
+            .as_ref()
+            .unwrap()["classification"],
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(
+        unsupported_record
+            .termination
+            .as_ref()
+            .unwrap()
+            .detail
+            .as_ref()
+            .unwrap()["surface_kind"],
+        "component-import"
+    );
+
+    let explained_policy = facade
+        .inspect(explain_request(&policy_receipt.uri))
+        .unwrap();
+    let explained_policy_output = explained_policy.structured_content.output.as_ref().unwrap();
+    let explained_unsupported = facade
+        .inspect(explain_request(&unsupported_receipt.uri))
+        .unwrap();
+    let explained_unsupported_output = explained_unsupported
+        .structured_content
+        .output
+        .as_ref()
+        .unwrap();
+
+    assert_eq!(
+        explained_policy_output.structured["termination"]["code"],
+        "policy-denied"
+    );
+    assert_eq!(
+        explained_policy_output.structured["policy_decision"]["outcome"],
+        "rejected"
+    );
+    assert_eq!(
+        explained_unsupported_output.structured["termination"]["code"],
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(
+        explained_unsupported_output.structured["termination"]["detail"]["classification"],
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(
+        explained_unsupported_output.structured["termination"]["detail"]["surface_kind"],
+        "component-import"
+    );
+    assert_eq!(
+        explained_unsupported_output.structured["policy_decision"]["outcome"],
+        "allowed"
     );
 }
 

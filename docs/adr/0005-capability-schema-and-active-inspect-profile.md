@@ -51,6 +51,13 @@ That world exposes only the active inspect imports and only the active capabilit
 IDs. Secret, cache, clock, and filesystem imports are not part of the inspect
 guest ABI.
 
+The active inspect runtime now also preflights Guild component imports before
+instantiation. In the current repository, only
+`guild:skill/inspect-types@1.0.0` and `guild:skill/inspect-host@1.0.0` are
+allowed through that path. Broader Guild import surfaces such as
+`guild:skill/types@1.0.0` or `guild:skill/host@1.0.0` are rejected by the host
+as `unsupported-runtime-surface` before guest execution continues.
+
 The active inspect runner also owns one explicit host-to-guest projection layer.
 In the current repository that means:
 
@@ -111,6 +118,9 @@ Denials are host-owned:
 
 - grant-validation failures are host rejections
 - unsupported active-surface capability use is a host rejection
+- unsupported broader Guild import surface in the active inspect runtime path is
+  a host-owned `unsupported-runtime-surface` rejection, not a generic runtime
+  trap or policy denial
 - supported host-import denials remain host-classified outcomes with host-owned codes and details
 - denials are not reclassified as guest-authored skill failures for durable record purposes
 
@@ -141,6 +151,8 @@ Costs and current limits:
 - grants and denials are host-owned
 - unsupported capability families in the active Wasm inspect slice are rejected before execution
 - unsupported future imports are absent from `guild-skill-inspect-v1`
+- broader Guild component imports in the active inspect path fail closed as
+  host-owned `unsupported-runtime-surface`
 - `read-resource` authorization uses canonical parsed Guild URI scopes
 - child execution narrows grants; it does not widen them
 

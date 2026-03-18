@@ -100,6 +100,15 @@ shared contracts. In the active Wasm inspect slice, unsupported families are
 rejected before execution under the runtime surface allowlist, and their imports
 are absent from `guild-skill-inspect-v1`.
 
+Unsupported runtime surface remains distinct from policy denial:
+
+- policy denial answers "the host chose not to grant this execution"
+- unsupported runtime surface answers "the active inspect runtime does not
+  expose this broader surface today"
+- in the current repository, broader Guild component imports in the active
+  inspect path are rejected as host-owned `unsupported-runtime-surface` rather
+  than being recast as policy denials or generic runtime failures
+
 Trust and verification stay separate from grants:
 
 - verification answers what installed verification metadata exists
@@ -140,6 +149,8 @@ Costs and limits:
 - unsupported capability families in the active inspect slice fail before guest
   execution
 - unsupported future imports do not appear in the active inspect guest ABI
+- unsupported runtime surface stays distinct from policy denial in durable
+  records and explain/debug flows
 
 ## Explicit non-goals / deferred work
 

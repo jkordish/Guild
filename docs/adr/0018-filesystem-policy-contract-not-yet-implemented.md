@@ -87,6 +87,9 @@ Host-owned denial behavior is also frozen now:
 
 - preflight rejection must happen before guest execution when the requested
   filesystem authority is unsupported, invalid, or outside policy
+- that rejection is a host-owned unsupported-runtime-surface outcome in the
+  current inspect slice; the current specific code is
+  `filesystem-runtime-not-supported`
 - runtime access outside the granted canonical root must remain a host-owned
   denial, not a guest-authored filesystem error masquerading as authorization
 
@@ -115,6 +118,7 @@ Costs and limits:
 - canonicalization and escape prevention are mandatory
 - read, write, create, and append semantics must remain distinct
 - unsupported or invalid filesystem requests must fail closed before guest start
+- filesystem rejection is not a policy denial and not a guest-domain failure
 
 ## Explicit non-goals / deferred work
 
