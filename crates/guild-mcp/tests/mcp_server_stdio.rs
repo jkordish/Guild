@@ -12,7 +12,8 @@ use guild_registry::LocalSourceInstaller;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
     EvidenceAudience, ExecutionQueryResult, ExecutionRecord, ExecutionStatus, GrantedCapability,
-    PolicyDecisionOutcome, RedactionClass, RequestedSkillRef, SkillKey, VersionRequirement,
+    PolicyDecisionOutcome, ReadResourceConstraints, RedactionClass, RequestedSkillRef,
+    ResourceKind, SkillKey, VersionRequirement,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -32,6 +33,10 @@ fn explain_source_dir() -> PathBuf {
     repo_root().join("examples/skills/explain-execution")
 }
 
+fn explain_tree_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/explain-execution-tree")
+}
+
 fn prepared_registry_root() -> &'static PathBuf {
     static ROOT: OnceLock<PathBuf> = OnceLock::new();
 
@@ -48,6 +53,10 @@ fn prepared_registry_root() -> &'static PathBuf {
         LocalSourceInstaller::new(&root)
             .unwrap()
             .install(explain_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(explain_tree_source_dir())
             .unwrap();
         root
     })
@@ -189,6 +198,28 @@ fn emit_evidence_grant_json() -> Value {
     .unwrap()
 }
 
+fn read_resource_grant_json(prefixes: &[&str]) -> Value {
+    let resource_kinds = prefixes
+        .iter()
+        .filter_map(|prefix| ResourceKind::from_uri_prefix(prefix))
+        .fold(Vec::new(), |mut kinds, kind| {
+            if !kinds.contains(&kind) {
+                kinds.push(kind);
+            }
+            kinds
+        });
+
+    serde_json::to_value(GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(prefixes.iter().map(|prefix| (*prefix).to_owned()).collect()),
+            resource_kinds: Some(resource_kinds),
+        }),
+    })
+    .unwrap()
+}
+
 #[test]
 fn stdio_server_handshake_returns_honest_capabilities() {
     let mut harness = McpHarness::spawn();
@@ -301,7 +332,7 @@ fn guild_inspect_rejection_returns_tool_error_with_persisted_receipt_record() {
 }
 
 #[test]
-fn resources_read_returns_execution_and_evidence_content() {
+fn resources_read_returns_execution_evidence_payload_and_evidence_metadata_content() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
 
@@ -324,6 +355,11 @@ fn resources_read_returns_execution_and_evidence_content() {
         &json!({ "uri": record.emitted_evidence[0].uri }),
     );
     let evidence: ReadResourceResult = parse_result(&evidence_response);
+    let metadata_response = harness.request(
+        "resources/read",
+        &json!({ "uri": format!("{}/metadata", record.emitted_evidence[0].uri) }),
+    );
+    let metadata: ReadResourceResult = parse_result(&metadata_response);
 
     assert!(matches!(
         &execution.contents[0],
@@ -331,6 +367,10 @@ fn resources_read_returns_execution_and_evidence_content() {
     ));
     assert!(matches!(
         &evidence.contents[0],
+        ResourceContents::Text(text) if text.mime_type == "application/json"
+    ));
+    assert!(matches!(
+        &metadata.contents[0],
         ResourceContents::Text(text) if text.mime_type == "application/json"
     ));
 }
@@ -356,7 +396,7 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
     let resources_response = harness.request("resources/list", &json!({}));
     let resources: ListResourcesResult = parse_result(&resources_response);
 
-    assert_eq!(templates.resource_templates.len(), 7);
+    assert_eq!(templates.resource_templates.len(), 8);
     assert!(
         templates
             .resource_templates
@@ -367,6 +407,9 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
         .resource_templates
         .iter()
         .any(|template| template.uri_template == "guild://objects/records/{evidence_record_id}"));
+    assert!(templates.resource_templates.iter().any(|template| {
+        template.uri_template == "guild://objects/records/{evidence_record_id}/metadata"
+    }));
     assert!(
         templates
             .resource_templates
@@ -412,6 +455,62 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
             .results
             .iter()
             .any(|item| item.receipt.uri == record.receipt.uri)
+    );
+}
+
+#[test]
+fn guest_and_mcp_reads_match_for_evidence_metadata_resources() {
+    let mut harness = McpHarness::spawn();
+    harness.initialize();
+
+    let primitive_result: CallToolResult = parse_result(&harness.request(
+        "tools/call",
+        &inspect_request(
+            "hello-inspect",
+            &json!({ "name": "Ada" }),
+            &json!([emit_evidence_grant_json()]),
+        ),
+    ));
+    let primitive = parse_structured_record(&primitive_result);
+
+    let explain_result: CallToolResult = parse_result(&harness.request(
+        "tools/call",
+        &inspect_request(
+            "explain-execution-tree",
+            &json!({
+                "execution_uri": primitive.receipt.uri,
+                "include_evidence_resources": true,
+            }),
+            &json!([read_resource_grant_json(&[
+                "guild://executions/",
+                "guild://objects/records/",
+            ])]),
+        ),
+    ));
+    let explained = parse_structured_record(&explain_result);
+    let explained_output = explained.output.expect("explain tree returns output");
+    let descriptor = &explained_output.structured["evidence_summary"]["resource_descriptors"][0];
+    let metadata_uri = descriptor["metadata_uri"]
+        .as_str()
+        .expect("descriptor exposes metadata uri");
+
+    let metadata_response = harness.request("resources/read", &json!({ "uri": metadata_uri }));
+    let metadata: ReadResourceResult = parse_result(&metadata_response);
+    let metadata_text = match &metadata.contents[0] {
+        ResourceContents::Text(text) => text,
+        other @ ResourceContents::Blob(_) => {
+            panic!("expected text metadata contents, got {other:?}")
+        }
+    };
+    let metadata_json: Value = serde_json::from_str(&metadata_text.text).unwrap();
+
+    assert_eq!(descriptor["uri"], metadata_json["uri"]);
+    assert_eq!(descriptor["blob_uri"], metadata_json["blob_uri"]);
+    assert_eq!(descriptor["mime_type"], metadata_json["mime_type"]);
+    assert_eq!(descriptor["sha256"], metadata_json["sha256"]);
+    assert_eq!(
+        descriptor["produced_by_execution"],
+        metadata_json["produced_by_execution"]
     );
 }
 

@@ -110,6 +110,12 @@ fn guild_resource_uris_parse_canonically() {
         ResourceKind::Object
     );
     assert_eq!(
+        GuildResourceUri::parse("guild://objects/records/record-1/metadata").unwrap(),
+        GuildResourceUri::ObjectRecordMetadata {
+            evidence_record_id: "record-1".into(),
+        }
+    );
+    assert_eq!(
         GuildResourceUri::parse("guild://queries/executions/failures/recent/10")
             .unwrap()
             .kind(),
@@ -117,6 +123,7 @@ fn guild_resource_uris_parse_canonically() {
     );
     assert!(GuildResourceUri::parse("guild://objects/sha256/ABCDEF").is_err());
     assert!(GuildResourceUri::parse("guild://executions/%GG").is_err());
+    assert!(GuildResourceUri::parse("guild://objects/records/record-1/metadata/extra").is_err());
 }
 
 #[test]

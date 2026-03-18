@@ -22,9 +22,9 @@ use guild_types::{
     CapabilityId, EvidenceBlobRecord, EvidenceEmissionRequest, EvidenceRecord, EvidenceRef,
     ExecutionQueryMatch, ExecutionQueryResource, ExecutionQueryResult, ExecutionRecord,
     ExecutionStatus, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
-    GUILD_OBJECT_RECORD_URI_PREFIX, GuildResourceUri, InstalledVerificationState,
-    LocalPolicyConfig, LocalTrustTier, RequestedSkillRef, ResolvedSkillRef, ResourceReadResult,
-    SkillCategory, mint_host_evidence_record_id,
+    GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX, GUILD_OBJECT_RECORD_URI_PREFIX, GuildResourceUri,
+    InstalledVerificationState, LocalPolicyConfig, LocalTrustTier, RequestedSkillRef,
+    ResolvedSkillRef, ResourceReadResult, SkillCategory, mint_host_evidence_record_id,
 };
 use rand_core::OsRng;
 use schemars::JsonSchema;
@@ -1096,41 +1096,7 @@ impl SkillRegistry for LocalRegistry {
     }
 
     fn load_evidence_record(&self, uri: &str) -> Result<EvidenceRecord, RegistryError> {
-        let GuildResourceUri::ObjectRecord { evidence_record_id } = parse_guild_uri(uri)? else {
-            return Err(RegistryError::new(
-                "resource-kind-mismatch",
-                "evidence records are only available for Guild evidence-record URIs",
-            )
-            .with_detail(serde_json::json!({ "uri": uri })));
-        };
-
-        let metadata_path = evidence_record_path(&self.root, &evidence_record_id);
-        let contents = fs::read_to_string(&metadata_path).map_err(|error| {
-            if error.kind() == std::io::ErrorKind::NotFound {
-                RegistryError::new(
-                    "object-not-found",
-                    "evidence record was not found in the local object store",
-                )
-                .with_detail(serde_json::json!({
-                    "uri": uri,
-                    "path": metadata_path.display().to_string(),
-                }))
-            } else {
-                RegistryError::new(
-                    "object-metadata-read-failed",
-                    "failed to read evidence record metadata",
-                )
-                .with_detail(error.to_string())
-            }
-        })?;
-
-        serde_json::from_str(&contents).map_err(|error| {
-            RegistryError::new(
-                "object-metadata-parse-failed",
-                "failed to parse evidence record metadata",
-            )
-            .with_detail(error.to_string())
-        })
+        load_evidence_record_from_root(&self.root, uri)
     }
 
     fn read_resource(&self, uri: &str) -> Result<ResourceReadResult, RegistryError> {
@@ -1143,7 +1109,12 @@ impl SkillRegistry for LocalRegistry {
                 let result = self.query_execution_records(&query)?;
                 read_execution_query_resource(&result)
             }
-            GuildResourceUri::ObjectRecord { .. } => read_record_backed_object(&self.root, uri),
+            GuildResourceUri::ObjectRecord { .. } => {
+                read_record_backed_object_payload(&self.root, uri)
+            }
+            GuildResourceUri::ObjectRecordMetadata { .. } => {
+                read_record_backed_object_metadata(&self.root, uri)
+            }
             GuildResourceUri::ObjectBlob { digest_hex } => {
                 read_blob_object(&self.root, uri, &digest_hex)
             }
@@ -1449,7 +1420,10 @@ fn read_execution_query_resource(
     })
 }
 
-fn read_record_backed_object(root: &Path, uri: &str) -> Result<ResourceReadResult, RegistryError> {
+fn read_record_backed_object_payload(
+    root: &Path,
+    uri: &str,
+) -> Result<ResourceReadResult, RegistryError> {
     let record = load_evidence_record_from_root(root, uri)?;
     let GuildResourceUri::ObjectRecord { evidence_record_id } = parse_guild_uri(uri)? else {
         return Err(RegistryError::new(
@@ -1488,6 +1462,27 @@ fn read_record_backed_object(root: &Path, uri: &str) -> Result<ResourceReadResul
     })
 }
 
+fn read_record_backed_object_metadata(
+    root: &Path,
+    uri: &str,
+) -> Result<ResourceReadResult, RegistryError> {
+    let record = load_evidence_record_from_root(root, uri)?;
+    let bytes = serde_json::to_vec_pretty(&record).map_err(|error| {
+        RegistryError::new(
+            "object-metadata-serialize-failed",
+            "failed to serialize evidence record metadata",
+        )
+        .with_detail(error.to_string())
+    })?;
+
+    Ok(ResourceReadResult {
+        uri: uri.to_owned(),
+        mime_type: "application/json".into(),
+        sha256: Some(format!("sha256:{}", sha256_bytes(&bytes))),
+        bytes,
+    })
+}
+
 fn read_blob_object(
     root: &Path,
     uri: &str,
@@ -1515,7 +1510,9 @@ fn read_blob_object(
 }
 
 fn load_evidence_record_from_root(root: &Path, uri: &str) -> Result<EvidenceRecord, RegistryError> {
-    let GuildResourceUri::ObjectRecord { evidence_record_id } = parse_guild_uri(uri)? else {
+    let (GuildResourceUri::ObjectRecord { evidence_record_id }
+    | GuildResourceUri::ObjectRecordMetadata { evidence_record_id }) = parse_guild_uri(uri)?
+    else {
         return Err(RegistryError::new(
             "resource-kind-mismatch",
             "evidence records are only available for Guild evidence-record URIs",
@@ -2447,6 +2444,16 @@ pub fn evidence_record_resource_uri(evidence_record_id: &str) -> String {
         "{}{}",
         GUILD_OBJECT_RECORD_URI_PREFIX,
         percent_encode_component(evidence_record_id)
+    )
+}
+
+#[must_use]
+pub fn evidence_record_metadata_resource_uri(evidence_record_id: &str) -> String {
+    format!(
+        "{}{}{}",
+        GUILD_OBJECT_RECORD_URI_PREFIX,
+        percent_encode_component(evidence_record_id),
+        GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX
     )
 }
 

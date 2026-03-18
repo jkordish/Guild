@@ -88,8 +88,15 @@
       "resource_descriptors": [
         {
           "uri": "__TARGET_EVIDENCE_URI__",
+          "metadata_uri": "__TARGET_EVIDENCE_URI__/metadata",
+          "blob_uri": "__TARGET_EVIDENCE_BLOB_URI__",
           "mime_type": "application/json",
           "sha256": "__TARGET_EVIDENCE_DIGEST__",
+          "title": "hello-inspect snapshot",
+          "audience": "user",
+          "redaction": "none",
+          "freshness": "deterministic",
+          "produced_by_execution": "__CHILD_EXECUTION_ID__",
           "readable": true
         }
       ]

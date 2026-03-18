@@ -25,6 +25,8 @@ const HARD_MAX_DEPTH: u64 = 8;
 const DEFAULT_MAX_NODES: u64 = 32;
 const HARD_MAX_NODES: u64 = 128;
 const NOTABLE_EVIDENCE_LIMIT: usize = 8;
+const OBJECT_RECORD_URI_PREFIX: &str = "guild://objects/records/";
+const OBJECT_RECORD_METADATA_URI_SUFFIX: &str = "/metadata";
 
 struct ExplainExecutionTree;
 
@@ -329,20 +331,17 @@ impl TraversalState {
             if !include_evidence_resources
                 || !can_read_evidence_resources
                 || self.evidence_resource_descriptors.len() >= NOTABLE_EVIDENCE_LIMIT
-                || !uri.starts_with("guild://objects/records/")
+                || !uri.starts_with(OBJECT_RECORD_URI_PREFIX)
             {
                 continue;
             }
 
-            match read_resource(uri) {
-                Ok(resource) => self.evidence_resource_descriptors.push(json!({
-                    "uri": resource.uri,
-                    "mime_type": resource.mime_type,
-                    "sha256": resource.sha256,
-                    "readable": true,
-                })),
+            let metadata_uri = evidence_metadata_uri(uri);
+            match describe_evidence_metadata_resource(uri) {
+                Ok(descriptor) => self.evidence_resource_descriptors.push(descriptor),
                 Err(error) => self.evidence_resource_descriptors.push(json!({
                     "uri": uri,
+                    "metadata_uri": metadata_uri,
                     "readable": false,
                     "error": {
                         "code": error.code,
@@ -718,6 +717,34 @@ fn read_execution_record(uri: &str) -> Result<Value, SkillError> {
     parse_json_bytes(&resource, "execution resource")
 }
 
+fn describe_evidence_metadata_resource(record_uri: &str) -> Result<Value, SkillError> {
+    let metadata_uri = evidence_metadata_uri(record_uri).ok_or_else(|| SkillError {
+        code: "invalid-evidence-record-uri".into(),
+        message: "evidence resource descriptor requires a canonical evidence record URI".into(),
+        retryable: false,
+        detail: Some(json!({ "uri": record_uri }).to_string()),
+    })?;
+    let resource = read_resource(&metadata_uri)?;
+    let metadata = parse_json_bytes(&resource, "evidence metadata resource")?;
+
+    Ok(json!({
+        "uri": record_uri,
+        "metadata_uri": resource.uri,
+        "blob_uri": metadata.get("blob_uri").cloned().unwrap_or(Value::Null),
+        "mime_type": metadata.get("mime_type").cloned().unwrap_or(Value::Null),
+        "sha256": metadata.get("sha256").cloned().unwrap_or(Value::Null),
+        "title": metadata.get("title").cloned().unwrap_or(Value::Null),
+        "audience": metadata.get("audience").cloned().unwrap_or(Value::Null),
+        "redaction": metadata.get("redaction").cloned().unwrap_or(Value::Null),
+        "freshness": metadata.get("freshness").cloned().unwrap_or(Value::Null),
+        "produced_by_execution": metadata
+            .get("produced_by_execution")
+            .cloned()
+            .unwrap_or(Value::Null),
+        "readable": true,
+    }))
+}
+
 fn read_resource(uri: &str) -> Result<ResourceReadResult, SkillError> {
     host::read_resource(uri).map_err(|message| SkillError {
         code: "read-resource-failed".into(),
@@ -775,6 +802,18 @@ fn increment_count(counts: &mut BTreeMap<String, u64>, key: &str) {
     *entry += 1;
 }
 
+fn evidence_metadata_uri(record_uri: &str) -> Option<String> {
+    if !record_uri.starts_with(OBJECT_RECORD_URI_PREFIX) {
+        return None;
+    }
+
+    if record_uri.ends_with(OBJECT_RECORD_METADATA_URI_SUFFIX) {
+        Some(record_uri.to_owned())
+    } else {
+        Some(format!("{record_uri}{OBJECT_RECORD_METADATA_URI_SUFFIX}"))
+    }
+}
+
 fn can_read_object_record_resources(grants: &[GrantedCapability]) -> bool {
     grants.iter().any(|grant| {
         grant.id == CapabilityId::ReadResource
@@ -795,7 +834,7 @@ fn constraints_allow_object_record_reads(constraints: &CapabilityConstraints) ->
             let scope_allowed = value.uri_prefixes.as_ref().map_or(true, |prefixes| {
                 prefixes
                     .iter()
-                    .any(|prefix| prefix == "guild://objects/records/")
+                    .any(|prefix| prefix == OBJECT_RECORD_URI_PREFIX)
             });
             kind_allowed && scope_allowed
         }

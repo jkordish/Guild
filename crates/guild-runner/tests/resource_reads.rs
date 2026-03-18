@@ -919,6 +919,7 @@ fn explain_tree_skill_reports_composite_execution_tree() {
         .read_resource(&child_record.emitted_evidence[0].uri)
         .unwrap();
     let evidence_sha256 = evidence_resource.sha256.clone().unwrap();
+    let evidence_metadata_uri = format!("{}/metadata", child_record.emitted_evidence[0].uri);
 
     let explain_record = run_explain_execution_tree(
         &registry,
@@ -980,10 +981,13 @@ fn explain_tree_skill_reports_composite_execution_tree() {
         explain_output.structured["evidence_summary"]["resource_descriptors"][0]["sha256"],
         evidence_sha256
     );
-    assert!(
-        explain_output.structured["evidence_summary"]["resource_descriptors"][0]
-            .get("json")
-            .is_none()
+    assert_eq!(
+        explain_output.structured["evidence_summary"]["resource_descriptors"][0]["metadata_uri"],
+        evidence_metadata_uri
+    );
+    assert_eq!(
+        explain_output.structured["evidence_summary"]["resource_descriptors"][0]["produced_by_execution"],
+        child_record.receipt.execution_id
     );
 
     let mut expected_output: SkillOutput = serde_json::from_str(
@@ -1019,8 +1023,22 @@ fn explain_tree_skill_reports_composite_execution_tree() {
         Value::String(child_record.emitted_evidence[0].uri.clone());
     expected_output.structured["evidence_summary"]["resource_descriptors"][0]["uri"] =
         Value::String(child_record.emitted_evidence[0].uri.clone());
+    expected_output.structured["evidence_summary"]["resource_descriptors"][0]["metadata_uri"] =
+        Value::String(evidence_metadata_uri);
+    expected_output.structured["evidence_summary"]["resource_descriptors"][0]["blob_uri"] =
+        Value::String(child_record.emitted_evidence[0].blob_uri.clone());
     expected_output.structured["evidence_summary"]["resource_descriptors"][0]["sha256"] =
         Value::String(evidence_sha256);
+    expected_output.structured["evidence_summary"]["resource_descriptors"][0]["title"] =
+        Value::String("hello-inspect snapshot".into());
+    expected_output.structured["evidence_summary"]["resource_descriptors"][0]["audience"] =
+        Value::String("user".into());
+    expected_output.structured["evidence_summary"]["resource_descriptors"][0]["redaction"] =
+        Value::String("none".into());
+    expected_output.structured["evidence_summary"]["resource_descriptors"][0]["freshness"] =
+        Value::String("deterministic".into());
+    expected_output.structured["evidence_summary"]["resource_descriptors"][0]["produced_by_execution"] =
+        Value::String(child_record.receipt.execution_id.clone());
     expected_output.structured["granted_capabilities"] =
         explain_output.structured["granted_capabilities"].clone();
 

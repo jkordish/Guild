@@ -10,6 +10,7 @@ Current architecture highlights worth knowing before you follow older notes:
 
 - execution IDs and evidence-record IDs are host-minted
 - evidence blob storage is separate from per-emission evidence records
+- evidence payload reads and evidence metadata reads now use distinct companion URIs under the same object-record scope root
 - source installs stage and move atomically instead of pre-deleting installed state
 - inspect-mode Wasm guests now instantiate against `guild-skill-inspect-v1`, so unsupported capability imports are absent from the active inspect ABI, host-side unsupported families are still rejected before execution if they appear in grants/manifests, and broader Guild component imports are rejected as host-owned `unsupported-runtime-surface` before instantiation
 - the shared host-side capability surface now includes a typed deferred `filesystem` family, and the active inspect slice still rejects it before guest start rather than pretending runtime file access exists

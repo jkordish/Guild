@@ -312,6 +312,7 @@ pub enum ResourceKind {
 pub const GUILD_EXECUTION_URI_PREFIX: &str = "guild://executions/";
 pub const GUILD_OBJECT_BLOB_URI_PREFIX: &str = "guild://objects/sha256/";
 pub const GUILD_OBJECT_RECORD_URI_PREFIX: &str = "guild://objects/records/";
+pub const GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX: &str = "/metadata";
 pub const GUILD_EXECUTION_QUERY_URI_PREFIX: &str = "guild://queries/executions/";
 pub const MAX_EXECUTION_QUERY_LIMIT: usize = 50;
 
@@ -483,7 +484,11 @@ impl GuildResourceScope {
             (self, uri),
             (Self::Execution, GuildResourceUri::Execution { .. })
                 | (Self::ObjectBlob, GuildResourceUri::ObjectBlob { .. })
-                | (Self::ObjectRecord, GuildResourceUri::ObjectRecord { .. })
+                | (
+                    Self::ObjectRecord,
+                    GuildResourceUri::ObjectRecord { .. }
+                        | GuildResourceUri::ObjectRecordMetadata { .. }
+                )
                 | (
                     Self::ExecutionQuery,
                     GuildResourceUri::ExecutionQuery { .. }
@@ -497,6 +502,7 @@ pub enum GuildResourceUri {
     Execution { execution_id: String },
     ObjectBlob { digest_hex: String },
     ObjectRecord { evidence_record_id: String },
+    ObjectRecordMetadata { evidence_record_id: String },
     ExecutionQuery { query: ExecutionQueryResource },
 }
 
@@ -554,18 +560,39 @@ impl GuildResourceUri {
                 ));
             }
 
-            let evidence_record_id = percent_decode_component(encoded).map_err(|error| {
-                GuildResourceParseError::new(format!(
-                    "evidence record URI contained invalid percent encoding: {error}"
-                ))
-            })?;
+            let (encoded_record_id, metadata) = encoded
+                .strip_suffix(GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX)
+                .map_or((encoded, false), |record_id| (record_id, true));
+
+            if encoded_record_id.is_empty() {
+                return Err(GuildResourceParseError::new(
+                    "evidence record URI must contain a non-empty record identifier",
+                ));
+            }
+
+            if encoded_record_id.contains('/') {
+                return Err(GuildResourceParseError::new(
+                    "evidence record URI did not match a supported local Guild object path",
+                ));
+            }
+
+            let evidence_record_id =
+                percent_decode_component(encoded_record_id).map_err(|error| {
+                    GuildResourceParseError::new(format!(
+                        "evidence record URI contained invalid percent encoding: {error}"
+                    ))
+                })?;
             if evidence_record_id.is_empty() {
                 return Err(GuildResourceParseError::new(
                     "evidence record URI must contain a non-empty record identifier",
                 ));
             }
 
-            return Ok(Self::ObjectRecord { evidence_record_id });
+            return Ok(if metadata {
+                Self::ObjectRecordMetadata { evidence_record_id }
+            } else {
+                Self::ObjectRecord { evidence_record_id }
+            });
         }
 
         Err(GuildResourceParseError::new(
@@ -577,7 +604,9 @@ impl GuildResourceUri {
     pub fn kind(&self) -> ResourceKind {
         match self {
             Self::Execution { .. } => ResourceKind::Execution,
-            Self::ObjectBlob { .. } | Self::ObjectRecord { .. } => ResourceKind::Object,
+            Self::ObjectBlob { .. }
+            | Self::ObjectRecord { .. }
+            | Self::ObjectRecordMetadata { .. } => ResourceKind::Object,
             Self::ExecutionQuery { .. } => ResourceKind::Query,
         }
     }
@@ -587,7 +616,9 @@ impl GuildResourceUri {
         match self {
             Self::Execution { .. } => GuildResourceScope::Execution,
             Self::ObjectBlob { .. } => GuildResourceScope::ObjectBlob,
-            Self::ObjectRecord { .. } => GuildResourceScope::ObjectRecord,
+            Self::ObjectRecord { .. } | Self::ObjectRecordMetadata { .. } => {
+                GuildResourceScope::ObjectRecord
+            }
             Self::ExecutionQuery { .. } => GuildResourceScope::ExecutionQuery,
         }
     }

@@ -503,6 +503,17 @@ impl GuildMcpServer {
                         mime_type: None,
                     },
                     ResourceTemplate {
+                        uri_template:
+                            "guild://objects/records/{evidence_record_id}/metadata".into(),
+                        name: "Guild evidence record metadata".into(),
+                        title: Some("Guild Evidence Record Metadata".into()),
+                        description: Some(
+                            "Read the host-owned metadata record for a persisted evidence emission."
+                                .into(),
+                        ),
+                        mime_type: Some("application/json".into()),
+                    },
+                    ResourceTemplate {
                         uri_template: "guild://objects/sha256/{digest}".into(),
                         name: "Guild evidence blob".into(),
                         title: Some("Guild Evidence Blob".into()),

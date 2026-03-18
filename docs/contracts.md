@@ -10,6 +10,7 @@ Current contract highlights worth knowing before you follow older notes:
 
 - durable execution IDs are host-minted; caller IDs are correlation only
 - `EvidenceRef` points at a host-issued evidence-record URI, while payload blobs remain digest-addressed
+- evidence payload and evidence metadata now have distinct canonical resource URIs: `guild://objects/records/{id}` still dereferences payload bytes, while `guild://objects/records/{id}/metadata` returns host-owned `EvidenceRecord` JSON
 - requested same-version multi-digest resolution now fails closed as ambiguous
 - the active Wasm inspect world is `guild-skill-inspect-v1`, and it only exposes `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
 - the shared host-side contracts still expose broader future vocabulary, but unsupported capability imports are absent from the active inspect guest ABI, broader Guild component imports are rejected as host-owned `unsupported-runtime-surface`, and the host projection into that ABI is explicit, centralized, and fail-closed

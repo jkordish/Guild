@@ -1518,7 +1518,7 @@ fn composite_install_resolves_declared_dependency_to_installed_record() {
 }
 
 #[test]
-fn evidence_objects_are_stored_deduped_and_readable() {
+fn evidence_payload_and_metadata_resources_are_distinct_and_readable() {
     let registry = LocalRegistry::load(prepared_registry_root()).unwrap();
     let first = registry
         .store_evidence(
@@ -1552,8 +1552,12 @@ fn evidence_objects_are_stored_deduped_and_readable() {
 
     let first_record = registry.load_evidence_record(&first.uri).unwrap();
     let second_record = registry.load_evidence_record(&second.uri).unwrap();
-    let stored = registry.read_resource(&first.uri).unwrap();
+    let payload = registry.read_resource(&first.uri).unwrap();
+    let metadata = registry
+        .read_resource(&format!("{}/metadata", first.uri))
+        .unwrap();
     let blob = registry.read_resource(&first_record.blob_uri).unwrap();
+    let parsed_metadata: EvidenceRecord = serde_json::from_slice(&metadata.bytes).unwrap();
 
     assert_eq!(first_record.uri, first.uri);
     assert_eq!(first_record.sha256, first.sha256.clone().unwrap());
@@ -1569,12 +1573,35 @@ fn evidence_objects_are_stored_deduped_and_readable() {
         Some("execution-2")
     );
     assert_eq!(first_record.blob_uri, second_record.blob_uri);
-    assert_eq!(stored.mime_type, "application/json");
-    assert_eq!(stored.bytes, br#"{"hello":"world"}"#);
-    assert_eq!(stored.sha256, first.sha256);
+    assert_eq!(payload.uri, first.uri);
+    assert_eq!(payload.mime_type, "application/json");
+    assert_eq!(payload.bytes, br#"{"hello":"world"}"#);
+    assert_eq!(payload.sha256, first.sha256);
+    assert_eq!(metadata.uri, format!("{}/metadata", first.uri));
+    assert_eq!(metadata.mime_type, "application/json");
+    assert_eq!(parsed_metadata, first_record);
+    assert_eq!(
+        parsed_metadata.produced_by_execution.as_deref(),
+        Some("execution-1")
+    );
     assert_eq!(blob.mime_type, "application/octet-stream");
     assert_eq!(blob.bytes, br#"{"hello":"world"}"#);
     assert_eq!(blob.sha256, first.sha256);
+}
+
+#[test]
+fn malformed_and_unknown_evidence_metadata_resources_fail_closed() {
+    let registry = LocalRegistry::load(prepared_registry_root()).unwrap();
+
+    let malformed = registry
+        .read_resource("guild://objects/records/record-1/metadata/extra")
+        .unwrap_err();
+    assert_eq!(malformed.code, "resource-uri-invalid");
+
+    let missing = registry
+        .read_resource("guild://objects/records/does-not-exist/metadata")
+        .unwrap_err();
+    assert_eq!(missing.code, "object-not-found");
 }
 
 #[test]

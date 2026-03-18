@@ -49,4 +49,4 @@ The current typed grant shape is:
 - `resource_kinds: ["execution", "object"]`
 - `uri_prefixes: ["guild://executions/", "guild://objects/records/"]`
 
-Those `uri_prefixes` are canonical Guild scope roots, not free-form string prefixes. When the explain skill reads an evidence-record URI, the host parses that Guild URI, authorizes it against the canonical scope set, then dereferences the record through the same local backend and returns the referenced payload. Authorization denials stay host-owned rejections rather than guest-domain failures.
+Those `uri_prefixes` are canonical Guild scope roots, not free-form string prefixes. When the explain skill reads an evidence-record URI, the host parses that Guild URI, authorizes it against the canonical scope set, then dereferences the record through the same local backend and returns the referenced payload. The companion metadata URI for that same emission now lives at `guild://objects/records/{evidence_record_id}/metadata` under the same object-record scope. Authorization denials stay host-owned rejections rather than guest-domain failures.

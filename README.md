@@ -119,9 +119,9 @@ The current MCP surface is intentionally small:
 - one public tool: `guild.inspect`
 - a bounded `resources/list` view of recent execution records
 - durable Guild execution records are exposed through `resources/read`
-- durable evidence-record and blob URIs are exposed through `resources/read`
+- durable evidence-record payload URIs, evidence-record metadata URIs, and blob URIs are exposed through `resources/read`
 - bounded execution-query results are exposed through `resources/read`
-- resource templates are exposed for `guild://executions/{execution_id}`, `guild://objects/records/{evidence_record_id}`, `guild://objects/sha256/{digest}`, `guild://queries/executions/recent/{limit}`, `guild://queries/executions/failures/recent/{limit}`, `guild://queries/executions/by-status/{status}/{limit}`, and `guild://queries/executions/by-skill/{namespace}/{name}/{limit}`
+- resource templates are exposed for `guild://executions/{execution_id}`, `guild://objects/records/{evidence_record_id}`, `guild://objects/records/{evidence_record_id}/metadata`, `guild://objects/sha256/{digest}`, `guild://queries/executions/recent/{limit}`, `guild://queries/executions/failures/recent/{limit}`, `guild://queries/executions/by-status/{status}/{limit}`, and `guild://queries/executions/by-skill/{namespace}/{name}/{limit}`
 
 Unsuccessful inspect executions that reached the real runtime path are surfaced as MCP tool errors with `isError: true`, while preserving the persisted execution record URI instead of collapsing it into an opaque protocol failure.
 
@@ -181,6 +181,7 @@ The current inspect slice is intentionally strict about a few things:
 
 - durable execution IDs are minted by the host; caller-supplied IDs are correlation data only
 - `EvidenceRef` identifies a host-issued evidence record URI for a single emission, while payload blobs remain content-addressed by digest
+- `guild://objects/records/{evidence_record_id}` remains the compatibility payload-dereference URI for one evidence emission, while `guild://objects/records/{evidence_record_id}/metadata` now exposes the host-owned `EvidenceRecord` JSON directly through the same backend
 - requested resolution fails closed if the same skill key and version exist under multiple digests
 - local source installs stage and validate in a temporary directory before an atomic move into installed state
 - host authorization denials persist as host-owned rejected executions instead of leaking into guest-owned failure semantics

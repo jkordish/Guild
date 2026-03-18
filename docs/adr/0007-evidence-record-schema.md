@@ -50,10 +50,11 @@ Evidence emission is per-emission, not per-digest:
 Current read semantics are intentionally split:
 
 - host-side `load_evidence_record(uri)` returns `EvidenceRecord` metadata
-- reading `guild://objects/records/{evidence_record_id}` through the current Guild resource backend dereferences the record to the underlying payload bytes
+- reading `guild://objects/records/{evidence_record_id}` through the Guild resource backend dereferences the record to the underlying payload bytes
+- reading `guild://objects/records/{evidence_record_id}/metadata` returns serialized host-owned `EvidenceRecord` metadata for that same emission
 - reading `guild://objects/sha256/{digest}` returns the raw blob payload bytes
 
-This means an evidence-record URI is a durable Guild resource in the current model, but its current resource-read behavior is payload dereference rather than serialized metadata readout.
+This means Guild now has two first-class resource shapes for one evidence record: a compatibility payload-dereference URI and a companion metadata URI. Blob identity, record identity, payload bytes, and record metadata remain distinct.
 
 ## Consequences
 
@@ -67,7 +68,6 @@ Positive:
 Costs and current limits:
 
 - the model stores more objects than a blob-only design
-- current resource reads do not yet expose `EvidenceRecord` metadata directly as a JSON resource payload
 - the current schema records producing execution lineage but not a richer read-attribution graph
 
 ## Explicit invariants

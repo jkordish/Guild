@@ -27,7 +27,8 @@ It does not mean arbitrary filesystem access.
 The current resource kinds are:
 
 - `execution` for `guild://executions/{execution_id}`
-- `object` for `guild://objects/records/{evidence_record_id}` and
+- `object` for `guild://objects/records/{evidence_record_id}`,
+  `guild://objects/records/{evidence_record_id}/metadata`, and
   `guild://objects/sha256/{digest}`
 - `query` for `guild://queries/executions/...`
 
@@ -79,11 +80,12 @@ The current direct-resource versus query-resource distinction is explicit:
 The current object-record read behavior is also explicit:
 
 - `guild://objects/records/{evidence_record_id}` authorizes against the object
-  record scope
-- the current resource backend dereferences that record to the underlying payload
-  bytes rather than returning serialized `EvidenceRecord` metadata
-- direct metadata reads remain a host-side registry concern, not a separate guest
-  capability
+  record scope and returns the dereferenced payload bytes for that emission
+- `guild://objects/records/{evidence_record_id}/metadata` authorizes against
+  that same object-record scope and returns serialized host-owned
+  `EvidenceRecord` metadata for that emission
+- metadata reads reuse the same `read-resource` family and the same shared
+  backend; they do not introduce a separate guest capability
 
 Safe defaults in the current repository are:
 
@@ -112,7 +114,6 @@ Positive:
 
 Costs and limits:
 
-- guests cannot treat evidence-record URIs as a metadata API in this milestone
 - read-resource remains limited to the current local Guild resource backend
 - a durable read ledger is still deferred
 
@@ -131,8 +132,6 @@ Costs and limits:
 - remote resource backends
 - broader search or full-text query APIs
 - persisted read ledgers
-- evidence-record metadata as a separate guest-readable JSON resource in this
-  milestone
 
 ## Cross-references
 

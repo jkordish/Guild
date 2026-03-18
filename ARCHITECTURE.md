@@ -423,6 +423,8 @@ The current repository separates evidence blob identity from evidence-record ide
 - payload blobs are stored content-addressed under digest URIs
 - each evidence emission gets a host-minted evidence-record URI
 - evidence records link the emission to the blob digest plus `produced_by_execution` metadata
+- `guild://objects/records/{evidence_record_id}` remains the stable payload-dereference URI for one emitted record
+- `guild://objects/records/{evidence_record_id}/metadata` exposes the host-owned `EvidenceRecord` JSON for that same emitted record
 
 ## 11. Resource Backend Architecture
 
@@ -430,7 +432,7 @@ The current repository separates evidence blob identity from evidence-record ide
 
 Host reads and guest `read-resource` calls should hit the same conceptual backend.
 
-The current repository also treats authorization scopes canonically: `read-resource` grants are expressed as exact local Guild scope roots and matched against parsed execution, blob, evidence-record, and execution-query URIs rather than ad hoc raw string-prefix checks.
+The current repository also treats authorization scopes canonically: `read-resource` grants are expressed as exact local Guild scope roots and matched against parsed execution, blob, evidence-record payload, evidence-record metadata, and execution-query URIs rather than ad hoc raw string-prefix checks.
 
 ### 11.2 Why this matters
 
@@ -647,7 +649,7 @@ The current repository implements a real but intentionally narrow slice of this 
 - the runtime host executes Wasm components through Wasmtime
 - caller-requested grants flow through a host-owned local policy evaluator before typed capability enforcement
 - successful, failed, and rejected resolved executions persist as durable execution records with host-minted IDs and host-stamped timestamps
-- evidence persists as durable local objects with separate blob and evidence-record identity and is readable through the same backend used by guest `read-resource`
+- evidence persists as durable local objects with separate blob and evidence-record identity, and both payload and metadata reads now flow through the same backend used by guest `read-resource`
 - bounded execution-query resources and templates derive from that same persisted execution store and are readable through the same backend by guests and MCP clients
 - composite skills invoke declared child dependencies by alias through the same host boundary
 - resource-aware inspect skills can explain stored execution trees by walking persisted child lineage and bounded evidence descriptors through existing Guild execution and object-record URIs, and can summarize bounded execution-query resources without learning a second backend

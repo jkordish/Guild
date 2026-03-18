@@ -54,4 +54,6 @@ Optional evidence descriptor reads use the existing local object-record scope:
 
 - `guild://objects/records/`
 
+When enabled, those optional reads now consume `guild://objects/records/{evidence_record_id}/metadata` resources through the same backend, so the tree summary can report host-owned evidence metadata such as `blob_uri` and `produced_by_execution` without reading payload bytes.
+
 No new host imports, policy engine, indexing layer, or MCP tool surface are added by this skill. It is a focused inspect/debug consumer of the current local Guild substrate.

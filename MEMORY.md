@@ -14,6 +14,7 @@ What is materially real today:
 - resolved top-level and child execution attempts persist as host-owned `ExecutionRecord` resources on success, failure, and rejection
 - durable execution IDs are host-minted, collision-resistant, and protected against silent overwrite
 - evidence persists as durable local Guild objects with distinct blob identity and per-emission evidence-record identity
+- evidence metadata is now directly readable as a first-class companion resource under `guild://objects/records/{evidence_record_id}/metadata` while the existing evidence-record URI still dereferences payload bytes
 - Guild now runs as a real MCP server over stdio, not just an internal façade with MCP-shaped concepts
 - Guild now has a thin `guild-codex` helper that bootstraps a local Codex dogfood root and prints the exact stdio MCP config for the real server
 - Guild now has a real bounded `http-request` capability family in the active inspect slice
@@ -158,11 +159,12 @@ What this means in practice:
 - Execution persistence is create-only, so duplicate durable IDs fail closed instead of overwriting prior records.
 - Evidence payload blobs persist under `guild://objects/sha256/...`.
 - Evidence emissions persist under distinct host-issued record URIs at `guild://objects/records/...`.
+- Evidence metadata for those same emissions persists as first-class JSON resources at `guild://objects/records/.../metadata`.
 - Parent execution records retain host-owned child execution metadata and child execution URIs.
 - Failed and rejected execution records carry host-owned `termination` metadata and may omit `SkillOutput`.
 - Top-level unsuccessful inspect calls still return errors, but those errors now carry a receipt URI for the persisted execution record.
 - Evidence records retain per-emission metadata plus `produced_by_execution` linkage even when multiple executions emit the same payload digest.
-- MCP can read execution resources, evidence-record URIs, and underlying payload blobs from the same local store.
+- MCP can read execution resources, evidence-record payload URIs, evidence-record metadata URIs, and underlying payload blobs from the same local store.
 - Guests can now read allowed Guild URIs through `read-resource` when granted typed `uri_prefixes` plus `resource_kinds`.
 - `read-resource` authorization now parses Guild URIs and canonical scope roots like `guild://executions/`, `guild://objects/records/`, and `guild://objects/sha256/` before matching.
 - Malformed or ambiguous Guild URIs fail closed instead of being normalized or accepted through permissive prefix logic.
@@ -176,8 +178,8 @@ What this means in practice:
 - `tools/call` for `guild.inspect` executes through the same `GuildMcpFacade -> registry -> runner -> Wasmtime` path as the direct Rust façade.
 - Successful MCP tool results include `structuredContent`, a text compatibility block, and resource links to the persisted execution record and emitted evidence records.
 - Unsuccessful inspect executions that reached a real resolved execution attempt are surfaced as MCP tool errors with preserved persisted execution record identity instead of opaque protocol crashes.
-- MCP `resources/read` exposes execution records, bounded execution-query results, evidence-record payloads, and digest-addressed blobs through the same local resource backend Guild already used internally.
-- MCP `resources/templates/list` now exposes canonical Guild URI templates for execution records, bounded execution-query resources, evidence records, and raw blobs.
+- MCP `resources/read` exposes execution records, bounded execution-query results, evidence-record payloads, evidence-record metadata resources, and digest-addressed blobs through the same local resource backend Guild already used internally.
+- MCP `resources/templates/list` now exposes canonical Guild URI templates for execution records, bounded execution-query resources, evidence-record payloads, evidence-record metadata, and raw blobs.
 - MCP `resources/list` remains intentionally narrow and honest by listing only a bounded recent view of execution records.
 
 ### Example flows

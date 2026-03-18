@@ -182,6 +182,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - resolved execution attempts persist on success, failure, and rejection
 - evidence persists as durable host-owned objects behind host-issued per-emission `EvidenceRef` values plus host-loadable `EvidenceRecord` metadata
 - evidence payload blobs remain content-addressed by digest and distinct from evidence-record identity
+- evidence metadata is also readable as first-class JSON resources under `guild://objects/records/{evidence_record_id}/metadata`, while `guild://objects/records/{evidence_record_id}` remains the existing payload-dereference URI
 - signed local bundle export and import verifies trust, signature, and bundled file digests before installation
 - local OCI image layout transport maps those same signed installed-bundle semantics onto OCI descriptors and blobs without changing execution identity or trust rules
 - OCI registry transport pushes and pulls that same OCI-mapped signed installed bundle through a remote OCI registry without changing Guild's local trust or signature verification rules on import
@@ -396,7 +397,7 @@ For `filesystem`, `CapabilityAccess::Read` roots may only declare `read` operati
 
 Unsupported runtime surface outcomes are not policy denials. If policy allowed the request but the active inspect runtime still rejects a broader capability family or broader Guild import surface, the persisted `PolicyDecision` remains the host-owned policy truth while the termination detail carries the host-owned unsupported-runtime-surface classification.
 
-For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, `guild://objects/sha256/`, and `guild://queries/executions/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching.
+For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, `guild://objects/sha256/`, and `guild://queries/executions/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching. The object-record scope covers both `guild://objects/records/{evidence_record_id}` payload URIs and `guild://objects/records/{evidence_record_id}/metadata` metadata URIs.
 
 For `http-request`, the current repository exposes a bounded request/response model rather than ambient networking. The host MUST parse absolute HTTP or HTTPS URLs, reject embedded credentials, enforce typed scheme/host/domain-suffix/port/path/method constraints before dispatch, and clamp timeout and response-size limits to host-owned bounds. Redirect following MUST remain disabled unless the granted capability explicitly enables it with a bounded `max_redirects`, and every redirected hop MUST pass the same host-owned authorization path before dispatch. Loopback, link-local, private-network, and raw IP-literal destinations MUST fail closed unless the granted capability explicitly allows those destination classes. Authorization denials MUST remain host-owned. The current inspect slice supports bodyless `GET` and `HEAD` requests only, does not expose arbitrary request headers or request-body streaming, and returns a bounded typed response body to the guest.
 
@@ -499,6 +500,12 @@ Implementations SHOULD distinguish content-addressed evidence blob identity from
 
 If multiple executions emit the same payload digest, implementations MAY deduplicate the underlying blob storage, but they MUST preserve distinct evidence-record identity and per-emission metadata.
 
+The current repository uses distinct canonical URIs for those two evidence-record read shapes:
+
+- `guild://objects/records/{evidence_record_id}` returns the emitted payload bytes using the evidence record as a stable dereference handle
+- `guild://objects/records/{evidence_record_id}/metadata` returns serialized host-owned `EvidenceRecord` metadata for that same emission
+- `guild://objects/sha256/{digest}` returns the raw content-addressed blob bytes
+
 ## 17. Inspect and Explain
 
 ### 16.1 Supported workload type
@@ -598,7 +605,7 @@ When policy conflicts with convenience, the host MUST prefer policy.
 
 Reads of persisted or external resources MUST be mediated by the host.
 
-Local Guild resource authorization SHOULD parse supported Guild URIs into typed execution/blob/evidence-record forms before matching them against granted scopes. Malformed or ambiguous Guild URIs SHOULD be rejected rather than normalized loosely.
+Local Guild resource authorization SHOULD parse supported Guild URIs into typed execution/blob/evidence-record/evidence-record-metadata/query forms before matching them against granted scopes. Malformed or ambiguous Guild URIs SHOULD be rejected rather than normalized loosely.
 
 ### 19.2 Explicit attribution
 
