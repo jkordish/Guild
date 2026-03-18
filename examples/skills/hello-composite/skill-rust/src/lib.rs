@@ -5,15 +5,16 @@ const _: &str = include_str!("../../../../../wit/guild-skill-v1.wit");
 
 generate!({
     path: "../../../../wit",
-    world: "guild-skill",
+    world: "guild-skill-inspect-v1",
 });
 
-use crate::exports::guild::skill::skill::{ExecutionContext, Guest, Json, SkillError, SkillOutput};
-use crate::guild::skill::host;
-use crate::guild::skill::types::{
+use crate::exports::guild::skill::inspect_skill::{
+    ExecutionContext, Guest, Json, SkillError, SkillOutput,
+};
+use crate::guild::skill::inspect_host as host;
+use crate::guild::skill::inspect_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, DependencyInvocationRequest,
-    ExecutionMode, GrantedCapability, HttpMethod, HttpScheme, ResolvedSkillRef, ResourceKind,
-    Severity,
+    GrantedCapability, HttpMethod, HttpScheme, ResolvedSkillRef, ResourceKind, Severity,
 };
 
 struct HelloComposite;
@@ -62,7 +63,7 @@ impl Guest for HelloComposite {
             summary: format!("Hello, {greeted}. Composite inspect is working."),
             structured: json!({
                 "echoed_input": parsed_input,
-                "mode": execution_mode_label(&ctx.mode),
+                "mode": "inspect",
                 "skill": resolved_skill_identity(&ctx.skill),
                 "granted_capabilities": granted_capabilities_payload(&ctx.granted_capabilities),
                 "invoked_alias": child_alias,
@@ -77,14 +78,6 @@ impl Guest for HelloComposite {
             effects: Vec::new(),
             evidence: Vec::new(),
         })
-    }
-}
-
-fn execution_mode_label(mode: &ExecutionMode) -> &'static str {
-    match mode {
-        ExecutionMode::Inspect => "inspect",
-        ExecutionMode::Plan => "plan",
-        ExecutionMode::Apply => "apply",
     }
 }
 
@@ -117,12 +110,7 @@ fn capability_id_label(id: &CapabilityId) -> &'static str {
         CapabilityId::ReadResource => "read-resource",
         CapabilityId::InvokeSkill => "invoke-skill",
         CapabilityId::EmitEvidence => "emit-evidence",
-        CapabilityId::GetSecret => "get-secret",
-        CapabilityId::CacheRead => "cache-read",
-        CapabilityId::CacheWrite => "cache-write",
         CapabilityId::LogWrite => "log-write",
-        CapabilityId::MonotonicClock => "monotonic-clock",
-        CapabilityId::WallClock => "wall-clock",
     }
 }
 
@@ -142,6 +130,7 @@ fn capability_constraints_payload(constraints: &CapabilityConstraints) -> Value 
                 schemes.iter().map(http_scheme_label).collect::<Vec<_>>()
             }),
             "allowed_hosts": value.allowed_hosts,
+            "allowed_host_suffixes": value.allowed_host_suffixes,
             "allowed_ports": value.allowed_ports,
             "allowed_methods": value.allowed_methods.as_ref().map(|methods| {
                 methods.iter().map(http_method_label).collect::<Vec<_>>()
@@ -149,6 +138,12 @@ fn capability_constraints_payload(constraints: &CapabilityConstraints) -> Value 
             "allowed_path_prefixes": value.allowed_path_prefixes,
             "max_timeout_ms": value.max_timeout_ms,
             "max_response_bytes": value.max_response_bytes,
+            "follow_redirects": value.follow_redirects,
+            "max_redirects": value.max_redirects,
+            "allow_loopback": value.allow_loopback,
+            "allow_link_local": value.allow_link_local,
+            "allow_private_networks": value.allow_private_networks,
+            "allow_ip_literals": value.allow_ip_literals,
         }),
         CapabilityConstraints::ReadResource(value) => json!({
             "uri_prefixes": value.uri_prefixes,
@@ -184,20 +179,22 @@ fn resource_kind_label(kind: &ResourceKind) -> &'static str {
     }
 }
 
-fn evidence_audience_label(audience: &crate::guild::skill::types::EvidenceAudience) -> &'static str {
+fn evidence_audience_label(
+    audience: &crate::guild::skill::inspect_types::EvidenceAudience,
+) -> &'static str {
     match audience {
-        crate::guild::skill::types::EvidenceAudience::User => "user",
-        crate::guild::skill::types::EvidenceAudience::Assistant => "assistant",
-        crate::guild::skill::types::EvidenceAudience::Internal => "internal",
+        crate::guild::skill::inspect_types::EvidenceAudience::User => "user",
+        crate::guild::skill::inspect_types::EvidenceAudience::Assistant => "assistant",
+        crate::guild::skill::inspect_types::EvidenceAudience::Internal => "internal",
     }
 }
 
-fn redaction_label(redaction: &crate::guild::skill::types::RedactionClass) -> &'static str {
+fn redaction_label(redaction: &crate::guild::skill::inspect_types::RedactionClass) -> &'static str {
     match redaction {
-        crate::guild::skill::types::RedactionClass::None => "none",
-        crate::guild::skill::types::RedactionClass::SecretsRemoved => "secrets-removed",
-        crate::guild::skill::types::RedactionClass::PiiRemoved => "pii-removed",
-        crate::guild::skill::types::RedactionClass::TenantSensitive => "tenant-sensitive",
+        crate::guild::skill::inspect_types::RedactionClass::None => "none",
+        crate::guild::skill::inspect_types::RedactionClass::SecretsRemoved => "secrets-removed",
+        crate::guild::skill::inspect_types::RedactionClass::PiiRemoved => "pii-removed",
+        crate::guild::skill::inspect_types::RedactionClass::TenantSensitive => "tenant-sensitive",
     }
 }
 

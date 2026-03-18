@@ -130,11 +130,12 @@ What this means in practice:
 
 ### Execute
 
-- The real runtime path is `WasmtimeRuntimeAdapter` using `wit/guild-skill-v1.wit`.
+- The real runtime path is `WasmtimeRuntimeAdapter` using the active inspect world `guild-skill-inspect-v1` defined in `wit/guild-skill-v1.wit`.
 - `ExecutionContext` carries explicit `CapabilityGrantSet` data into the guest together with a host-minted durable execution ID.
 - The runner still executes only resolved refs and still globally rejects `apply`.
 - The host now evaluates typed constraints for `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`.
-- Unsupported capability families in the broader shared contract are rejected before execution in the active inspect slice.
+- The runner now projects the richer durable host execution model into the inspect guest ABI explicitly before guest start.
+- Unsupported capability families in the broader shared contract are rejected before execution in the active inspect slice, and unsupported imports are absent from the active inspect guest ABI itself.
 - Host authorization denials across runner checks, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log` are classified through one host-owned rejection model.
 - Durable successful, failed, and rejected execution records now carry host-stamped start and finish timestamps.
 

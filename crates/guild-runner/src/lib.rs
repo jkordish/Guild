@@ -15,16 +15,16 @@ use guild_manifest::SkillManifest;
 use guild_registry::{InstalledSkill, RegistryError, SkillRegistry, execution_resource_uri};
 use guild_sdk_rust::GuildSkill;
 use guild_types::{
-    CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    CapabilityRequirement, ChildExecutionRecord, Diagnostic, Effect, EmitEvidenceConstraints,
-    EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionContext,
-    ExecutionMetrics, ExecutionMode, ExecutionPhase, ExecutionReceipt, ExecutionRecord,
-    ExecutionStatus, FilesystemConstraints, FilesystemOperation, FilesystemRoot, GrantedCapability,
-    GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequest, HttpRequestConstraints,
-    HttpResponse, HttpScheme, InvokeDependencyConstraints, LocalPolicyConfig,
-    LocalPolicyDefaultAction, LogConstraints, Mutability, PolicyDecision, PolicyDecisionOutcome,
-    PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule, PolicyRuleEffect,
-    PolicyRuleTarget, Provenance, ReadResourceConstraints, RedactionClass,
+    AbiVersion, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
+    CapabilityId, CapabilityRequirement, ChildExecutionRecord, Diagnostic, Effect,
+    EmitEvidenceConstraints, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
+    EvidenceRef, ExecutionContext, ExecutionMetrics, ExecutionMode, ExecutionPhase,
+    ExecutionReceipt, ExecutionRecord, ExecutionStatus, FilesystemConstraints, FilesystemOperation,
+    FilesystemRoot, GrantedCapability, GuildResourceScope, GuildResourceUri, HttpMethod,
+    HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme, InvokeDependencyConstraints,
+    LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints, Mutability, PolicyDecision,
+    PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule,
+    PolicyRuleEffect, PolicyRuleTarget, Provenance, ReadResourceConstraints, RedactionClass,
     ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind,
     Severity, SkillError, SkillOutput, TerminationDetail, host_now_utc, mint_host_execution_id,
 };
@@ -46,10 +46,12 @@ use wasmtime_wasi_http::types::{OutgoingRequestConfig, default_send_request_hand
 mod bindings {
     wasmtime::component::bindgen!({
         path: "../../wit",
-        world: "guild-skill",
+        world: "guild-skill-inspect-v1",
         imports: { default: trappable },
     });
 }
+
+const INSPECT_WORLD_ENTRYPOINT: &str = "guild-skill-inspect-v1";
 
 pub trait RuntimeAdapter: Send + Sync {
     fn kind(&self) -> RuntimeKind;
@@ -550,14 +552,15 @@ impl WasmtimeRuntimeAdapter {
         installed: &InstalledSkill,
         context: &ExecutionContext,
         host: Arc<dyn RuntimeHost>,
-    ) -> Result<(Store<WasmStoreState>, bindings::GuildSkill), ExecutionError> {
-        if installed.manifest.runtime.entrypoint != "guild-skill" {
+    ) -> Result<(Store<WasmStoreState>, bindings::GuildSkillInspectV1), ExecutionError> {
+        if installed.manifest.runtime.entrypoint != INSPECT_WORLD_ENTRYPOINT {
             return Err(ExecutionError::new(
                 "component-entrypoint-mismatch",
-                "Wasm component runtime currently requires the `guild-skill` world entrypoint",
+                "Wasm inspect runtime requires the `guild-skill-inspect-v1` world entrypoint",
             )
             .with_detail(serde_json::json!({
                 "manifest_entrypoint": installed.manifest.runtime.entrypoint,
+                "expected_entrypoint": INSPECT_WORLD_ENTRYPOINT,
             }))
             .with_phase(ExecutionPhase::RuntimeLoad));
         }
@@ -579,31 +582,29 @@ impl WasmtimeRuntimeAdapter {
                 .with_phase(ExecutionPhase::RuntimeLoad)
         })?;
 
-        bindings::GuildSkill::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state).map_err(
-            |error| {
-                ExecutionError::new(
-                    "host-link-failed",
-                    "failed to attach Guild host imports to linker",
-                )
-                .with_detail(error.to_string())
-                .with_phase(ExecutionPhase::RuntimeLoad)
-            },
-        )?;
+        bindings::GuildSkillInspectV1::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
+            .map_err(|error| {
+            ExecutionError::new(
+                "host-link-failed",
+                "failed to attach Guild host imports to linker",
+            )
+            .with_detail(error.to_string())
+            .with_phase(ExecutionPhase::RuntimeLoad)
+        })?;
 
         let mut store = Store::new(
             &self.engine,
             WasmStoreState::new(context.clone(), installed.clone(), host),
         );
-        let instance = bindings::GuildSkill::instantiate(&mut store, &component, &linker).map_err(
-            |error| {
+        let instance = bindings::GuildSkillInspectV1::instantiate(&mut store, &component, &linker)
+            .map_err(|error| {
                 ExecutionError::new(
                     "component-instantiate-failed",
                     "failed to instantiate Wasm component",
                 )
                 .with_detail(error.to_string())
                 .with_phase(ExecutionPhase::RuntimeLoad)
-            },
-        )?;
+            })?;
 
         Ok((store, instance))
     }
@@ -627,7 +628,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
         input: &Value,
         host: Arc<dyn RuntimeHost>,
     ) -> Result<RuntimeOutcome, RuntimeFailure> {
-        let wit_context = match to_wit_execution_context(context) {
+        let wit_context = match project_execution_context_to_inspect_abi(context) {
             Ok(context) => context,
             Err(error) => {
                 return Err(RuntimeFailure {
@@ -649,7 +650,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
         let wit_input = serde_json::to_string(input).expect("execution input serializes");
 
         let result = instance
-            .guild_skill_skill()
+            .guild_skill_inspect_skill()
             .call_run(&mut store, &wit_context, &wit_input)
             .map_err(|error: wasmtime::Error| RuntimeFailure {
                 error: Box::new(parse_capability_denial_trap(&error).map_or_else(
@@ -744,35 +745,37 @@ impl WasiView for WasmStoreState {
     }
 }
 
-impl bindings::guild::skill::types::Host for WasmStoreState {}
+impl bindings::guild::skill::inspect_types::Host for WasmStoreState {}
 
-impl bindings::guild::skill::host::Host for WasmStoreState {
+impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
     fn emit_evidence(
         &mut self,
-        request: bindings::guild::skill::types::EvidenceEmissionRequest,
-    ) -> wasmtime::Result<Result<bindings::guild::skill::types::EvidenceRef, String>> {
+        request: bindings::guild::skill::inspect_types::EvidenceEmissionRequest,
+    ) -> wasmtime::Result<Result<bindings::guild::skill::inspect_types::EvidenceRef, String>> {
         let request = EvidenceEmissionRequest {
             payload: request.payload,
             mime_type: request.mime_type,
             title: request.title,
             audience: match request.audience {
-                bindings::guild::skill::types::EvidenceAudience::User => EvidenceAudience::User,
-                bindings::guild::skill::types::EvidenceAudience::Assistant => {
+                bindings::guild::skill::inspect_types::EvidenceAudience::User => {
+                    EvidenceAudience::User
+                }
+                bindings::guild::skill::inspect_types::EvidenceAudience::Assistant => {
                     EvidenceAudience::Assistant
                 }
-                bindings::guild::skill::types::EvidenceAudience::Internal => {
+                bindings::guild::skill::inspect_types::EvidenceAudience::Internal => {
                     EvidenceAudience::Internal
                 }
             },
             redaction: match request.redaction {
-                bindings::guild::skill::types::RedactionClass::None => RedactionClass::None,
-                bindings::guild::skill::types::RedactionClass::SecretsRemoved => {
+                bindings::guild::skill::inspect_types::RedactionClass::None => RedactionClass::None,
+                bindings::guild::skill::inspect_types::RedactionClass::SecretsRemoved => {
                     RedactionClass::SecretsRemoved
                 }
-                bindings::guild::skill::types::RedactionClass::PiiRemoved => {
+                bindings::guild::skill::inspect_types::RedactionClass::PiiRemoved => {
                     RedactionClass::PiiRemoved
                 }
-                bindings::guild::skill::types::RedactionClass::TenantSensitive => {
+                bindings::guild::skill::inspect_types::RedactionClass::TenantSensitive => {
                     RedactionClass::TenantSensitive
                 }
             },
@@ -800,7 +803,7 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
 
     fn log(
         &mut self,
-        level: bindings::guild::skill::types::Severity,
+        level: bindings::guild::skill::inspect_types::Severity,
         message: String,
     ) -> wasmtime::Result<()> {
         let level = from_wit_severity(level);
@@ -817,7 +820,8 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
     fn read_resource(
         &mut self,
         uri: String,
-    ) -> wasmtime::Result<Result<bindings::guild::skill::types::ResourceReadResult, String>> {
+    ) -> wasmtime::Result<Result<bindings::guild::skill::inspect_types::ResourceReadResult, String>>
+    {
         let parsed_uri = match GuildResourceUri::parse(&uri) {
             Ok(parsed_uri) => parsed_uri,
             Err(error) => {
@@ -848,36 +852,19 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
         }
     }
 
-    fn cache_get(&mut self, _key: String) -> wasmtime::Result<Option<String>> {
-        Err(wasmtime::Error::msg(
-            "cache-get is not implemented in the Wasm inspect slice",
-        ))
-    }
-
-    fn cache_put(
-        &mut self,
-        _key: String,
-        _value: String,
-        _ttl_seconds: u32,
-    ) -> wasmtime::Result<()> {
-        Err(wasmtime::Error::msg(
-            "cache-put is not implemented in the Wasm inspect slice",
-        ))
-    }
-
     fn invoke_dependency(
         &mut self,
-        request: bindings::guild::skill::types::DependencyInvocationRequest,
+        request: bindings::guild::skill::inspect_types::DependencyInvocationRequest,
     ) -> wasmtime::Result<
         Result<
-            bindings::guild::skill::types::SkillOutput,
-            bindings::guild::skill::types::SkillError,
+            bindings::guild::skill::inspect_types::SkillOutput,
+            bindings::guild::skill::inspect_types::SkillError,
         >,
     > {
         let input = match serde_json::from_str::<Value>(&request.input) {
             Ok(input) => input,
             Err(error) => {
-                return Ok(Err(bindings::guild::skill::types::SkillError {
+                return Ok(Err(bindings::guild::skill::inspect_types::SkillError {
                     code: "invalid-dependency-input".into(),
                     message: "dependency invocation input was not valid JSON".into(),
                     retryable: false,
@@ -914,8 +901,9 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
 
     fn http_request(
         &mut self,
-        request: bindings::guild::skill::types::HttpRequestMessage,
-    ) -> wasmtime::Result<Result<bindings::guild::skill::types::HttpResponseMessage, String>> {
+        request: bindings::guild::skill::inspect_types::HttpRequestMessage,
+    ) -> wasmtime::Result<Result<bindings::guild::skill::inspect_types::HttpResponseMessage, String>>
+    {
         let mut request = from_wit_http_request(request);
         let mut redirects_followed = 0_u8;
         let mut redirect_context: Option<PendingRedirect> = None;
@@ -1002,24 +990,6 @@ impl bindings::guild::skill::host::Host for WasmStoreState {
                 Err(error) => return Ok(Err(format!("{}: {}", error.code, error.message))),
             }
         }
-    }
-
-    fn get_secret(&mut self, _handle: String) -> wasmtime::Result<Result<Vec<u8>, String>> {
-        Err(wasmtime::Error::msg(
-            "get-secret is not implemented in the Wasm inspect slice",
-        ))
-    }
-
-    fn monotonic_now(&mut self) -> wasmtime::Result<Result<u64, String>> {
-        Err(wasmtime::Error::msg(
-            "monotonic-now is not implemented in the Wasm inspect slice",
-        ))
-    }
-
-    fn wall_clock_now(&mut self) -> wasmtime::Result<Result<String, String>> {
-        Err(wasmtime::Error::msg(
-            "wall-clock-now is not implemented in the Wasm inspect slice",
-        ))
     }
 }
 
@@ -1377,6 +1347,21 @@ where
             .with_detail(serde_json::json!({
                 "expected": format!("{:?}", self.runtime.kind()),
                 "actual": format!("{:?}", installed.manifest.runtime.kind),
+            }))
+            .with_phase(ExecutionPhase::Validation));
+        }
+
+        if self.runtime.kind() == RuntimeKind::WasmComponent
+            && installed.manifest.runtime.guest_abi_version != AbiVersion::GuildSkillInspectV1
+        {
+            return Err(ExecutionError::new(
+                "component-abi-mismatch",
+                "Wasm inspect runtime requires guest_abi_version = guild-skill-inspect-v1",
+            )
+            .with_detail(serde_json::json!({
+                "manifest_entrypoint": installed.manifest.runtime.entrypoint,
+                "manifest_guest_abi_version": installed.manifest.runtime.guest_abi_version,
+                "expected_guest_abi_version": AbiVersion::GuildSkillInspectV1,
             }))
             .with_phase(ExecutionPhase::Validation));
         }
@@ -4457,18 +4442,28 @@ fn write_canonical_json(value: &Value, output: &mut String) {
     }
 }
 
-fn to_wit_execution_context(
+fn project_execution_context_to_inspect_abi(
     context: &ExecutionContext,
-) -> Result<bindings::guild::skill::types::ExecutionContext, ExecutionError> {
-    Ok(bindings::guild::skill::types::ExecutionContext {
+) -> Result<bindings::guild::skill::inspect_types::ExecutionContext, ExecutionError> {
+    if context.mode != ExecutionMode::Inspect {
+        return Err(ExecutionError::new(
+            "inspect-abi-mode-mismatch",
+            "guild-skill-inspect-v1 can only project inspect executions into the guest ABI",
+        )
+        .with_detail(serde_json::json!({
+            "mode": context.mode,
+        }))
+        .with_phase(ExecutionPhase::Validation));
+    }
+
+    Ok(bindings::guild::skill::inspect_types::ExecutionContext {
         execution_id: context.execution_id.clone(),
         trace_id: context.trace_id.clone(),
         tenant_id: context.tenant_id.clone(),
-        skill: to_wit_resolved_skill_ref(&context.skill),
-        mode: to_wit_execution_mode(&context.mode),
+        skill: project_resolved_skill_ref_to_inspect_abi(&context.skill),
         input_sha256: context.input_sha256.clone(),
         now_utc: context.now_utc.clone(),
-        budget: bindings::guild::skill::types::Budget {
+        budget: bindings::guild::skill::inspect_types::Budget {
             max_millis: context.budget.max_millis,
             max_memory_bytes: context.budget.max_memory_bytes,
             max_output_bytes: context.budget.max_output_bytes,
@@ -4479,16 +4474,16 @@ fn to_wit_execution_context(
             .granted_capabilities
             .grants
             .iter()
-            .map(to_wit_granted_capability)
+            .map(project_granted_capability_to_inspect_abi)
             .collect::<Result<Vec<_>, _>>()?,
     })
 }
 
-fn to_wit_resolved_skill_ref(
+fn project_resolved_skill_ref_to_inspect_abi(
     skill: &ResolvedSkillRef,
-) -> bindings::guild::skill::types::ResolvedSkillRef {
-    bindings::guild::skill::types::ResolvedSkillRef {
-        key: bindings::guild::skill::types::SkillKey {
+) -> bindings::guild::skill::inspect_types::ResolvedSkillRef {
+    bindings::guild::skill::inspect_types::ResolvedSkillRef {
+        key: bindings::guild::skill::inspect_types::SkillKey {
             namespace: skill.key.namespace.clone(),
             name: skill.key.name.clone(),
         },
@@ -4497,36 +4492,25 @@ fn to_wit_resolved_skill_ref(
     }
 }
 
-fn to_wit_granted_capability(
+fn project_granted_capability_to_inspect_abi(
     grant: &GrantedCapability,
-) -> Result<bindings::guild::skill::types::GrantedCapability, ExecutionError> {
-    Ok(bindings::guild::skill::types::GrantedCapability {
-        id: to_wit_capability_id(&grant.id)?,
-        access: to_wit_capability_access(&grant.access),
-        constraints: to_wit_capability_constraints(&grant.id, &grant.constraints)?,
+) -> Result<bindings::guild::skill::inspect_types::GrantedCapability, ExecutionError> {
+    Ok(bindings::guild::skill::inspect_types::GrantedCapability {
+        id: project_capability_id_to_inspect_abi(&grant.id)?,
+        access: project_capability_access_to_inspect_abi(&grant.access),
+        constraints: project_capability_constraints_to_inspect_abi(&grant.id, &grant.constraints)?,
     })
 }
 
-fn to_wit_execution_mode(mode: &ExecutionMode) -> bindings::guild::skill::types::ExecutionMode {
-    match mode {
-        ExecutionMode::Inspect => bindings::guild::skill::types::ExecutionMode::Inspect,
-        ExecutionMode::Plan => bindings::guild::skill::types::ExecutionMode::Plan,
-        ExecutionMode::Apply => bindings::guild::skill::types::ExecutionMode::Apply,
-    }
-}
-
-fn to_wit_capability_id(
+fn project_capability_id_to_inspect_abi(
     id: &CapabilityId,
-) -> Result<bindings::guild::skill::types::CapabilityId, ExecutionError> {
+) -> Result<bindings::guild::skill::inspect_types::CapabilityId, ExecutionError> {
     match id {
-        CapabilityId::HttpRequest => Ok(bindings::guild::skill::types::CapabilityId::HttpRequest),
-        CapabilityId::ReadResource => Ok(bindings::guild::skill::types::CapabilityId::ReadResource),
-        CapabilityId::InvokeSkill => Ok(bindings::guild::skill::types::CapabilityId::InvokeSkill),
-        CapabilityId::EmitEvidence => Ok(bindings::guild::skill::types::CapabilityId::EmitEvidence),
-        CapabilityId::GetSecret => Ok(bindings::guild::skill::types::CapabilityId::GetSecret),
-        CapabilityId::CacheRead => Ok(bindings::guild::skill::types::CapabilityId::CacheRead),
-        CapabilityId::CacheWrite => Ok(bindings::guild::skill::types::CapabilityId::CacheWrite),
-        CapabilityId::LogWrite => Ok(bindings::guild::skill::types::CapabilityId::LogWrite),
+        CapabilityId::HttpRequest => Ok(bindings::guild::skill::inspect_types::CapabilityId::HttpRequest),
+        CapabilityId::ReadResource => Ok(bindings::guild::skill::inspect_types::CapabilityId::ReadResource),
+        CapabilityId::InvokeSkill => Ok(bindings::guild::skill::inspect_types::CapabilityId::InvokeSkill),
+        CapabilityId::EmitEvidence => Ok(bindings::guild::skill::inspect_types::CapabilityId::EmitEvidence),
+        CapabilityId::LogWrite => Ok(bindings::guild::skill::inspect_types::CapabilityId::LogWrite),
         CapabilityId::Filesystem => Err(ExecutionError::new(
             "filesystem-runtime-not-supported",
             "filesystem capability contracts are not implemented in the active Wasm inspect slice",
@@ -4535,30 +4519,38 @@ fn to_wit_capability_id(
             "id": id,
         }))
         .with_phase(ExecutionPhase::Validation)),
-        CapabilityId::MonotonicClock => {
-            Ok(bindings::guild::skill::types::CapabilityId::MonotonicClock)
-        }
-        CapabilityId::WallClock => Ok(bindings::guild::skill::types::CapabilityId::WallClock),
+        CapabilityId::GetSecret
+        | CapabilityId::CacheRead
+        | CapabilityId::CacheWrite
+        | CapabilityId::MonotonicClock
+        | CapabilityId::WallClock => Err(ExecutionError::new(
+            "unsupported-runtime-surface",
+            "guild-skill-inspect-v1 only projects the active inspect capability families into the guest ABI",
+        )
+        .with_detail(serde_json::json!({
+            "id": id,
+        }))
+        .with_phase(ExecutionPhase::Validation)),
     }
 }
 
-fn to_wit_capability_access(
+fn project_capability_access_to_inspect_abi(
     access: &CapabilityAccess,
-) -> bindings::guild::skill::types::CapabilityAccess {
+) -> bindings::guild::skill::inspect_types::CapabilityAccess {
     match access {
-        CapabilityAccess::Read => bindings::guild::skill::types::CapabilityAccess::Read,
-        CapabilityAccess::Write => bindings::guild::skill::types::CapabilityAccess::Write,
-        CapabilityAccess::Invoke => bindings::guild::skill::types::CapabilityAccess::Invoke,
+        CapabilityAccess::Read => bindings::guild::skill::inspect_types::CapabilityAccess::Read,
+        CapabilityAccess::Write => bindings::guild::skill::inspect_types::CapabilityAccess::Write,
+        CapabilityAccess::Invoke => bindings::guild::skill::inspect_types::CapabilityAccess::Invoke,
     }
 }
 
-fn to_wit_capability_constraints(
+fn project_capability_constraints_to_inspect_abi(
     id: &CapabilityId,
     constraints: &CapabilityConstraints,
-) -> Result<bindings::guild::skill::types::CapabilityConstraints, ExecutionError> {
+) -> Result<bindings::guild::skill::inspect_types::CapabilityConstraints, ExecutionError> {
     match constraints {
         CapabilityConstraints::None(_) => {
-            Ok(bindings::guild::skill::types::CapabilityConstraints::None)
+            Ok(bindings::guild::skill::inspect_types::CapabilityConstraints::None)
         }
         CapabilityConstraints::Filesystem(value) => Err(ExecutionError::new(
             "filesystem-runtime-not-supported",
@@ -4569,31 +4561,12 @@ fn to_wit_capability_constraints(
             "constraints": value,
         }))
         .with_phase(ExecutionPhase::Validation)),
-        CapabilityConstraints::HttpRequest(value) => Ok(
-            bindings::guild::skill::types::CapabilityConstraints::HttpRequest(
-                bindings::guild::skill::types::HttpRequestConstraints {
-                    allowed_schemes: value
-                        .allowed_schemes
-                        .as_ref()
-                        .map(|schemes| schemes.iter().map(to_wit_http_scheme).collect()),
-                    allowed_hosts: value
-                        .allowed_hosts
-                        .as_ref()
-                        .map(|hosts| canonicalize_host_scope(hosts)),
-                    allowed_ports: value.allowed_ports.clone(),
-                    allowed_methods: value
-                        .allowed_methods
-                        .as_ref()
-                        .map(|methods| methods.iter().map(to_wit_http_method).collect()),
-                    allowed_path_prefixes: value.allowed_path_prefixes.clone(),
-                    max_timeout_ms: value.max_timeout_ms,
-                    max_response_bytes: value.max_response_bytes,
-                },
-            ),
-        ),
+        CapabilityConstraints::HttpRequest(value) => {
+            Ok(project_http_request_constraints_to_inspect_abi(value))
+        }
         CapabilityConstraints::ReadResource(value) => Ok(
-            bindings::guild::skill::types::CapabilityConstraints::ReadResource(
-                bindings::guild::skill::types::ReadResourceConstraints {
+            bindings::guild::skill::inspect_types::CapabilityConstraints::ReadResource(
+                bindings::guild::skill::inspect_types::ReadResourceConstraints {
                     uri_prefixes: value.uri_prefixes.clone(),
                     resource_kinds: value
                         .resource_kinds
@@ -4603,16 +4576,16 @@ fn to_wit_capability_constraints(
             ),
         ),
         CapabilityConstraints::InvokeDependency(value) => Ok(
-            bindings::guild::skill::types::CapabilityConstraints::InvokeDependency(
-                bindings::guild::skill::types::InvokeDependencyConstraints {
+            bindings::guild::skill::inspect_types::CapabilityConstraints::InvokeDependency(
+                bindings::guild::skill::inspect_types::InvokeDependencyConstraints {
                     aliases: value.aliases.clone(),
                 },
             ),
         ),
         CapabilityConstraints::EmitEvidence(value) => {
             Ok(
-                bindings::guild::skill::types::CapabilityConstraints::EmitEvidence(
-                    bindings::guild::skill::types::EmitEvidenceConstraints {
+                bindings::guild::skill::inspect_types::CapabilityConstraints::EmitEvidence(
+                    bindings::guild::skill::inspect_types::EmitEvidenceConstraints {
                         max_bytes: value.max_bytes,
                         audiences: value.audiences.as_ref().map(|audiences| {
                             audiences.iter().map(to_wit_evidence_audience).collect()
@@ -4624,21 +4597,56 @@ fn to_wit_capability_constraints(
                 ),
             )
         }
-        CapabilityConstraints::Log(value) => {
-            Ok(bindings::guild::skill::types::CapabilityConstraints::Log(
-                bindings::guild::skill::types::LogConstraints {
+        CapabilityConstraints::Log(value) => Ok(
+            bindings::guild::skill::inspect_types::CapabilityConstraints::Log(
+                bindings::guild::skill::inspect_types::LogConstraints {
                     levels: value
                         .levels
                         .as_ref()
                         .map(|levels| levels.iter().map(to_wit_severity).collect()),
                 },
-            ))
-        }
+            ),
+        ),
     }
 }
 
+fn project_http_request_constraints_to_inspect_abi(
+    value: &HttpRequestConstraints,
+) -> bindings::guild::skill::inspect_types::CapabilityConstraints {
+    bindings::guild::skill::inspect_types::CapabilityConstraints::HttpRequest(
+        bindings::guild::skill::inspect_types::HttpRequestConstraints {
+            allowed_schemes: value
+                .allowed_schemes
+                .as_ref()
+                .map(|schemes| schemes.iter().map(to_wit_http_scheme).collect()),
+            allowed_hosts: value
+                .allowed_hosts
+                .as_ref()
+                .map(|hosts| canonicalize_host_scope(hosts)),
+            allowed_host_suffixes: value
+                .allowed_host_suffixes
+                .as_ref()
+                .map(|hosts| canonicalize_host_scope(hosts)),
+            allowed_ports: value.allowed_ports.clone(),
+            allowed_methods: value
+                .allowed_methods
+                .as_ref()
+                .map(|methods| methods.iter().map(to_wit_http_method).collect()),
+            allowed_path_prefixes: value.allowed_path_prefixes.clone(),
+            max_timeout_ms: value.max_timeout_ms,
+            max_response_bytes: value.max_response_bytes,
+            follow_redirects: value.follow_redirects,
+            max_redirects: value.max_redirects,
+            allow_loopback: value.allow_loopback,
+            allow_link_local: value.allow_link_local,
+            allow_private_networks: value.allow_private_networks,
+            allow_ip_literals: value.allow_ip_literals,
+        },
+    )
+}
+
 fn from_wit_skill_output(
-    output: bindings::guild::skill::types::SkillOutput,
+    output: bindings::guild::skill::inspect_types::SkillOutput,
 ) -> Result<SkillOutput, ExecutionError> {
     Ok(SkillOutput {
         summary: output.summary,
@@ -4653,8 +4661,8 @@ fn from_wit_skill_output(
     })
 }
 
-fn to_wit_skill_output(output: &SkillOutput) -> bindings::guild::skill::types::SkillOutput {
-    bindings::guild::skill::types::SkillOutput {
+fn to_wit_skill_output(output: &SkillOutput) -> bindings::guild::skill::inspect_types::SkillOutput {
+    bindings::guild::skill::inspect_types::SkillOutput {
         summary: output.summary.clone(),
         structured: serde_json::to_string(&output.structured)
             .expect("structured output serializes"),
@@ -4664,8 +4672,8 @@ fn to_wit_skill_output(output: &SkillOutput) -> bindings::guild::skill::types::S
     }
 }
 
-fn to_wit_skill_error(error: &SkillError) -> bindings::guild::skill::types::SkillError {
-    bindings::guild::skill::types::SkillError {
+fn to_wit_skill_error(error: &SkillError) -> bindings::guild::skill::inspect_types::SkillError {
+    bindings::guild::skill::inspect_types::SkillError {
         code: error.code.clone(),
         message: error.message.clone(),
         retryable: error.retryable,
@@ -4677,7 +4685,7 @@ fn to_wit_skill_error(error: &SkillError) -> bindings::guild::skill::types::Skil
 }
 
 fn from_wit_http_request(
-    request: bindings::guild::skill::types::HttpRequestMessage,
+    request: bindings::guild::skill::inspect_types::HttpRequestMessage,
 ) -> HttpRequest {
     HttpRequest {
         method: from_wit_http_method(request.method),
@@ -4688,8 +4696,8 @@ fn from_wit_http_request(
 
 fn to_wit_http_response(
     response: &HttpResponse,
-) -> bindings::guild::skill::types::HttpResponseMessage {
-    bindings::guild::skill::types::HttpResponseMessage {
+) -> bindings::guild::skill::inspect_types::HttpResponseMessage {
+    bindings::guild::skill::inspect_types::HttpResponseMessage {
         url: response.url.clone(),
         status: response.status,
         content_type: response.content_type.clone(),
@@ -4697,24 +4705,24 @@ fn to_wit_http_response(
     }
 }
 
-fn from_wit_http_method(method: bindings::guild::skill::types::HttpMethod) -> HttpMethod {
+fn from_wit_http_method(method: bindings::guild::skill::inspect_types::HttpMethod) -> HttpMethod {
     match method {
-        bindings::guild::skill::types::HttpMethod::Get => HttpMethod::Get,
-        bindings::guild::skill::types::HttpMethod::Head => HttpMethod::Head,
+        bindings::guild::skill::inspect_types::HttpMethod::Get => HttpMethod::Get,
+        bindings::guild::skill::inspect_types::HttpMethod::Head => HttpMethod::Head,
     }
 }
 
-fn to_wit_http_method(method: &HttpMethod) -> bindings::guild::skill::types::HttpMethod {
+fn to_wit_http_method(method: &HttpMethod) -> bindings::guild::skill::inspect_types::HttpMethod {
     match method {
-        HttpMethod::Get => bindings::guild::skill::types::HttpMethod::Get,
-        HttpMethod::Head => bindings::guild::skill::types::HttpMethod::Head,
+        HttpMethod::Get => bindings::guild::skill::inspect_types::HttpMethod::Get,
+        HttpMethod::Head => bindings::guild::skill::inspect_types::HttpMethod::Head,
     }
 }
 
-fn to_wit_http_scheme(scheme: &HttpScheme) -> bindings::guild::skill::types::HttpScheme {
+fn to_wit_http_scheme(scheme: &HttpScheme) -> bindings::guild::skill::inspect_types::HttpScheme {
     match scheme {
-        HttpScheme::Http => bindings::guild::skill::types::HttpScheme::Http,
-        HttpScheme::Https => bindings::guild::skill::types::HttpScheme::Https,
+        HttpScheme::Http => bindings::guild::skill::inspect_types::HttpScheme::Http,
+        HttpScheme::Https => bindings::guild::skill::inspect_types::HttpScheme::Https,
     }
 }
 
@@ -4737,7 +4745,9 @@ fn validate_emitted_evidence(
     .with_phase(ExecutionPhase::RuntimeExec))
 }
 
-fn from_wit_skill_error(error: bindings::guild::skill::types::SkillError) -> ExecutionError {
+fn from_wit_skill_error(
+    error: bindings::guild::skill::inspect_types::SkillError,
+) -> ExecutionError {
     let phase = phase_for_skill_error_code(&error.code);
     ExecutionError {
         code: error.code,
@@ -4756,11 +4766,11 @@ fn from_wit_skill_error(error: bindings::guild::skill::types::SkillError) -> Exe
     }
 }
 
-fn from_wit_severity(severity: bindings::guild::skill::types::Severity) -> Severity {
+fn from_wit_severity(severity: bindings::guild::skill::inspect_types::Severity) -> Severity {
     match severity {
-        bindings::guild::skill::types::Severity::Info => Severity::Info,
-        bindings::guild::skill::types::Severity::Warn => Severity::Warn,
-        bindings::guild::skill::types::Severity::Error => Severity::Error,
+        bindings::guild::skill::inspect_types::Severity::Info => Severity::Info,
+        bindings::guild::skill::inspect_types::Severity::Warn => Severity::Warn,
+        bindings::guild::skill::inspect_types::Severity::Error => Severity::Error,
     }
 }
 
@@ -4772,8 +4782,8 @@ fn phase_for_skill_error_code(code: &str) -> ExecutionPhase {
     }
 }
 
-fn to_wit_diagnostic(diagnostic: &Diagnostic) -> bindings::guild::skill::types::Diagnostic {
-    bindings::guild::skill::types::Diagnostic {
+fn to_wit_diagnostic(diagnostic: &Diagnostic) -> bindings::guild::skill::inspect_types::Diagnostic {
+    bindings::guild::skill::inspect_types::Diagnostic {
         severity: to_wit_severity(&diagnostic.severity),
         code: diagnostic.code.clone(),
         message: diagnostic.message.clone(),
@@ -4786,7 +4796,7 @@ fn to_wit_diagnostic(diagnostic: &Diagnostic) -> bindings::guild::skill::types::
 }
 
 fn from_wit_diagnostic(
-    diagnostic: bindings::guild::skill::types::Diagnostic,
+    diagnostic: bindings::guild::skill::inspect_types::Diagnostic,
 ) -> Result<Diagnostic, ExecutionError> {
     Ok(Diagnostic {
         severity: from_wit_severity(diagnostic.severity),
@@ -4800,50 +4810,58 @@ fn from_wit_diagnostic(
     })
 }
 
-fn from_wit_effect(effect: bindings::guild::skill::types::Effect) -> Effect {
+fn from_wit_effect(effect: bindings::guild::skill::inspect_types::Effect) -> Effect {
     Effect {
         kind: match effect.kind {
-            bindings::guild::skill::types::Mutability::ReadOnly => Mutability::ReadOnly,
-            bindings::guild::skill::types::Mutability::Additive => Mutability::Additive,
-            bindings::guild::skill::types::Mutability::Destructive => Mutability::Destructive,
+            bindings::guild::skill::inspect_types::Mutability::ReadOnly => Mutability::ReadOnly,
+            bindings::guild::skill::inspect_types::Mutability::Additive => Mutability::Additive,
+            bindings::guild::skill::inspect_types::Mutability::Destructive => {
+                Mutability::Destructive
+            }
         },
         target: effect.target,
         summary: effect.summary,
     }
 }
 
-fn to_wit_effect(effect: &Effect) -> bindings::guild::skill::types::Effect {
-    bindings::guild::skill::types::Effect {
+fn to_wit_effect(effect: &Effect) -> bindings::guild::skill::inspect_types::Effect {
+    bindings::guild::skill::inspect_types::Effect {
         kind: match effect.kind {
-            Mutability::ReadOnly => bindings::guild::skill::types::Mutability::ReadOnly,
-            Mutability::Additive => bindings::guild::skill::types::Mutability::Additive,
-            Mutability::Destructive => bindings::guild::skill::types::Mutability::Destructive,
+            Mutability::ReadOnly => bindings::guild::skill::inspect_types::Mutability::ReadOnly,
+            Mutability::Additive => bindings::guild::skill::inspect_types::Mutability::Additive,
+            Mutability::Destructive => {
+                bindings::guild::skill::inspect_types::Mutability::Destructive
+            }
         },
         target: effect.target.clone(),
         summary: effect.summary.clone(),
     }
 }
 
-fn from_wit_evidence(evidence: bindings::guild::skill::types::EvidenceRef) -> EvidenceRef {
+fn from_wit_evidence(evidence: bindings::guild::skill::inspect_types::EvidenceRef) -> EvidenceRef {
     EvidenceRef {
         uri: evidence.uri,
         title: evidence.title,
         mime_type: evidence.mime_type,
         sha256: evidence.sha256,
         audience: match evidence.audience {
-            bindings::guild::skill::types::EvidenceAudience::User => EvidenceAudience::User,
-            bindings::guild::skill::types::EvidenceAudience::Assistant => {
+            bindings::guild::skill::inspect_types::EvidenceAudience::User => EvidenceAudience::User,
+            bindings::guild::skill::inspect_types::EvidenceAudience::Assistant => {
                 EvidenceAudience::Assistant
             }
-            bindings::guild::skill::types::EvidenceAudience::Internal => EvidenceAudience::Internal,
+            bindings::guild::skill::inspect_types::EvidenceAudience::Internal => {
+                EvidenceAudience::Internal
+            }
         },
         redaction: match evidence.redaction {
-            bindings::guild::skill::types::RedactionClass::None => RedactionClass::None,
-            bindings::guild::skill::types::RedactionClass::SecretsRemoved => {
+            bindings::guild::skill::inspect_types::RedactionClass::None => RedactionClass::None,
+            bindings::guild::skill::inspect_types::RedactionClass::SecretsRemoved => {
                 RedactionClass::SecretsRemoved
             }
-            bindings::guild::skill::types::RedactionClass::PiiRemoved => RedactionClass::PiiRemoved,
-            bindings::guild::skill::types::RedactionClass::TenantSensitive => {
+            bindings::guild::skill::inspect_types::RedactionClass::PiiRemoved => {
+                RedactionClass::PiiRemoved
+            }
+            bindings::guild::skill::inspect_types::RedactionClass::TenantSensitive => {
                 RedactionClass::TenantSensitive
             }
         },
@@ -4851,8 +4869,8 @@ fn from_wit_evidence(evidence: bindings::guild::skill::types::EvidenceRef) -> Ev
     }
 }
 
-fn to_wit_evidence(evidence: &EvidenceRef) -> bindings::guild::skill::types::EvidenceRef {
-    bindings::guild::skill::types::EvidenceRef {
+fn to_wit_evidence(evidence: &EvidenceRef) -> bindings::guild::skill::inspect_types::EvidenceRef {
+    bindings::guild::skill::inspect_types::EvidenceRef {
         uri: evidence.uri.clone(),
         mime_type: evidence.mime_type.clone(),
         sha256: evidence.sha256.clone(),
@@ -4863,51 +4881,59 @@ fn to_wit_evidence(evidence: &EvidenceRef) -> bindings::guild::skill::types::Evi
     }
 }
 
-fn to_wit_resource_kind(kind: &ResourceKind) -> bindings::guild::skill::types::ResourceKind {
+fn to_wit_resource_kind(
+    kind: &ResourceKind,
+) -> bindings::guild::skill::inspect_types::ResourceKind {
     match kind {
-        ResourceKind::Execution => bindings::guild::skill::types::ResourceKind::Execution,
-        ResourceKind::Object => bindings::guild::skill::types::ResourceKind::Object,
-        ResourceKind::Query => bindings::guild::skill::types::ResourceKind::Query,
+        ResourceKind::Execution => bindings::guild::skill::inspect_types::ResourceKind::Execution,
+        ResourceKind::Object => bindings::guild::skill::inspect_types::ResourceKind::Object,
+        ResourceKind::Query => bindings::guild::skill::inspect_types::ResourceKind::Query,
     }
 }
 
 fn to_wit_evidence_audience(
     audience: &EvidenceAudience,
-) -> bindings::guild::skill::types::EvidenceAudience {
+) -> bindings::guild::skill::inspect_types::EvidenceAudience {
     match audience {
-        EvidenceAudience::User => bindings::guild::skill::types::EvidenceAudience::User,
-        EvidenceAudience::Assistant => bindings::guild::skill::types::EvidenceAudience::Assistant,
-        EvidenceAudience::Internal => bindings::guild::skill::types::EvidenceAudience::Internal,
+        EvidenceAudience::User => bindings::guild::skill::inspect_types::EvidenceAudience::User,
+        EvidenceAudience::Assistant => {
+            bindings::guild::skill::inspect_types::EvidenceAudience::Assistant
+        }
+        EvidenceAudience::Internal => {
+            bindings::guild::skill::inspect_types::EvidenceAudience::Internal
+        }
     }
 }
 
 fn to_wit_redaction_class(
     redaction: &RedactionClass,
-) -> bindings::guild::skill::types::RedactionClass {
+) -> bindings::guild::skill::inspect_types::RedactionClass {
     match redaction {
-        RedactionClass::None => bindings::guild::skill::types::RedactionClass::None,
+        RedactionClass::None => bindings::guild::skill::inspect_types::RedactionClass::None,
         RedactionClass::SecretsRemoved => {
-            bindings::guild::skill::types::RedactionClass::SecretsRemoved
+            bindings::guild::skill::inspect_types::RedactionClass::SecretsRemoved
         }
-        RedactionClass::PiiRemoved => bindings::guild::skill::types::RedactionClass::PiiRemoved,
+        RedactionClass::PiiRemoved => {
+            bindings::guild::skill::inspect_types::RedactionClass::PiiRemoved
+        }
         RedactionClass::TenantSensitive => {
-            bindings::guild::skill::types::RedactionClass::TenantSensitive
+            bindings::guild::skill::inspect_types::RedactionClass::TenantSensitive
         }
     }
 }
 
-fn to_wit_severity(severity: &Severity) -> bindings::guild::skill::types::Severity {
+fn to_wit_severity(severity: &Severity) -> bindings::guild::skill::inspect_types::Severity {
     match severity {
-        Severity::Info => bindings::guild::skill::types::Severity::Info,
-        Severity::Warn => bindings::guild::skill::types::Severity::Warn,
-        Severity::Error => bindings::guild::skill::types::Severity::Error,
+        Severity::Info => bindings::guild::skill::inspect_types::Severity::Info,
+        Severity::Warn => bindings::guild::skill::inspect_types::Severity::Warn,
+        Severity::Error => bindings::guild::skill::inspect_types::Severity::Error,
     }
 }
 
 fn to_wit_resource_read_result(
     result: &ResourceReadResult,
-) -> bindings::guild::skill::types::ResourceReadResult {
-    bindings::guild::skill::types::ResourceReadResult {
+) -> bindings::guild::skill::inspect_types::ResourceReadResult {
+    bindings::guild::skill::inspect_types::ResourceReadResult {
         uri: result.uri.clone(),
         mime_type: result.mime_type.clone(),
         bytes: result.bytes.clone(),

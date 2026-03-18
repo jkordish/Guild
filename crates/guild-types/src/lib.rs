@@ -218,6 +218,7 @@ pub enum SkillApiVersion {
 #[serde(rename_all = "kebab-case")]
 pub enum AbiVersion {
     GuildSkillV1,
+    GuildSkillInspectV1,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]

@@ -247,3 +247,237 @@ world guild-skill {
   import host;
   export skill;
 }
+
+interface inspect-types {
+  type json = string;
+
+  record skill-key {
+    namespace: string,
+    name: string,
+  }
+
+  record resolved-skill-ref {
+    key: skill-key,
+    version: string,
+    digest: string,
+  }
+
+  enum mutability {
+    read-only,
+    additive,
+    destructive,
+  }
+
+  enum severity {
+    info,
+    warn,
+    error,
+  }
+
+  enum capability-id {
+    http-request,
+    read-resource,
+    invoke-skill,
+    emit-evidence,
+    log-write,
+  }
+
+  enum capability-access {
+    read,
+    write,
+    invoke,
+  }
+
+  enum http-method {
+    get,
+    head,
+  }
+
+  enum http-scheme {
+    http,
+    https,
+  }
+
+  enum evidence-audience {
+    user,
+    assistant,
+    internal,
+  }
+
+  enum redaction-class {
+    none,
+    secrets-removed,
+    pii-removed,
+    tenant-sensitive,
+  }
+
+  enum resource-kind {
+    execution,
+    object,
+    query,
+  }
+
+  record read-resource-constraints {
+    uri-prefixes: option<list<string>>,
+    resource-kinds: option<list<resource-kind>>,
+  }
+
+  record invoke-dependency-constraints {
+    aliases: option<list<string>>,
+  }
+
+  record emit-evidence-constraints {
+    max-bytes: option<u64>,
+    audiences: option<list<evidence-audience>>,
+    redactions: option<list<redaction-class>>,
+  }
+
+  record log-constraints {
+    levels: option<list<severity>>,
+  }
+
+  record http-request-constraints {
+    allowed-schemes: option<list<http-scheme>>,
+    allowed-hosts: option<list<string>>,
+    allowed-host-suffixes: option<list<string>>,
+    allowed-ports: option<list<u16>>,
+    allowed-methods: option<list<http-method>>,
+    allowed-path-prefixes: option<list<string>>,
+    max-timeout-ms: option<u64>,
+    max-response-bytes: option<u64>,
+    follow-redirects: option<bool>,
+    max-redirects: option<u8>,
+    allow-loopback: option<bool>,
+    allow-link-local: option<bool>,
+    allow-private-networks: option<bool>,
+    allow-ip-literals: option<bool>,
+  }
+
+  variant capability-constraints {
+    none,
+    http-request(http-request-constraints),
+    read-resource(read-resource-constraints),
+    invoke-dependency(invoke-dependency-constraints),
+    emit-evidence(emit-evidence-constraints),
+    log(log-constraints),
+  }
+
+  record granted-capability {
+    id: capability-id,
+    access: capability-access,
+    constraints: capability-constraints,
+  }
+
+  record budget {
+    max-millis: u64,
+    max-memory-bytes: u64,
+    max-output-bytes: u64,
+    max-network-requests: u32,
+    max-child-executions: u16,
+  }
+
+  record execution-context {
+    execution-id: string,
+    trace-id: string,
+    tenant-id: string,
+    skill: resolved-skill-ref,
+    input-sha256: string,
+    now-utc: option<string>,
+    budget: budget,
+    granted-capabilities: list<granted-capability>,
+  }
+
+  record diagnostic {
+    severity: severity,
+    code: string,
+    message: string,
+    retryable: bool,
+    detail: option<json>,
+  }
+
+  record effect {
+    kind: mutability,
+    target: string,
+    summary: string,
+  }
+
+  record evidence-ref {
+    uri: string,
+    mime-type: option<string>,
+    sha256: option<string>,
+    title: option<string>,
+    audience: evidence-audience,
+    redaction: redaction-class,
+    freshness: option<string>,
+  }
+
+  record evidence-emission-request {
+    payload: list<u8>,
+    mime-type: string,
+    title: option<string>,
+    audience: evidence-audience,
+    redaction: redaction-class,
+    freshness: option<string>,
+  }
+
+  record resource-read-result {
+    uri: string,
+    mime-type: string,
+    bytes: list<u8>,
+    sha256: option<string>,
+  }
+
+  record http-request-message {
+    method: http-method,
+    url: string,
+    timeout-ms: option<u64>,
+  }
+
+  record http-response-message {
+    url: string,
+    status: u16,
+    content-type: option<string>,
+    body: list<u8>,
+  }
+
+  record skill-output {
+    summary: string,
+    structured: json,
+    diagnostics: list<diagnostic>,
+    effects: list<effect>,
+    evidence: list<evidence-ref>,
+  }
+
+  record dependency-invocation-request {
+    alias: string,
+    input: json,
+  }
+
+  record skill-error {
+    code: string,
+    message: string,
+    retryable: bool,
+    detail: option<json>,
+  }
+}
+
+interface inspect-host {
+  use inspect-types.{dependency-invocation-request, evidence-emission-request, evidence-ref, http-request-message, http-response-message, json, resource-read-result, severity, skill-error, skill-output};
+
+  log: func(level: severity, message: string);
+  emit-evidence: func(request: evidence-emission-request) -> result<evidence-ref, string>;
+  read-resource: func(uri: string) -> result<resource-read-result, string>;
+  invoke-dependency: func(request: dependency-invocation-request) -> result<skill-output, skill-error>;
+  http-request: func(request: http-request-message) -> result<http-response-message, string>;
+}
+
+interface inspect-skill {
+  use inspect-types.{execution-context, json, skill-error, skill-output};
+
+  run: func(ctx: execution-context, input: json) -> result<skill-output, skill-error>;
+}
+
+world guild-skill-inspect-v1 {
+  import inspect-host;
+  export inspect-skill;
+}

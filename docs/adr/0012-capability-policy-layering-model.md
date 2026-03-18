@@ -41,7 +41,8 @@ The current repository model is:
 6. The host evaluates policy and produces a host-owned `PolicyDecision` plus the
    authoritative `granted_capabilities`.
 7. The runtime executes only with `ResolvedExecutionEnvelope.granted_capabilities`
-   and enforces those grants again at each host import boundary.
+   and enforces those grants again at each host import boundary after projecting
+   the host-owned grant model into the active inspect ABI.
 
 The repository now uses the following terms precisely:
 
@@ -96,7 +97,8 @@ cross-family permission blob as its conceptual model.
 
 Unsupported families are not "implicitly available" because they appear in
 shared contracts. In the active Wasm inspect slice, unsupported families are
-rejected before execution under the runtime surface allowlist.
+rejected before execution under the runtime surface allowlist, and their imports
+are absent from `guild-skill-inspect-v1`.
 
 Trust and verification stay separate from grants:
 
@@ -137,6 +139,7 @@ Costs and limits:
 - guests never receive ambient authority through policy omission or ambiguity
 - unsupported capability families in the active inspect slice fail before guest
   execution
+- unsupported future imports do not appear in the active inspect guest ABI
 
 ## Explicit non-goals / deferred work
 
@@ -158,4 +161,3 @@ Costs and limits:
 - `crates/guild-runner/src/lib.rs`
 - `crates/guild-registry/src/lib.rs`
 - `crates/guild-mcp/examples/inspect_policy_local.rs`
-

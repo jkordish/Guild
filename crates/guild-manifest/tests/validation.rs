@@ -25,8 +25,8 @@ fn sample_source_manifest() -> SourceSkillManifest {
         description: "A tiny inspect-only example skill.".into(),
         runtime: RuntimeSpec {
             kind: RuntimeKind::WasmComponent,
-            entrypoint: "guild-skill".into(),
-            guest_abi_version: AbiVersion::GuildSkillV1,
+            entrypoint: "guild-skill-inspect-v1".into(),
+            guest_abi_version: AbiVersion::GuildSkillInspectV1,
         },
         interface: InterfaceSpec {
             input_schema_uri: "./input.schema.json".into(),
@@ -113,8 +113,22 @@ fn source_manifest_roundtrips_typed_versions_and_mode_policy() {
         ManifestSchemaVersion::GuildManifestV1
     );
     assert_eq!(decoded.skill_api_version, SkillApiVersion::GuildSkillV1);
-    assert_eq!(decoded.runtime.guest_abi_version, AbiVersion::GuildSkillV1);
+    assert_eq!(
+        decoded.runtime.guest_abi_version,
+        AbiVersion::GuildSkillInspectV1
+    );
     assert_eq!(decoded, manifest);
+}
+
+#[test]
+fn inspect_world_requires_matching_guest_abi_and_modes() {
+    let mut manifest = sample_source_manifest();
+    manifest.runtime.guest_abi_version = AbiVersion::GuildSkillV1;
+    manifest.behavior.modes.supported = vec![ExecutionMode::Inspect, ExecutionMode::Plan];
+
+    let errors = manifest.validate().unwrap_err();
+    assert!(has_error(&errors, "runtime.guest_abi_version"));
+    assert!(has_error(&errors, "behavior.modes.supported"));
 }
 
 #[test]

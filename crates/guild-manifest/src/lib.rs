@@ -11,6 +11,8 @@ use guild_types::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+const INSPECT_WORLD_ENTRYPOINT: &str = "guild-skill-inspect-v1";
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct SkillManifest {
     pub manifest_schema_version: ManifestSchemaVersion,
@@ -225,6 +227,10 @@ impl SkillManifest {
     /// Returns every manifest validation error found in the installed manifest.
     pub fn validate(&self) -> Result<(), Vec<ManifestValidationError>> {
         let mut errors = self.behavior.modes.validate();
+        errors.extend(validate_runtime_contract(
+            &self.runtime,
+            &self.behavior.modes,
+        ));
         errors.extend(validate_installed_dependencies(&self.dependencies));
         errors.extend(validate_capabilities(&self.capabilities));
 
@@ -249,6 +255,10 @@ impl SourceSkillManifest {
     /// Returns every manifest validation error found in the source manifest.
     pub fn validate(&self) -> Result<(), Vec<ManifestValidationError>> {
         let mut errors = self.behavior.modes.validate();
+        errors.extend(validate_runtime_contract(
+            &self.runtime,
+            &self.behavior.modes,
+        ));
         errors.extend(validate_source_dependencies(&self.dependencies));
         errors.extend(validate_capabilities(&self.capabilities));
 
@@ -381,6 +391,49 @@ fn validate_capabilities(capabilities: &[CapabilityRequirement]) -> Vec<Manifest
                 message,
             });
         }
+    }
+
+    errors
+}
+
+fn validate_runtime_contract(
+    runtime: &RuntimeSpec,
+    modes: &ModePolicy,
+) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+    let uses_inspect_world = runtime.entrypoint == INSPECT_WORLD_ENTRYPOINT
+        || runtime.guest_abi_version == AbiVersion::GuildSkillInspectV1;
+
+    if runtime.entrypoint == INSPECT_WORLD_ENTRYPOINT
+        && runtime.guest_abi_version != AbiVersion::GuildSkillInspectV1
+    {
+        errors.push(ManifestValidationError {
+            path: "runtime.guest_abi_version".into(),
+            message: "guild-skill-inspect-v1 entrypoint requires guest_abi_version = guild-skill-inspect-v1".into(),
+        });
+    }
+
+    if runtime.guest_abi_version == AbiVersion::GuildSkillInspectV1
+        && runtime.entrypoint != INSPECT_WORLD_ENTRYPOINT
+    {
+        errors.push(ManifestValidationError {
+            path: "runtime.entrypoint".into(),
+            message: "guild-skill-inspect-v1 guest ABI requires runtime.entrypoint = guild-skill-inspect-v1".into(),
+        });
+    }
+
+    if uses_inspect_world
+        && modes
+            .supported
+            .iter()
+            .any(|mode| !matches!(mode, ExecutionMode::Inspect))
+    {
+        errors.push(ManifestValidationError {
+            path: "behavior.modes.supported".into(),
+            message:
+                "guild-skill-inspect-v1 skills must remain inspect-only and must not declare plan/apply modes"
+                    .into(),
+        });
     }
 
     errors

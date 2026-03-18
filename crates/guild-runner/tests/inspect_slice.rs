@@ -6,10 +6,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use guild_registry::{LocalRegistry, LocalSourceInstaller, SkillRegistry, execution_resource_uri};
 use guild_runner::{Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
-    CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, EvidenceRef, ExecutionMode,
-    ExecutionStatus, FilesystemConstraints, FilesystemOperation, FilesystemRoot, GrantedCapability,
-    LogConstraints, PolicyDecision, PolicyDecisionOutcome, RedactionClass, RequestedSkillRef,
+    AbiVersion, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
+    CapabilityId, CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, EvidenceRef,
+    ExecutionMode, ExecutionStatus, FilesystemConstraints, FilesystemOperation, FilesystemRoot,
+    GrantedCapability, HttpMethod, HttpRequestConstraints, HttpScheme, LogConstraints,
+    PolicyDecision, PolicyDecisionOutcome, RedactionClass, RequestedSkillRef,
     ResolvedExecutionEnvelope, Severity, SkillKey, VersionRequirement,
 };
 use serde_json::{Value, json};
@@ -141,6 +142,29 @@ fn log_info_grant() -> GrantedCapability {
     }
 }
 
+fn http_projection_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::HttpRequest,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+            allowed_schemes: Some(vec![HttpScheme::Http]),
+            allowed_hosts: Some(vec!["127.0.0.1".into()]),
+            allowed_host_suffixes: Some(vec!["example.com".into()]),
+            allowed_ports: Some(vec![8080]),
+            allowed_methods: Some(vec![HttpMethod::Get]),
+            allowed_path_prefixes: Some(vec!["/json".into()]),
+            max_timeout_ms: Some(2_000),
+            max_response_bytes: Some(4_096),
+            follow_redirects: Some(true),
+            max_redirects: Some(2),
+            allow_loopback: Some(true),
+            allow_link_local: Some(false),
+            allow_private_networks: Some(false),
+            allow_ip_literals: Some(true),
+        }),
+    }
+}
+
 fn filesystem_read_grant() -> GrantedCapability {
     GrantedCapability {
         id: CapabilityId::Filesystem,
@@ -236,9 +260,21 @@ fn copy_dir_recursive(source: &Path, destination: &Path) {
 #[test]
 fn wit_stays_aligned_with_skill_visible_execution_context() {
     let wit = include_str!("../../../wit/guild-skill-v1.wit");
+    let inspect = wit
+        .split("interface inspect-types")
+        .nth(1)
+        .expect("inspect world is defined in the WIT package");
 
     for needle in [
-        "record skill-output",
+        "world guild-skill-inspect-v1",
+        "interface inspect-types",
+        "interface inspect-host",
+        "interface inspect-skill",
+    ] {
+        assert!(wit.contains(needle), "missing `{needle}` from WIT package");
+    }
+
+    for needle in [
         "record execution-context",
         "record evidence-emission-request",
         "record http-request-message",
@@ -251,6 +287,9 @@ fn wit_stays_aligned_with_skill_visible_execution_context() {
         "enum resource-kind",
         "skill: resolved-skill-ref",
         "granted-capabilities: list<granted-capability>",
+        "allowed-host-suffixes: option<list<string>>",
+        "follow-redirects: option<bool>",
+        "allow-loopback: option<bool>",
         "http-request(",
         "emit-evidence,",
         "http-request: func(request: http-request-message) -> result<http-response-message, string>",
@@ -260,7 +299,31 @@ fn wit_stays_aligned_with_skill_visible_execution_context() {
         "invoke-dependency: func(request: dependency-invocation-request) -> result<skill-output, skill-error>",
         "run: func(ctx: execution-context, input: json) -> result<skill-output, skill-error>",
     ] {
-        assert!(wit.contains(needle), "missing `{needle}` from WIT contract");
+        assert!(
+            inspect.contains(needle),
+            "missing `{needle}` from inspect WIT contract"
+        );
+    }
+
+    for forbidden in [
+        "cache-get: func(",
+        "cache-put: func(",
+        "get-secret: func(",
+        "monotonic-now: func(",
+        "wall-clock-now: func(",
+        "get-secret,",
+        "cache-read,",
+        "cache-write,",
+        "monotonic-clock,",
+        "wall-clock,",
+        "mode: execution-mode,",
+        "plan,",
+        "apply,",
+    ] {
+        assert!(
+            !inspect.contains(forbidden),
+            "inspect WIT contract unexpectedly contains `{forbidden}`"
+        );
     }
 }
 
@@ -562,7 +625,7 @@ fn apply_stays_globally_gated_even_if_manifest_declares_it() {
     let registry = load_registry();
     let runner = build_runner();
     let error = runner.execute(&registry, &installed, &request).unwrap_err();
-    assert_eq!(error.code, "apply-disabled");
+    assert_eq!(error.code, "invalid-manifest");
     let receipt = error.receipt.expect("rejected execution is persisted");
     let stored = registry
         .load_execution_record(&receipt.execution_id)
@@ -570,7 +633,7 @@ fn apply_stays_globally_gated_even_if_manifest_declares_it() {
     assert_eq!(stored.status, ExecutionStatus::Rejected);
     assert_eq!(
         stored.termination.as_ref().unwrap().phase,
-        guild_types::ExecutionPhase::Mode
+        guild_types::ExecutionPhase::Validation
     );
     assert!(stored.provenance.started_at_utc.is_some());
     assert!(stored.provenance.finished_at_utc.is_some());
@@ -758,6 +821,50 @@ fn emit_evidence_denials_are_host_owned_rejections() {
         stored.termination.as_ref().unwrap().phase,
         guild_types::ExecutionPhase::Grant
     );
+}
+
+#[test]
+fn inspect_runtime_rejects_non_inspect_guest_abi_versions() {
+    let (mut installed, request) =
+        sample_request(CapabilityGrantSet::default(), ExecutionMode::Inspect);
+    installed.manifest.runtime.entrypoint = "guild-skill".into();
+    installed.manifest.runtime.guest_abi_version = AbiVersion::GuildSkillV1;
+
+    let registry = load_registry();
+    let runner = build_runner();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
+
+    assert_eq!(error.code, "component-abi-mismatch");
+    let receipt = error
+        .receipt
+        .expect("broad guest ABI rejection is persisted");
+    let stored = registry
+        .load_execution_record(&receipt.execution_id)
+        .unwrap();
+    assert_eq!(stored.status, ExecutionStatus::Rejected);
+}
+
+#[test]
+fn inspect_guest_projection_exposes_full_active_http_grant_shape() {
+    let grants = CapabilityGrantSet {
+        grants: vec![emit_evidence_grant(), http_projection_grant()],
+    };
+    let (installed, request) = sample_request(grants, ExecutionMode::Inspect);
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let record = runner.execute(&registry, &installed, &request).unwrap();
+    let granted = &record.output.as_ref().unwrap().structured["granted_capabilities"]["grants"][1]
+        ["constraints"];
+
+    assert_eq!(granted["allowed_hosts"][0], "127.0.0.1");
+    assert_eq!(granted["allowed_host_suffixes"][0], "example.com");
+    assert_eq!(granted["follow_redirects"], true);
+    assert_eq!(granted["max_redirects"], 2);
+    assert_eq!(granted["allow_loopback"], true);
+    assert_eq!(granted["allow_link_local"], false);
+    assert_eq!(granted["allow_private_networks"], false);
+    assert_eq!(granted["allow_ip_literals"], true);
 }
 
 #[test]

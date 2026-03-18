@@ -392,8 +392,8 @@ fn resource_composite_manifest() -> Value {
         "description": "A test composite skill that delegates to explain-execution.",
         "runtime": {
             "kind": "wasm-component",
-            "entrypoint": "guild-skill",
-            "guest_abi_version": "guild-skill-v1"
+            "entrypoint": "guild-skill-inspect-v1",
+            "guest_abi_version": "guild-skill-inspect-v1"
         },
         "interface": {
             "input_schema_uri": "./input.schema.json",
@@ -500,12 +500,12 @@ use wit_bindgen::generate;
 
 generate!({
     path: "../../../../wit",
-    world: "guild-skill",
+    world: "guild-skill-inspect-v1",
 });
 
-use crate::exports::guild::skill::skill::{ExecutionContext, Guest, Json, SkillError, SkillOutput};
-use crate::guild::skill::host;
-use crate::guild::skill::types::DependencyInvocationRequest;
+use crate::exports::guild::skill::inspect_skill::{ExecutionContext, Guest, Json, SkillError, SkillOutput};
+use crate::guild::skill::inspect_host as host;
+use crate::guild::skill::inspect_types::DependencyInvocationRequest;
 
 struct ResourceComposite;
 

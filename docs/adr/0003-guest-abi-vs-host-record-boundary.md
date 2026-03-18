@@ -19,11 +19,12 @@ That ambiguity is dangerous in a contracts-first repository. Once translation dr
 
 Guild freezes the boundary model as follows:
 
-1. `wit/guild-skill-v1.wit` is the canonical guest-wire contract.
-2. Rust host types are the canonical durable platform model.
-3. Translation between those layers is explicit, centralized, and tested.
-4. The guest ABI stays intentionally small.
-5. Host-owned durable records stay out of WIT return types.
+1. `wit/guild-skill-v1.wit` is the canonical guest-wire contract package.
+2. `guild-skill-inspect-v1` is the active inspect ABI world in that package.
+3. Rust host types are the canonical durable platform model.
+4. Translation between those layers is explicit, centralized, and tested.
+5. The guest ABI stays intentionally small.
+6. Host-owned durable records stay out of WIT return types.
 
 Concretely, this means:
 
@@ -33,6 +34,10 @@ Concretely, this means:
   - host imports such as `read-resource`, `emit-evidence`, and `invoke-dependency`
   - `SkillOutput`
   - `SkillError`
+- active inspect truth:
+  - Wasm inspect skills target `guild-skill-inspect-v1`
+  - the host projects the richer durable execution model into that inspect ABI explicitly
+  - unsupported future capability imports do not appear in the active inspect world
 - host-owned runtime and durable surface:
   - `CallerRequest`
   - `ResolvedExecutionEnvelope`
@@ -46,6 +51,7 @@ Concretely, this means:
 Additional required consequences:
 
 - runner entrypoints accept only resolved execution envelopes
+- the Wasmtime inspect path instantiates only `guild-skill-inspect-v1`
 - `RequestedSkillRef` and `ResolvedSkillRef` remain separate public types
 - `ExecutionRecord` may embed guest-authored `SkillOutput`, but the durable record itself remains host-owned
 - `EvidenceRef` remains the guest-visible handle while `EvidenceRecord` is the host-owned durable metadata record behind it

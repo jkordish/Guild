@@ -10,8 +10,8 @@
   "description": "A tiny inspect-only example skill.",
   "runtime": {
     "kind": "wasm-component",
-    "entrypoint": "guild-skill",
-    "guest_abi_version": "guild-skill-v1"
+    "entrypoint": "guild-skill-inspect-v1",
+    "guest_abi_version": "guild-skill-inspect-v1"
   },
   "interface": {
     "input_schema_uri": "./input.schema.json",

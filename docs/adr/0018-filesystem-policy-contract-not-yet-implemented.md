@@ -27,7 +27,8 @@ Current truth:
   `invoke-skill`, `emit-evidence`, and `log-write` only
 - the shared Rust contracts now expose an explicit typed `filesystem` family as
   a host-side contract only
-- the guest ABI still does not expose filesystem imports or preopened
+- the active inspect guest ABI `guild-skill-inspect-v1` does not expose
+  filesystem imports or preopened
   directories
 - unsupported families in the active inspect slice are rejected before
   execution, and filesystem now gets that rejection intentionally rather than

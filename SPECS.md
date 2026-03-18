@@ -149,12 +149,15 @@ Guild operates as a five-stage pipeline:
 
 Guild freezes the guest and host contract boundary as follows:
 
-- `wit/guild-skill-v1.wit` is the canonical guest-wire contract.
+- `wit/guild-skill-v1.wit` is the canonical guest-wire contract package.
+- the active inspect ABI world in that package is `guild-skill-inspect-v1`.
 - Rust host types are the canonical durable platform model.
 - Translation between those layers MUST be explicit and tested.
+- projection from the richer host model into the active inspect ABI MUST be host-owned, named, and fail-closed.
 - Guest-visible types SHOULD stay small and focused on execution context, capability imports, `SkillOutput`, and `SkillError`.
 - Host-owned records such as `ExecutionRecord`, `ExecutionReceipt`, `EvidenceRecord`, `PolicyDecision`, provenance, and termination detail MUST NOT be pushed into WIT return types.
 - Guild runtime capability grants MUST remain distinct from MCP transport authorization.
+- unsupported future capability families MUST NOT appear as available host imports in the active inspect world.
 
 ## 9. Current Repository Baseline
 
@@ -176,12 +179,14 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - local source installs stage and validate before an atomic move into place
 - requested resolution fails closed if a single key and version maps to multiple installed digests
 - supported typed capability families in the active Wasm inspect slice are currently `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
-- the shared host-side capability vocabulary now also includes an explicit typed `filesystem` family, but the active Wasm inspect slice still rejects filesystem before execution and the guest ABI does not expose filesystem imports in this milestone
+- inspect-mode Wasm skills now declare `runtime.entrypoint = guild-skill-inspect-v1` together with `runtime.guest_abi_version = guild-skill-inspect-v1`
+- the active Wasm inspect runtime instantiates only the `guild-skill-inspect-v1` world, so unsupported imports such as secret, cache, clock, and filesystem surface are absent from the active inspect guest ABI
+- the shared host-side capability vocabulary now also includes an explicit typed `filesystem` family, but the active Wasm inspect slice still rejects filesystem before execution and the inspect guest ABI does not expose filesystem imports in this milestone
 - caller-requested capabilities are evaluated through a host-owned local policy layer before execution
 - the current repository loads an optional `policy.json` from the Guild root and otherwise uses a built-in default local policy profile
 - local policy now selects a named profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
 - bounded local execution-query resources expose deterministic views over persisted execution records through the same host-mediated resource backend used by guest `read-resource` and MCP `resources/read`
-- unsupported capability families present elsewhere in shared contracts are rejected before execution in the active inspect slice
+- the host-owned projection into `guild-skill-inspect-v1` is explicit, including the full active `http-request` grant shape visible to guests
 
 The current repository does not yet implement full `plan` mode, remote or distributed policy, or `apply` mode.
 

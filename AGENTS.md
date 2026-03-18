@@ -117,6 +117,7 @@ The repository now has a real local inspect-only path:
 - supported capability families now use typed constraints enforced by one shared host-side evaluator
 - the active inspect-slice capability families `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are actually executable; unsupported families fail before execution
 - the shared host-side capability vocabulary now also includes an explicit typed deferred `filesystem` family, and the active inspect slice rejects filesystem before guest start rather than implying guest file IO exists
+- inspect-mode Wasm skills now target the dedicated `guild-skill-inspect-v1` world; broader future imports must stay out of inspect manifests and the active inspect runtime path
 - resolved execution attempts persist under local Guild URIs on success, failure, and rejection with host-minted durable IDs and host-stamped timestamps
 - evidence emitted through the Wasm boundary persists as content-addressed blobs plus host-issued per-emission evidence records
 - `read-resource` authorization uses canonical parsed Guild URI scopes rather than loose raw string prefix checks

@@ -5,15 +5,17 @@ const _: &str = include_str!("../../../../../wit/guild-skill-v1.wit");
 
 generate!({
     path: "../../../../wit",
-    world: "guild-skill",
+    world: "guild-skill-inspect-v1",
 });
 
-use crate::exports::guild::skill::skill::{ExecutionContext, Guest, Json, SkillError, SkillOutput};
-use crate::guild::skill::host;
-use crate::guild::skill::types::{
+use crate::exports::guild::skill::inspect_skill::{
+    ExecutionContext, Guest, Json, SkillError, SkillOutput,
+};
+use crate::guild::skill::inspect_host as host;
+use crate::guild::skill::inspect_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EvidenceAudience,
-    EvidenceEmissionRequest, ExecutionMode, GrantedCapability, RedactionClass, ResolvedSkillRef,
-    HttpMethod, HttpScheme, ResourceKind, Severity,
+    EvidenceEmissionRequest, GrantedCapability, HttpMethod, HttpScheme, RedactionClass,
+    ResolvedSkillRef, ResourceKind, Severity,
 };
 
 struct HelloInspect;
@@ -46,7 +48,7 @@ impl Guest for HelloInspect {
             summary: format!("Hello, {greeted}. Guild inspect is working."),
             structured: json!({
                 "echoed_input": parsed_input,
-                "mode": execution_mode_label(&ctx.mode),
+                "mode": "inspect",
                 "skill": resolved_skill_identity(&ctx.skill),
                 "granted_capabilities": granted_capabilities_payload(&ctx.granted_capabilities),
                 "message": format!("Hello, {greeted}"),
@@ -64,14 +66,6 @@ fn requested_log(input: &Value) -> bool {
         .get("emit_log")
         .and_then(Value::as_bool)
         .unwrap_or(false)
-}
-
-fn execution_mode_label(mode: &ExecutionMode) -> &'static str {
-    match mode {
-        ExecutionMode::Inspect => "inspect",
-        ExecutionMode::Plan => "plan",
-        ExecutionMode::Apply => "apply",
-    }
 }
 
 fn resolved_skill_identity(skill: &ResolvedSkillRef) -> Value {
@@ -100,11 +94,11 @@ fn granted_capabilities_payload(grants: &[GrantedCapability]) -> Value {
 fn emit_execution_evidence(
     ctx: &ExecutionContext,
     parsed_input: &Value,
-) -> Result<crate::guild::skill::types::EvidenceRef, SkillError> {
+) -> Result<crate::guild::skill::inspect_types::EvidenceRef, SkillError> {
     let payload = json!({
         "kind": "hello-inspect-snapshot",
         "echoed_input": parsed_input,
-        "mode": execution_mode_label(&ctx.mode),
+        "mode": "inspect",
         "skill": resolved_skill_identity(&ctx.skill),
     });
     let payload = serde_json::to_vec(&payload).map_err(|error| SkillError {
@@ -136,12 +130,7 @@ fn capability_id_label(id: &CapabilityId) -> &'static str {
         CapabilityId::ReadResource => "read-resource",
         CapabilityId::InvokeSkill => "invoke-skill",
         CapabilityId::EmitEvidence => "emit-evidence",
-        CapabilityId::GetSecret => "get-secret",
-        CapabilityId::CacheRead => "cache-read",
-        CapabilityId::CacheWrite => "cache-write",
         CapabilityId::LogWrite => "log-write",
-        CapabilityId::MonotonicClock => "monotonic-clock",
-        CapabilityId::WallClock => "wall-clock",
     }
 }
 
@@ -161,6 +150,7 @@ fn capability_constraints_payload(constraints: &CapabilityConstraints) -> Value 
                 schemes.iter().map(http_scheme_label).collect::<Vec<_>>()
             }),
             "allowed_hosts": value.allowed_hosts,
+            "allowed_host_suffixes": value.allowed_host_suffixes,
             "allowed_ports": value.allowed_ports,
             "allowed_methods": value.allowed_methods.as_ref().map(|methods| {
                 methods.iter().map(http_method_label).collect::<Vec<_>>()
@@ -168,6 +158,12 @@ fn capability_constraints_payload(constraints: &CapabilityConstraints) -> Value 
             "allowed_path_prefixes": value.allowed_path_prefixes,
             "max_timeout_ms": value.max_timeout_ms,
             "max_response_bytes": value.max_response_bytes,
+            "follow_redirects": value.follow_redirects,
+            "max_redirects": value.max_redirects,
+            "allow_loopback": value.allow_loopback,
+            "allow_link_local": value.allow_link_local,
+            "allow_private_networks": value.allow_private_networks,
+            "allow_ip_literals": value.allow_ip_literals,
         }),
         CapabilityConstraints::ReadResource(value) => json!({
             "uri_prefixes": value.uri_prefixes,

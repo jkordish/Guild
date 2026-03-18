@@ -20,7 +20,8 @@ The architecture is intentionally boring in the good way. You want predictable s
 
 The key layering rule is now explicit:
 
-- `wit/guild-skill-v1.wit` is the canonical guest-wire boundary
+- `wit/guild-skill-v1.wit` is the canonical guest-wire boundary package
+- `guild-skill-inspect-v1` is the active inspect ABI world inside that package
 - Rust host types are the richer durable platform model
 - translation between those layers is explicit and host-owned
 - MCP transport authorization remains separate from Guild runtime capability grants
@@ -85,7 +86,7 @@ The current repository maps this architecture onto a small Rust workspace:
 - `crates/guild-runner`: execution orchestration, capability evaluation, and runtime adapter boundary
 - `crates/guild-mcp`: MCP-facing facade, stdio MCP server, and proof examples
 - `crates/guild-sdk-rust`: guest authoring support for Rust skills
-- `wit/guild-skill-v1.wit`: guest and host ABI contract
+- `wit/guild-skill-v1.wit`: guest and host ABI contract package, including the active inspect world
 - `examples/skills/`: runnable source skills used to prove the vertical slice
 
 ## 3. Logical Data Model
@@ -253,11 +254,13 @@ Anything that changes durable system state or reaches outside the guest boundary
 
 ### 6.4 Current repository runtime
 
-The current repository uses a Wasmtime-backed Wasm component adapter for the working slice. Primitive, explain, composite, and bounded HTTP example skills execute through `wit/guild-skill-v1.wit`, where the current host-facing operation names are `http-request`, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`, and skill output or failure is returned from `skill.run` rather than emitted through separate host calls.
+The current repository uses a Wasmtime-backed Wasm component adapter for the working slice. Primitive, explain, composite, and bounded HTTP example skills execute through the dedicated inspect world `guild-skill-inspect-v1` defined in `wit/guild-skill-v1.wit`, where the active host-facing operation names are `http-request`, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`, and skill output or failure is returned from `inspect-skill.run` rather than emitted through separate host calls.
 
-The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution so the runtime surface stays honest.
+The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution, and their host imports are absent from `guild-skill-inspect-v1`, so the active runtime surface stays honest by construction.
 
-The broader shared Rust type surface now also includes an explicit typed `filesystem` family for future work. That host-side contract models named roots, guest-path prefixes, host-path concepts, and explicit read/write/create/append operations so manifests, caller intent, and local policy can describe filesystem authority intentionally. The current guest ABI still does not expose filesystem imports or preopened directories, and the active Wasm inspect slice rejects any manifest or granted filesystem capability before guest start.
+The broader shared Rust type surface now also includes an explicit typed `filesystem` family for future work. That host-side contract models named roots, guest-path prefixes, host-path concepts, and explicit read/write/create/append operations so manifests, caller intent, and local policy can describe filesystem authority intentionally. The current inspect guest ABI does not expose filesystem imports or preopened directories, and the active Wasm inspect slice rejects any manifest or granted filesystem capability before guest start.
+
+The host-to-guest projection boundary is explicit in the runner. The host retains the richer durable `ExecutionContext`, `GrantedCapability`, and policy metadata model, then projects only the inspect-visible subset into `guild-skill-inspect-v1` before guest start. In the current repository that inspect projection includes the full active `http-request` grant shape, while omitting broader future capability families and inspect-irrelevant execution-mode surface.
 
 `http-request` is implemented as a thin Guild host adapter over `wasmtime-wasi-http`. The guest ABI remains Guild-shaped for this milestone, while the host path uses Wasmtime's real outbound HTTP support underneath. The host parses the absolute URL, enforces typed method/scheme/host/domain-suffix/port/path constraints before dispatch, classifies and blocks loopback, link-local, private-network, and raw IP-literal targets unless explicitly granted, and keeps redirects disabled unless the grant explicitly enables bounded following. Every redirected hop is re-authorized against the same granted HTTP slice and execution budget before dispatch, and the runtime persists host-owned denials or bounded failures without widening the MCP public surface.
 

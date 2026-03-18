@@ -184,10 +184,12 @@ The current inspect slice is intentionally strict about a few things:
 - requested resolution fails closed if the same skill key and version exist under multiple digests
 - local source installs stage and validate in a temporary directory before an atomic move into installed state
 - host authorization denials persist as host-owned rejected executions instead of leaking into guest-owned failure semantics
-- the active Wasm inspect slice only supports `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; broader typed families are rejected before execution
+- the active Wasm inspect ABI now instantiates inspect skills only against `guild-skill-inspect-v1`, which exposes only `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- broader typed families remain in shared host vocabulary, but unsupported imports are absent from the active inspect guest ABI rather than degrading into inspect-time `not implemented` traps
 - `filesystem` is now an explicit typed host-side capability contract with named roots, guest-path prefixes, host-path concepts, and read/write/create/append operations, but the active inspect slice still rejects it before guest start
 - `read-resource` grants now match parsed canonical Guild URI scopes rather than loose raw string prefixes
 - `http-request` is host-mediated, typed, bounded, and fail-closed; method, scheme, host, domain suffix, port, path, redirect, timeout, response-size, loopback, private-network, link-local, and IP-literal checks stay host-owned
+- the host-to-guest inspect projection is explicit: the richer durable execution model stays host-owned, while the guest sees the inspect-only execution context and the full active HTTP grant shape
 - caller-requested capabilities are policy input, not final authority; a local `policy.json` plus host-owned defaults decide the granted capability set before execution
 - policy now selects a named local profile by actor and/or tenant, then evaluates grants against host-owned verification state and local trust tier metadata
 - policy reductions and rejections persist as host-owned execution metadata and stay visible to explain/debug flows

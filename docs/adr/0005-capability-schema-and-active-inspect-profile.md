@@ -46,12 +46,22 @@ These map to the currently active inspect capability families:
 
 The current Wasm inspect runtime rejects unsupported capability families before execution.
 
+The active inspect guest ABI is now a dedicated world, `guild-skill-inspect-v1`.
+That world exposes only the active inspect imports and only the active capability
+IDs. Secret, cache, clock, and filesystem imports are not part of the inspect
+guest ABI.
+
 That preflight rule applies to both:
 
 - manifest-declared capability requirements
 - execution-time grants
 
-Broader capability IDs and host imports may still exist in shared Rust types or WIT for future phases. They are not part of the active inspect profile unless the runtime actually supports them. In particular, the current inspect slice activates one bounded outbound network family, `http-request`, but still does not activate secret, cache, or clock capability families.
+Broader capability IDs and host-side vocabulary may still exist in shared Rust
+types or broader WIT contract surface for future phases. They are not part of
+the active inspect profile unless the runtime actually supports them. In
+particular, the current inspect slice activates one bounded outbound network
+family, `http-request`, but still does not activate secret, cache, clock, or
+filesystem capability families in the active inspect guest ABI.
 
 Manifest requirements and host grants stay separate:
 
@@ -70,7 +80,7 @@ The host enforces typed constraint coverage, not loose string matching:
 
 `http-request` is now real in the active inspect profile:
 
-- the guest ABI stays Guild-shaped for now
+- the guest ABI exposes the full active HTTP grant shape used by the inspect runtime
 - the host implementation uses `wasmtime-wasi-http` behind a thin translation layer
 - the host parses absolute URLs and enforces typed scheme, host, domain-suffix, port, path, method, timeout, size, redirect, and risky-destination constraints before or during dispatch as appropriate
 - child execution receives only a reduced `http-request` grant derived from the parent slice
@@ -123,6 +133,7 @@ Costs and current limits:
 - manifest requirements are skill-authored declarations, not grants
 - grants and denials are host-owned
 - unsupported capability families in the active Wasm inspect slice are rejected before execution
+- unsupported future imports are absent from `guild-skill-inspect-v1`
 - `read-resource` authorization uses canonical parsed Guild URI scopes
 - child execution narrows grants; it does not widen them
 
