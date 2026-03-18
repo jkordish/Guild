@@ -1,0 +1,12 @@
+[
+  {
+    "input": {
+      "execution_uri": "guild://executions/00000000-0000-7000-8000-000000000003",
+      "candidate_request": {
+        "url": "http://127.0.0.1:8080/json",
+        "method": "get",
+        "timeout_ms": 500
+      }
+    }
+  }
+]

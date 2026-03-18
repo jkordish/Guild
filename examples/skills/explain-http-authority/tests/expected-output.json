@@ -1,0 +1,49 @@
+{
+  "summary": "Dry-ran stored HTTP authority for __TARGET_EXECUTION_URI__; the candidate request is allowed.",
+  "structured": {
+    "execution_uri": "__TARGET_EXECUTION_URI__",
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "inspect-http-json"
+      },
+      "version": "0.1.0",
+      "digest": "__TARGET_SKILL_DIGEST__"
+    },
+    "status": "succeeded",
+    "policy_outcome": "allowed",
+    "policy_summary": "local policy granted requested capabilities",
+    "policy_profile": "trusted-networked",
+    "trust_tier": "trusted-imported",
+    "verification_state": "verified-import",
+    "candidate_url": "__TARGET_URL__",
+    "candidate_method": "get",
+    "candidate_timeout_ms": 500,
+    "evaluation_status": "allowed",
+    "allowed": true,
+    "http_grant_present": true,
+    "matched_scheme": "http",
+    "matched_host_or_suffix": "127.0.0.1",
+    "matched_port": 8080,
+    "matched_method": "get",
+    "matched_path_prefix": "/json",
+    "risky_destination_classification": {
+      "host_kind": "ip-literal",
+      "host": "127.0.0.1",
+      "loopback_name": false,
+      "ip_classification": "loopback",
+      "host_resolution_required": false
+    },
+    "redirect_policy_summary": {
+      "follow_redirects_granted": true,
+      "grant_count_allowing_redirects": 1,
+      "max_redirects": 2,
+      "dry_run_redirects_evaluated": false
+    },
+    "grant_evaluations": [],
+    "denial_reason": null
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

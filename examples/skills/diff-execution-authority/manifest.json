@@ -1,0 +1,69 @@
+{
+  "manifest_schema_version": "guild-manifest-v1",
+  "skill_api_version": "guild-skill-v1",
+  "key": {
+    "namespace": "example",
+    "name": "diff-execution-authority"
+  },
+  "version": "0.1.0",
+  "display_name": "Diff Execution Authority",
+  "description": "An inspect-only skill that compares two stored Guild execution records and explains why their authority or outcomes differ.",
+  "runtime": {
+    "kind": "wasm-component",
+    "entrypoint": "guild-skill-inspect-v1",
+    "guest_abi_version": "guild-skill-inspect-v1"
+  },
+  "interface": {
+    "input_schema_uri": "./input.schema.json",
+    "output_schema_uri": "./output.schema.json",
+    "examples_uri": "./examples.json"
+  },
+  "behavior": {
+    "category": "explain",
+    "mutability": "read-only",
+    "idempotent": true,
+    "open_world": false,
+    "freshness": "deterministic",
+    "modes": {
+      "supported": ["inspect"],
+      "apply_requires_approval": false,
+      "apply_requires_idempotency_key": false
+    }
+  },
+  "capabilities": [
+    {
+      "id": "read-resource",
+      "access": "read",
+      "required": true,
+      "constraints": {
+        "uri_prefixes": ["guild://executions/"],
+        "resource_kinds": ["execution"]
+      }
+    }
+  ],
+  "dependencies": [],
+  "publisher": {
+    "id": "local.example",
+    "display_name": "Local Example",
+    "homepage": null
+  },
+  "package": {
+    "visibility": "private",
+    "trust_tier": "local",
+    "sbom_uri": null,
+    "signature_uri": null
+  },
+  "build": {
+    "kind": "cargo-wasm-component",
+    "cargo_manifest_path": "./skill-rust/Cargo.toml",
+    "target": "wasm32-wasip2",
+    "profile": "release"
+  },
+  "tests": [
+    {
+      "name": "diffs-two-persisted-execution-authority-records",
+      "fixtures_uri": "./tests/explain-input.json",
+      "expected_output_uri": "./tests/expected-output.json"
+    }
+  ]
+}

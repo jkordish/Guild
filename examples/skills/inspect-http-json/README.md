@@ -27,12 +27,15 @@ deterministic local server and also shows a denied host-mismatch execution.
 
 For the trust-tier-aware local policy proof flow that imports the same skill
 under different host-owned trust tiers and profile selections, then explains
-the persisted denial through `explain-execution`, use:
+the persisted denial plus stored authority state through the new authority-debug
+skills, use:
 
 ```bash
 cargo run -p guild-mcp --example inspect_policy_local
 ```
 
-That policy proof flow now demonstrates trusted imported redirect-following
-versus restricted imported redirect denial after the local policy profile caps
-the granted HTTP authority.
+That policy proof flow now demonstrates trusted imported redirect-following,
+restricted-profile redirect denial after the local policy profile caps the
+granted HTTP authority, and follow-up inspection through
+`explain-execution`, `explain-capability-denial`, `diff-execution-authority`,
+and `explain-http-authority`.

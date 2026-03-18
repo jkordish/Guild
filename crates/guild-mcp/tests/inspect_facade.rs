@@ -50,6 +50,18 @@ fn explain_source_dir() -> PathBuf {
     repo_root().join("examples/skills/explain-execution")
 }
 
+fn explain_capability_denial_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/explain-capability-denial")
+}
+
+fn diff_execution_authority_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/diff-execution-authority")
+}
+
+fn explain_http_authority_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/explain-http-authority")
+}
+
 fn summarize_query_source_dir() -> PathBuf {
     repo_root().join("examples/skills/summarize-execution-query")
 }
@@ -107,6 +119,18 @@ fn prepared_registry_root() -> &'static PathBuf {
         LocalSourceInstaller::new(&root)
             .unwrap()
             .install(explain_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(explain_capability_denial_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(diff_execution_authority_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(explain_http_authority_source_dir())
             .unwrap();
         LocalSourceInstaller::new(&root)
             .unwrap()
@@ -265,6 +289,21 @@ fn install_query_test_skills(root: &Path) {
     installer.install(summarize_query_source_dir()).unwrap();
 }
 
+fn install_authority_debug_skills(root: &Path) {
+    let installer = LocalSourceInstaller::new(root).unwrap();
+    installer.install(http_source_dir()).unwrap();
+    installer.install(example_source_dir()).unwrap();
+    installer
+        .install(explain_capability_denial_source_dir())
+        .unwrap();
+    installer
+        .install(diff_execution_authority_source_dir())
+        .unwrap();
+    installer
+        .install(explain_http_authority_source_dir())
+        .unwrap();
+}
+
 fn explain_request(uri: &str) -> InspectRequest {
     InspectRequest::new(
         RequestedSkillRef {
@@ -282,6 +321,26 @@ fn explain_request(uri: &str) -> InspectRequest {
         "actor-1",
         CapabilityGrantSet {
             grants: vec![read_resource_grant()],
+        },
+    )
+}
+
+fn explain_capability_denial_request(uri: &str) -> InspectRequest {
+    InspectRequest::new(
+        RequestedSkillRef {
+            key: SkillKey {
+                namespace: "example".into(),
+                name: "explain-capability-denial".into(),
+            },
+            version_req: VersionRequirement::parse("^0.1").unwrap(),
+        },
+        serde_json::json!({
+            "execution_uri": uri,
+        }),
+        "tenant-1",
+        "actor-1",
+        CapabilityGrantSet {
+            grants: vec![read_execution_resource_grant()],
         },
     )
 }
@@ -318,6 +377,17 @@ fn read_resource_grant() -> GrantedCapability {
                 "guild://objects/records/".into(),
             ]),
             resource_kinds: Some(vec![ResourceKind::Execution, ResourceKind::Object]),
+        }),
+    }
+}
+
+fn read_execution_resource_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec!["guild://executions/".into()]),
+            resource_kinds: Some(vec![ResourceKind::Execution]),
         }),
     }
 }
@@ -359,6 +429,52 @@ fn summarize_query_request(query_uri: &str) -> InspectRequest {
         "actor-1",
         CapabilityGrantSet {
             grants: vec![query_resource_grant()],
+        },
+    )
+}
+
+fn diff_execution_authority_request(left_uri: &str, right_uri: &str) -> InspectRequest {
+    InspectRequest::new(
+        RequestedSkillRef {
+            key: SkillKey {
+                namespace: "example".into(),
+                name: "diff-execution-authority".into(),
+            },
+            version_req: VersionRequirement::parse("^0.1").unwrap(),
+        },
+        serde_json::json!({
+            "left_execution_uri": left_uri,
+            "right_execution_uri": right_uri,
+        }),
+        "tenant-1",
+        "actor-1",
+        CapabilityGrantSet {
+            grants: vec![read_execution_resource_grant()],
+        },
+    )
+}
+
+fn explain_http_authority_request(uri: &str, url: &str, method: &str) -> InspectRequest {
+    InspectRequest::new(
+        RequestedSkillRef {
+            key: SkillKey {
+                namespace: "example".into(),
+                name: "explain-http-authority".into(),
+            },
+            version_req: VersionRequirement::parse("^0.1").unwrap(),
+        },
+        serde_json::json!({
+            "execution_uri": uri,
+            "candidate_request": {
+                "url": url,
+                "method": method,
+                "timeout_ms": 500,
+            },
+        }),
+        "tenant-1",
+        "actor-1",
+        CapabilityGrantSet {
+            grants: vec![read_execution_resource_grant()],
         },
     )
 }
@@ -697,6 +813,66 @@ fn cap_http_redirects_for_restricted_imports_policy() -> LocalPolicyConfig {
     }
 }
 
+fn cap_http_redirects_for_bound_tenant_policy() -> LocalPolicyConfig {
+    LocalPolicyConfig {
+        default_profile: "trusted-networked".into(),
+        profiles: vec![
+            PolicyProfile {
+                name: "trusted-networked".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: Vec::new(),
+            },
+            PolicyProfile {
+                name: "restricted-networked".into(),
+                default_action: guild_types::LocalPolicyDefaultAction::AllowRequestedDeclared,
+                rules: vec![PolicyRule {
+                    name: Some("cap-tenant-http-redirects".into()),
+                    skills: Some(vec![SkillKey {
+                        namespace: "example".into(),
+                        name: "inspect-http-json".into(),
+                    }]),
+                    publisher_ids: None,
+                    trust_tiers: None,
+                    verification_states: None,
+                    applies_to: PolicyRuleTarget::Any,
+                    effect: PolicyRuleEffect::Cap,
+                    capabilities: CapabilityGrantSet {
+                        grants: vec![GrantedCapability {
+                            id: CapabilityId::HttpRequest,
+                            access: CapabilityAccess::Read,
+                            constraints: CapabilityConstraints::HttpRequest(
+                                HttpRequestConstraints {
+                                    allowed_schemes: None,
+                                    allowed_hosts: None,
+                                    allowed_host_suffixes: None,
+                                    allowed_ports: None,
+                                    allowed_methods: None,
+                                    allowed_path_prefixes: None,
+                                    max_timeout_ms: None,
+                                    max_response_bytes: None,
+                                    follow_redirects: Some(false),
+                                    max_redirects: None,
+                                    allow_loopback: None,
+                                    allow_link_local: None,
+                                    allow_private_networks: None,
+                                    allow_ip_literals: None,
+                                },
+                            ),
+                        }],
+                    },
+                }],
+            },
+        ],
+        bindings: vec![PolicyProfileBinding {
+            name: Some("restricted-tenant".into()),
+            actor_ids: None,
+            tenant_ids: Some(vec!["tenant-restricted".into()]),
+            profile: "restricted-networked".into(),
+        }],
+        ..LocalPolicyConfig::default()
+    }
+}
+
 #[test]
 fn guild_inspect_uses_real_registry_and_runner_path() {
     let facade = build_facade();
@@ -931,6 +1107,83 @@ fn local_policy_denial_persists_host_owned_rejection() {
     assert!(record.granted_capabilities.grants.is_empty());
 }
 
+#[test]
+fn explain_capability_denial_skill_reports_host_owned_requested_vs_granted_state() {
+    let temp = TempFixtureDir::new("guild-capability-denial-skill");
+    let registry_root = temp.path().join("registry");
+    install_authority_debug_skills(&registry_root);
+    write_policy(
+        &registry_root,
+        &deny_emit_evidence_for_actor_policy("actor-blocked"),
+    );
+
+    let facade = build_facade_for_root(&registry_root);
+    let denied = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({ "name": "Ada" }),
+            "tenant-1",
+            "actor-blocked",
+            CapabilityGrantSet {
+                grants: vec![emit_evidence_grant()],
+            },
+        ))
+        .unwrap_err();
+    let receipt = denied.receipt.expect("policy denial persists a receipt");
+
+    let report = facade
+        .inspect(explain_capability_denial_request(&receipt.uri))
+        .unwrap();
+    let structured = &report
+        .structured_content
+        .output
+        .as_ref()
+        .unwrap()
+        .structured;
+
+    assert_eq!(structured["execution_uri"], receipt.uri);
+    assert_eq!(structured["status"], "rejected");
+    assert_eq!(structured["policy_profile"], "blocked");
+    assert_eq!(structured["trust_tier"], "local-dev");
+    assert_eq!(structured["verification_state"], "local-source");
+    assert_eq!(
+        structured["requested_capabilities"]["grants"][0]["id"],
+        "emit-evidence"
+    );
+    assert_eq!(
+        structured["granted_capabilities"]["grants"],
+        serde_json::json!([])
+    );
+    assert_eq!(structured["primary_reason"]["code"], "policy-denied");
+    assert!(
+        structured["policy_reason_codes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|code| code == "policy-profile-rule-deny")
+    );
+    assert!(
+        structured["policy_reason_codes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|code| code == "policy-required-capability-missing")
+    );
+    assert!(
+        structured["required_capability_gaps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|gap| gap["id"] == "emit-evidence")
+    );
+}
+
 #[allow(clippy::too_many_lines)]
 #[test]
 fn local_policy_can_vary_http_by_imported_trust_tier() {
@@ -1083,6 +1336,306 @@ fn local_policy_can_vary_http_by_imported_trust_tier() {
         .expect("restricted imported execution keeps a reduced http grant");
     assert_eq!(granted_http.follow_redirects, Some(false));
     assert_eq!(granted_http.max_redirects, None);
+}
+
+#[test]
+fn diff_execution_authority_skill_highlights_profile_driven_http_grant_changes() {
+    let server = http_test_server::HttpTestServer::start();
+    let temp = TempFixtureDir::new("guild-diff-authority-skill");
+    let registry_root = temp.path().join("registry");
+    install_authority_debug_skills(&registry_root);
+    write_policy(
+        &registry_root,
+        &cap_http_redirects_for_bound_tenant_policy(),
+    );
+
+    let facade = build_facade_for_root(&registry_root);
+    let allowed = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.redirect_json_url(),
+                "method": "get",
+                "json_pointers": ["/message"],
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant_with_options(
+                    http_test_server::HttpTestServer::host(),
+                    server.port(),
+                    &["/redirect-json", "/json"],
+                    HttpMethod::Get,
+                    Some(2),
+                )],
+            },
+        ))
+        .unwrap();
+    let denied = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.redirect_json_url(),
+                "method": "get",
+                "json_pointers": ["/message"],
+            }),
+            "tenant-restricted",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant_with_options(
+                    http_test_server::HttpTestServer::host(),
+                    server.port(),
+                    &["/redirect-json", "/json"],
+                    HttpMethod::Get,
+                    Some(2),
+                )],
+            },
+        ))
+        .unwrap_err();
+    let denied_receipt = denied
+        .receipt
+        .expect("restricted tenant denial persists a receipt");
+
+    let diff = facade
+        .inspect(diff_execution_authority_request(
+            &allowed.structured_content.receipt.uri,
+            &denied_receipt.uri,
+        ))
+        .unwrap();
+    let structured = &diff.structured_content.output.as_ref().unwrap().structured;
+
+    assert_eq!(structured["same_skill"], true);
+    assert_eq!(structured["same_digest"], true);
+    assert_eq!(structured["policy_profile_diff"]["changed"], true);
+    assert_eq!(
+        structured["policy_profile_diff"]["left"],
+        "trusted-networked"
+    );
+    assert_eq!(
+        structured["policy_profile_diff"]["right"],
+        "restricted-networked"
+    );
+    assert_eq!(structured["policy_outcome_diff"]["changed"], true);
+    assert_eq!(structured["termination_diff"]["changed"], true);
+    assert!(
+        structured["granted_capability_diff"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|group| group["id"] == "http-request" && group["change"] == "changed")
+    );
+    assert!(
+        structured["likely_authority_drivers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|driver| driver["type"] == "policy-profile-changed")
+    );
+    assert!(
+        structured["likely_authority_drivers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|driver| driver["type"] == "granted-capability-changed")
+    );
+}
+
+#[test]
+fn explain_http_authority_skill_reports_allowed_and_denied_candidate_requests() {
+    let server = http_test_server::HttpTestServer::start();
+    let temp = TempFixtureDir::new("guild-http-authority-skill");
+    let registry_root = temp.path().join("registry");
+    install_authority_debug_skills(&registry_root);
+
+    let facade = build_facade_for_root(&registry_root);
+    let execution = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.json_url(),
+                "method": "get",
+                "json_pointers": ["/message"],
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant(
+                    http_test_server::HttpTestServer::host(),
+                    server.port(),
+                    "/json",
+                    HttpMethod::Get,
+                )],
+            },
+        ))
+        .unwrap();
+
+    let allowed = facade
+        .inspect(explain_http_authority_request(
+            &execution.structured_content.receipt.uri,
+            &server.json_url(),
+            "get",
+        ))
+        .unwrap();
+    let allowed_report = &allowed
+        .structured_content
+        .output
+        .as_ref()
+        .unwrap()
+        .structured;
+    assert_eq!(allowed_report["evaluation_status"], "allowed");
+    assert_eq!(allowed_report["allowed"], true);
+    assert_eq!(allowed_report["matched_host_or_suffix"], "127.0.0.1");
+    assert_eq!(allowed_report["matched_path_prefix"], "/json");
+    assert_eq!(
+        allowed_report["risky_destination_classification"]["ip_classification"],
+        "loopback"
+    );
+
+    let denied = facade
+        .inspect(explain_http_authority_request(
+            &execution.structured_content.receipt.uri,
+            &server.localhost_json_url(),
+            "get",
+        ))
+        .unwrap();
+    let denied_report = &denied
+        .structured_content
+        .output
+        .as_ref()
+        .unwrap()
+        .structured;
+    assert_eq!(denied_report["evaluation_status"], "denied");
+    assert_eq!(denied_report["allowed"], false);
+    assert_eq!(
+        denied_report["denial_reason"]["code"],
+        "http-request-host-not-granted"
+    );
+}
+
+#[allow(clippy::too_many_lines)]
+#[test]
+fn explain_capability_denial_surfaces_imported_trust_tier_and_profile_context() {
+    let server = http_test_server::HttpTestServer::start();
+    let temp = TempFixtureDir::new("guild-capability-denial-imported");
+    let registry_a = temp.path().join("registry-a");
+    let registry_restricted = temp.path().join("registry-restricted");
+    let bundle_root = temp.path().join("bundle");
+
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(http_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    registry
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
+        .unwrap();
+
+    LocalRegistry::trust_publisher(
+        &registry_restricted,
+        &identity.trusted_record_with_tier(LocalTrustTier::Restricted),
+    )
+    .unwrap();
+    LocalRegistry::import_bundle(&registry_restricted, &bundle_root).unwrap();
+    LocalSourceInstaller::new(&registry_restricted)
+        .unwrap()
+        .install(explain_capability_denial_source_dir())
+        .unwrap();
+    write_policy(
+        &registry_restricted,
+        &cap_http_redirects_for_restricted_imports_policy(),
+    );
+
+    let facade = build_facade_for_root(&registry_restricted);
+    let denied = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": server.redirect_json_url(),
+                "method": "get",
+                "json_pointers": ["/message"],
+            }),
+            "tenant-restricted",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![http_grant_with_options(
+                    http_test_server::HttpTestServer::host(),
+                    server.port(),
+                    &["/redirect-json", "/json"],
+                    HttpMethod::Get,
+                    Some(2),
+                )],
+            },
+        ))
+        .unwrap_err();
+    let receipt = denied
+        .receipt
+        .expect("restricted imported denial persists a receipt");
+
+    let report = facade
+        .inspect(explain_capability_denial_request(&receipt.uri))
+        .unwrap();
+    let structured = &report
+        .structured_content
+        .output
+        .as_ref()
+        .unwrap()
+        .structured;
+
+    assert_eq!(structured["policy_profile"], "restricted-networked");
+    assert_eq!(structured["trust_tier"], "restricted");
+    assert_eq!(structured["verification_state"], "verified-import");
+    assert_eq!(structured["status"], "rejected");
+    assert!(
+        structured["policy_reason_codes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|code| code == "policy-profile-rule-cap")
+    );
+    assert!(
+        structured["denied_or_reduced_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|group| group["id"] == "http-request" && group["change"] == "changed")
+    );
+    assert!(
+        structured["granted_capabilities"]["grants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|grant| {
+                grant["id"] == "http-request" && grant["constraints"]["follow_redirects"] == false
+            })
+    );
 }
 
 #[test]

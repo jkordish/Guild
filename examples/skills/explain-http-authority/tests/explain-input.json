@@ -1,0 +1,8 @@
+{
+  "execution_uri": "__TARGET_EXECUTION_URI__",
+  "candidate_request": {
+    "url": "__TARGET_URL__",
+    "method": "get",
+    "timeout_ms": 500
+  }
+}

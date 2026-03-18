@@ -88,6 +88,9 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
             "hello-composite",
             "explain-execution",
             "explain-execution-tree",
+            "explain-capability-denial",
+            "diff-execution-authority",
+            "explain-http-authority",
         ]
     );
     assert_eq!(payload.config.command, "cargo");

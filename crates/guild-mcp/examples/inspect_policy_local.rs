@@ -28,6 +28,18 @@ fn explain_source_dir() -> PathBuf {
     repo_root().join("examples/skills/explain-execution")
 }
 
+fn explain_capability_denial_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/explain-capability-denial")
+}
+
+fn diff_execution_authority_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/diff-execution-authority")
+}
+
+fn explain_http_authority_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/explain-http-authority")
+}
+
 fn policy_demo_root() -> PathBuf {
     repo_root().join("target/dev-local-registry/inspect-policy-local")
 }
@@ -80,6 +92,17 @@ fn explain_grant() -> GrantedCapability {
                 guild_types::ResourceKind::Execution,
                 guild_types::ResourceKind::Object,
             ]),
+        }),
+    }
+}
+
+fn execution_read_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(guild_types::ReadResourceConstraints {
+            uri_prefixes: Some(vec!["guild://executions/".into()]),
+            resource_kinds: Some(vec![guild_types::ResourceKind::Execution]),
         }),
     }
 }
@@ -269,6 +292,88 @@ fn explain_execution_request(
     ))
 }
 
+fn explain_capability_denial_request(
+    execution_uri: &str,
+    tenant_id: &str,
+    actor_id: &str,
+) -> Result<InspectRequest, Box<dyn std::error::Error>> {
+    Ok(InspectRequest::new(
+        RequestedSkillRef {
+            key: SkillKey {
+                namespace: "example".into(),
+                name: "explain-capability-denial".into(),
+            },
+            version_req: VersionRequirement::parse("^0.1")?,
+        },
+        serde_json::json!({
+            "execution_uri": execution_uri,
+        }),
+        tenant_id,
+        actor_id,
+        CapabilityGrantSet {
+            grants: vec![execution_read_grant()],
+        },
+    ))
+}
+
+fn diff_execution_authority_request(
+    left_execution_uri: &str,
+    right_execution_uri: &str,
+    tenant_id: &str,
+    actor_id: &str,
+) -> Result<InspectRequest, Box<dyn std::error::Error>> {
+    Ok(InspectRequest::new(
+        RequestedSkillRef {
+            key: SkillKey {
+                namespace: "example".into(),
+                name: "diff-execution-authority".into(),
+            },
+            version_req: VersionRequirement::parse("^0.1")?,
+        },
+        serde_json::json!({
+            "left_execution_uri": left_execution_uri,
+            "right_execution_uri": right_execution_uri,
+        }),
+        tenant_id,
+        actor_id,
+        CapabilityGrantSet {
+            grants: vec![execution_read_grant()],
+        },
+    ))
+}
+
+fn explain_http_authority_request(
+    execution_uri: &str,
+    candidate_url: &str,
+    candidate_method: &str,
+    timeout_ms: Option<u64>,
+    tenant_id: &str,
+    actor_id: &str,
+) -> Result<InspectRequest, Box<dyn std::error::Error>> {
+    Ok(InspectRequest::new(
+        RequestedSkillRef {
+            key: SkillKey {
+                namespace: "example".into(),
+                name: "explain-http-authority".into(),
+            },
+            version_req: VersionRequirement::parse("^0.1")?,
+        },
+        serde_json::json!({
+            "execution_uri": execution_uri,
+            "candidate_request": {
+                "url": candidate_url,
+                "method": candidate_method,
+                "timeout_ms": timeout_ms,
+            },
+        }),
+        tenant_id,
+        actor_id,
+        CapabilityGrantSet {
+            grants: vec![execution_read_grant()],
+        },
+    ))
+}
+
 fn print_pretty_json(value: &impl serde::Serialize) -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", serde_json::to_string_pretty(value)?);
     Ok(())
@@ -304,6 +409,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("trusted outcome: {}", trusted.summary);
     print_pretty_json(&trusted.structured_content)?;
 
+    let restricted_allowed = restricted_facade.inspect(inspect_http_request(
+        &server.redirect_json_url(),
+        "tenant-trusted",
+        "actor-demo",
+        server.port(),
+    )?)?;
+
+    println!(
+        "restricted default-profile outcome: {}",
+        restricted_allowed.summary
+    );
+    print_pretty_json(&restricted_allowed.structured_content)?;
+
     let denied = restricted_facade
         .inspect(inspect_http_request(
             &server.redirect_json_url(),
@@ -322,6 +440,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", String::from_utf8(denied_record.bytes)?);
 
     LocalSourceInstaller::new(&paths.registry_restricted)?.install(explain_source_dir())?;
+    LocalSourceInstaller::new(&paths.registry_restricted)?
+        .install(explain_capability_denial_source_dir())?;
+    LocalSourceInstaller::new(&paths.registry_restricted)?
+        .install(diff_execution_authority_source_dir())?;
+    LocalSourceInstaller::new(&paths.registry_restricted)?
+        .install(explain_http_authority_source_dir())?;
     let restricted_facade = GuildMcpFacade::new(
         LocalRegistry::load(&paths.registry_restricted)?,
         WasmtimeRuntimeAdapter::new()?,
@@ -334,6 +458,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("denied explanation: {}", explanation.summary);
     print_pretty_json(&explanation.structured_content)?;
+
+    let denial_report = restricted_facade.inspect(explain_capability_denial_request(
+        &denied_record.uri,
+        "tenant-restricted",
+        "actor-demo",
+    )?)?;
+    println!("capability denial report: {}", denial_report.summary);
+    print_pretty_json(&denial_report.structured_content)?;
+
+    let authority_diff = restricted_facade.inspect(diff_execution_authority_request(
+        &restricted_allowed.structured_content.receipt.uri,
+        &denied_record.uri,
+        "tenant-restricted",
+        "actor-demo",
+    )?)?;
+    println!("authority diff: {}", authority_diff.summary);
+    print_pretty_json(&authority_diff.structured_content)?;
+
+    let http_authority_allowed = restricted_facade.inspect(explain_http_authority_request(
+        &denied_record.uri,
+        &server.json_url(),
+        "get",
+        Some(500),
+        "tenant-restricted",
+        "actor-demo",
+    )?)?;
+    println!(
+        "http authority allowed probe: {}",
+        http_authority_allowed.summary
+    );
+    print_pretty_json(&http_authority_allowed.structured_content)?;
+
+    let http_authority_denied = restricted_facade.inspect(explain_http_authority_request(
+        &denied_record.uri,
+        &server.localhost_json_url(),
+        "get",
+        Some(500),
+        "tenant-restricted",
+        "actor-demo",
+    )?)?;
+    println!(
+        "http authority denied probe: {}",
+        http_authority_denied.summary
+    );
+    print_pretty_json(&http_authority_denied.structured_content)?;
 
     Ok(())
 }

@@ -1,0 +1,50 @@
+{
+  "summary": "Explained capability denial state for stored execution __TARGET_EXECUTION_URI__.",
+  "structured": {
+    "execution_uri": "__TARGET_EXECUTION_URI__",
+    "execution_id": "__TARGET_EXECUTION_ID__",
+    "status": "rejected",
+    "termination": {
+      "phase": "grant",
+      "code": "policy-denied",
+      "message": "local policy denied execution before guest start",
+      "retryable": false,
+      "detail": null
+    },
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "hello-inspect"
+      },
+      "version": "0.1.0",
+      "digest": "__TARGET_SKILL_DIGEST__"
+    },
+    "policy_outcome": "rejected",
+    "policy_summary": "local policy denied one or more required capabilities",
+    "policy_profile": "blocked",
+    "trust_tier": "local-dev",
+    "verification_state": "local-source",
+    "requested_capabilities": {
+      "grants": []
+    },
+    "granted_capabilities": {
+      "grants": []
+    },
+    "denied_or_reduced_capabilities": [],
+    "required_capability_gaps": [],
+    "primary_reason": {
+      "source": "termination",
+      "phase": "grant",
+      "code": "policy-denied",
+      "message": "local policy denied execution before guest start",
+      "retryable": false,
+      "detail": null
+    },
+    "reason_chain": [],
+    "policy_reason_codes": [],
+    "child_execution_uris": []
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExplainCapabilityDenialOutput",
+  "type": "object",
+  "properties": {
+    "execution_uri": {
+      "type": "string"
+    },
+    "execution_id": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "type": "string"
+    },
+    "termination": {
+      "type": ["object", "null"]
+    },
+    "skill": {
+      "type": "object"
+    },
+    "policy_outcome": {
+      "type": "string"
+    },
+    "policy_summary": {
+      "type": "string"
+    },
+    "policy_profile": {
+      "type": "string"
+    },
+    "trust_tier": {
+      "type": "string"
+    },
+    "verification_state": {
+      "type": "string"
+    },
+    "requested_capabilities": {
+      "type": "object"
+    },
+    "granted_capabilities": {
+      "type": "object"
+    },
+    "denied_or_reduced_capabilities": {
+      "type": "array"
+    },
+    "required_capability_gaps": {
+      "type": "array"
+    },
+    "primary_reason": {
+      "type": ["object", "null"]
+    },
+    "reason_chain": {
+      "type": "array"
+    },
+    "policy_reason_codes": {
+      "type": "array"
+    },
+    "child_execution_uris": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "execution_uri",
+    "execution_id",
+    "status",
+    "termination",
+    "skill",
+    "policy_outcome",
+    "policy_summary",
+    "policy_profile",
+    "trust_tier",
+    "verification_state",
+    "requested_capabilities",
+    "granted_capabilities",
+    "denied_or_reduced_capabilities",
+    "required_capability_gaps",
+    "primary_reason",
+    "reason_chain",
+    "policy_reason_codes",
+    "child_execution_uris"
+  ],
+  "additionalProperties": false
+}

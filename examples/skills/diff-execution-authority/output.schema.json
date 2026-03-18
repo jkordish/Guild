@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DiffExecutionAuthorityOutput",
+  "type": "object",
+  "properties": {
+    "left_execution_uri": {
+      "type": "string"
+    },
+    "right_execution_uri": {
+      "type": "string"
+    },
+    "same_skill": {
+      "type": "boolean"
+    },
+    "same_digest": {
+      "type": "boolean"
+    },
+    "left_skill": {
+      "type": "object"
+    },
+    "right_skill": {
+      "type": "object"
+    },
+    "left_status": {
+      "type": "string"
+    },
+    "right_status": {
+      "type": "string"
+    },
+    "trust_tier_diff": {
+      "type": "object"
+    },
+    "verification_state_diff": {
+      "type": "object"
+    },
+    "policy_profile_diff": {
+      "type": "object"
+    },
+    "policy_outcome_diff": {
+      "type": "object"
+    },
+    "requested_capability_diff": {
+      "type": "array"
+    },
+    "granted_capability_diff": {
+      "type": "array"
+    },
+    "termination_diff": {
+      "type": "object"
+    },
+    "child_execution_count_diff": {
+      "type": "object"
+    },
+    "left_primary_reason": {
+      "type": ["object", "null"]
+    },
+    "right_primary_reason": {
+      "type": ["object", "null"]
+    },
+    "likely_authority_drivers": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "left_execution_uri",
+    "right_execution_uri",
+    "same_skill",
+    "same_digest",
+    "left_skill",
+    "right_skill",
+    "left_status",
+    "right_status",
+    "trust_tier_diff",
+    "verification_state_diff",
+    "policy_profile_diff",
+    "policy_outcome_diff",
+    "requested_capability_diff",
+    "granted_capability_diff",
+    "termination_diff",
+    "child_execution_count_diff",
+    "left_primary_reason",
+    "right_primary_reason",
+    "likely_authority_drivers"
+  ],
+  "additionalProperties": false
+}

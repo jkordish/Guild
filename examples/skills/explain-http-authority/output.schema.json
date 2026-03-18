@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExplainHttpAuthorityOutput",
+  "type": "object",
+  "properties": {
+    "execution_uri": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "object"
+    },
+    "status": {
+      "type": "string"
+    },
+    "policy_outcome": {
+      "type": "string"
+    },
+    "policy_summary": {
+      "type": "string"
+    },
+    "policy_profile": {
+      "type": "string"
+    },
+    "trust_tier": {
+      "type": "string"
+    },
+    "verification_state": {
+      "type": "string"
+    },
+    "candidate_url": {
+      "type": "string"
+    },
+    "candidate_method": {
+      "type": "string"
+    },
+    "candidate_timeout_ms": {
+      "type": ["integer", "null"]
+    },
+    "evaluation_status": {
+      "type": "string",
+      "enum": ["allowed", "denied", "indeterminate"]
+    },
+    "allowed": {
+      "type": ["boolean", "null"]
+    },
+    "http_grant_present": {
+      "type": "boolean"
+    },
+    "matched_scheme": {
+      "type": ["string", "null"]
+    },
+    "matched_host_or_suffix": {
+      "type": ["string", "null"]
+    },
+    "matched_port": {
+      "type": ["integer", "null"]
+    },
+    "matched_method": {
+      "type": ["string", "null"]
+    },
+    "matched_path_prefix": {
+      "type": ["string", "null"]
+    },
+    "risky_destination_classification": {
+      "type": "object"
+    },
+    "redirect_policy_summary": {
+      "type": "object"
+    },
+    "grant_evaluations": {
+      "type": "array"
+    },
+    "denial_reason": {
+      "type": ["object", "null"]
+    }
+  },
+  "required": [
+    "execution_uri",
+    "skill",
+    "status",
+    "policy_outcome",
+    "policy_summary",
+    "policy_profile",
+    "trust_tier",
+    "verification_state",
+    "candidate_url",
+    "candidate_method",
+    "candidate_timeout_ms",
+    "evaluation_status",
+    "allowed",
+    "http_grant_present",
+    "matched_scheme",
+    "matched_host_or_suffix",
+    "matched_port",
+    "matched_method",
+    "matched_path_prefix",
+    "risky_destination_classification",
+    "redirect_policy_summary",
+    "grant_evaluations",
+    "denial_reason"
+  ],
+  "additionalProperties": false
+}

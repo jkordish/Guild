@@ -1,0 +1,71 @@
+{
+  "summary": "Compared stored authority for executions __LEFT_EXECUTION_URI__ and __RIGHT_EXECUTION_URI__.",
+  "structured": {
+    "left_execution_uri": "__LEFT_EXECUTION_URI__",
+    "right_execution_uri": "__RIGHT_EXECUTION_URI__",
+    "same_skill": true,
+    "same_digest": false,
+    "left_skill": {
+      "key": {
+        "namespace": "example",
+        "name": "inspect-http-json"
+      },
+      "version": "0.1.0",
+      "digest": "__LEFT_SKILL_DIGEST__"
+    },
+    "right_skill": {
+      "key": {
+        "namespace": "example",
+        "name": "inspect-http-json"
+      },
+      "version": "0.1.0",
+      "digest": "__RIGHT_SKILL_DIGEST__"
+    },
+    "left_status": "succeeded",
+    "right_status": "rejected",
+    "trust_tier_diff": {
+      "left": "trusted-imported",
+      "right": "restricted",
+      "changed": true
+    },
+    "verification_state_diff": {
+      "left": "verified-import",
+      "right": "verified-import",
+      "changed": false
+    },
+    "policy_profile_diff": {
+      "left": "trusted-networked",
+      "right": "restricted-networked",
+      "changed": true
+    },
+    "policy_outcome_diff": {
+      "left": "allowed",
+      "right": "reduced",
+      "changed": true
+    },
+    "requested_capability_diff": [],
+    "granted_capability_diff": [],
+    "termination_diff": {
+      "left": null,
+      "right": {
+        "phase": "runtime-exec",
+        "code": "http-request-redirect-not-allowed",
+        "message": "http-request received a redirect but follow_redirects was not granted",
+        "retryable": false,
+        "detail": null
+      },
+      "changed": true
+    },
+    "child_execution_count_diff": {
+      "left": 0,
+      "right": 0,
+      "changed": false
+    },
+    "left_primary_reason": null,
+    "right_primary_reason": null,
+    "likely_authority_drivers": []
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

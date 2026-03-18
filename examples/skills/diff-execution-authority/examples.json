@@ -1,0 +1,8 @@
+[
+  {
+    "input": {
+      "left_execution_uri": "guild://executions/00000000-0000-7000-8000-000000000001",
+      "right_execution_uri": "guild://executions/00000000-0000-7000-8000-000000000002"
+    }
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExplainHttpAuthorityInput",
+  "type": "object",
+  "properties": {
+    "execution_uri": {
+      "type": "string"
+    },
+    "candidate_request": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["get", "head"]
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["url", "method"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["execution_uri", "candidate_request"],
+  "additionalProperties": false
+}

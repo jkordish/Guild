@@ -17,6 +17,7 @@ What is materially real today:
 - evidence metadata is now directly readable as a first-class companion resource under `guild://objects/records/{evidence_record_id}/metadata` while the existing evidence-record URI still dereferences payload bytes
 - Guild now runs as a real MCP server over stdio, not just an internal façade with MCP-shaped concepts
 - Guild now has a thin `guild-codex` helper that bootstraps a local Codex dogfood root, prints the exact stdio MCP config for the real server, and runs deterministic Codex smoke flows over that same path
+- Guild now also has three inspect-only authority-debug example skills over durable execution records: `explain-capability-denial`, `diff-execution-authority`, and `explain-http-authority`
 - Guild now has a real bounded `http-request` capability family in the active inspect slice
 - Guild can now export and import the same signed installed bundles either as native bundle directories, local OCI image layouts, or OCI registry artifacts
 - MCP resource reads and guest-side `read-resource` calls use the same local backend
@@ -57,6 +58,7 @@ Where the repository is now:
 - The remaining unsupported-import ambiguity in the active inspect slice is now closed: broader capability imports stay absent from the inspect ABI, broader Guild component imports are preflighted, and unsupported runtime surface is persisted distinctly from policy denial and operational runtime failure.
 - Guild now also has a real stdio MCP server surface over that same runtime and storage path, with one honest public tool (`guild.inspect`) plus durable Guild resources.
 - Guild is now straightforward to connect to Codex over that same stdio surface: one helper command bootstraps a local dogfood root, prints the cwd-independent `codex mcp add ... -- <command>` registration, prints the matching `config.toml` snippet, and prints the exact helper smoke commands for the recommended flows.
+- Guild can now use persisted execution records to answer practical operator questions about authority: why one execution was denied or reduced, how two executions differed, and whether one candidate loopback/IP-literal HTTP request fits a stored grant without performing the request.
 
 What this means in practice:
 
@@ -77,6 +79,7 @@ What this means in practice:
 - Implemented guest-side `read-resource` with explicit `read-resource` capability enforcement.
 - Added a new inspect-only `explain-execution` skill that reads stored execution/evidence resources and returns a structured report.
 - Added a new inspect-only `explain-execution-tree` skill that walks persisted execution lineage with bounded traversal and summarizes evidence across the tree without inlining payloads.
+- Added new inspect-only authority-debug skills that read stored execution resources and explain denied/reduced capability state, compare two executions' granted authority, and dry-run stored HTTP authority without performing the request.
 - Made resolved execution attempts durable on success, failure, and rejection with host-owned termination metadata.
 - Added persisted execution receipts on top-level failure/rejection so callers can immediately address the stored execution URI.
 - Replaced loose capability constraint handling with typed constraints plus one shared host-side evaluator.
@@ -173,6 +176,7 @@ What this means in practice:
 
 - `guild-mcp-server` can be launched as a stdio MCP subprocess against a local Guild root.
 - `guild-codex` provides the supported local Codex setup path by bootstrapping a local root, printing the exact cwd-independent `codex mcp add ... -- <command>` and `config.toml` snippets for that same stdio server, and running helper-level smoke flows against an already prepared root.
+- `guild-codex` bootstrap now also installs the authority-debug example skills so the local dogfood root is ready for manual operator-style follow-up inspection without widening the documented smoke flow set.
 - The active public MCP tool surface is intentionally minimal: one tool, `guild.inspect`.
 - `tools/list` publishes honest input and output schemas derived from the existing Guild-facing types.
 - `tools/call` for `guild.inspect` executes through the same `GuildMcpFacade -> registry -> runner -> Wasmtime` path as the direct Rust façade.
@@ -218,6 +222,7 @@ What they prove:
 - `inspect_local`: install `hello-inspect`, execute it, read back stored execution + evidence
 - `inspect_http_json_local`: start a deterministic local HTTP server, install `inspect-http-json`, run one bounded allowed request through `guild.inspect`, then run one denied host-mismatch request and read back both persisted execution records
 - `inspect_policy_local`: export `inspect-http-json` as a signed bundle, import it into two fresh Guild roots with different local publisher trust tiers, select named profiles through local `policy.json`, show one trusted imported execution that keeps bounded HTTP, then show one persisted host-owned rejection for a restricted imported execution
+- `inspect_policy_local`: export `inspect-http-json` as a signed bundle, import it into two fresh Guild roots with different local publisher trust tiers, select named profiles through local `policy.json`, show trusted and restricted-profile HTTP outcomes, then run `explain-execution`, `explain-capability-denial`, `diff-execution-authority`, and `explain-http-authority` against the persisted execution URIs
 - `inspect_composite_local`: install `hello-inspect`, install `hello-composite`, execute composite inspect, read back parent + child + child evidence
 - `explain_execution_local`: install `hello-inspect`, produce a stored execution URI, install `explain-execution`, then run a resource-aware skill against that stored execution through the Wasm host boundary
 - `explain_execution_tree_local`: install `hello-inspect` and `hello-composite`, produce a stored parent/child execution tree, install `explain-execution-tree`, then walk that stored lineage through the same host-mediated resource path

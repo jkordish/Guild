@@ -30,11 +30,14 @@ const DEFAULT_CODEX_REGISTRY_ROOT: &str = "target/dev-local-registry/codex-local
 const GUILD_MCP_MANIFEST_RELATIVE_PATH: &str = "crates/guild-mcp/Cargo.toml";
 const EXAMPLE_NAMESPACE: &str = "example";
 const EXAMPLE_VERSION_REQUIREMENT: &str = "^0.1";
-const DEFAULT_CODEX_SKILLS: [&str; 4] = [
+const DEFAULT_CODEX_SKILLS: [&str; 7] = [
     "hello-inspect",
     "hello-composite",
     "explain-execution",
     "explain-execution-tree",
+    "explain-capability-denial",
+    "diff-execution-authority",
+    "explain-http-authority",
 ];
 const EXPLAIN_EXECUTION_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::ExplainExecution];
 const EXPLAIN_EXECUTION_TREE_ONLY: [CodexSmokeSelection; 1] =

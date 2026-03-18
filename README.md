@@ -4,7 +4,7 @@
 
 Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages operational know-how as versioned, capability-scoped, portable skills that can be resolved, executed, inspected, and shared without giving guests ambient authority.
 
-> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, Guild can run as a real MCP stdio server, a thin `guild-codex` helper can bootstrap a local Codex dogfood root, print the real stdio MCP config, and run deterministic Codex smoke flows, signed installed bundles can be exported and imported without rebuilding, those same signed installed bundles can also be transported as local OCI image layouts and through OCI registries, execution attempts persist as host-owned records with host-minted durable IDs, and evidence persists as durable Guild objects with distinct blob and record identity.
+> Status: pre-alpha. The repository already has a real local inspect-oriented vertical slice: requested refs resolve through a file-backed registry, example skills execute through a Wasmtime-backed Wasm component runtime, Guild can run as a real MCP stdio server, a thin `guild-codex` helper can bootstrap a local Codex dogfood root, print the real stdio MCP config, and run deterministic Codex smoke flows, signed installed bundles can be exported and imported without rebuilding, those same signed installed bundles can also be transported as local OCI image layouts and through OCI registries, execution attempts persist as host-owned records with host-minted durable IDs, evidence persists as durable Guild objects with distinct blob and record identity, and inspect/debug skills can now explain denied authority, compare two executions, and dry-run stored HTTP authority from durable records.
 
 ## Why Guild Exists
 
@@ -61,6 +61,16 @@ cargo run -p guild-mcp --example mcp_stdio_local
 
 Additional examples cover bounded local HTTP inspection, trust-tier-aware local policy profiles, explicit deferred filesystem-contract rejection, bounded execution-query resources, composite execution, persisted execution-tree explanation, durable rejected executions, native signed-bundle portability, local OCI image layout portability, OCI registry portability, and tampered or untrusted import rejection.
 
+### Authority Debug Skills
+
+Guild now also has three operator-facing inspect/debug skills over the existing durable execution store:
+
+- `explain-capability-denial` reads one stored execution and makes requested vs granted vs denied or reduced capability state explicit
+- `diff-execution-authority` compares two stored executions and highlights the authority differences that changed the outcome
+- `explain-http-authority` dry-runs one candidate HTTP request against the stored granted HTTP authority of an execution without performing the request
+
+All three run through `guild.inspect`, read durable execution resources through `read-resource`, and keep the public MCP surface unchanged.
+
 ### HTTP Proof Flow
 
 Guild now has one real new inspect-slice capability family: `http-request`.
@@ -83,7 +93,7 @@ The canonical local proof command is:
 cargo run -p guild-mcp --example inspect_policy_local
 ```
 
-That example installs `inspect-http-json`, exports it as a signed bundle, imports it into two fresh Guild roots with different publisher trust tiers, writes a local `policy.json` with named profiles plus a tenant binding, then proves two outcomes through the same `guild.inspect` surface: a trusted imported execution that keeps bounded redirect authority and a restricted imported execution whose HTTP grant is reduced before guest start and then rejected by the host when a redirect arrives. It then runs `explain-execution` against the persisted denied execution URI to prove the denial remains host-owned, durable, and explainable through the same resource path. The persisted execution record retains the caller-requested capability set, the smaller host-granted set, the selected policy profile, the verification state, and the host-owned trust tier that influenced the decision.
+That example installs `inspect-http-json`, exports it as a signed bundle, imports it into two fresh Guild roots with different publisher trust tiers, writes a local `policy.json` with named profiles plus a tenant binding, then proves a small authority-debugging story through the same `guild.inspect` surface: a trusted imported execution that keeps bounded redirect authority, a restricted-root execution under the unrestricted profile, and a restricted imported execution whose HTTP grant is reduced before guest start and then rejected by the host when a redirect arrives. It then runs `explain-execution`, `explain-capability-denial`, `diff-execution-authority`, and `explain-http-authority` against those persisted execution URIs to prove the denial, profile selection, trust metadata, and dry-run HTTP authority remain host-owned, durable, and explainable through the same resource path.
 
 ### Filesystem Rejection Proof Flow
 
@@ -139,7 +149,7 @@ cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev
 That command:
 
 1. creates or resets a fresh local Guild root
-2. installs the example skills used by the recommended Codex dogfood flows
+2. installs the example skills used by the recommended Codex dogfood flows plus the current authority-debug helpers for manual operator inspection
 3. prints the exact `guild-mcp-server` launch command
 4. prints a project-scoped `.codex/config.toml` snippet for the real stdio server
 5. prints a ready-to-use `codex mcp add ... -- <command>` convenience registration command
