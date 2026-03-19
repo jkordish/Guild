@@ -278,6 +278,13 @@ The current example skills now include single-record and execution-tree explanat
 
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 
+In the current repository, MCP protocol hygiene is also explicit:
+
+- `guild.inspect` advertises truthful client hints rather than optimistic ones: it is not read-only, not idempotent, not destructive, and open-world in the MCP hint sense because real inspect execution persists durable records and may use bounded outbound HTTP
+- `tools/list`, `resources/list`, and `resources/templates/list` page through deterministic ordered slices using opaque endpoint-scoped cursors
+- pagination is applied only after Guild has built the already-bounded, already-authorized result set for that endpoint, so cursors do not widen access or bypass boundedness
+- `resources/list` remains a bounded recent-execution view, not a general resource search surface
+
 ## 7. Registry and Resolution Architecture
 
 ### 7.1 Requested refs
@@ -659,6 +666,7 @@ The current repository implements a real but intentionally narrow slice of this 
 - supported capability families in the active inspect slice are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`; unsupported families are rejected before execution, and broader Guild component imports are rejected as host-owned `unsupported-runtime-surface`
 - `guild.inspect` in `guild-mcp` rides that same registry, runner, and storage path
 - `guild-mcp-server` exposes that same path over stdio MCP with one public tool plus Guild execution, evidence, and bounded execution-query resources
+- MCP list endpoints use opaque cursor pagination over deterministic bounded slices, while subscriptions, list-changed notifications, HTTP transport, search, and broader public tools remain deferred
 
 What is still deferred in this repo:
 

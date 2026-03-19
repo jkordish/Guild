@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use guild_mcp::protocol::{
-    CallToolResult, InitializeResult, ListToolsResult, PROTOCOL_VERSION_2025_11_25,
-    ReadResourceResult, ResourceContents,
+    CallToolResult, InitializeResult, ListResourceTemplatesResult, ListToolsResult,
+    PROTOCOL_VERSION_2025_11_25, ReadResourceResult, ResourceContents,
 };
 use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
@@ -196,6 +196,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>()
             .join(", ")
+    );
+
+    let first_templates: ListResourceTemplatesResult =
+        parse_result(&client.request("resources/templates/list", &json!({}))?)?;
+    let template_cursor = first_templates
+        .next_cursor
+        .clone()
+        .ok_or("expected paginated resource templates list to return nextCursor")?;
+    let second_templates: ListResourceTemplatesResult = parse_result(&client.request(
+        "resources/templates/list",
+        &json!({ "cursor": template_cursor }),
+    )?)?;
+    println!(
+        "resource templates: {} on page 1, {} on page 2",
+        first_templates.resource_templates.len(),
+        second_templates.resource_templates.len()
     );
 
     let inspect_result: CallToolResult = parse_result(&client.request(

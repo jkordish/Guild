@@ -209,7 +209,10 @@ The current repository now also exposes a real stdio MCP server surface over tha
 
 - stdio transport only in this milestone
 - one public tool, `guild.inspect`
+- `guild.inspect` tool annotations now truthfully advertise that inspect execution is not read-only, not idempotent, not destructive, and open-world in the MCP hint sense because the real inspect path persists durable records and may reach bounded external HTTP targets
 - bounded recent-execution `resources/list` plus `resources/read` and `resources/templates/list` for durable Guild URIs and bounded execution-query resources
+- `tools/list`, `resources/list`, and `resources/templates/list` accept opaque cursor-based pagination and return `nextCursor` when more results remain
+- list pagination stays endpoint-scoped, deterministic, and bounded; cursors do not widen authorization or bypass the existing bounded recent-view behavior
 - no subscriptions, no list-changed notifications, and no HTTP transport in this milestone
 
 Unsuccessful `guild.inspect` executions that reached a real resolved execution attempt MUST be surfaced over MCP as tool execution errors while preserving the persisted execution record and receipt URI.
@@ -323,9 +326,13 @@ The current repository implements MCP over stdio only. Streamable HTTP, subscrip
 
 The public MCP tool surface SHOULD remain small and stable. The current repository surface is one primary tool, `guild.inspect`, rather than one top-level tool per installed skill.
 
+The current repository advertises `guild.inspect` with truthful MCP hints for the active inspect slice: `readOnlyHint = false`, `destructiveHint = false`, `idempotentHint = false`, and `openWorldHint = true`. These annotations are metadata hints for clients, not security controls, and they MUST reflect the actual inspect/runtime/storage behavior rather than the name of the tool.
+
 #### 12.4.4 MCP resources
 
 Guild durable execution and evidence artifacts MAY be exposed through MCP resources, but resource URIs, resource contents, and linkage metadata remain host-owned Guild concepts. MCP resource access does not replace Guild runtime capability enforcement inside guest execution.
+
+Where Guild exposes MCP list operations, the current repository uses opaque cursor-based pagination with deterministic ordering over already-bounded result sets. `resources/list` remains a bounded recent-execution view over the persisted execution store rather than a broader discovery or search interface.
 
 #### 12.4.5 Tool error semantics
 

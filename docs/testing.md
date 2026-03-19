@@ -146,6 +146,8 @@ MCP stdio proof:
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
+That example now proves one real paginated MCP interaction by walking `resources/templates/list` across two cursor-linked pages before exercising `guild.inspect` and `resources/read`.
+
 ## Where To Go Next
 
 - For the public command and URI grammar, see [`command-language.md`](command-language.md).

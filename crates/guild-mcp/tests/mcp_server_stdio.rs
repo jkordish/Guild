@@ -1,14 +1,17 @@
+use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use base64::Engine as _;
 use guild_mcp::protocol::{
     CallToolResult, ContentBlock, InitializeResult, ListResourceTemplatesResult,
     ListResourcesResult, ListToolsResult, PROTOCOL_VERSION_2025_11_25, ReadResourceResult,
     ResourceContents,
 };
-use guild_registry::LocalSourceInstaller;
+use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
     EvidenceAudience, ExecutionQueryResult, ExecutionStatus, GrantedCapability,
@@ -65,6 +68,32 @@ fn prepared_registry_root() -> &'static PathBuf {
     })
 }
 
+struct TempFixtureDir {
+    path: PathBuf,
+}
+
+impl TempFixtureDir {
+    fn new(prefix: &str) -> Self {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("{prefix}-{unique}"));
+        fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempFixtureDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
 struct McpHarness {
     child: Child,
     stdin: ChildStdin,
@@ -74,9 +103,13 @@ struct McpHarness {
 
 impl McpHarness {
     fn spawn() -> Self {
+        Self::spawn_for_root(prepared_registry_root())
+    }
+
+    fn spawn_for_root(registry_root: &Path) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_guild-mcp-server"))
             .arg("--registry-root")
-            .arg(prepared_registry_root())
+            .arg(registry_root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -169,6 +202,17 @@ fn inspect_request(skill_name: &str, input: &Value, grants: &Value) -> Value {
     guild_inspect_helpers::example_inspect_request(skill_name, input, grant_slice)
 }
 
+fn encode_cursor(list: &str, offset: usize) -> String {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&json!({
+            "v": 1,
+            "list": list,
+            "offset": offset,
+        }))
+        .unwrap(),
+    )
+}
+
 fn emit_evidence_grant_json() -> Value {
     serde_json::to_value(GrantedCapability {
         id: CapabilityId::EmitEvidence,
@@ -238,7 +282,7 @@ fn initialize_negotiates_to_latest_supported_protocol_version() {
 }
 
 #[test]
-fn tools_list_returns_only_guild_inspect() {
+fn tools_list_returns_truthful_guild_inspect_annotations() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
 
@@ -248,6 +292,39 @@ fn tools_list_returns_only_guild_inspect() {
     assert_eq!(result.tools[0].name, "guild.inspect");
     assert!(result.tools[0].input_schema.is_object());
     assert!(result.tools[0].output_schema.as_ref().unwrap().is_object());
+    assert_eq!(result.next_cursor, None);
+
+    let annotations = result.tools[0]
+        .annotations
+        .as_ref()
+        .expect("guild.inspect exposes annotations");
+    assert!(!annotations.read_only_hint);
+    assert!(!annotations.destructive_hint);
+    assert!(!annotations.idempotent_hint);
+    assert!(annotations.open_world_hint);
+}
+
+#[test]
+fn tools_list_accepts_cursor_and_rejects_malformed_cursor() {
+    let mut harness = McpHarness::spawn();
+    harness.initialize();
+
+    let no_cursor: ListToolsResult = parse_result(&harness.request("tools/list", &json!({})));
+    let first_page_cursor = encode_cursor("tools", 0);
+    let with_cursor: ListToolsResult =
+        parse_result(&harness.request("tools/list", &json!({ "cursor": first_page_cursor })));
+
+    assert_eq!(with_cursor.tools, no_cursor.tools);
+    assert_eq!(with_cursor.next_cursor, None);
+
+    let malformed = harness.request("tools/list", &json!({ "cursor": "not-a-cursor" }));
+    assert_eq!(malformed["error"]["code"], -32602);
+    assert!(
+        malformed["error"]["data"]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("invalid cursor")
+    );
 }
 
 #[test]
@@ -360,7 +437,7 @@ fn resources_read_returns_execution_evidence_payload_and_evidence_metadata_conte
 }
 
 #[test]
-fn resources_templates_and_recent_execution_list_match_active_resource_model() {
+fn resources_templates_pagination_and_recent_execution_list_match_active_resource_model() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
 
@@ -375,44 +452,61 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
     let result: CallToolResult = parse_result(&response);
     let record = guild_inspect_helpers::parse_execution_record(&result);
 
-    let templates_response = harness.request("resources/templates/list", &json!({}));
-    let templates: ListResourceTemplatesResult = parse_result(&templates_response);
+    let templates_first: ListResourceTemplatesResult =
+        parse_result(&harness.request("resources/templates/list", &json!({})));
+    assert_eq!(templates_first.resource_templates.len(), 4);
+    let next_cursor = templates_first
+        .next_cursor
+        .clone()
+        .expect("resource templates paginate");
+    let templates_second: ListResourceTemplatesResult = parse_result(&harness.request(
+        "resources/templates/list",
+        &json!({ "cursor": next_cursor }),
+    ));
+    assert_eq!(templates_second.resource_templates.len(), 4);
+    assert_eq!(templates_second.next_cursor, None);
+    let templates = templates_first
+        .resource_templates
+        .into_iter()
+        .chain(templates_second.resource_templates)
+        .collect::<Vec<_>>();
     let resources_response = harness.request("resources/list", &json!({}));
     let resources: ListResourcesResult = parse_result(&resources_response);
 
-    assert_eq!(templates.resource_templates.len(), 8);
+    assert_eq!(templates.len(), 8);
     assert!(
         templates
-            .resource_templates
+            .windows(2)
+            .all(|pair| pair[0].uri_template <= pair[1].uri_template)
+    );
+    assert!(
+        templates
             .iter()
             .any(|template| template.uri_template == "guild://executions/{execution_id}")
     );
     assert!(templates
-        .resource_templates
         .iter()
         .any(|template| template.uri_template == "guild://objects/records/{evidence_record_id}"));
-    assert!(templates.resource_templates.iter().any(|template| {
+    assert!(templates.iter().any(|template| {
         template.uri_template == "guild://objects/records/{evidence_record_id}/metadata"
     }));
     assert!(
         templates
-            .resource_templates
             .iter()
             .any(|template| template.uri_template == "guild://objects/sha256/{digest}")
     );
     assert!(
         templates
-            .resource_templates
             .iter()
             .any(|template| template.uri_template == "guild://queries/executions/recent/{limit}")
     );
-    assert!(templates.resource_templates.iter().any(|template| {
+    assert!(templates.iter().any(|template| {
         template.uri_template == "guild://queries/executions/failures/recent/{limit}"
     }));
-    assert!(templates.resource_templates.iter().any(|template| {
+    assert!(templates.iter().any(|template| {
         template.uri_template == "guild://queries/executions/by-status/{status}/{limit}"
     }));
-    assert!(templates.resource_templates.iter().any(|template| {
+    assert!(templates.iter().any(|template| {
         template.uri_template == "guild://queries/executions/by-skill/{namespace}/{name}/{limit}"
     }));
     assert!(
@@ -420,6 +514,18 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
             .resources
             .iter()
             .any(|resource| resource.uri == record.receipt.uri)
+    );
+
+    let wrong_cursor = harness.request(
+        "resources/templates/list",
+        &json!({ "cursor": encode_cursor("tools", 0) }),
+    );
+    assert_eq!(wrong_cursor["error"]["code"], -32602);
+    assert!(
+        wrong_cursor["error"]["data"]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("cursor was issued for")
     );
 
     let query_response = harness.request(
@@ -439,6 +545,86 @@ fn resources_templates_and_recent_execution_list_match_active_resource_model() {
             .results
             .iter()
             .any(|item| item.receipt.uri == record.receipt.uri)
+    );
+}
+
+#[test]
+fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
+    let temp = TempFixtureDir::new("guild-mcp-server-pagination");
+    let registry_root = temp.path().join("registry");
+
+    LocalSourceInstaller::new(&registry_root)
+        .unwrap()
+        .install(inspect_source_dir())
+        .unwrap();
+
+    let mut harness = McpHarness::spawn_for_root(&registry_root);
+    harness.initialize();
+
+    for index in 0..55 {
+        let result: CallToolResult = parse_result(&harness.request(
+            "tools/call",
+            &inspect_request(
+                "hello-inspect",
+                &json!({ "name": format!("Ada-{index}") }),
+                &json!([emit_evidence_grant_json()]),
+            ),
+        ));
+        let record = guild_inspect_helpers::parse_execution_record(&result);
+        assert_eq!(record.status, ExecutionStatus::Succeeded);
+    }
+
+    let first_response = harness.request("resources/list", &json!({}));
+    let first_page: ListResourcesResult = parse_result(&first_response);
+    assert_eq!(first_page.resources.len(), 25);
+    let next_cursor = first_page
+        .next_cursor
+        .clone()
+        .expect("bounded recent view spills onto a second page");
+
+    let second_response = harness.request("resources/list", &json!({ "cursor": next_cursor }));
+    let second_page: ListResourcesResult = parse_result(&second_response);
+    assert_eq!(second_page.resources.len(), 25);
+    assert_eq!(second_page.next_cursor, None);
+
+    let repeated_first: ListResourcesResult =
+        parse_result(&harness.request("resources/list", &json!({})));
+    assert_eq!(repeated_first.resources, first_page.resources);
+    assert_eq!(repeated_first.next_cursor, first_page.next_cursor);
+
+    let repeated_second: ListResourcesResult = parse_result(&harness.request(
+        "resources/list",
+        &json!({ "cursor": first_page.next_cursor.clone().unwrap() }),
+    ));
+    assert_eq!(repeated_second.resources, second_page.resources);
+    assert_eq!(repeated_second.next_cursor, second_page.next_cursor);
+
+    let expected_uris = LocalRegistry::load(&registry_root)
+        .unwrap()
+        .list_recent_execution_records(50)
+        .unwrap()
+        .into_iter()
+        .map(|record| record.receipt.uri)
+        .collect::<Vec<_>>();
+    let actual_uris = first_page
+        .resources
+        .iter()
+        .chain(second_page.resources.iter())
+        .map(|resource| resource.uri.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(actual_uris, expected_uris);
+    assert_eq!(actual_uris.len(), 50);
+
+    let wrong_cursor = harness.request(
+        "resources/list",
+        &json!({ "cursor": encode_cursor("resource-templates", 0) }),
+    );
+    assert_eq!(wrong_cursor["error"]["code"], -32602);
+    assert!(
+        wrong_cursor["error"]["data"]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("cursor was issued for")
     );
 }
 

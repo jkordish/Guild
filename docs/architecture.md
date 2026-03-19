@@ -21,6 +21,8 @@ Current architecture highlights worth knowing before you follow older notes:
 - that evaluator now derives a host-owned local trust tier and selects named profiles by actor and/or tenant before deciding grants
 - read-resource auth uses canonical parsed Guild URI scopes
 - `guild mcp serve --stdio` is now the canonical stdio MCP façade over the same inspect/runtime/resource path
+- the `guild.inspect` tool annotations are now set to match the real inspect/runtime/storage behavior instead of the tool name alone
+- `tools/list`, `resources/list`, and `resources/templates/list` now page through deterministic bounded slices with opaque endpoint-scoped cursors, while subscriptions, list-changed notifications, and HTTP transport remain deferred
 - installed-state portability now includes the native signed bundle directory, a local OCI image layout mapping, and OCI registry transport, all of which still import through the same trust/signature checks
 - bounded execution-query resources now derive from the same persisted execution backend seen by guest `read-resource` and MCP `resources/read`
 

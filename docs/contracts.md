@@ -23,6 +23,8 @@ Current contract highlights worth knowing before you follow older notes:
 - caller-requested capabilities are now local policy input; the host decides the final granted set before execution
 - local policy now selects named profiles by actor and/or tenant and records the host-owned trust tier and verification state used for the decision
 - `guild mcp serve --stdio` now exposes one honest stdio MCP tool (`guild.inspect`) plus Guild URI resources and templates
+- the `guild.inspect` MCP annotations are intentionally honest to the current behavior: not read-only, not idempotent, not destructive, and open-world in the client-hint sense because inspect persists durable records and may use bounded outbound HTTP
+- `tools/list`, `resources/list`, and `resources/templates/list` now use bounded opaque cursor pagination; `resources/list` is still only the bounded recent-execution view
 - installed-state portability now has three transport shapes over the same signed payload: the native signed bundle directory, a local OCI image layout, and OCI registry push/pull
 - bounded execution-query resources now live under `guild://queries/executions/...` and are exposed through Guild resources and templates rather than new MCP tools
 

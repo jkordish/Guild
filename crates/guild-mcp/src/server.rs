@@ -6,7 +6,7 @@ use guild_registry::LocalRegistry;
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{ExecutionRecord, ResourceReadResult};
 use schemars::{JsonSchema, schema_for};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::protocol::{
@@ -24,6 +24,20 @@ use crate::protocol::{
 use crate::{GuildMcpFacade, INSPECT_TOOL, InspectToolRequest, McpError, SERVER_NAME};
 
 const DEFAULT_RECENT_EXECUTION_LIMIT: usize = 50;
+const TOOLS_LIST_PAGE_SIZE: usize = 25;
+const RESOURCES_LIST_PAGE_SIZE: usize = 25;
+const RESOURCE_TEMPLATES_LIST_PAGE_SIZE: usize = 4;
+const LIST_CURSOR_VERSION: u8 = 1;
+const LIST_CURSOR_TOOLS: &str = "tools";
+const LIST_CURSOR_RESOURCES: &str = "resources";
+const LIST_CURSOR_RESOURCE_TEMPLATES: &str = "resource-templates";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct OpaqueListCursor {
+    v: u8,
+    list: String,
+    offset: usize,
+}
 
 #[derive(Debug)]
 pub enum ServerStartupError {
@@ -313,31 +327,39 @@ impl GuildMcpServer {
     }
 
     fn handle_tools_list(id: Value, params: Option<&Value>) -> Value {
-        if let Err(error) = reject_cursor(params) {
-            return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
-        }
+        let mut tools = vec![Tool {
+            name: INSPECT_TOOL.into(),
+            title: Some("Guild Inspect".into()),
+            description: "Resolve and execute a Guild skill in inspect mode using the \
+                          existing local Guild runtime path."
+                .into(),
+            input_schema: schema_value::<InspectToolRequest>(),
+            output_schema: Some(schema_value::<ExecutionRecord>()),
+            annotations: Some(ToolAnnotations {
+                // Inspect execution persists durable execution records and may persist
+                // evidence records, so the tool is not read-only or idempotent.
+                // It stays non-destructive because apply remains gated off and the
+                // active inspect slice is additive rather than delete/update oriented.
+                // The active inspect slice also includes bounded outbound HTTP, so
+                // open-world interaction is possible even though host policy still
+                // mediates all authority.
+                read_only_hint: false,
+                destructive_hint: false,
+                idempotent_hint: false,
+                open_world_hint: true,
+            }),
+        }];
+        tools.sort_by(|left, right| left.name.cmp(&right.name));
+        let offset = match list_offset_from_params(params, LIST_CURSOR_TOOLS, tools.len()) {
+            Ok(offset) => offset,
+            Err(error) => {
+                return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
+            }
+        };
+        let (tools, next_cursor) =
+            paginate_list(tools, offset, TOOLS_LIST_PAGE_SIZE, LIST_CURSOR_TOOLS);
 
-        success_response(
-            id,
-            ListToolsResult {
-                tools: vec![Tool {
-                    name: INSPECT_TOOL.into(),
-                    title: Some("Guild Inspect".into()),
-                    description: "Resolve and execute a Guild skill in inspect mode using the \
-                                  existing local Guild runtime path."
-                        .into(),
-                    input_schema: schema_value::<InspectToolRequest>(),
-                    output_schema: Some(schema_value::<ExecutionRecord>()),
-                    annotations: Some(ToolAnnotations {
-                        read_only_hint: false,
-                        destructive_hint: false,
-                        idempotent_hint: false,
-                        open_world_hint: false,
-                    }),
-                }],
-                next_cursor: None,
-            },
-        )
+        success_response(id, ListToolsResult { tools, next_cursor })
     }
 
     fn handle_tools_call(&mut self, id: Value, params: Option<Value>) -> Value {
@@ -417,24 +439,42 @@ impl GuildMcpServer {
     }
 
     fn handle_resources_list(&mut self, id: Value, params: Option<&Value>) -> Value {
-        if let Err(error) = reject_cursor(params) {
-            return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
-        }
-
         match self
             .registry
             .list_recent_execution_records(DEFAULT_RECENT_EXECUTION_LIMIT)
         {
-            Ok(resources) => success_response(
-                id,
-                ListResourcesResult {
-                    resources: resources
-                        .into_iter()
-                        .map(|record| execution_record_to_resource(&record))
-                        .collect(),
-                    next_cursor: None,
-                },
-            ),
+            Ok(records) => {
+                let resources = records
+                    .into_iter()
+                    .map(|record| execution_record_to_resource(&record))
+                    .collect::<Vec<_>>();
+                let offset =
+                    match list_offset_from_params(params, LIST_CURSOR_RESOURCES, resources.len()) {
+                        Ok(offset) => offset,
+                        Err(error) => {
+                            return error_response(
+                                id,
+                                ERROR_INVALID_PARAMS,
+                                "Invalid params",
+                                Some(error),
+                            );
+                        }
+                    };
+                let (resources, next_cursor) = paginate_list(
+                    resources,
+                    offset,
+                    RESOURCES_LIST_PAGE_SIZE,
+                    LIST_CURSOR_RESOURCES,
+                );
+
+                success_response(
+                    id,
+                    ListResourcesResult {
+                        resources,
+                        next_cursor,
+                    },
+                )
+            }
             Err(error) => {
                 let error = McpError::from(error);
                 error_response(
@@ -474,99 +514,30 @@ impl GuildMcpServer {
     }
 
     fn handle_resource_templates_list(id: Value, params: Option<&Value>) -> Value {
-        if let Err(error) = reject_cursor(params) {
-            return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
-        }
+        let mut resource_templates = resource_templates_catalog();
+        resource_templates.sort_by(|left, right| left.uri_template.cmp(&right.uri_template));
+        let offset = match list_offset_from_params(
+            params,
+            LIST_CURSOR_RESOURCE_TEMPLATES,
+            resource_templates.len(),
+        ) {
+            Ok(offset) => offset,
+            Err(error) => {
+                return error_response(id, ERROR_INVALID_PARAMS, "Invalid params", Some(error));
+            }
+        };
+        let (resource_templates, next_cursor) = paginate_list(
+            resource_templates,
+            offset,
+            RESOURCE_TEMPLATES_LIST_PAGE_SIZE,
+            LIST_CURSOR_RESOURCE_TEMPLATES,
+        );
 
         success_response(
             id,
             ListResourceTemplatesResult {
-                resource_templates: vec![
-                    ResourceTemplate {
-                        uri_template: "guild://executions/{execution_id}".into(),
-                        name: "Guild execution record".into(),
-                        title: Some("Guild Execution Record".into()),
-                        description: Some(
-                            "Read a persisted Guild execution record by host-minted execution id."
-                                .into(),
-                        ),
-                        mime_type: Some("application/json".into()),
-                    },
-                    ResourceTemplate {
-                        uri_template: "guild://objects/records/{evidence_record_id}".into(),
-                        name: "Guild evidence record payload".into(),
-                        title: Some("Guild Evidence Record".into()),
-                        description: Some(
-                            "Read a persisted evidence emission through its host-issued record URI."
-                                .into(),
-                        ),
-                        mime_type: None,
-                    },
-                    ResourceTemplate {
-                        uri_template:
-                            "guild://objects/records/{evidence_record_id}/metadata".into(),
-                        name: "Guild evidence record metadata".into(),
-                        title: Some("Guild Evidence Record Metadata".into()),
-                        description: Some(
-                            "Read the host-owned metadata record for a persisted evidence emission."
-                                .into(),
-                        ),
-                        mime_type: Some("application/json".into()),
-                    },
-                    ResourceTemplate {
-                        uri_template: "guild://objects/sha256/{digest}".into(),
-                        name: "Guild evidence blob".into(),
-                        title: Some("Guild Evidence Blob".into()),
-                        description: Some(
-                            "Read a raw content-addressed evidence blob by its digest URI.".into(),
-                        ),
-                        mime_type: None,
-                    },
-                    ResourceTemplate {
-                        uri_template: "guild://queries/executions/recent/{limit}".into(),
-                        name: "Guild recent executions query".into(),
-                        title: Some("Guild Execution Query".into()),
-                        description: Some(
-                            "Read a bounded recent-executions query result from the local Guild execution store."
-                                .into(),
-                        ),
-                        mime_type: Some("application/json".into()),
-                    },
-                    ResourceTemplate {
-                        uri_template: "guild://queries/executions/failures/recent/{limit}".into(),
-                        name: "Guild recent failures query".into(),
-                        title: Some("Guild Recent Failures Query".into()),
-                        description: Some(
-                            "Read a bounded recent failed or rejected execution query result."
-                                .into(),
-                        ),
-                        mime_type: Some("application/json".into()),
-                    },
-                    ResourceTemplate {
-                        uri_template: "guild://queries/executions/by-status/{status}/{limit}"
-                            .into(),
-                        name: "Guild executions by status query".into(),
-                        title: Some("Guild Executions By Status Query".into()),
-                        description: Some(
-                            "Read a bounded execution query result filtered by execution status."
-                                .into(),
-                        ),
-                        mime_type: Some("application/json".into()),
-                    },
-                    ResourceTemplate {
-                        uri_template:
-                            "guild://queries/executions/by-skill/{namespace}/{name}/{limit}"
-                                .into(),
-                        name: "Guild executions by skill query".into(),
-                        title: Some("Guild Executions By Skill Query".into()),
-                        description: Some(
-                            "Read a bounded execution query result filtered by resolved skill key."
-                                .into(),
-                        ),
-                        mime_type: Some("application/json".into()),
-                    },
-                ],
-                next_cursor: None,
+                resource_templates,
+                next_cursor,
             },
         )
     }
@@ -589,18 +560,165 @@ where
         .map_err(|error| json!({ "detail": error.to_string() }))
 }
 
-fn reject_cursor(params: Option<&Value>) -> Result<(), Value> {
-    if let Some(params) = params {
-        let list_params: ListParams = serde_json::from_value(params.clone())
-            .map_err(|error| json!({ "detail": error.to_string() }))?;
-        if list_params.cursor.is_some() {
-            return Err(json!({
-                "detail": "cursor-based pagination is not implemented in this milestone"
-            }));
-        }
+fn list_offset_from_params(
+    params: Option<&Value>,
+    expected_list: &str,
+    total_len: usize,
+) -> Result<usize, Value> {
+    let Some(params) = params else {
+        return Ok(0);
+    };
+    let list_params: ListParams = serde_json::from_value(params.clone())
+        .map_err(|error| json!({ "detail": error.to_string() }))?;
+    let Some(cursor) = list_params.cursor else {
+        return Ok(0);
+    };
+
+    decode_list_cursor(&cursor, expected_list, total_len)
+}
+
+fn paginate_list<T>(
+    items: Vec<T>,
+    offset: usize,
+    page_size: usize,
+    list_name: &str,
+) -> (Vec<T>, Option<String>) {
+    let total_len = items.len();
+    let page: Vec<T> = items.into_iter().skip(offset).take(page_size).collect();
+    let next_offset = offset.saturating_add(page.len());
+    let next_cursor = (next_offset < total_len).then(|| encode_list_cursor(list_name, next_offset));
+    (page, next_cursor)
+}
+
+fn encode_list_cursor(list_name: &str, offset: usize) -> String {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+        serde_json::to_vec(&OpaqueListCursor {
+            v: LIST_CURSOR_VERSION,
+            list: list_name.to_owned(),
+            offset,
+        })
+        .expect("opaque list cursor serializes"),
+    )
+}
+
+fn decode_list_cursor(raw: &str, expected_list: &str, total_len: usize) -> Result<usize, Value> {
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(raw)
+        .map_err(
+            |error| json!({ "detail": format!("invalid cursor: base64 decode failed: {error}") }),
+        )?;
+    let cursor: OpaqueListCursor = serde_json::from_slice(&bytes).map_err(
+        |error| json!({ "detail": format!("invalid cursor: JSON decode failed: {error}") }),
+    )?;
+
+    if cursor.v != LIST_CURSOR_VERSION {
+        return Err(json!({
+            "detail": format!(
+                "invalid cursor: unsupported cursor version `{}`",
+                cursor.v
+            ),
+        }));
     }
 
-    Ok(())
+    if cursor.list != expected_list {
+        return Err(json!({
+            "detail": format!(
+                "invalid cursor: cursor was issued for `{}` not `{expected_list}`",
+                cursor.list
+            ),
+        }));
+    }
+
+    if total_len == 0 {
+        if cursor.offset == 0 {
+            return Ok(0);
+        }
+    } else if cursor.offset < total_len {
+        return Ok(cursor.offset);
+    }
+
+    Err(json!({
+        "detail": format!(
+            "invalid cursor: offset `{}` is out of range for this result set",
+            cursor.offset
+        ),
+    }))
+}
+
+fn resource_templates_catalog() -> Vec<ResourceTemplate> {
+    vec![
+        ResourceTemplate {
+            uri_template: "guild://executions/{execution_id}".into(),
+            name: "Guild execution record".into(),
+            title: Some("Guild Execution Record".into()),
+            description: Some(
+                "Read a persisted Guild execution record by host-minted execution id.".into(),
+            ),
+            mime_type: Some("application/json".into()),
+        },
+        ResourceTemplate {
+            uri_template: "guild://objects/records/{evidence_record_id}".into(),
+            name: "Guild evidence record payload".into(),
+            title: Some("Guild Evidence Record".into()),
+            description: Some(
+                "Read a persisted evidence emission through its host-issued record URI.".into(),
+            ),
+            mime_type: None,
+        },
+        ResourceTemplate {
+            uri_template: "guild://objects/records/{evidence_record_id}/metadata".into(),
+            name: "Guild evidence record metadata".into(),
+            title: Some("Guild Evidence Record Metadata".into()),
+            description: Some(
+                "Read the host-owned metadata record for a persisted evidence emission.".into(),
+            ),
+            mime_type: Some("application/json".into()),
+        },
+        ResourceTemplate {
+            uri_template: "guild://objects/sha256/{digest}".into(),
+            name: "Guild evidence blob".into(),
+            title: Some("Guild Evidence Blob".into()),
+            description: Some("Read a raw content-addressed evidence blob by its digest URI.".into()),
+            mime_type: None,
+        },
+        ResourceTemplate {
+            uri_template: "guild://queries/executions/recent/{limit}".into(),
+            name: "Guild recent executions query".into(),
+            title: Some("Guild Execution Query".into()),
+            description: Some(
+                "Read a bounded recent-executions query result from the local Guild execution store."
+                    .into(),
+            ),
+            mime_type: Some("application/json".into()),
+        },
+        ResourceTemplate {
+            uri_template: "guild://queries/executions/failures/recent/{limit}".into(),
+            name: "Guild recent failures query".into(),
+            title: Some("Guild Recent Failures Query".into()),
+            description: Some(
+                "Read a bounded recent failed or rejected execution query result.".into(),
+            ),
+            mime_type: Some("application/json".into()),
+        },
+        ResourceTemplate {
+            uri_template: "guild://queries/executions/by-status/{status}/{limit}".into(),
+            name: "Guild executions by status query".into(),
+            title: Some("Guild Executions By Status Query".into()),
+            description: Some(
+                "Read a bounded execution query result filtered by execution status.".into(),
+            ),
+            mime_type: Some("application/json".into()),
+        },
+        ResourceTemplate {
+            uri_template: "guild://queries/executions/by-skill/{namespace}/{name}/{limit}".into(),
+            name: "Guild executions by skill query".into(),
+            title: Some("Guild Executions By Skill Query".into()),
+            description: Some(
+                "Read a bounded execution query result filtered by resolved skill key.".into(),
+            ),
+            mime_type: Some("application/json".into()),
+        },
+    ]
 }
 
 fn negotiate_protocol_version(requested: &str) -> String {

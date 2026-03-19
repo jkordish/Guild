@@ -120,6 +120,14 @@ The public MCP surface is intentionally small:
 
 - one public tool: `guild.inspect`
 - Guild execution, evidence, object, and bounded query resources through `resources/read`
+- cursor-based pagination on `tools/list`, `resources/list`, and `resources/templates/list`
+
+MCP protocol hygiene in the current milestone stays honest to the real runtime:
+
+- `guild.inspect` is annotated as not read-only and not idempotent because inspect execution persists durable execution records and may persist evidence records
+- `guild.inspect` is annotated as open-world because the active inspect slice includes bounded outbound `http-request`
+- `resources/list` remains a bounded recent-execution view over durable records rather than a general search/index surface
+- stdio is the only MCP transport in this milestone; subscriptions, list-changed notifications, HTTP transport, and more public tools remain intentionally deferred
 
 For Codex, Guild keeps one helper path instead of inventing a second server model:
 
