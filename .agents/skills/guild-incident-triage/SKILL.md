@@ -15,7 +15,7 @@ Run the repo helper first:
 bash .agents/skills/guild-incident-triage/scripts/prepare.sh
 ```
 
-That command returns JSON from `guild-codex scenario --json`. Read:
+That command returns JSON from `guild codex scenario --json`. Read:
 
 - `registry_root`
 - `query_uris[0]`

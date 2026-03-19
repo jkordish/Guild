@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use guild_mcp::codex::{
     CodexBootstrapOutput, CodexScenarioSelection, CodexScenarioSummary, CodexServerConfig,
     CodexSmokeSelection, CodexSmokeSummary, bootstrap_codex_registry, codex_server_config,
-    guild_mcp_manifest_path,
+    guild_mcp_manifest_path, legacy_print_config_command,
 };
 
 #[path = "../../../test-support/mcp_stdio_client.rs"]
@@ -53,6 +53,17 @@ fn spawn_documented_server(
 }
 
 fn run_guild_codex_json(args: &[&str]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let output = Command::new(env!("CARGO_BIN_EXE_guild"))
+        .current_dir(repo_root())
+        .arg("codex")
+        .args(args)
+        .output()?;
+
+    assert!(output.status.success(), "{output:?}");
+    Ok(output.stdout)
+}
+
+fn run_legacy_guild_codex_json(args: &[&str]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let output = Command::new("cargo")
         .current_dir(repo_root())
         .args(["run", "-q", "-p", "guild-mcp", "--bin", "guild-codex", "--"])
@@ -125,16 +136,23 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
     assert_eq!(
         payload.print_config_command,
         format!(
-            "cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root {}",
+            "cargo run -p guild-mcp --bin guild -- codex print-config --registry-root {}",
             payload.bootstrap.registry_root.to_string_lossy()
         )
+    );
+    assert_eq!(payload.recommended_scenario_commands.len(), 2);
+    assert!(
+        payload
+            .recommended_scenario_commands
+            .iter()
+            .all(|command| command.contains("--bin guild -- codex scenario"))
     );
     assert_eq!(payload.recommended_smoke_commands.len(), 4);
     assert!(
         payload
             .recommended_smoke_commands
             .iter()
-            .all(|command| command.contains("guild-codex -- smoke"))
+            .all(|command| command.contains("--bin guild -- codex smoke"))
     );
     assert!(
         payload
@@ -160,6 +178,32 @@ fn documented_config_can_launch_the_stdio_server() {
     let initialized = client.initialize("guild-codex-startup-smoke").unwrap();
 
     assert_eq!(initialized.server_info.name, "guild-mcp");
+}
+
+#[test]
+fn legacy_guild_codex_binary_remains_compatible_for_scenarios() {
+    let temp_root = TempRegistryRoot::new("guild-codex-compat");
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
+
+    let stdout = run_legacy_guild_codex_json(&[
+        "scenario",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--scenario",
+        "execution-tree",
+        "--json",
+    ])
+    .unwrap();
+    let payload: CodexScenarioSummary = serde_json::from_slice(&stdout).unwrap();
+
+    assert_eq!(payload.scenario, CodexScenarioSelection::ExecutionTree);
+    assert_eq!(
+        legacy_print_config_command(temp_root.path()),
+        format!(
+            "cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root {}",
+            temp_root.path().to_string_lossy()
+        )
+    );
 }
 
 #[test]

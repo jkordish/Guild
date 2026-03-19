@@ -31,7 +31,6 @@ use crate::{CLI_BINARY_NAME, GuildMcpFacade, InspectRequest, McpError};
 #[path = "../../../test-support/http_test_server.rs"]
 mod http_test_server;
 
-pub const CODEX_WORKFLOW_BINARY_NAME: &str = "guild-codex";
 pub const DEFAULT_CODEX_SERVER_NAME: &str = "guild-local";
 const DEFAULT_CODEX_REGISTRY_ROOT: &str = "target/dev-local-registry/codex-local";
 const GUILD_MCP_MANIFEST_RELATIVE_PATH: &str = "crates/guild-mcp/Cargo.toml";
@@ -104,6 +103,7 @@ pub struct CodexBootstrapOutput {
     pub bootstrap: CodexBootstrapSummary,
     pub config: CodexServerConfig,
     pub print_config_command: String,
+    pub recommended_scenario_commands: Vec<String>,
     pub recommended_smoke_commands: Vec<String>,
     pub recommended_proof_commands: Vec<String>,
 }
@@ -493,9 +493,27 @@ pub fn recommended_proof_commands() -> Vec<String> {
 #[must_use]
 pub fn print_config_command(registry_root: impl AsRef<Path>) -> String {
     format!(
-        "cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root {}",
+        "cargo run -p guild-mcp --bin guild -- codex print-config --registry-root {}",
         shell_quote(&absolute_path(registry_root).to_string_lossy())
     )
+}
+
+#[must_use]
+pub fn recommended_scenario_commands(registry_root: impl AsRef<Path>) -> Vec<String> {
+    let registry_root = absolute_path(registry_root);
+    [
+        CodexScenarioSelection::RecentFailureTriage,
+        CodexScenarioSelection::PolicyDenialDebug,
+    ]
+    .into_iter()
+    .map(|scenario| {
+        format!(
+            "cargo run -p guild-mcp --bin guild -- codex scenario --registry-root {} --scenario {} --json",
+            shell_quote(&registry_root.to_string_lossy()),
+            scenario
+        )
+    })
+    .collect()
 }
 
 #[must_use]
@@ -510,12 +528,20 @@ pub fn recommended_smoke_commands(registry_root: impl AsRef<Path>) -> Vec<String
     .into_iter()
     .map(|flow| {
         format!(
-            "cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root {} --flow {}",
+            "cargo run -p guild-mcp --bin guild -- codex smoke --registry-root {} --flow {}",
             shell_quote(&registry_root.to_string_lossy()),
             flow
         )
     })
     .collect()
+}
+
+#[must_use]
+pub fn legacy_print_config_command(registry_root: impl AsRef<Path>) -> String {
+    format!(
+        "cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root {}",
+        shell_quote(&absolute_path(registry_root).to_string_lossy())
+    )
 }
 
 /// Build the default local Codex dogfood root by installing the example skills

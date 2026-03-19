@@ -221,6 +221,7 @@ pub fn run(
         "push" => run_push(&args[1..], &global, env_registry_root),
         "pull" => run_pull(&args[1..], &global, env_registry_root),
         "trust" => run_trust(&args[1..], &global, env_registry_root),
+        "codex" => run_codex(&args[1..], &global),
         "mcp" => run_mcp(&args[1..], &global, env_registry_root),
         _ => Err(CliError::new(format!("unknown subcommand `{command}`"))),
     }
@@ -1228,6 +1229,11 @@ fn run_trust_remove(
     Ok(())
 }
 
+fn run_codex(args: &[String], global: &GlobalOptions) -> Result<(), CliError> {
+    crate::codex_cli::run_guild_subcommand(args, global.registry_root.clone())
+        .map_err(|error| CliError::new(error.to_string()))
+}
+
 fn run_mcp(
     args: &[String],
     global: &GlobalOptions,
@@ -1588,6 +1594,7 @@ fn print_usage() {
     println!("  push         publish installed state to an OCI registry");
     println!("  pull         pull and import installed state from an OCI registry");
     println!("  trust        manage local publisher identities and trust records");
+    println!("  codex        bootstrap and smoke the real Codex stdio workflow");
     println!("  mcp          launch the existing Guild MCP stdio server");
     println!();
     println!(

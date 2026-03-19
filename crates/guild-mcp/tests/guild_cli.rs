@@ -622,6 +622,46 @@ fn mcp_stdio_launches_through_guild_cli() {
 }
 
 #[test]
+fn codex_subcommand_print_config_honors_global_registry_root() {
+    let temp = TempFixtureDir::new("guild-cli-codex-config");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+
+    let stdout = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "codex",
+            "print-config",
+            "--json",
+        ],
+        None,
+    );
+    let config: Value = parse_json_stdout(&stdout);
+    assert_eq!(config["command"].as_str(), Some("cargo"));
+    assert_eq!(
+        config["env"]["GUILD_REGISTRY_ROOT"].as_str(),
+        Some(registry_root_display.as_str()),
+    );
+    assert_eq!(
+        config["args"]
+            .as_array()
+            .unwrap()
+            .last()
+            .and_then(Value::as_str),
+        Some("--stdio"),
+    );
+}
+
+#[test]
+fn codex_subcommand_help_is_available_through_guild_cli() {
+    let stdout = run_guild_success(&["codex", "--help"], None);
+    assert!(stdout.contains("usage: guild [--registry-root <path>] codex"));
+    assert!(stdout.contains("scenario"));
+    assert!(stdout.contains("smoke"));
+}
+
+#[test]
 fn install_command_maps_to_real_source_install_path() {
     let temp = TempFixtureDir::new("guild-cli-install");
     let registry_root = temp.path().join("registry");

@@ -39,6 +39,7 @@ The current local command surface is:
 - `guild push`
 - `guild pull`
 - `guild trust ...`
+- `guild codex ...`
 - `guild mcp serve --stdio`
 
 Intentionally deferred:
@@ -123,11 +124,11 @@ The public MCP surface is intentionally small:
 For Codex, Guild keeps one helper path instead of inventing a second server model:
 
 ```bash
-cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
-cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root target/dev-local-registry/codex-local
+cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
+cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/dev-local-registry/codex-local
 ```
 
-`guild-codex` remains the helper for bootstrap, deterministic scenario prep, and smoke flows. The real local server launch it prints is `guild mcp serve --stdio`.
+`guild codex` is the primary workflow surface for bootstrap, deterministic scenario prep, and smoke flows. `guild-codex` remains available as a compatibility alias for older scripts. The real local server launch it prints is `guild mcp serve --stdio`.
 
 ## What Is Real Today
 

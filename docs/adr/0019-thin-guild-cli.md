@@ -32,6 +32,7 @@ The stable v1 command surface is:
 - `guild push`
 - `guild pull`
 - `guild trust ...`
+- `guild codex ...`
 - `guild mcp serve --stdio`
 
 The canonical public URI families are:
@@ -45,6 +46,7 @@ The CLI is intentionally substrate-backed rather than a second runtime layer:
 - `guild inspect` delegates to the same inspect path used by `guild.inspect`
 - `guild read` delegates to the same resource backend used by MCP `resources/read` and guest `read-resource`
 - install/export/import/push/pull delegate to the current registry and installer substrate
+- `guild codex` delegates to the existing Codex bootstrap/config/scenario/smoke helpers without creating a second server model
 - `guild mcp serve --stdio` launches the current stdio MCP server without widening the MCP surface
 
 Registry root selection stays explicit and local-first:
@@ -86,7 +88,7 @@ Positive:
 
 - Guild now has one real local command language
 - README, example docs, Codex workflow docs, and future site snippets can point at honest commands
-- Codex config can launch the `guild` binary directly while keeping `guild-codex` as a thin helper for bootstrap and deterministic scenario/smoke flows
+- Codex config can launch the `guild` binary directly while `guild codex` stays the primary setup workflow and `guild-codex` remains a thin compatibility wrapper
 
 Intentional non-decisions:
 

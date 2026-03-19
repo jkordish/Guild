@@ -24,6 +24,7 @@ Guild's first-class local verbs are:
 - `guild push`
 - `guild pull`
 - `guild trust ...`
+- `guild codex ...`
 - `guild mcp serve --stdio`
 
 Intentionally deferred in this milestone:
@@ -174,6 +175,7 @@ The CLI is intentionally thin:
 
 Codex setup uses the same command language.
 
-- `guild-codex` remains the helper for bootstrap, scenario prep, and smoke flows.
+- `guild codex` is the primary helper surface for bootstrap, scenario prep, and smoke flows.
+- `guild-codex` remains available as a compatibility wrapper for existing scripts.
 - The real local server launch it prints is now `guild mcp serve --stdio`.
 - The printed Codex config runs the `guild` binary, not a second public server dialect.

@@ -18,7 +18,7 @@ Canonical local proof flow:
 cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution install examples/skills/hello-inspect
 cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution inspect skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
 cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution read guild://executions/<execution-id>
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example codex_explain_execution_local
@@ -36,7 +36,7 @@ That command:
 For real Codex dogfooding, first bootstrap a local Guild root with:
 
 ```bash
-cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
+cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
 ```
 
 Then add Guild to Codex with the printed stdio config and ask Codex to run `hello-inspect` followed by `explain-execution` against the returned execution URI. `codex_explain_execution_local` is the deterministic MCP-path smoke version of that same flow.
@@ -44,7 +44,7 @@ Then add Guild to Codex with the printed stdio config and ask Codex to run `hell
 If you want the same deterministic flow without leaving the helper, run:
 
 ```bash
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
 ```
 
 `codex_explain_execution_local` remains as the lower-level compatibility smoke command and now wraps that same shared helper path.

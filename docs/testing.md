@@ -77,30 +77,30 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-regist
   --allow-http
 ```
 
-## Codex Helper Flows
+## Codex Workflow
 
 Bootstrap and print config:
 
 ```bash
-cargo run -p guild-mcp --bin guild-codex -- bootstrap --registry-root target/dev-local-registry/codex-local --reset
-cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root target/dev-local-registry/codex-local
+cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
+cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/dev-local-registry/codex-local
 ```
 
 Deterministic scenario prep:
 
 ```bash
-cargo run -p guild-mcp --bin guild-codex -- scenario --registry-root target/dev-local-registry/codex-local --scenario recent-failure-triage --json
-cargo run -p guild-mcp --bin guild-codex -- scenario --registry-root target/dev-local-registry/codex-local --scenario policy-denial-debug --json
-cargo run -p guild-mcp --bin guild-codex -- scenario --registry-root target/dev-local-registry/codex-local --scenario execution-tree --json
+cargo run -p guild-mcp --bin guild -- codex scenario --registry-root target/dev-local-registry/codex-local --scenario recent-failure-triage --json
+cargo run -p guild-mcp --bin guild -- codex scenario --registry-root target/dev-local-registry/codex-local --scenario policy-denial-debug --json
+cargo run -p guild-mcp --bin guild -- codex scenario --registry-root target/dev-local-registry/codex-local --scenario execution-tree --json
 ```
 
 Deterministic smoke flows:
 
 ```bash
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow recent-failure-triage
-cargo run -p guild-mcp --bin guild-codex -- smoke --registry-root target/dev-local-registry/codex-local --flow policy-denial-debug
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow recent-failure-triage
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow policy-denial-debug
 ```
 
 ## Example Proof Commands
