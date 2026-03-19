@@ -374,6 +374,49 @@ fn execution_query_happy_path_is_bounded_and_deterministic() {
 }
 
 #[test]
+fn execution_query_orders_fractional_rfc3339_timestamps_chronologically() {
+    let temp = TempFixtureDir::new();
+    let registry = LocalRegistry::load(temp.path()).unwrap();
+    registry
+        .persist_execution_record(&sample_execution_record(
+            "exec-plain-second",
+            "inspect-http-json",
+            ExecutionStatus::Succeeded,
+            "2026-03-17T00:00:05Z",
+            "2026-03-17T00:00:06Z",
+            PolicyDecisionOutcome::Allowed,
+            None,
+            None,
+            0,
+        ))
+        .unwrap();
+    registry
+        .persist_execution_record(&sample_execution_record(
+            "exec-fractional-second",
+            "inspect-http-json",
+            ExecutionStatus::Succeeded,
+            "2026-03-17T00:00:05.1Z",
+            "2026-03-17T00:00:06.1Z",
+            PolicyDecisionOutcome::Allowed,
+            None,
+            None,
+            0,
+        ))
+        .unwrap();
+
+    let recent = registry
+        .query_execution_records(&ExecutionQueryResource::Recent { limit: 2 })
+        .unwrap();
+
+    assert_eq!(recent.results.len(), 2);
+    assert_eq!(
+        recent.results[0].receipt.execution_id,
+        "exec-fractional-second"
+    );
+    assert_eq!(recent.results[1].receipt.execution_id, "exec-plain-second");
+}
+
+#[test]
 fn execution_query_resource_reads_share_the_same_backend_result() {
     let temp = TempFixtureDir::new();
     let registry = LocalRegistry::load(temp.path()).unwrap();

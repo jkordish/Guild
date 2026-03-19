@@ -15,7 +15,7 @@ Applies to: shared Rust types, manifests, runtime translation, examples, and con
 | Concern | Contract |
 | --- | --- |
 | Caller-facing request | `CallerRequest` carries `RequestedSkillRef`, caller identity, input, requested capabilities, budget, and trace metadata. |
-| Resolved execution input | `ResolvedExecutionEnvelope` carries host-issued `execution_id`, `ResolvedSkillRef`, granted capabilities, policy decision, and optional parent linkage. |
+| Resolved execution input | `ResolvedExecutionEnvelope` carries `ResolvedSkillRef`, granted capabilities, policy decision, and optional parent linkage. Durable execution identifiers are minted later by the host execution path. |
 | Runner entry | The runner accepts only `ResolvedExecutionEnvelope`; no public runner API accepts `RequestedSkillRef`. |
 | Durable receipt | `ExecutionReceipt` carries stable execution URI, execution ID, trace ID, and terminal status. |
 | Durable provenance | Provenance stores `ResolvedSkillRef`, not a mutable requested ref. |
@@ -25,8 +25,8 @@ Applies to: shared Rust types, manifests, runtime translation, examples, and con
 | Concern | Contract |
 | --- | --- |
 | Entry point | Keep `run(ctx, input) -> result<SkillOutput, SkillError>`. |
-| Guest context | `ExecutionContext` contains resolved skill identity, mode, input hash, budget, and guest-visible granted capabilities only. |
-| Host imports | Keep explicit host-mediated capability imports such as `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`. |
+| Guest context | The active inspect `ExecutionContext` contains host-minted execution identity, trace/tenant IDs, resolved skill identity, input hash, budget, and guest-visible granted capabilities only. Inspect mode is implied by the `guild-skill-inspect-v1` world and is not carried as a guest field. |
+| Host imports | Keep explicit host-mediated capability imports such as `http-request`, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`. |
 | Child invocation | The guest receives child `SkillOutput` or `SkillError`; host-owned child execution records remain on the host side. |
 | Forbidden ABI growth | Do not add execution status, metrics, provenance, policy results, receipts, trust metadata, or durable URIs to WIT outputs. |
 

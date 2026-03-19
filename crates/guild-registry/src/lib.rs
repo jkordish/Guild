@@ -32,6 +32,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 use walkdir::WalkDir;
 
 mod oci_layout;
@@ -1460,10 +1462,20 @@ fn compare_execution_records_for_query(
 
 fn compare_optional_timestamps_desc(left: Option<&str>, right: Option<&str>) -> Ordering {
     match (left, right) {
-        (Some(left), Some(right)) => right.cmp(left),
+        (Some(left), Some(right)) => compare_rfc3339_timestamps_desc(left, right),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
         (None, None) => Ordering::Equal,
+    }
+}
+
+fn compare_rfc3339_timestamps_desc(left: &str, right: &str) -> Ordering {
+    match (
+        OffsetDateTime::parse(left, &Rfc3339),
+        OffsetDateTime::parse(right, &Rfc3339),
+    ) {
+        (Ok(left), Ok(right)) => right.cmp(&left),
+        _ => right.cmp(left),
     }
 }
 
