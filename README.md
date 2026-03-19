@@ -46,10 +46,11 @@ Intentionally deferred:
 - `guild deploy`
 
 The canonical command and URI grammar lives at [`docs/command-language.md`](docs/command-language.md).
+Public docs prefer canonical `skill://...` refs. The CLI also accepts bare `<namespace>/<name>@<version-or-range>` as convenience syntax for operators.
 
 ## Quickstart
 
-Guild requires a local registry root for CLI operations. Pass `--registry-root <path>` or set `GUILD_REGISTRY_ROOT`.
+Guild requires explicit local registry root selection for CLI operations. There is no implicit `.guild/` or `target/dev-local-registry/...` fallback: pass `--registry-root <path>`, or set `GUILD_REGISTRY_ROOT`.
 
 ### Install, Inspect, Read
 
@@ -97,7 +98,7 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-regist
 That flow stays honest to the substrate:
 
 - export/import operate on installed signed bundle semantics, not source directories
-- trust is explicit and local
+- `guild trust ...` is explicit local trust-store management only
 - OCI transport uses the same installed signed bundle contract carried through another transport shape
 
 ## MCP And Codex

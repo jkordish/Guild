@@ -149,6 +149,49 @@ fn inspect_and_read_commands_work_with_env_registry_root() {
 }
 
 #[test]
+fn missing_registry_root_fails_with_explicit_guidance() {
+    let output = run_guild(&["inspect", "skill://example/hello-inspect@^0.1"], None);
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("pass `--registry-root <path>` or set `GUILD_REGISTRY_ROOT`"));
+    assert!(
+        stderr.contains("there is no implicit `.guild/` or `target/dev-local-registry/...` root")
+    );
+}
+
+#[test]
+fn explicit_registry_root_overrides_env_and_bare_alias_remains_accepted() {
+    let temp = TempFixtureDir::new("guild-cli-root-precedence");
+    let explicit_root = temp.path().join("registry-explicit");
+    let env_root = temp.path().join("registry-env");
+    fs::create_dir_all(&env_root).unwrap();
+    install_with_cli(&explicit_root);
+
+    let grants_json = emit_evidence_grants_json();
+    let explicit_root_display = explicit_root.display().to_string();
+    let inspect_output = run_guild_success(
+        &[
+            "--registry-root",
+            &explicit_root_display,
+            "inspect",
+            "example/hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &grants_json,
+            "--json",
+        ],
+        Some(&env_root),
+    );
+    let inspect_value: Value = parse_json_stdout(&inspect_output);
+    assert_eq!(
+        inspect_value["summary"].as_str(),
+        Some("Hello, Ada. Guild inspect is working."),
+    );
+}
+
+#[test]
 fn install_export_import_and_trust_commands_work_for_bundle_transport() {
     let temp = TempFixtureDir::new("guild-cli-bundle");
     let registry_a = temp.path().join("registry-a");

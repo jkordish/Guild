@@ -1106,7 +1106,7 @@ fn require_registry_root(
     }
 
     Err(CliError::new(format!(
-        "missing registry root; pass `--registry-root <path>` or set `GUILD_REGISTRY_ROOT`\nexample: {CLI_BINARY_NAME} --registry-root target/dev-local-registry inspect skill://example/hello-inspect@^0.1 --input-json '{{}}'\nexample: export GUILD_REGISTRY_ROOT=target/dev-local-registry"
+        "missing registry root; pass `--registry-root <path>` or set `GUILD_REGISTRY_ROOT`\nthere is no implicit `.guild/` or `target/dev-local-registry/...` root\nexample: {CLI_BINARY_NAME} --registry-root target/dev-local-registry inspect skill://example/hello-inspect@^0.1 --input-json '{{}}'\nexample: export GUILD_REGISTRY_ROOT=target/dev-local-registry"
     )))
 }
 
@@ -1291,12 +1291,22 @@ fn print_usage() {
     println!("  trust        manage local publisher identities and trust records");
     println!("  mcp          launch the existing Guild MCP stdio server");
     println!();
+    println!(
+        "registry roots are explicit: `--registry-root` wins, then `GUILD_REGISTRY_ROOT`; there is no implicit `.guild/` or `target/dev-local-registry/...` fallback."
+    );
+    println!(
+        "canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` is accepted as operator convenience."
+    );
+    println!("`guild trust ...` manages local trust-store state only.");
     println!("deferred: `guild build` and `guild deploy` are intentionally not implemented.");
 }
 
 fn print_inspect_usage() {
     println!(
         "usage: guild [--registry-root <path>] inspect <skill-ref> [--input-json <json> | --input-file <path>] [--grants-json <json> | --grants-file <path>] [--tenant-id <id>] [--actor-id <id>] [--json]"
+    );
+    println!(
+        "note: canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` is accepted as convenience."
     );
 }
 
@@ -1316,11 +1326,17 @@ fn print_export_bundle_usage() {
     println!(
         "usage: guild [--registry-root <path>] export bundle <skill-ref> --signer <identity.json> --output <dir> [--include-dependencies] [--json]"
     );
+    println!(
+        "note: canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` is accepted as convenience."
+    );
 }
 
 fn print_export_oci_layout_usage() {
     println!(
         "usage: guild [--registry-root <path>] export oci-layout <skill-ref> --signer <identity.json> --output <dir> [--include-dependencies] [--json]"
+    );
+    println!(
+        "note: canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` is accepted as convenience."
     );
 }
 
@@ -1340,6 +1356,9 @@ fn print_push_usage() {
     println!(
         "usage: guild [--registry-root <path>] push <skill-ref> --reference <oci-ref> --signer <identity.json> [--include-dependencies] [--allow-http] [--json]"
     );
+    println!(
+        "note: canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` is accepted as convenience."
+    );
 }
 
 fn print_pull_usage() {
@@ -1348,6 +1367,7 @@ fn print_pull_usage() {
 
 fn print_trust_usage() {
     println!("usage: guild [--registry-root <path>] trust <generate|add|list|remove> ...");
+    println!("note: `guild trust ...` manages the local trust store only.");
 }
 
 fn print_trust_generate_usage() {

@@ -53,6 +53,34 @@ Guild uses three distinct public identifier families:
 
 Guild intentionally does not use `guild://` for transport publication. Installed transport units move through signed bundle directories, OCI image layouts, and OCI registry references.
 
+## Skill Ref Syntax
+
+Canonical public skill syntax uses:
+
+- `skill://<namespace>/<name>@<version-or-range>`
+
+The CLI also accepts bare `<namespace>/<name>@<version-or-range>` as operator convenience syntax, but docs, examples, and future site snippets should prefer the canonical `skill://...` form.
+
+## Registry Roots
+
+Registry root selection is explicit:
+
+- there is no implicit `.guild/` root
+- there is no implicit `target/dev-local-registry/...` root
+- `--registry-root <path>` wins
+- otherwise `GUILD_REGISTRY_ROOT`
+- otherwise the CLI fails with usage guidance
+
+## Trust Scope
+
+`guild trust ...` manages the current local trust store only:
+
+- generate local publisher identities
+- add, list, and remove local trusted publisher records
+- no remote trust distribution
+- no transparency-log semantics
+- no remote publisher policy management
+
 ## Hero Flows
 
 Happy path:
@@ -113,7 +141,7 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-regist
 What this teaches:
 
 - export/import operate on installed signed bundle semantics, not source directories
-- trust is explicit and local
+- `guild trust ...` is explicit local trust-store management, not remote trust distribution
 - OCI transport is the same installed signed bundle contract carried through another shape, not a second artifact model
 
 ## Mapping To Today's Substrate

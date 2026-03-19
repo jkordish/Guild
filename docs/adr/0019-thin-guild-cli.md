@@ -13,7 +13,9 @@ Before this ADR, the repository had:
 - a real stdio MCP server with one public tool, `guild.inspect`
 - repo examples and helper binaries that proved the substrate honestly
 
-But the public command language was still split between conceptual verbs, proof examples, and helper-specific commands. That made the product story sharper than the operator workflow.
+But the public command language had drifted across conceptual verbs, proof examples, and helper-specific commands. The product story was sharper than the actual operator workflow.
+
+This ADR exists to make the command language real, substrate-backed, and explicit.
 
 ## Decision
 
@@ -31,6 +33,12 @@ The stable v1 command surface is:
 - `guild trust ...`
 - `guild mcp serve --stdio`
 
+The canonical public URI families are:
+
+- `skill://<namespace>/<name>@<version-or-range>` for executable skill refs
+- `guild://...` for Guild-owned durable resources
+- standard OCI references such as `<registry>/<repo>:<tag>` or `<registry>/<repo>@<digest>` for transport and publication artifacts
+
 The CLI is intentionally substrate-backed rather than a second runtime layer:
 
 - `guild inspect` delegates to the same inspect path used by `guild.inspect`
@@ -40,17 +48,29 @@ The CLI is intentionally substrate-backed rather than a second runtime layer:
 
 Registry root selection stays explicit and local-first:
 
+- there is no implicit `.guild/` root
+- there is no implicit `target/dev-local-registry/...` root
 - `--registry-root <path>` wins
 - otherwise `GUILD_REGISTRY_ROOT`
 - otherwise the CLI fails with usage guidance
 
-The CLI accepts canonical human-facing skill refs in the form:
+Canonical public-facing skill syntax uses:
 
 - `skill://<namespace>/<name>@<version-or-range>`
 
-For convenience, the CLI also accepts the bare alias form:
+For operator convenience, the CLI also accepts the bare alias form:
 
 - `<namespace>/<name>@<version-or-range>`
+
+Docs, examples, and site snippets should prefer the canonical `skill://...` form rather than teaching the bare alias form as public syntax.
+
+`guild trust ...` refers only to current local trust-store operations:
+
+- generate local publisher identities
+- add, list, and remove trusted local publisher records
+- it does not imply remote trust distribution
+- it does not imply transparency-log semantics
+- it does not imply remote publisher policy management
 
 ## Consequences
 
@@ -71,3 +91,5 @@ Intentional non-decisions:
 The `guild` CLI must remain a thin reflection of actual Guild substrate behavior.
 
 Guild should not add headline verbs or workflows to the CLI unless the underlying runtime, registry, trust, and durability semantics already exist and can be documented honestly.
+
+The CLI must not become an aspirational product shell. Headline verbs such as `guild deploy` stay out until Guild has a precise substrate-backed deployment model that can be named honestly.
