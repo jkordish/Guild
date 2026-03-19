@@ -166,6 +166,58 @@ fn inspect_and_read_commands_work_with_env_registry_root() {
 }
 
 #[test]
+fn read_command_distinguishes_evidence_payload_and_metadata_resources() {
+    let temp = TempFixtureDir::new("guild-cli-evidence-metadata");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let inspect_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+
+    let evidence_record = inspect_value["record"]["emitted_evidence"][0].clone();
+    let evidence_uri = evidence_record["uri"].as_str().unwrap().to_owned();
+    let metadata_uri = format!("{evidence_uri}/metadata");
+
+    let payload_output =
+        run_guild_success(&["read", &evidence_uri, "--json"], Some(&registry_root));
+    let payload_value: Value = parse_json_stdout(&payload_output);
+    let payload_json: Value =
+        serde_json::from_str(payload_value["text"].as_str().unwrap()).unwrap();
+
+    let metadata_output =
+        run_guild_success(&["read", &metadata_uri, "--json"], Some(&registry_root));
+    let metadata_value: Value = parse_json_stdout(&metadata_output);
+    let metadata_json: Value =
+        serde_json::from_str(metadata_value["text"].as_str().unwrap()).unwrap();
+
+    assert_eq!(payload_value["uri"].as_str(), Some(evidence_uri.as_str()));
+    assert_eq!(
+        payload_value["mime_type"].as_str(),
+        Some("application/json")
+    );
+    assert_eq!(
+        payload_json["kind"].as_str(),
+        Some("hello-inspect-snapshot")
+    );
+    assert_eq!(metadata_value["uri"].as_str(), Some(metadata_uri.as_str()));
+    assert_eq!(
+        metadata_value["mime_type"].as_str(),
+        Some("application/json")
+    );
+    assert_eq!(metadata_json, evidence_record);
+    assert_eq!(metadata_json["uri"].as_str(), Some(evidence_uri.as_str()));
+    assert_eq!(
+        metadata_json["produced_by_execution"],
+        inspect_value["record"]["receipt"]["execution_id"]
+    );
+    assert!(
+        metadata_json["blob_uri"]
+            .as_str()
+            .unwrap()
+            .starts_with("guild://objects/sha256/")
+    );
+}
+
+#[test]
 fn missing_registry_root_fails_with_explicit_guidance() {
     let output = run_guild(&["inspect", "skill://example/hello-inspect@^0.1"], None);
     assert!(!output.status.success());

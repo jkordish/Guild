@@ -4,7 +4,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use guild_mcp::protocol::{
     CallToolResult, InitializeResult, ListToolsResult, PROTOCOL_VERSION_2025_11_25,
-    ReadResourceResult,
+    ReadResourceResult, ResourceContents,
 };
 use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
@@ -244,6 +244,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "evidence resource contents: {} item(s)",
             evidence_resource.contents.len()
         );
+
+        let metadata_uri = format!("{}/metadata", first.uri);
+        let metadata_resource: ReadResourceResult =
+            parse_result(&client.request("resources/read", &json!({ "uri": metadata_uri }))?)?;
+        println!(
+            "evidence metadata resource contents: {} item(s)",
+            metadata_resource.contents.len()
+        );
+
+        let ResourceContents::Text(metadata_text) = &metadata_resource.contents[0] else {
+            return Err("expected evidence metadata resource to be textual JSON".into());
+        };
+        let metadata_value: Value = serde_json::from_str(&metadata_text.text)?;
+        if metadata_value["uri"].as_str() != Some(first.uri.as_str()) {
+            return Err(
+                "evidence metadata resource did not preserve the evidence record URI".into(),
+            );
+        }
+        if metadata_value["produced_by_execution"].as_str()
+            != Some(record.receipt.execution_id.as_str())
+        {
+            return Err(
+                "evidence metadata resource did not preserve produced_by_execution linkage".into(),
+            );
+        }
+        println!("evidence metadata uri: {}", metadata_text.uri);
     }
 
     Ok(())
