@@ -25,6 +25,7 @@ The stable v1 command surface is:
 
 - `guild inspect`
 - `guild read`
+- `guild list`
 - `guild install`
 - `guild export`
 - `guild import`
@@ -71,6 +72,13 @@ Docs, examples, and site snippets should prefer the canonical `skill://...` form
 - it does not imply remote trust distribution
 - it does not imply transparency-log semantics
 - it does not imply remote publisher policy management
+
+`guild list` is the thin local operator view for local state:
+
+- `guild list` shows installed skills plus recent persisted executions
+- `guild list skills` shows installed skills only
+- `guild list executions` shows recent persisted execution activity
+- it does not imply a live loaded-runtime module registry or a broader search/indexing surface
 
 ## Consequences
 

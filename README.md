@@ -32,6 +32,7 @@ The current local command surface is:
 
 - `guild inspect`
 - `guild read`
+- `guild list`
 - `guild install`
 - `guild export`
 - `guild import`
@@ -52,12 +53,14 @@ Public docs prefer canonical `skill://...` refs. The CLI also accepts bare `<nam
 
 Guild requires explicit local registry root selection for CLI operations. There is no implicit `.guild/` or `target/dev-local-registry/...` fallback: pass `--registry-root <path>`, or set `GUILD_REGISTRY_ROOT`.
 
-### Install, Inspect, Read
+### Install, List, Inspect, Read
 
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/hello
 
 cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
+
+cargo run -q -p guild-mcp --bin guild -- list
 
 cargo run -q -p guild-mcp --bin guild -- inspect \
   skill://example/hello-inspect@^0.1 \
@@ -65,12 +68,15 @@ cargo run -q -p guild-mcp --bin guild -- inspect \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
   --json
 
+cargo run -q -p guild-mcp --bin guild -- list executions --limit 5
+
 cargo run -q -p guild-mcp --bin guild -- read guild://executions/<execution-id>
 ```
 
 What that flow shows:
 
 - `install` builds source into installed executable state
+- `list` shows what is installed here and what has run recently, without pretending Guild already has a live loaded-module registry
 - `inspect` executes a human-facing `skill://...` ref through the real Guild path
 - success returns a durable `guild://executions/...` receipt
 - `read` goes back through the same resource backend used by MCP and guest `read-resource`

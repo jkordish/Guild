@@ -112,6 +112,23 @@ fn install_with_cli(registry_root: &Path) {
     let _ = run_guild_success(&["--registry-root", &root, "install", &source_dir], None);
 }
 
+fn inspect_hello_with_cli(registry_root: &Path, name: &str, skill_ref: &str) -> Value {
+    let grants_json = emit_evidence_grants_json();
+    let inspect_output = run_guild_success(
+        &[
+            "inspect",
+            skill_ref,
+            "--input-json",
+            &command_json(json!({ "name": name })),
+            "--grants-json",
+            &grants_json,
+            "--json",
+        ],
+        Some(registry_root),
+    );
+    parse_json_stdout(&inspect_output)
+}
+
 #[test]
 fn inspect_and_read_commands_work_with_env_registry_root() {
     let temp = TempFixtureDir::new("guild-cli-inspect-read");
@@ -188,6 +205,63 @@ fn explicit_registry_root_overrides_env_and_bare_alias_remains_accepted() {
     assert_eq!(
         inspect_value["summary"].as_str(),
         Some("Hello, Ada. Guild inspect is working."),
+    );
+}
+
+#[test]
+fn list_commands_show_installed_skills_and_recent_executions() {
+    let temp = TempFixtureDir::new("guild-cli-list");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let inspect_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let execution_uri = inspect_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let summary_output = run_guild_success(&["list", "--json"], Some(&registry_root));
+    let summary: Value = parse_json_stdout(&summary_output);
+    assert_eq!(summary["installed_count"].as_u64(), Some(1));
+    assert_eq!(summary["recent_execution_limit"].as_u64(), Some(10));
+    assert_eq!(summary["recent_execution_count"].as_u64(), Some(1));
+    assert!(
+        summary["installed"][0]["resolved_skill"]
+            .as_str()
+            .unwrap()
+            .starts_with("skill://example/hello-inspect@")
+    );
+    assert!(
+        summary["recent_executions"][0]["resolved_skill"]
+            .as_str()
+            .unwrap()
+            .starts_with("skill://example/hello-inspect@")
+    );
+    assert_eq!(
+        summary["recent_executions"][0]["uri"].as_str(),
+        Some(execution_uri.as_str()),
+    );
+
+    let skills_output = run_guild_success(&["list", "skills", "--json"], Some(&registry_root));
+    let skills: Value = parse_json_stdout(&skills_output);
+    assert_eq!(skills["installed_count"].as_u64(), Some(1));
+    assert_eq!(skills["installed"].as_array().unwrap().len(), 1);
+
+    let executions_output = run_guild_success(
+        &["list", "executions", "--limit", "1", "--json"],
+        Some(&registry_root),
+    );
+    let executions: Value = parse_json_stdout(&executions_output);
+    assert_eq!(executions["limit"].as_u64(), Some(1));
+    assert_eq!(executions["execution_count"].as_u64(), Some(1));
+    assert_eq!(
+        executions["executions"][0]["status"].as_str(),
+        Some("succeeded"),
+    );
+    assert_eq!(
+        executions["executions"][0]["uri"].as_str(),
+        Some(execution_uri.as_str()),
     );
 }
 

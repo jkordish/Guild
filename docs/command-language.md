@@ -17,6 +17,7 @@ Guild's first-class local verbs are:
 
 - `guild inspect`
 - `guild read`
+- `guild list`
 - `guild install`
 - `guild export`
 - `guild import`
@@ -80,6 +81,19 @@ Registry root selection is explicit:
 - no remote trust distribution
 - no transparency-log semantics
 - no remote publisher policy management
+
+## List
+
+`guild list` is the thin local summary view for state already owned by the registry:
+
+- `guild list`
+  Shows installed skills plus recent persisted executions.
+- `guild list skills`
+  Shows installed skills only.
+- `guild list executions --limit 20`
+  Shows recent persisted execution activity only.
+
+Guild does not currently expose a live loaded-runtime module registry. The honest current answer to "what is loaded here?" is recent persisted execution activity.
 
 ## Hero Flows
 
@@ -150,6 +164,7 @@ The CLI is intentionally thin:
 
 - `guild inspect` uses the same `GuildMcpFacade::inspect` path used by `guild.inspect`
 - `guild read` uses the same local resource backend used by MCP `resources/read` and guest `read-resource`
+- `guild list` uses the local registry's installed-skill view plus recent persisted execution records
 - `guild install` uses `LocalSourceInstaller`
 - `guild export` and `guild push` export signed installed state from `LocalRegistry`
 - `guild import` and `guild pull` re-run the existing trust, signature, and install checks

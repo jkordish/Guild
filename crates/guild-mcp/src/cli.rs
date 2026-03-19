@@ -12,8 +12,8 @@ use guild_registry::{
 };
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
-    CapabilityGrantSet, ExecutionRecord, ExecutionStatus, LocalTrustTier, RequestedSkillRef,
-    ResourceReadResult,
+    CapabilityGrantSet, ExecutionRecord, ExecutionStatus, InstalledVerificationState,
+    LocalTrustTier, RequestedSkillRef, ResourceReadResult,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -23,6 +23,8 @@ use crate::{CLI_BINARY_NAME, GuildMcpFacade, InspectRequest, InspectResponse, Mc
 
 const DEFAULT_TENANT_ID: &str = "local";
 const DEFAULT_ACTOR_ID: &str = "guild-cli";
+const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
+const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
 
 #[derive(Debug)]
 pub struct CliError {
@@ -88,6 +90,49 @@ struct ReadCommandOutput {
     text: Option<String>,
     bytes_base64: Option<String>,
     output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ListedInstalledSkillOutput {
+    resolved_skill: String,
+    digest: String,
+    trust_tier: LocalTrustTier,
+    verification_state: InstalledVerificationState,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ListedExecutionOutput {
+    execution_id: String,
+    uri: String,
+    status: ExecutionStatus,
+    resolved_skill: String,
+    started_at_utc: Option<String>,
+    finished_at_utc: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ListSummaryOutput {
+    registry_root: String,
+    installed_count: usize,
+    installed: Vec<ListedInstalledSkillOutput>,
+    recent_execution_limit: usize,
+    recent_execution_count: usize,
+    recent_executions: Vec<ListedExecutionOutput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ListSkillsOutput {
+    registry_root: String,
+    installed_count: usize,
+    installed: Vec<ListedInstalledSkillOutput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ListExecutionsOutput {
+    registry_root: String,
+    limit: usize,
+    execution_count: usize,
+    executions: Vec<ListedExecutionOutput>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -169,6 +214,7 @@ pub fn run(
         }
         "inspect" => run_inspect(&args[1..], &global, env_registry_root),
         "read" => run_read(&args[1..], &global, env_registry_root),
+        "list" => run_list(&args[1..], &global, env_registry_root),
         "install" => run_install(&args[1..], &global, env_registry_root),
         "export" => run_export(&args[1..], &global, env_registry_root),
         "import" => run_import(&args[1..], &global, env_registry_root),
@@ -202,6 +248,149 @@ fn parse_global_options(
     }
 
     Ok((GlobalOptions { registry_root }, remaining))
+}
+
+fn run_list(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if !args.is_empty() && is_help(args[0].as_str()) {
+        print_list_usage();
+        return Ok(());
+    }
+
+    let registry_root = require_registry_root(global, env_registry_root)?;
+    match args.first().map(String::as_str) {
+        Some("skills") => run_list_skills(&args[1..], &registry_root),
+        Some("executions") => run_list_executions(&args[1..], &registry_root),
+        None | Some(_) => run_list_summary(args, &registry_root),
+    }
+}
+
+fn run_list_summary(args: &[String], registry_root: &Path) -> Result<(), CliError> {
+    let mut json_output = false;
+
+    for argument in args {
+        match argument.as_str() {
+            "--json" => json_output = true,
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild list`: `{other}`"
+                )));
+            }
+        }
+    }
+
+    let registry = LocalRegistry::load(registry_root)?;
+    let installed = summarize_listed_installed_skills(registry.installed());
+    let recent_records =
+        registry.list_recent_execution_records(DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT)?;
+    let recent_executions = summarize_listed_executions(&recent_records);
+    let output = ListSummaryOutput {
+        registry_root: registry_root.display().to_string(),
+        installed_count: installed.len(),
+        installed,
+        recent_execution_limit: DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT,
+        recent_execution_count: recent_executions.len(),
+        recent_executions,
+    };
+
+    if json_output {
+        print_json(&output)?;
+    } else {
+        print_list_summary_text(&output);
+    }
+
+    Ok(())
+}
+
+fn run_list_skills(args: &[String], registry_root: &Path) -> Result<(), CliError> {
+    let mut json_output = false;
+
+    for argument in args {
+        match argument.as_str() {
+            "--json" => json_output = true,
+            "--help" | "-h" => {
+                print_list_skills_usage();
+                return Ok(());
+            }
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild list skills`: `{other}`"
+                )));
+            }
+        }
+    }
+
+    let registry = LocalRegistry::load(registry_root)?;
+    let installed = summarize_listed_installed_skills(registry.installed());
+    let output = ListSkillsOutput {
+        registry_root: registry_root.display().to_string(),
+        installed_count: installed.len(),
+        installed,
+    };
+
+    if json_output {
+        print_json(&output)?;
+    } else {
+        print_list_skills_text(&output);
+    }
+
+    Ok(())
+}
+
+fn run_list_executions(args: &[String], registry_root: &Path) -> Result<(), CliError> {
+    let mut json_output = false;
+    let mut limit = DEFAULT_LIST_EXECUTIONS_LIMIT;
+    let mut index = 0;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--limit" => {
+                let value = next_value(args, &mut index, "--limit")?;
+                limit = value.parse::<usize>().map_err(|_| {
+                    CliError::new(format!(
+                        "invalid value for `--limit`: `{value}` is not a positive integer"
+                    ))
+                })?;
+                if limit == 0 {
+                    return Err(CliError::new(
+                        "`guild list executions` requires --limit to be greater than zero",
+                    ));
+                }
+            }
+            "--json" => json_output = true,
+            "--help" | "-h" => {
+                print_list_executions_usage();
+                return Ok(());
+            }
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild list executions`: `{other}`"
+                )));
+            }
+        }
+        index += 1;
+    }
+
+    let registry = LocalRegistry::load(registry_root)?;
+    let records = registry.list_recent_execution_records(limit)?;
+    let executions = summarize_listed_executions(&records);
+    let output = ListExecutionsOutput {
+        registry_root: registry_root.display().to_string(),
+        limit,
+        execution_count: executions.len(),
+        executions,
+    };
+
+    if json_output {
+        print_json(&output)?;
+    } else {
+        print_list_executions_text(&output);
+    }
+
+    Ok(())
 }
 
 fn run_inspect(
@@ -1205,6 +1394,37 @@ fn summarize_installed_skill(skill: &InstalledSkill, registry_root: &Path) -> In
     }
 }
 
+fn summarize_listed_installed_skills(skills: &[InstalledSkill]) -> Vec<ListedInstalledSkillOutput> {
+    skills
+        .iter()
+        .map(summarize_listed_installed_skill)
+        .collect()
+}
+
+fn summarize_listed_installed_skill(skill: &InstalledSkill) -> ListedInstalledSkillOutput {
+    ListedInstalledSkillOutput {
+        resolved_skill: format_resolved_skill_ref(&skill.resolved_ref),
+        digest: skill.resolved_ref.digest.clone(),
+        trust_tier: skill.trust.trust_tier.clone(),
+        verification_state: skill.trust.verification_state.clone(),
+    }
+}
+
+fn summarize_listed_executions(records: &[ExecutionRecord]) -> Vec<ListedExecutionOutput> {
+    records.iter().map(summarize_listed_execution).collect()
+}
+
+fn summarize_listed_execution(record: &ExecutionRecord) -> ListedExecutionOutput {
+    ListedExecutionOutput {
+        execution_id: record.receipt.execution_id.clone(),
+        uri: record.receipt.uri.clone(),
+        status: record.status.clone(),
+        resolved_skill: format_resolved_skill_ref(&record.resolved_skill),
+        started_at_utc: record.provenance.started_at_utc.clone(),
+        finished_at_utc: record.provenance.finished_at_utc.clone(),
+    }
+}
+
 fn format_resolved_skill_ref(skill: &guild_types::ResolvedSkillRef) -> String {
     format!(
         "skill://{}/{}@{}",
@@ -1277,12 +1497,91 @@ fn print_import_text(output: &ImportCommandOutput) {
     }
 }
 
+fn print_list_summary_text(output: &ListSummaryOutput) {
+    print_list_skills_lines(&output.installed, output.installed_count);
+    println!();
+    print_list_execution_lines(
+        &output.recent_executions,
+        output.recent_execution_count,
+        Some(output.recent_execution_limit),
+    );
+}
+
+fn print_list_skills_text(output: &ListSkillsOutput) {
+    print_list_skills_lines(&output.installed, output.installed_count);
+}
+
+fn print_list_executions_text(output: &ListExecutionsOutput) {
+    print_list_execution_lines(
+        &output.executions,
+        output.execution_count,
+        Some(output.limit),
+    );
+}
+
+fn print_list_skills_lines(skills: &[ListedInstalledSkillOutput], installed_count: usize) {
+    println!("installed skills ({installed_count}):");
+    if skills.is_empty() {
+        println!("  none");
+        return;
+    }
+
+    for skill in skills {
+        println!("  {}", skill.resolved_skill);
+        println!("    digest: {}", skill.digest);
+        println!(
+            "    trust: {} / {}",
+            skill.trust_tier,
+            verification_state_label(&skill.verification_state)
+        );
+    }
+}
+
+fn print_list_execution_lines(
+    executions: &[ListedExecutionOutput],
+    execution_count: usize,
+    limit: Option<usize>,
+) {
+    match limit {
+        Some(limit) => println!("recent executions ({execution_count}, limit {limit}):"),
+        None => println!("recent executions ({execution_count}):"),
+    }
+
+    if executions.is_empty() {
+        println!("  none");
+        return;
+    }
+
+    for execution in executions {
+        println!(
+            "  {}  {}",
+            status_label(&execution.status),
+            execution.resolved_skill
+        );
+        println!("    execution: {}", execution.uri);
+        if let Some(started_at) = &execution.started_at_utc {
+            println!("    started: {started_at}");
+        }
+        if let Some(finished_at) = &execution.finished_at_utc {
+            println!("    finished: {finished_at}");
+        }
+    }
+}
+
+fn verification_state_label(state: &InstalledVerificationState) -> &'static str {
+    match state {
+        InstalledVerificationState::LocalSource => "local-source",
+        InstalledVerificationState::VerifiedImport => "verified-import",
+    }
+}
+
 fn print_usage() {
     println!("usage: guild [--registry-root <path>] <command> [options]");
     println!();
     println!("commands:");
     println!("  inspect      execute a skill through the local inspect path");
     println!("  read         read a Guild resource URI");
+    println!("  list         list installed skills and recent persisted executions");
     println!("  install      install a source skill into a Guild root");
     println!("  export       export installed state as a signed bundle or OCI layout");
     println!("  import       import a signed bundle or OCI layout into a Guild root");
@@ -1312,6 +1611,24 @@ fn print_inspect_usage() {
 
 fn print_read_usage() {
     println!("usage: guild [--registry-root <path>] read <guild-uri> [--output <path>] [--json]");
+}
+
+fn print_list_usage() {
+    println!("usage: guild [--registry-root <path>] list [skills|executions] [options]");
+    println!();
+    println!("`guild list` prints a summary of installed skills plus recent persisted executions.");
+    println!("`guild list skills` shows installed skills only.");
+    println!(
+        "`guild list executions` shows recent persisted execution activity; Guild does not currently expose a live loaded-runtime module registry."
+    );
+}
+
+fn print_list_skills_usage() {
+    println!("usage: guild [--registry-root <path>] list skills [--json]");
+}
+
+fn print_list_executions_usage() {
+    println!("usage: guild [--registry-root <path>] list executions [--limit <n>] [--json]");
 }
 
 fn print_install_usage() {
