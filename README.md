@@ -1,14 +1,22 @@
 # Guild
 
-**Guild** is a Rust-first, WASM-native registry and runtime for portable AI skills.
+**Guild** is a contracts-first Rust/Wasm runtime and control-plane for portable AI skills.
 
-Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages operational know-how as versioned, capability-scoped, portable skills that can be resolved, executed, inspected, and shared without giving guests ambient authority.
+Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild is the layer that makes those skills admit, run, delegate, and witness authority under explicit host control instead of ambient guest access.
 
 > Status: pre-alpha. Current milestone status is explicit: M3 and M4 are implemented as the draft-v1 schema and admission bundle under `docs/schemas/draft-v1/`; M5 and M6 are implemented there as bounded draft-v1 proof and token paths; M7 is complete as the bounded draft-v1 witness layer; M8a is complete as the live-runtime vocabulary and observation-alignment bridge; M9 and M10 have not started. The live Rust runtime surface is canonical. The draft bundle remains draft.
 
 ## Why Guild
 
-Guild is opinionated about a few things:
+Guild exists to make the milestone path concrete:
+
+- `M3` and `M4`: declare portable contracts and compute a fail-closed upper-bound execution plan before running
+- `M5`: prove when a specific invocation needs less authority than that upper bound, without widening semantics
+- `M6`: materialize only invocation-bound delegated capability tokens instead of handing guests ambient authority
+- `M7`: record exercised and blocked authority as durable witnessable facts rather than loose logs
+- `M8a`: align the draft control-plane vocabulary with the live Rust enforcement and observation surface, or fail closed when the mapping is not safe
+
+That is why Guild is strict about a few things:
 
 - requested identity is not executable identity
 - the host, not the guest, owns trust-sensitive authority
@@ -16,7 +24,7 @@ Guild is opinionated about a few things:
 - inspect, plan, and apply are distinct modes
 - the MCP surface should stay small and boring
 
-The goal is a platform for portable, auditable, reusable skills, not a pile of tool wrappers glued together by vibes.
+The goal is not a loose agent wrapper layer. It is a portable skill system where admission, delegation, and witness claims stay tied to real runtime truth.
 
 ## Real CLI
 
