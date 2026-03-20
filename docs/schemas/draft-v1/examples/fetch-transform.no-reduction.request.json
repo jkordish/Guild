@@ -1,0 +1,121 @@
+{
+  "kind": "guild.admission_request",
+  "version": "1.0.0",
+  "request_id": "urn:guild:request:fetch-transform:no-reduction:v1",
+  "contract": {
+    "contract_id": "urn:guild:contract:fetch-transform:v1",
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "fec4ee0d8541bab9129a83fb530d1fa0378916beabe80c7ccedbfdd0fd8421f8"
+    }
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "c69ff0208dfc627c10beb81d20babffc27585fd741b1f3d8b3beb32f1e0c6f46"
+    }
+  },
+  "runtime_candidates": [
+    {
+      "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+    }
+  ],
+  "preferred_runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+  "requested_authority": {
+    "grants": [
+      {
+        "effect_class": "fs.read",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/**"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_calls": 100,
+          "max_bytes": 10485760
+        }
+      },
+      {
+        "effect_class": "fs.write",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/output/**"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_calls": 100,
+          "max_bytes": 10485760
+        }
+      },
+      {
+        "effect_class": "net.connect",
+        "scope": {
+          "kind": "network",
+          "audiences": [
+            {
+              "host": "api.vendor.example.com",
+              "ports": [
+                443
+              ],
+              "schemes": [
+                "https"
+              ],
+              "path_prefixes": [
+                "/v1/source/"
+              ],
+              "methods": [
+                "GET"
+              ]
+            }
+          ]
+        },
+        "cardinality": {
+          "max_calls": 10,
+          "max_bytes": 5242880
+        }
+      },
+      {
+        "effect_class": "secret.read",
+        "scope": {
+          "kind": "secret",
+          "secret_ids": [
+            "vault://prod/vendor/source-api-token"
+          ]
+        },
+        "cardinality": {
+          "max_calls": 2
+        }
+      },
+      {
+        "effect_class": "clock.read",
+        "scope": {
+          "kind": "system"
+        },
+        "cardinality": {
+          "max_calls": 10
+        }
+      }
+    ],
+    "ttl_seconds": 300
+  },
+  "requested_witness_level": "hostcall",
+  "audience_binding_inputs": [],
+  "resource_binding_inputs": [],
+  "delegation_chain_input": {
+    "caller_chain": [
+      "urn:guild:actor:ops-user"
+    ],
+    "requested_max_hops": 0
+  },
+  "invocation_constraints": {
+    "valid_for_seconds": 300
+  }
+}

@@ -1,0 +1,208 @@
+{
+  "baseline_authority_plan": {
+    "delegation_policy": {
+      "anti_replay_required": false,
+      "audience_binding_required": false,
+      "call_chain_binding_required": false,
+      "max_hops": 0,
+      "mode": "forbidden",
+      "ttl_seconds_max": 300
+    },
+    "grants": [],
+    "plan_id": "urn:guild:request:zero-authority:admit:v1:granted",
+    "ttl_seconds": 120
+  },
+  "cache": {
+    "bypass_reason_codes": [
+      "PROOF_CACHE_BYPASSED"
+    ],
+    "cache_key_digest": {
+      "algorithm": "sha256",
+      "value": "a84c0a9a0f27847d9bbe15c5361ebd7b397f0fb2d4891c45b791655a9d3b9d0a"
+    },
+    "key_material": {
+      "comparator_digest": {
+        "algorithm": "sha256",
+        "value": "fb3f379a9af1ec5ff081350c2d7bba60152e74148cd9b0d8e7f55989f725b90c"
+      },
+      "component_digest": {
+        "algorithm": "sha256",
+        "value": "df78342cd5b5f401a3ab4ee69e5d42d4cbaf0d8f67f1fb8e947c3b9d93d84f8e"
+      },
+      "contract_digest": {
+        "algorithm": "sha256",
+        "value": "90969f04d6a0a5d3990af114ac918e3053bf568444bfce4d5d598d246d8e6770"
+      },
+      "execution_plan_digest": {
+        "algorithm": "sha256",
+        "value": "5eac69cecce737fdf1c45dcec079e29c5137d543b2bf697b7b101252dee33117"
+      },
+      "export_name": "summarize",
+      "harness_id": "urn:guild:harness:draft-v1:example-bounded",
+      "harness_version": "1.0.0",
+      "input_class_fingerprint": {
+        "canonicalization": "rfc8785-jcs",
+        "digest": {
+          "algorithm": "sha256",
+          "value": "26d18e0d615b0955ec36aa4b5b891dcf8865e726bc77f26b8b305fbb7f89fb68"
+        },
+        "kind": "json-schema-hash"
+      },
+      "invocation_input_digest": {
+        "algorithm": "sha256",
+        "value": "477b6a3c89a76b4fb74bf3d6cb4871217a4189812534220ad484fd42dea642b4"
+      },
+      "minimization_algorithm_version": "1.0.0",
+      "runtime_guarantee_digest": {
+        "algorithm": "sha256",
+        "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+      },
+      "shrink_model_version": "1.0.0"
+    },
+    "reused_proof_id": null,
+    "status": "bypassed"
+  },
+  "candidate_attempts": [],
+  "chosen_runtime": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "comparator": {
+    "assumptions": {
+      "ambient_clock_controlled": true,
+      "ambient_network_controlled": true,
+      "ambient_random_controlled": true
+    },
+    "comparator_id": "urn:guild:comparator:zero-authority:pure:v1",
+    "comparator_kind": "pure_zero_authority",
+    "inputs": {
+      "allow_scope_shrinkers": false,
+      "expect_no_observed_effects": true
+    },
+    "reference": "zero-authority.pure.v1",
+    "version": "1.0.0"
+  },
+  "comparator_digest": {
+    "algorithm": "sha256",
+    "value": "fb3f379a9af1ec5ff081350c2d7bba60152e74148cd9b0d8e7f55989f725b90c"
+  },
+  "component_digest": {
+    "algorithm": "sha256",
+    "value": "df78342cd5b5f401a3ab4ee69e5d42d4cbaf0d8f67f1fb8e947c3b9d93d84f8e"
+  },
+  "contract_digest": {
+    "algorithm": "sha256",
+    "value": "90969f04d6a0a5d3990af114ac918e3053bf568444bfce4d5d598d246d8e6770"
+  },
+  "created_at": "2026-03-20T12:30:00Z",
+  "execution_plan_digest": {
+    "algorithm": "sha256",
+    "value": "5eac69cecce737fdf1c45dcec079e29c5137d543b2bf697b7b101252dee33117"
+  },
+  "execution_plan_id": "urn:guild:request:zero-authority:admit:v1:execution-plan",
+  "expires_at": null,
+  "export_name": "summarize",
+  "input_class_fingerprint": {
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "26d18e0d615b0955ec36aa4b5b891dcf8865e726bc77f26b8b305fbb7f89fb68"
+    },
+    "kind": "json-schema-hash"
+  },
+  "invocation_input_digest": {
+    "algorithm": "sha256",
+    "value": "477b6a3c89a76b4fb74bf3d6cb4871217a4189812534220ad484fd42dea642b4"
+  },
+  "kind": "guild.proof_record",
+  "minimization_algorithm": {
+    "harness_id": "urn:guild:harness:draft-v1:example-bounded",
+    "harness_version": "1.0.0",
+    "id": "urn:guild:minimizer:draft-v1:example-bounded",
+    "shrink_model_version": "1.0.0",
+    "version": "1.0.0"
+  },
+  "minimization_reason_codes": [
+    "PROOF_CACHE_BYPASSED"
+  ],
+  "notes": "M5 draft proof record. This harness is intentionally example-bounded and does not claim runtime-general minimization.",
+  "observed_effect_summary": {
+    "effects": [],
+    "output_digest": {
+      "algorithm": "sha256",
+      "value": "49345e441a148b10a01d7bf488ed2fd2ab60857fbea31aea1d088434272ed80b"
+    },
+    "trace_digest": {
+      "algorithm": "sha256",
+      "value": "bda997f1165e1f1917525567431ae2a5b9c971eb62e33c17c67b9c3843e7eb53"
+    }
+  },
+  "proof_id": "urn:guild:request:zero-authority:admit:v1:execution-plan:m5-proof",
+  "proof_method": "counterfactual_shadow_execution",
+  "proof_status": "exact_minimal",
+  "proven_authority_plan": {
+    "delegation_policy": {
+      "anti_replay_required": false,
+      "audience_binding_required": false,
+      "call_chain_binding_required": false,
+      "max_hops": 0,
+      "mode": "forbidden",
+      "ttl_seconds_max": 300
+    },
+    "grants": [],
+    "plan_id": "urn:guild:request:zero-authority:admit:v1:granted",
+    "ttl_seconds": 120
+  },
+  "request_id": "urn:guild:request:zero-authority:admit:v1",
+  "retained_authorities": [],
+  "search_model": {
+    "assumptions": [
+      "Only bundled draft-v1 examples have a real M5 harness in this milestone.",
+      "Comparator and invocation fixtures must remain deterministic and controlled.",
+      "Scope shrinkers are bounded by observed-effect projections, not a runtime-general search space."
+    ],
+    "discrete_grant_search": {
+      "candidate_plans_evaluated": 0,
+      "exact": true,
+      "strategy": "exhaustive_powerset"
+    },
+    "scope_shrinkers": [
+      {
+        "accepted": 0,
+        "attempts": 0,
+        "bounded": true,
+        "scope_kind": "filesystem",
+        "strategy": "observed_effect_projection"
+      },
+      {
+        "accepted": 0,
+        "attempts": 0,
+        "bounded": true,
+        "scope_kind": "network",
+        "strategy": "observed_effect_projection"
+      },
+      {
+        "accepted": 0,
+        "attempts": 0,
+        "bounded": true,
+        "scope_kind": "delegation",
+        "strategy": "observed_effect_projection"
+      }
+    ],
+    "search_domain": "draft-v1 example-bounded minimization harness",
+    "search_limits": {
+      "max_candidate_plans": 128,
+      "truncated": false
+    }
+  },
+  "skill_contract_id": "urn:guild:contract:zero-authority:v1",
+  "version": "1.0.0"
+}

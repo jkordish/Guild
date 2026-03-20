@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Guild Comparator Profile",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "guild.comparator_profile"
+    },
+    "comparator_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "comparator_kind": {
+      "type": "string",
+      "enum": [
+        "canonical_structured_output",
+        "declared_postconditions",
+        "side_effect_trace_equivalence",
+        "pure_zero_authority"
+      ]
+    },
+    "reference": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canonicalization": {
+      "type": "string",
+      "enum": [
+        "rfc8785-jcs",
+        "opaque"
+      ]
+    },
+    "checker_ref": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "output_pointer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object"
+    },
+    "assumptions": {
+      "type": "object",
+      "properties": {
+        "ambient_clock_controlled": {
+          "type": "boolean"
+        },
+        "ambient_network_controlled": {
+          "type": "boolean"
+        },
+        "ambient_random_controlled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ambient_clock_controlled",
+        "ambient_network_controlled",
+        "ambient_random_controlled"
+      ],
+      "additionalProperties": false
+    },
+    "notes": {
+      "type": "string"
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  },
+  "required": [
+    "kind",
+    "comparator_id",
+    "version",
+    "comparator_kind",
+    "inputs",
+    "assumptions"
+  ],
+  "additionalProperties": false
+}

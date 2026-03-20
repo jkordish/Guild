@@ -12,8 +12,20 @@
     "proof_id": {
       "$ref": "common.schema.json#/$defs/identifier"
     },
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "execution_plan_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "execution_plan_digest": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
     "skill_contract_id": {
       "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "contract_digest": {
+      "$ref": "common.schema.json#/$defs/digest"
     },
     "component_digest": {
       "$ref": "common.schema.json#/$defs/digest"
@@ -25,32 +37,200 @@
     "input_class_fingerprint": {
       "$ref": "common.schema.json#/$defs/input_class_fingerprint"
     },
-    "runtime_guarantee_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
-    },
-    "runtime_guarantee_digest": {
+    "invocation_input_digest": {
       "$ref": "common.schema.json#/$defs/digest"
+    },
+    "chosen_runtime": {
+      "type": "object",
+      "properties": {
+        "runtime_guarantee_id": {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        "runtime_guarantee_digest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "runtime": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "vendor": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "runtime_guarantee_id",
+        "runtime_guarantee_digest",
+        "runtime"
+      ],
+      "additionalProperties": false
     },
     "proof_method": {
       "type": "string",
       "enum": [
-        "counterfactual_shadow_execution",
-        "static_discharge",
-        "hybrid"
+        "counterfactual_shadow_execution"
       ]
     },
     "comparator": {
       "$ref": "common.schema.json#/$defs/comparator_spec"
     },
+    "comparator_digest": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "minimization_algorithm": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        "version": {
+          "$ref": "common.schema.json#/$defs/semver"
+        },
+        "shrink_model_version": {
+          "$ref": "common.schema.json#/$defs/semver"
+        },
+        "harness_id": {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        "harness_version": {
+          "$ref": "common.schema.json#/$defs/semver"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "shrink_model_version",
+        "harness_id",
+        "harness_version"
+      ],
+      "additionalProperties": false
+    },
+    "search_model": {
+      "type": "object",
+      "properties": {
+        "search_domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "discrete_grant_search": {
+          "type": "object",
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": [
+                "exhaustive_powerset"
+              ]
+            },
+            "exact": {
+              "type": "boolean"
+            },
+            "candidate_plans_evaluated": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "strategy",
+            "exact",
+            "candidate_plans_evaluated"
+          ],
+          "additionalProperties": false
+        },
+        "scope_shrinkers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "scope_kind": {
+                "type": "string",
+                "enum": [
+                  "filesystem",
+                  "network",
+                  "delegation"
+                ]
+              },
+              "strategy": {
+                "type": "string",
+                "minLength": 1
+              },
+              "bounded": {
+                "type": "boolean"
+              },
+              "attempts": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "accepted": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "scope_kind",
+              "strategy",
+              "bounded",
+              "attempts",
+              "accepted"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "search_limits": {
+          "type": "object",
+          "properties": {
+            "max_candidate_plans": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "max_candidate_plans",
+            "truncated"
+          ],
+          "additionalProperties": false
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "search_domain",
+        "discrete_grant_search",
+        "scope_shrinkers",
+        "search_limits",
+        "assumptions"
+      ],
+      "additionalProperties": false
+    },
     "baseline_authority_plan": {
       "$ref": "common.schema.json#/$defs/authority_plan"
     },
-    "minimized_authority_plan": {
+    "proven_authority_plan": {
       "$ref": "common.schema.json#/$defs/authority_plan"
     },
-    "trials": {
+    "candidate_attempts": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "type": "object",
         "properties": {
@@ -60,26 +240,126 @@
           "candidate_authority_plan": {
             "$ref": "common.schema.json#/$defs/authority_plan"
           },
+          "change_kind": {
+            "type": "string",
+            "enum": [
+              "remove_grant",
+              "remove_grant_set",
+              "shrink_scope"
+            ]
+          },
+          "target_effect_class": {
+            "oneOf": [
+              {
+                "$ref": "common.schema.json#/$defs/effect_class"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_scope_kind": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "filesystem",
+                  "network",
+                  "process",
+                  "secret",
+                  "environment",
+                  "system",
+                  "component",
+                  "delegation"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "removed_grants": {
             "type": "array",
             "items": {
               "$ref": "common.schema.json#/$defs/effect_spec"
             }
           },
-          "trial_result": {
-            "type": "string",
-            "enum": [
-              "equivalent",
-              "non_equivalent",
-              "error",
-              "timeout"
+          "shrink_from": {
+            "oneOf": [
+              {
+                "$ref": "common.schema.json#/$defs/effect_spec"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
-          "observed_effects": {
+          "shrink_to": {
+            "oneOf": [
+              {
+                "$ref": "common.schema.json#/$defs/effect_spec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trial_result": {
+            "$ref": "common.schema.json#/$defs/trial_result"
+          },
+          "reason_codes": {
             "type": "array",
             "items": {
-              "$ref": "common.schema.json#/$defs/effect_spec"
-            }
+              "$ref": "common.schema.json#/$defs/minimization_reason_code"
+            },
+            "uniqueItems": true
+          },
+          "shadow_execution": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "success",
+                  "error",
+                  "timeout"
+                ]
+              },
+              "error_code": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "observed_effects": {
+                "type": "array",
+                "items": {
+                  "$ref": "common.schema.json#/$defs/effect_spec"
+                }
+              },
+              "output_digest": {
+                "oneOf": [
+                  {
+                    "$ref": "common.schema.json#/$defs/digest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "error_code",
+              "observed_effects",
+              "output_digest"
+            ],
+            "additionalProperties": false
           },
           "comparator_summary": {
             "type": "object",
@@ -89,15 +369,27 @@
                 "enum": [
                   "match",
                   "mismatch",
-                  "error"
+                  "error",
+                  "unavailable"
                 ]
               },
               "details": {
                 "type": "string"
+              },
+              "compared_output_digest": {
+                "oneOf": [
+                  {
+                    "$ref": "common.schema.json#/$defs/digest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
-              "status"
+              "status",
+              "compared_output_digest"
             ],
             "additionalProperties": false
           }
@@ -105,58 +397,200 @@
         "required": [
           "trial_id",
           "candidate_authority_plan",
+          "change_kind",
+          "target_effect_class",
+          "target_scope_kind",
+          "removed_grants",
+          "shrink_from",
+          "shrink_to",
           "trial_result",
+          "reason_codes",
+          "shadow_execution",
           "comparator_summary"
         ],
         "additionalProperties": false
       }
     },
-    "result": {
-      "type": "string",
-      "enum": [
-        "proven",
-        "failed",
-        "inconclusive",
-        "cached"
-      ]
+    "retained_authorities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "grant": {
+            "$ref": "common.schema.json#/$defs/effect_spec"
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/minimization_reason_code"
+            },
+            "uniqueItems": true
+          },
+          "details": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "grant",
+          "reason_codes",
+          "details"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "proof_status": {
+      "$ref": "common.schema.json#/$defs/proof_status"
+    },
+    "minimization_reason_codes": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/minimization_reason_code"
+      },
+      "uniqueItems": true
+    },
+    "observed_effect_summary": {
+      "type": "object",
+      "properties": {
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/effect_spec"
+          }
+        },
+        "output_digest": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trace_digest": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "effects",
+        "output_digest",
+        "trace_digest"
+      ],
+      "additionalProperties": false
+    },
+    "cache": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "common.schema.json#/$defs/proof_cache_status"
+        },
+        "cache_key_digest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "reused_proof_id": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bypass_reason_codes": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/minimization_reason_code"
+          },
+          "uniqueItems": true
+        },
+        "key_material": {
+          "type": "object",
+          "properties": {
+            "execution_plan_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "contract_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "component_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "export_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "input_class_fingerprint": {
+              "$ref": "common.schema.json#/$defs/input_class_fingerprint"
+            },
+            "invocation_input_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "runtime_guarantee_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "comparator_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "minimization_algorithm_version": {
+              "$ref": "common.schema.json#/$defs/semver"
+            },
+            "shrink_model_version": {
+              "$ref": "common.schema.json#/$defs/semver"
+            },
+            "harness_id": {
+              "$ref": "common.schema.json#/$defs/identifier"
+            },
+            "harness_version": {
+              "$ref": "common.schema.json#/$defs/semver"
+            }
+          },
+          "required": [
+            "execution_plan_digest",
+            "contract_digest",
+            "component_digest",
+            "export_name",
+            "input_class_fingerprint",
+            "invocation_input_digest",
+            "runtime_guarantee_digest",
+            "comparator_digest",
+            "minimization_algorithm_version",
+            "shrink_model_version",
+            "harness_id",
+            "harness_version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "status",
+        "cache_key_digest",
+        "reused_proof_id",
+        "bypass_reason_codes",
+        "key_material"
+      ],
+      "additionalProperties": false
     },
     "created_at": {
       "$ref": "common.schema.json#/$defs/timestamp"
     },
     "expires_at": {
-      "$ref": "common.schema.json#/$defs/timestamp"
-    },
-    "issuer": {
-      "type": "string",
-      "minLength": 1
-    },
-    "invalidation_conditions": {
-      "type": "object",
-      "properties": {
-        "component_digest_change": {
-          "type": "boolean"
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/timestamp"
         },
-        "runtime_guarantee_digest_change": {
-          "type": "boolean"
-        },
-        "input_class_fingerprint_change": {
-          "type": "boolean"
-        },
-        "comparator_change": {
-          "type": "boolean"
-        },
-        "witness_divergence": {
-          "type": "boolean"
+        {
+          "type": "null"
         }
-      },
-      "required": [
-        "component_digest_change",
-        "runtime_guarantee_digest_change",
-        "input_class_fingerprint_change",
-        "comparator_change",
-        "witness_divergence"
-      ],
-      "additionalProperties": false
+      ]
     },
     "notes": {
       "type": "string"
@@ -169,20 +603,31 @@
     "kind",
     "version",
     "proof_id",
+    "request_id",
+    "execution_plan_id",
+    "execution_plan_digest",
     "skill_contract_id",
+    "contract_digest",
     "component_digest",
     "export_name",
     "input_class_fingerprint",
-    "runtime_guarantee_id",
-    "runtime_guarantee_digest",
+    "invocation_input_digest",
+    "chosen_runtime",
     "proof_method",
     "comparator",
+    "comparator_digest",
+    "minimization_algorithm",
+    "search_model",
     "baseline_authority_plan",
-    "minimized_authority_plan",
-    "trials",
-    "result",
+    "proven_authority_plan",
+    "candidate_attempts",
+    "retained_authorities",
+    "proof_status",
+    "minimization_reason_codes",
+    "observed_effect_summary",
+    "cache",
     "created_at",
-    "invalidation_conditions"
+    "expires_at"
   ],
   "additionalProperties": false
 }

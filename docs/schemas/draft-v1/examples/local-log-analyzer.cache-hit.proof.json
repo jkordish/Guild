@@ -96,8 +96,8 @@
       },
       "shrink_model_version": "1.0.0"
     },
-    "reused_proof_id": null,
-    "status": "miss"
+    "reused_proof_id": "urn:guild:request:local-log-analyzer:admit:v1:execution-plan:m5-proof",
+    "status": "hit"
   },
   "candidate_attempts": [
     {
@@ -875,7 +875,7 @@
   "minimization_reason_codes": [
     "AUTHORITY_REQUIRED_BY_COMPARATOR",
     "AUTHORITY_REQUIRED_BY_TRACE",
-    "PROOF_CACHE_MISS"
+    "PROOF_CACHE_HIT"
   ],
   "notes": "M5 draft proof record. This harness is intentionally example-bounded and does not claim runtime-general minimization.",
   "observed_effect_summary": {

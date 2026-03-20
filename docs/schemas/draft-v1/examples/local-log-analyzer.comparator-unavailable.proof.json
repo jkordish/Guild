@@ -55,12 +55,12 @@
     "bypass_reason_codes": [],
     "cache_key_digest": {
       "algorithm": "sha256",
-      "value": "328a308690153ff574762b9d0aae127faef7280b1feede604b6b6c8a9dc77dd7"
+      "value": "254dd2be2bf75015a66b71ea6183463d5d92d1cbc8d989304ca205c04f37a364"
     },
     "key_material": {
       "comparator_digest": {
         "algorithm": "sha256",
-        "value": "b730790c059c9cd845b83b89b429bdb9db91e42382a00dcd3dc6f051be4c0d1f"
+        "value": "9d6c8d47dabfcfcdd06d725a987dedf4e10fb2b8543e689ab855a72c5046547f"
       },
       "component_digest": {
         "algorithm": "sha256",
@@ -221,12 +221,14 @@
       "comparator_summary": {
         "compared_output_digest": {
           "algorithm": "sha256",
-          "value": "e33102fcefa5b651cdd1cad01b4c4c4bde90629eed398e615adaa924719adcca"
+          "value": "7c688b328c608bf92b9872980192ca373fe1135a449712d15d70d168a172a129"
         },
-        "details": "canonical structured output matched exactly",
-        "status": "match"
+        "details": "declared postcondition checker was unavailable",
+        "status": "unavailable"
       },
-      "reason_codes": [],
+      "reason_codes": [
+        "COMPARATOR_UNAVAILABLE"
+      ],
       "removed_grants": [
         {
           "cardinality": {
@@ -283,7 +285,7 @@
       "target_effect_class": "fs.list",
       "target_scope_kind": "filesystem",
       "trial_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:trial:remove:2",
-      "trial_result": "equivalent"
+      "trial_result": "not_proven"
     },
     {
       "candidate_authority_plan": {
@@ -687,6 +689,20 @@
         "grants": [
           {
             "cardinality": {
+              "max_calls": 100
+            },
+            "effect_class": "fs.list",
+            "scope": {
+              "follow_mounts": false,
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/input/**"
+              ],
+              "symlink_policy": "deny"
+            }
+          },
+          {
+            "cardinality": {
               "max_calls": 10
             },
             "effect_class": "clock.read",
@@ -695,7 +711,7 @@
             }
           }
         ],
-        "plan_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:candidate:remove:1:2:candidate:retained:8",
+        "plan_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:candidate:retained:8",
         "ttl_seconds": 300
       },
       "change_kind": "remove_grant",
@@ -735,7 +751,7 @@
       "shrink_to": null,
       "target_effect_class": "fs.read",
       "target_scope_kind": "filesystem",
-      "trial_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:candidate:remove:1:2:trial:retained:8",
+      "trial_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:trial:retained:8",
       "trial_result": "non_equivalent"
     },
     {
@@ -763,9 +779,132 @@
               ],
               "symlink_policy": "deny"
             }
+          },
+          {
+            "cardinality": {
+              "max_calls": 10
+            },
+            "effect_class": "clock.read",
+            "scope": {
+              "kind": "system"
+            }
           }
         ],
-        "plan_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:candidate:remove:1:2:candidate:retained:9",
+        "plan_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:candidate:retained:9",
+        "ttl_seconds": 300
+      },
+      "change_kind": "remove_grant",
+      "comparator_summary": {
+        "compared_output_digest": {
+          "algorithm": "sha256",
+          "value": "7c688b328c608bf92b9872980192ca373fe1135a449712d15d70d168a172a129"
+        },
+        "details": "declared postcondition checker was unavailable",
+        "status": "unavailable"
+      },
+      "reason_codes": [
+        "COMPARATOR_UNAVAILABLE"
+      ],
+      "removed_grants": [
+        {
+          "cardinality": {
+            "max_calls": 100
+          },
+          "effect_class": "fs.list",
+          "scope": {
+            "follow_mounts": false,
+            "kind": "filesystem",
+            "paths": [
+              "/workspace/input/**"
+            ],
+            "symlink_policy": "deny"
+          }
+        }
+      ],
+      "shadow_execution": {
+        "error_code": null,
+        "observed_effects": [
+          {
+            "cardinality": {
+              "max_bytes": 106,
+              "max_calls": 2
+            },
+            "effect_class": "fs.read",
+            "scope": {
+              "follow_mounts": false,
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/input/service-a.log",
+                "/workspace/input/service-b.log"
+              ],
+              "symlink_policy": "deny"
+            }
+          },
+          {
+            "cardinality": {
+              "max_calls": 1
+            },
+            "effect_class": "clock.read",
+            "scope": {
+              "kind": "system"
+            }
+          }
+        ],
+        "output_digest": {
+          "algorithm": "sha256",
+          "value": "7c688b328c608bf92b9872980192ca373fe1135a449712d15d70d168a172a129"
+        },
+        "status": "success"
+      },
+      "shrink_from": null,
+      "shrink_to": null,
+      "target_effect_class": "fs.list",
+      "target_scope_kind": "filesystem",
+      "trial_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:trial:retained:9",
+      "trial_result": "not_proven"
+    },
+    {
+      "candidate_authority_plan": {
+        "delegation_policy": {
+          "anti_replay_required": true,
+          "audience_binding_required": true,
+          "call_chain_binding_required": true,
+          "max_hops": 0,
+          "mode": "forbidden",
+          "ttl_seconds_max": 300
+        },
+        "grants": [
+          {
+            "cardinality": {
+              "max_bytes": 1073741824,
+              "max_calls": 1000
+            },
+            "effect_class": "fs.read",
+            "scope": {
+              "follow_mounts": false,
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/input/**"
+              ],
+              "symlink_policy": "deny"
+            }
+          },
+          {
+            "cardinality": {
+              "max_calls": 100
+            },
+            "effect_class": "fs.list",
+            "scope": {
+              "follow_mounts": false,
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/input/**"
+              ],
+              "symlink_policy": "deny"
+            }
+          }
+        ],
+        "plan_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:candidate:retained:10",
         "ttl_seconds": 300
       },
       "change_kind": "remove_grant",
@@ -799,7 +938,7 @@
       "shrink_to": null,
       "target_effect_class": "clock.read",
       "target_scope_kind": "system",
-      "trial_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:candidate:remove:1:2:trial:retained:9",
+      "trial_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:trial:retained:10",
       "trial_result": "non_equivalent"
     }
   ],
@@ -821,20 +960,22 @@
       "ambient_network_controlled": true,
       "ambient_random_controlled": true
     },
-    "canonicalization": "rfc8785-jcs",
-    "comparator_id": "urn:guild:comparator:local-log-analyzer:canonical-json:v1",
-    "comparator_kind": "canonical_structured_output",
+    "checker_ref": "urn:guild:checker:local-log-analyzer-postconditions:missing:v1",
+    "comparator_id": "urn:guild:comparator:local-log-analyzer:missing-postconditions:v1",
+    "comparator_kind": "declared_postconditions",
     "inputs": {
-      "allow_scope_shrinkers": false,
-      "output_pointer": "/report"
+      "expected_fields": [
+        "file_count",
+        "severity_totals",
+        "generated_at"
+      ]
     },
-    "output_pointer": "/report",
-    "reference": "local-log-analyzer.report.v1",
+    "reference": "local-log-analyzer.postconditions.missing.v1",
     "version": "1.0.0"
   },
   "comparator_digest": {
     "algorithm": "sha256",
-    "value": "b730790c059c9cd845b83b89b429bdb9db91e42382a00dcd3dc6f051be4c0d1f"
+    "value": "9d6c8d47dabfcfcdd06d725a987dedf4e10fb2b8543e689ab855a72c5046547f"
   },
   "component_digest": {
     "algorithm": "sha256",
@@ -844,7 +985,7 @@
     "algorithm": "sha256",
     "value": "cbaf2c465088d9eefa1233f85d9e7aa81fedf40a042daf100ce951f8d04a2078"
   },
-  "created_at": "2026-03-20T12:10:00Z",
+  "created_at": "2026-03-20T12:12:00Z",
   "execution_plan_digest": {
     "algorithm": "sha256",
     "value": "f979dd978b716c828518dac3e83b86783e77d46b951cc6175fefce83b0f8b028"
@@ -875,6 +1016,7 @@
   "minimization_reason_codes": [
     "AUTHORITY_REQUIRED_BY_COMPARATOR",
     "AUTHORITY_REQUIRED_BY_TRACE",
+    "COMPARATOR_UNAVAILABLE",
     "PROOF_CACHE_MISS"
   ],
   "notes": "M5 draft proof record. This harness is intentionally example-bounded and does not claim runtime-general minimization.",
@@ -917,7 +1059,7 @@
   },
   "proof_id": "urn:guild:request:local-log-analyzer:admit:v1:execution-plan:m5-proof",
   "proof_method": "counterfactual_shadow_execution",
-  "proof_status": "exact_minimal",
+  "proof_status": "not_proven",
   "proven_authority_plan": {
     "delegation_policy": {
       "anti_replay_required": true,
@@ -945,6 +1087,20 @@
       },
       {
         "cardinality": {
+          "max_calls": 100
+        },
+        "effect_class": "fs.list",
+        "scope": {
+          "follow_mounts": false,
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/**"
+          ],
+          "symlink_policy": "deny"
+        }
+      },
+      {
+        "cardinality": {
           "max_calls": 10
         },
         "effect_class": "clock.read",
@@ -953,7 +1109,7 @@
         }
       }
     ],
-    "plan_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:candidate:remove:1:2",
+    "plan_id": "urn:guild:request:local-log-analyzer:admit:v1:granted",
     "ttl_seconds": 300
   },
   "request_id": "urn:guild:request:local-log-analyzer:admit:v1",
@@ -978,6 +1134,26 @@
       "reason_codes": [
         "AUTHORITY_REQUIRED_BY_COMPARATOR",
         "AUTHORITY_REQUIRED_BY_TRACE"
+      ]
+    },
+    {
+      "details": "declared postcondition checker was unavailable",
+      "grant": {
+        "cardinality": {
+          "max_calls": 100
+        },
+        "effect_class": "fs.list",
+        "scope": {
+          "follow_mounts": false,
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/**"
+          ],
+          "symlink_policy": "deny"
+        }
+      },
+      "reason_codes": [
+        "COMPARATOR_UNAVAILABLE"
       ]
     },
     {

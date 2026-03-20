@@ -310,6 +310,15 @@ That draft bundle now also contains a real M4 admission layer for its own vocabu
 
 That M4 layer does not do M5 minimization, does not claim that compatibility precheck alone is admission, and still emits unsigned plans by default. The repository now has a real verifiable sign/verify path for those plans through the existing publisher identity and trusted-publisher model, but signing is an explicit later step rather than part of admission derivation itself.
 
+The same draft bundle now also contains one bounded M5 layer for its own vocabulary:
+
+- `minimization_engine.py` consumes one admissible `execution_plan`, one explicit invocation fixture, one runtime guarantee, and one deterministic `comparator_profile`
+- `proof_record` is the resulting minimization artifact
+- exact discrete elimination is only exact over the finite grant subsets the engine actually explores
+- scope shrinkers are bounded observed-effect projections and therefore report `bounded_minimal`, not exact minimality
+
+That M5 layer is intentionally not wired into the current runtime-general Rust execution path because the draft effect vocabulary still does not match the live inspect capability surface closely enough to claim a broader proof harness honestly.
+
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 
 In the current repository, MCP protocol hygiene is also explicit:

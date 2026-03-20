@@ -1,11 +1,12 @@
 # Guild Draft Schemas, v1.0.0
 
-This bundle is the current draft schema surface for Guild's M3 and M4 admission work.
+This bundle is the current draft schema surface for Guild's M3, M4, and one bounded M5 proof path.
 
 It now covers two distinct layers:
 
 - M3 hard-requirement precheck over `skill_contract` plus `runtime_guarantee`
 - M4 invocation-specific admission over `skill_contract` plus `admission_request` plus one or more `runtime_guarantee` documents, producing an `execution_plan`
+- M5 counterfactual minimization over an admissible `execution_plan` plus deterministic invocation inputs plus one `comparator_profile`, producing a `proof_record`
 
 This bundle is still draft. It is useful and now executable, but it is not repo-wide canonical truth until the schema vocabulary and the repository's implemented capability-family surface are aligned.
 
@@ -18,6 +19,7 @@ This bundle is still draft. It is useful and now executable, but it is not repo-
 - Fail closed on omitted or unknown runtime guarantees.
 - Keep hard contract requirements separate from request-time narrowing.
 - Keep M4 honest: it derives a safe upper bound for one invocation. It does **not** minimize that bound.
+- Keep M5 honest: it may only preserve or reduce the M4 upper bound, it may never widen authority, and it must not claim exact minimality unless the explored search model actually proves it.
 
 ## Core records
 
@@ -25,6 +27,7 @@ This bundle is still draft. It is useful and now executable, but it is not repo-
 - `runtime_guarantee.schema.json`
 - `admission_request.schema.json`
 - `execution_plan.schema.json`
+- `comparator_profile.schema.json`
 - `proof_record.schema.json`
 - `witness_record.schema.json`
 - shared definitions in `common.schema.json`
@@ -101,18 +104,43 @@ The important distinction is:
 
 Migration is runtime reselection, not silent relaxation.
 
-### M4 does not do M5 work
+### M4 still does not do M5 work
 
-This bundle now emits a safe upper-bound `execution_plan`.
+`admission_engine.py` still stops at the safe upper-bound `execution_plan`.
 
-It still does **not** do:
+It still does **not**:
 
-- counterfactual shadow execution
-- authority minimization
-- proof-record creation from minimization trials
-- silent runtime widening because a narrow request is hard to enforce
+- minimize authority inline during admission
+- widen runtime or authority semantics to rescue a narrow request
+- claim that compatibility precheck alone is admission
 
-That is later work.
+M5 now happens only in the separate `minimization_engine.py` path, and only after M4 has already produced an admissible plan.
+
+### M5 minimization model
+
+The current M5 layer is deliberately narrow:
+
+- it consumes one admissible `execution_plan`
+- it runs deterministic counterfactual trials against one explicit invocation fixture
+- it uses one explicit `comparator_profile`
+- it emits one `proof_record`
+- it caches conservatively by exact plan/runtime/comparator/input identity
+
+It is also deliberately limited:
+
+- it is **example-bounded**, not runtime-general
+- it only has real replay/proof harnesses for the bundled draft examples
+- exact discrete grant elimination is exhaustive only over the finite grant subsets it actually explores
+- scope shrinkers are bounded observed-effect projections, so accepted shrink results are reported as `bounded_minimal`, not exact
+- comparator failure or unavailability yields `not_proven`, not silent success
+
+The current proof-status vocabulary is:
+
+- `exact_minimal`
+- `bounded_minimal`
+- `reduced`
+- `no_reduction`
+- `not_proven`
 
 ## Files included
 
@@ -123,6 +151,7 @@ That is later work.
 - `runtime_guarantee.schema.json`
 - `admission_request.schema.json`
 - `execution_plan.schema.json`
+- `comparator_profile.schema.json`
 - `proof_record.schema.json`
 - `witness_record.schema.json`
 
@@ -140,16 +169,35 @@ That is later work.
 - `examples/zero-authority.migrate.plan.json`
 - `examples/fetch-transform.downgrade.request.json`
 - `examples/fetch-transform.downgrade.plan.json`
+- `examples/fetch-transform.no-reduction.request.json`
+- `examples/fetch-transform.no-reduction.plan.json`
 - `examples/cluster-rollout.refuse.request.json`
 - `examples/cluster-rollout.refuse.plan.json`
+- `examples/local-log-analyzer.admit.request.json`
+- `examples/local-log-analyzer.admit.plan.json`
+- `examples/local-log-analyzer.invocation.json`
+- `examples/local-log-analyzer.canonical-json.comparator.json`
+- `examples/local-log-analyzer.unavailable.comparator.json`
 - `examples/local-log-analyzer.proof.json`
+- `examples/local-log-analyzer.cache-hit.proof.json`
+- `examples/local-log-analyzer.comparator-unavailable.proof.json`
+- `examples/fetch-transform.invocation.json`
+- `examples/fetch-transform.postconditions.comparator.json`
+- `examples/fetch-transform.bounded.comparator.json`
+- `examples/fetch-transform.no-reduction.proof.json`
+- `examples/fetch-transform.bounded.proof.json`
+- `examples/zero-authority.invocation.json`
+- `examples/zero-authority.pure.comparator.json`
+- `examples/zero-authority.proof.json`
 - `examples/cluster-rollout.witness.json`
 
 ### Utilities
 
 - `admission_engine.py`
+- `minimization_engine.py`
 - `compatibility_check.py`
 - `validate_examples.py`
+- `minimization_core.py`
 - `compatibility_matrix.md`
 
 ## Status
@@ -197,9 +245,11 @@ All bundled examples validate cleanly against the bundled schemas when run with 
 
 `validate_examples.py` now verifies:
 
-- schema validation for the bundled contracts, runtimes, requests, plans, proof, and witness examples
+- schema validation for the bundled contracts, runtimes, comparator profiles, requests, plans, proof, and witness examples
 - exact expected-plan output for the `admit`, `downgrade`, `migrate`, and `refuse` admission examples
 - deterministic repeated execution-plan output for the same inputs
+- exact checked proof output for the bundled M5 reduction, no-reduction, bounded-minimal, zero-authority, comparator-unavailable, and cache-hit cases
+- strict cache-bypass probes when runtime, comparator, or plan identity changes
 - explicit negative probes for omitted and invalid runtime guarantees
 
 `compatibility_check.py` regenerates the derived hard-requirement compatibility matrix and asserts the fail-closed negative probes for omitted and unsupported `wit_worlds` support.
@@ -217,6 +267,15 @@ python3 admission_engine.py \
   --request examples/zero-authority.migrate.request.json \
   --runtime examples/node-wasi-basic.runtime.json \
   --runtime examples/wasmtime-strict.runtime.json
+python3 minimization_engine.py \
+  --plan examples/local-log-analyzer.admit.plan.json \
+  --contract examples/local-log-analyzer.contract.json \
+  --request examples/local-log-analyzer.admit.request.json \
+  --runtime examples/wasmtime-strict.runtime.json \
+  --invocation-input examples/local-log-analyzer.invocation.json \
+  --comparator-profile examples/local-log-analyzer.canonical-json.comparator.json \
+  --created-at 2026-03-20T12:10:00Z \
+  --cache-dir /tmp/guild-m5-cache
 
 guild trust generate \
   --publisher-id local.example \
@@ -237,4 +296,5 @@ guild --registry-root /tmp/guild-plan-registry trust verify-plan \
 The next honest follow-ons are:
 
 1. vocabulary alignment with the repository's canonical capability-family surface
-2. later M5 minimization and proof generation on top of the M4 upper-bound plan
+2. replacing the example-bounded M5 harness with a real runtime-general minimization/replay substrate
+3. later M6 delegation-token materialization on top of the still-separate M4/M5 outputs

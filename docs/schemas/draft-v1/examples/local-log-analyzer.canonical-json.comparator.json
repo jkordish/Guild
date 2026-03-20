@@ -1,0 +1,18 @@
+{
+  "kind": "guild.comparator_profile",
+  "comparator_id": "urn:guild:comparator:local-log-analyzer:canonical-json:v1",
+  "version": "1.0.0",
+  "comparator_kind": "canonical_structured_output",
+  "reference": "local-log-analyzer.report.v1",
+  "canonicalization": "rfc8785-jcs",
+  "output_pointer": "/report",
+  "inputs": {
+    "output_pointer": "/report",
+    "allow_scope_shrinkers": false
+  },
+  "assumptions": {
+    "ambient_clock_controlled": true,
+    "ambient_network_controlled": true,
+    "ambient_random_controlled": true
+  }
+}

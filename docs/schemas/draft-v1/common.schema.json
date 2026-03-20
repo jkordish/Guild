@@ -162,6 +162,56 @@
         "RUNTIME_WIT_WORLD_UNSUPPORTED"
       ]
     },
+    "minimization_reason_code": {
+      "type": "string",
+      "enum": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE",
+        "COMPARATOR_FAILED",
+        "COMPARATOR_NONDETERMINISTIC",
+        "COMPARATOR_PROFILE_INVALID",
+        "COMPARATOR_UNAVAILABLE",
+        "PLAN_NOT_ADMISSIBLE",
+        "PLAN_RUNTIME_MISMATCH",
+        "PROOF_CACHE_BYPASSED",
+        "PROOF_CACHE_HIT",
+        "PROOF_CACHE_MISS",
+        "RUNTIME_CANNOT_ENFORCE_SHRUNK_SCOPE",
+        "SCOPE_SHRINK_UNSUPPORTED",
+        "SEARCH_BUDGET_EXCEEDED",
+        "SEARCH_MODEL_UNSUPPORTED",
+        "SHADOW_EXECUTION_FAILED",
+        "SHADOW_HARNESS_UNAVAILABLE"
+      ]
+    },
+    "proof_status": {
+      "type": "string",
+      "enum": [
+        "exact_minimal",
+        "bounded_minimal",
+        "reduced",
+        "no_reduction",
+        "not_proven"
+      ]
+    },
+    "proof_cache_status": {
+      "type": "string",
+      "enum": [
+        "miss",
+        "hit",
+        "bypassed"
+      ]
+    },
+    "trial_result": {
+      "type": "string",
+      "enum": [
+        "equivalent",
+        "non_equivalent",
+        "error",
+        "timeout",
+        "not_proven"
+      ]
+    },
     "execution_isolation_assurance": {
       "type": "string",
       "enum": [
@@ -864,25 +914,69 @@
     "comparator_spec": {
       "type": "object",
       "properties": {
-        "kind": {
+        "comparator_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        },
+        "comparator_kind": {
           "type": "string",
           "enum": [
-            "canonical_json_hash",
+            "canonical_structured_output",
             "declared_postconditions",
-            "side_effect_trace",
-            "custom"
+            "side_effect_trace_equivalence",
+            "pure_zero_authority"
           ]
         },
         "reference": {
           "type": "string",
           "minLength": 1
         },
-        "config": {
+        "canonicalization": {
+          "type": "string",
+          "enum": [
+            "rfc8785-jcs",
+            "opaque"
+          ]
+        },
+        "checker_ref": {
+          "$ref": "#/$defs/identifier"
+        },
+        "output_pointer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputs": {
           "type": "object"
+        },
+        "assumptions": {
+          "type": "object",
+          "properties": {
+            "ambient_clock_controlled": {
+              "type": "boolean"
+            },
+            "ambient_network_controlled": {
+              "type": "boolean"
+            },
+            "ambient_random_controlled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "ambient_clock_controlled",
+            "ambient_network_controlled",
+            "ambient_random_controlled"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
-        "kind"
+        "comparator_id",
+        "version",
+        "comparator_kind",
+        "inputs",
+        "assumptions"
       ],
       "additionalProperties": false
     },

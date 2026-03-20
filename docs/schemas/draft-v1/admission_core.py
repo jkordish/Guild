@@ -21,6 +21,7 @@ SCHEMA_FILES = [
     "common.schema.json",
     "skill_contract.schema.json",
     "runtime_guarantee.schema.json",
+    "comparator_profile.schema.json",
     "proof_record.schema.json",
     "witness_record.schema.json",
     "admission_request.schema.json",

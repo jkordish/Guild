@@ -1,0 +1,81 @@
+{
+  "kind": "guild.admission_request",
+  "version": "1.0.0",
+  "request_id": "urn:guild:request:local-log-analyzer:admit:v1",
+  "contract": {
+    "contract_id": "urn:guild:contract:local-log-analyzer:v1",
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "3e1e8cd5b8c777384ebadbcbff998788fada07c783ba361a4221fdf0f7d9c940"
+    }
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "e0fa022083b39a26884d1c48b2239f7a2fbfdef89798eb5b0df7b22762546090"
+    }
+  },
+  "runtime_candidates": [
+    {
+      "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+    }
+  ],
+  "preferred_runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+  "requested_authority": {
+    "grants": [
+      {
+        "effect_class": "fs.read",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/**"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_calls": 1000,
+          "max_bytes": 1073741824
+        }
+      },
+      {
+        "effect_class": "fs.list",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/**"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_calls": 100
+        }
+      },
+      {
+        "effect_class": "clock.read",
+        "scope": {
+          "kind": "system"
+        },
+        "cardinality": {
+          "max_calls": 10
+        }
+      }
+    ],
+    "ttl_seconds": 300
+  },
+  "requested_witness_level": "hostcall",
+  "audience_binding_inputs": [],
+  "resource_binding_inputs": [],
+  "delegation_chain_input": {
+    "caller_chain": [
+      "urn:guild:actor:ops-user"
+    ],
+    "requested_max_hops": 0
+  },
+  "invocation_constraints": {
+    "valid_for_seconds": 300
+  }
+}

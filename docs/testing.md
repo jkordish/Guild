@@ -35,6 +35,16 @@ python3 -m venv /tmp/guild-schema-venv
 
 `validate_examples.py` covers schema validation plus the checked-in `admit`, `downgrade`, `migrate`, and `refuse` execution-plan examples. `compatibility_check.py` remains the narrower hard-requirement precheck and regenerates `docs/schemas/draft-v1/compatibility_matrix.md`.
 
+It now also covers the draft-bundle M5 examples:
+
+- exact reduction
+- cache-hit reuse
+- comparator-unavailable fail-closed behavior
+- exact no-reduction
+- bounded-minimal scope shrinking
+- zero-authority exact minimality
+- strict cache bypass when runtime, comparator, or plan identity changes
+
 If you want one direct M4 admission run:
 
 ```bash
@@ -43,6 +53,20 @@ If you want one direct M4 admission run:
   --request docs/schemas/draft-v1/examples/zero-authority.migrate.request.json \
   --runtime docs/schemas/draft-v1/examples/node-wasi-basic.runtime.json \
   --runtime docs/schemas/draft-v1/examples/wasmtime-strict.runtime.json
+```
+
+If you want one direct M5 proof run over an already-admissible plan:
+
+```bash
+/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/minimization_engine.py \
+  --plan docs/schemas/draft-v1/examples/local-log-analyzer.admit.plan.json \
+  --contract docs/schemas/draft-v1/examples/local-log-analyzer.contract.json \
+  --request docs/schemas/draft-v1/examples/local-log-analyzer.admit.request.json \
+  --runtime docs/schemas/draft-v1/examples/wasmtime-strict.runtime.json \
+  --invocation-input docs/schemas/draft-v1/examples/local-log-analyzer.invocation.json \
+  --comparator-profile docs/schemas/draft-v1/examples/local-log-analyzer.canonical-json.comparator.json \
+  --created-at 2026-03-20T12:10:00Z \
+  --cache-dir /tmp/guild-m5-cache
 ```
 
 If you want one explicit sign-and-verify pass for a generated M4 plan:

@@ -1,0 +1,20 @@
+{
+  "kind": "guild.comparator_profile",
+  "comparator_id": "urn:guild:comparator:local-log-analyzer:missing-postconditions:v1",
+  "version": "1.0.0",
+  "comparator_kind": "declared_postconditions",
+  "reference": "local-log-analyzer.postconditions.missing.v1",
+  "checker_ref": "urn:guild:checker:local-log-analyzer-postconditions:missing:v1",
+  "inputs": {
+    "expected_fields": [
+      "file_count",
+      "severity_totals",
+      "generated_at"
+    ]
+  },
+  "assumptions": {
+    "ambient_clock_controlled": true,
+    "ambient_network_controlled": true,
+    "ambient_random_controlled": true
+  }
+}

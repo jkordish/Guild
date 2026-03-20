@@ -1,0 +1,17 @@
+{
+  "kind": "guild.comparator_profile",
+  "comparator_id": "urn:guild:comparator:fetch-transform:bounded-postconditions:v1",
+  "version": "1.0.0",
+  "comparator_kind": "declared_postconditions",
+  "reference": "fetch-transform.bounded-postconditions.v1",
+  "checker_ref": "urn:guild:checker:fetch-transform-postconditions:v1",
+  "inputs": {
+    "expected_output_path": "/workspace/output/daily-result.json",
+    "allow_scope_shrinkers": true
+  },
+  "assumptions": {
+    "ambient_clock_controlled": true,
+    "ambient_network_controlled": true,
+    "ambient_random_controlled": true
+  }
+}

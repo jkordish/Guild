@@ -420,9 +420,9 @@ For `http-request`, the current repository exposes a bounded request/response mo
 
 Shared contracts may mention broader capability families for future phases, but the active inspect slice MUST either prune unsupported families from the executable surface or reject them before execution. The current repository chooses preflight rejection.
 
-### 12.7 M3/M4 schema-bundle mapping and draft status
+### 12.7 M3/M4/M5 schema-bundle mapping and draft status
 
-The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3/M4 contract vocabulary. It is useful for tightening admission semantics, but it is not the canonical product vocabulary for the current repository.
+The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3/M4/M5 contract vocabulary. It is useful for tightening admission and minimization semantics, but it is not the canonical product vocabulary for the current repository.
 
 The stricter interpretation wins:
 
@@ -455,6 +455,19 @@ Within that draft bundle, the current M4 surface is:
 - `admission_engine.py` for deterministic request evaluation against one contract and one or more runtime guarantees
 
 Those M4 plan artifacts are still unsigned by default in this milestone, but they are no longer blocked on fake signing language. The repository now has a real reusable Ed25519 sign/verify path for execution plans through the existing publisher identity and trusted-publisher model. `admission_engine.py` does not sign automatically, and checked-in examples remain unsigned unless a caller explicitly signs them later, so unsigned plans MUST NOT be described as already signed.
+
+The current draft-bundle M5 surface is narrower still:
+
+- `comparator_profile.schema.json` for deterministic comparator identity and inputs
+- `proof_record.schema.json` for minimization outputs and cache identity
+- `minimization_engine.py` plus `minimization_core.py` for counterfactual proof generation over an already-admissible M4 plan
+
+That M5 path has hard limits:
+
+- it MUST only preserve or reduce the M4 upper bound
+- it MUST fail closed on comparator failure, comparator unavailability, runtime mismatch, or replay-harness gaps
+- it MUST NOT claim runtime-general minimization because the current proof harness is only real for the bundled draft examples
+- it MUST distinguish `exact_minimal`, `bounded_minimal`, `reduced`, `no_reduction`, and `not_proven`
 
 ## 14. Execution Semantics
 

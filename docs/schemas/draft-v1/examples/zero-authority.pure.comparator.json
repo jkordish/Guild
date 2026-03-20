@@ -1,0 +1,16 @@
+{
+  "kind": "guild.comparator_profile",
+  "comparator_id": "urn:guild:comparator:zero-authority:pure:v1",
+  "version": "1.0.0",
+  "comparator_kind": "pure_zero_authority",
+  "reference": "zero-authority.pure.v1",
+  "inputs": {
+    "expect_no_observed_effects": true,
+    "allow_scope_shrinkers": false
+  },
+  "assumptions": {
+    "ambient_clock_controlled": true,
+    "ambient_network_controlled": true,
+    "ambient_random_controlled": true
+  }
+}
