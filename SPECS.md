@@ -420,15 +420,18 @@ For `http-request`, the current repository exposes a bounded request/response mo
 
 Shared contracts may mention broader capability families for future phases, but the active inspect slice MUST either prune unsupported families from the executable surface or reject them before execution. The current repository chooses preflight rejection.
 
-### 12.7 M3 schema-bundle mapping and draft status
+### 12.7 M3/M4 schema-bundle mapping and draft status
 
-The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3 contract vocabulary. It is useful for tightening admission semantics, but it is not the canonical product vocabulary for the current repository.
+The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3/M4 contract vocabulary. It is useful for tightening admission semantics, but it is not the canonical product vocabulary for the current repository.
 
 The stricter interpretation wins:
 
 - runtime guarantees MUST be explicit rather than inferred
 - omitted or unknown guarantees MUST fail closed
 - component portability MUST NOT be presented as enforcement portability
+- hard-requirement compatibility precheck MUST NOT be presented as the full admission decision
+- M4 `execution_plan` artifacts MUST be described as safe upper-bound invocation plans, not minimized authority proofs
+- denied requested authority MAY yield a downgrade rather than a refusal when hard requirements still hold
 
 Current mapping boundaries:
 
@@ -444,6 +447,14 @@ Current mapping boundaries:
 | no direct schema effect-class for `log-write` | `log-write` | unmapped in the draft bundle |
 
 Until those vocabulary gaps are closed across the repository, `docs/schemas/draft-v1/` MUST stay explicitly labeled as draft/proposal surface rather than being described as normative repo truth.
+
+Within that draft bundle, the current M4 surface is:
+
+- `admission_request.schema.json` for invocation-specific caller intent
+- `execution_plan.schema.json` for the resulting admission artifact
+- `admission_engine.py` for deterministic request evaluation against one contract and one or more runtime guarantees
+
+Those M4 plan artifacts are unsigned by default in this milestone. The wider repository already has real Ed25519 signing for installed bundles, but the draft bundle does not yet reuse that path for arbitrary execution-plan signing, so unsigned plans MUST NOT be described as signed.
 
 ## 14. Execution Semantics
 

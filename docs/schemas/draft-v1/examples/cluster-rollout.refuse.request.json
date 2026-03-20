@@ -1,0 +1,148 @@
+{
+  "kind": "guild.admission_request",
+  "version": "1.0.0",
+  "request_id": "urn:guild:request:cluster-rollout:refuse:v1",
+  "contract": {
+    "contract_id": "urn:guild:contract:cluster-rollout:v1",
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "bf1dc94321cd91c6428b6c81de14342fff34b1cc5ff1f2591789da15997d4e8c"
+    }
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "92cfe6ab8245cbd80c17ae7a977f93e5ad83b5bb834179ba060e952298721de6"
+    }
+  },
+  "runtime_candidates": [
+    {
+      "runtime_guarantee_id": "urn:guild:runtime:node-wasi-basic:v1"
+    }
+  ],
+  "preferred_runtime_guarantee_id": "urn:guild:runtime:node-wasi-basic:v1",
+  "requested_authority": {
+    "grants": [
+      {
+        "effect_class": "fs.read",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/plan/**"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_calls": 50,
+          "max_bytes": 1048576
+        }
+      },
+      {
+        "effect_class": "net.connect",
+        "scope": {
+          "kind": "network",
+          "audiences": [
+            {
+              "host": "kube-api.prod.example.internal",
+              "ports": [
+                443
+              ],
+              "schemes": [
+                "https"
+              ],
+              "path_prefixes": [
+                "/api/",
+                "/apis/"
+              ],
+              "methods": [
+                "GET",
+                "PATCH",
+                "POST"
+              ]
+            }
+          ]
+        },
+        "cardinality": {
+          "max_calls": 20,
+          "max_bytes": 1048576
+        }
+      },
+      {
+        "effect_class": "secret.read",
+        "scope": {
+          "kind": "secret",
+          "secret_ids": [
+            "vault://prod/kube-api/token"
+          ]
+        },
+        "cardinality": {
+          "max_calls": 2
+        }
+      },
+      {
+        "effect_class": "component.invoke",
+        "scope": {
+          "kind": "component",
+          "component_digests": [
+            {
+              "algorithm": "sha256",
+              "value": "e0c8d6e76ebb881397b1c9818f81e30890db02b2bb72d31e10e3fc1c6619b149"
+            }
+          ],
+          "exports": [
+            "apply_manifest_patch"
+          ]
+        },
+        "cardinality": {
+          "max_calls": 10
+        }
+      },
+      {
+        "effect_class": "capability.delegate",
+        "scope": {
+          "kind": "delegation",
+          "effect_classes": [
+            "net.connect"
+          ],
+          "audiences": [
+            "kube-api.prod.example.internal:443"
+          ],
+          "max_hops": 1
+        },
+        "cardinality": {
+          "max_calls": 10
+        }
+      }
+    ],
+    "ttl_seconds": 60
+  },
+  "requested_witness_level": "full",
+  "audience_binding_inputs": [
+    "cluster-prod"
+  ],
+  "resource_binding_inputs": [
+    {
+      "effect_class": "net.connect",
+      "resource": "https://kube-api.prod.example.internal/apis/",
+      "audience": "cluster-prod"
+    },
+    {
+      "effect_class": "secret.read",
+      "resource": "vault://prod/kube-api/token",
+      "audience": "cluster-prod"
+    }
+  ],
+  "delegation_chain_input": {
+    "caller_chain": [
+      "urn:guild:actor:ops-user",
+      "urn:guild:workflow:cluster-rollout"
+    ],
+    "requested_max_hops": 1
+  },
+  "invocation_constraints": {
+    "valid_for_seconds": 60
+  }
+}

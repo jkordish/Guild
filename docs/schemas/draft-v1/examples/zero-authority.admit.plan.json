@@ -1,0 +1,212 @@
+{
+  "chosen_runtime": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "component_digest": {
+    "algorithm": "sha256",
+    "value": "df78342cd5b5f401a3ab4ee69e5d42d4cbaf0d8f67f1fb8e947c3b9d93d84f8e"
+  },
+  "contract_digest": {
+    "algorithm": "sha256",
+    "value": "90969f04d6a0a5d3990af114ac918e3053bf568444bfce4d5d598d246d8e6770"
+  },
+  "contract_id": "urn:guild:contract:zero-authority:v1",
+  "decision": "admit",
+  "decision_reason_codes": [],
+  "delegation_token_policy_inputs": {
+    "anti_replay_required": false,
+    "audience_binding_inputs": [],
+    "audience_binding_required": false,
+    "call_chain_binding_required": false,
+    "contract_delegation_policy": {
+      "anti_replay_required": false,
+      "audience_binding_required": false,
+      "call_chain_binding_required": false,
+      "max_hops": 0,
+      "mode": "forbidden",
+      "ttl_seconds_max": 300
+    },
+    "delegation_chain_input": {
+      "caller_chain": [
+        "urn:guild:actor:user"
+      ],
+      "requested_max_hops": 0
+    },
+    "max_hops_enforced_required": false,
+    "required_revocation_mode": "expiry_only",
+    "required_token_passthrough_mode": "forbidden",
+    "resource_binding_inputs": [],
+    "runtime_default_revocation_mode": "lease",
+    "runtime_default_token_passthrough_mode": "forbidden"
+  },
+  "denied_authority": [],
+  "export_name": "summarize",
+  "granted_authority": {
+    "delegation_policy": {
+      "anti_replay_required": false,
+      "audience_binding_required": false,
+      "call_chain_binding_required": false,
+      "max_hops": 0,
+      "mode": "forbidden",
+      "ttl_seconds_max": 300
+    },
+    "grants": [],
+    "plan_id": "urn:guild:request:zero-authority:admit:v1:granted",
+    "ttl_seconds": 120
+  },
+  "hard_requirement_status": {
+    "satisfied": true,
+    "unsatisfied_requirements": []
+  },
+  "input_class_fingerprint": {
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "26d18e0d615b0955ec36aa4b5b891dcf8865e726bc77f26b8b305fbb7f89fb68"
+    },
+    "kind": "json-schema-hash"
+  },
+  "kind": "guild.execution_plan",
+  "plan_id": "urn:guild:request:zero-authority:admit:v1:execution-plan",
+  "plan_validity": {
+    "contract_ttl_seconds_max": 300,
+    "requested_ttl_seconds": 120,
+    "source": "contract_and_request",
+    "ttl_seconds": 120
+  },
+  "preferred_runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+  "proof_prerequisites": [
+    {
+      "code": "CONTRACT_DIGEST_BINDING",
+      "detail": {
+        "contract_digest": {
+          "algorithm": "sha256",
+          "value": "90969f04d6a0a5d3990af114ac918e3053bf568444bfce4d5d598d246d8e6770"
+        }
+      },
+      "required": true
+    },
+    {
+      "code": "RUNTIME_GUARANTEE_DIGEST_BINDING",
+      "detail": {
+        "runtime_guarantee_digest": {
+          "algorithm": "sha256",
+          "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+        }
+      },
+      "required": true
+    },
+    {
+      "code": "AUTHORITY_PLAN_DIGEST_BINDING",
+      "detail": {
+        "required": false
+      },
+      "required": false
+    }
+  ],
+  "request_id": "urn:guild:request:zero-authority:admit:v1",
+  "request_narrowing_applied": false,
+  "requested_authority": {
+    "delegation_policy": {
+      "anti_replay_required": false,
+      "audience_binding_required": false,
+      "call_chain_binding_required": false,
+      "max_hops": 0,
+      "mode": "forbidden",
+      "ttl_seconds_max": 300
+    },
+    "grants": [],
+    "plan_id": "urn:guild:request:zero-authority:admit:v1:requested",
+    "ttl_seconds": 120
+  },
+  "runtime_evaluations": [
+    {
+      "admissible": true,
+      "chosen": true,
+      "hard_requirements_satisfied": true,
+      "preferred": true,
+      "reason_codes": [],
+      "runtime": {
+        "id": "wasmtime",
+        "vendor": "Bytecode Alliance",
+        "version": "strict-profile-2026-03"
+      },
+      "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+      "unsatisfied_requirements": []
+    }
+  ],
+  "version": "1.0.0",
+  "witness_policy": {
+    "acceptable_signature_modes": [
+      "none",
+      "runtime_key",
+      "external_signer"
+    ],
+    "acceptable_tamper_evidence_modes": [
+      "hash_chain",
+      "merkle_chain"
+    ],
+    "contract_witness_level": "decision",
+    "effective_witness_level": "decision",
+    "prerequisites": [
+      {
+        "code": "TRUSTED_TIME_SOURCE",
+        "detail": {
+          "required": false
+        },
+        "required": false
+      },
+      {
+        "code": "REDACTED_IO_HASHES",
+        "detail": {
+          "required": false
+        },
+        "required": false
+      },
+      {
+        "code": "AUTHORITY_PLAN_DIGEST",
+        "detail": {
+          "required": false
+        },
+        "required": false
+      },
+      {
+        "code": "WITNESS_TAMPER_EVIDENCE_MODE",
+        "detail": {
+          "acceptable_modes": [
+            "hash_chain",
+            "merkle_chain"
+          ]
+        },
+        "required": true
+      },
+      {
+        "code": "WITNESS_SIGNATURE_MODE",
+        "detail": {
+          "acceptable_modes": [
+            "none",
+            "runtime_key",
+            "external_signer"
+          ]
+        },
+        "required": true
+      }
+    ],
+    "requested_witness_level": "decision",
+    "supported_levels": [
+      "summary",
+      "decision",
+      "hostcall",
+      "full"
+    ]
+  }
+}

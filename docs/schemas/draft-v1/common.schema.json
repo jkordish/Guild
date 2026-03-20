@@ -111,6 +111,57 @@
         "full"
       ]
     },
+    "admission_decision": {
+      "type": "string",
+      "enum": [
+        "admit",
+        "downgrade",
+        "migrate",
+        "refuse"
+      ]
+    },
+    "admission_reason_code": {
+      "type": "string",
+      "enum": [
+        "CONTRACT_REFERENCE_MISMATCH",
+        "EXPORT_OVERRIDE_INVALID",
+        "INPUT_CLASS_MISMATCH",
+        "NO_ADMISSIBLE_RUNTIME",
+        "NO_CANDIDATE_RUNTIME",
+        "PLAN_SIGNING_UNAVAILABLE",
+        "PREFERRED_RUNTIME_NOT_ADMISSIBLE",
+        "REQUIRED_EFFECT_UNSUPPORTED",
+        "REQUIRED_SCOPE_NOT_ENFORCEABLE",
+        "REQUESTED_AUTHORITY_EXCEEDS_CONTRACT_CEILING",
+        "REQUESTED_AUTHORITY_FORBIDDEN_BY_CONTRACT",
+        "REQUESTED_AUTHORITY_OMITS_REQUIRED_EFFECT",
+        "REQUESTED_SCOPE_NOT_ENFORCEABLE",
+        "REQUESTED_SCOPE_REDUCED_FOR_CONTRACT",
+        "REQUESTED_WITNESS_LEVEL_UNAVAILABLE",
+        "RUNTIME_ANTI_REPLAY_UNSUPPORTED",
+        "RUNTIME_AUDIENCE_BINDING_UNSUPPORTED",
+        "RUNTIME_AUTHORITY_PLAN_DIGEST_UNSUPPORTED",
+        "RUNTIME_CALL_CHAIN_BINDING_UNSUPPORTED",
+        "RUNTIME_CANDIDATE_UNKNOWN",
+        "RUNTIME_CHILD_PROCESS_MODE_UNSUPPORTED",
+        "RUNTIME_COMPONENT_MODEL_UNSUPPORTED",
+        "RUNTIME_COMPONENT_MODEL_VERSION_UNSUPPORTED",
+        "RUNTIME_EXECUTION_ISOLATION_TOO_WEAK",
+        "RUNTIME_FILESYSTEM_ISOLATION_TOO_WEAK",
+        "RUNTIME_GUARANTEE_INVALID",
+        "RUNTIME_MAX_HOPS_ENFORCEMENT_UNSUPPORTED",
+        "RUNTIME_NETWORK_GRANULARITY_TOO_WEAK",
+        "RUNTIME_REDACTED_IO_HASHES_UNSUPPORTED",
+        "RUNTIME_REVOCATION_MODE_UNSUPPORTED",
+        "RUNTIME_SIGNATURE_MODE_UNSUPPORTED",
+        "RUNTIME_TAMPER_EVIDENCE_MODE_UNSUPPORTED",
+        "RUNTIME_TOKEN_PASSTHROUGH_MODE_UNSUPPORTED",
+        "RUNTIME_TRUSTED_TIME_SOURCE_UNSUPPORTED",
+        "RUNTIME_WITNESS_LEVEL_UNSUPPORTED",
+        "RUNTIME_WIT_WORLD_UNDECLARED",
+        "RUNTIME_WIT_WORLD_UNSUPPORTED"
+      ]
+    },
     "execution_isolation_assurance": {
       "type": "string",
       "enum": [
@@ -738,7 +789,7 @@
         },
         "grants": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 0,
           "items": {
             "$ref": "#/$defs/effect_spec"
           }

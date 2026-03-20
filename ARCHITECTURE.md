@@ -288,7 +288,7 @@ That projection is intentionally not an isomorphism:
 
 The current example skills now include single-record and execution-tree explanation over stored Guild resources plus one bounded execution-query summary skill. Those examples deepen inspect usefulness by consuming persisted execution lineage, bounded evidence metadata, and bounded query results through the existing host-mediated resource path rather than by widening the runtime surface.
 
-The draft M3 schema bundle under `docs/schemas/draft-v1/` is still draft vocabulary layered on top of this runtime, not a replacement for this runtime description. The current repository truth is the host-owned capability-family and inspect-world model described here.
+The draft M3/M4 schema bundle under `docs/schemas/draft-v1/` is still draft vocabulary layered on top of this runtime, not a replacement for this runtime description. The current repository truth is the host-owned capability-family and inspect-world model described here.
 
 That draft mapping is intentionally explicit:
 
@@ -301,6 +301,14 @@ That draft mapping is intentionally explicit:
 | no direct schema effect-class | `read-resource`, `emit-evidence`, `log-write` | currently unmapped in the draft bundle |
 
 This is why the schema bundle remains marked draft: component portability and effect vocabulary portability are not the same thing as enforcement portability of the current runtime slice.
+
+That draft bundle now also contains a real M4 admission layer for its own vocabulary:
+
+- `compatibility_check.py` is the hard-requirement precheck layer only
+- `admission_engine.py` consumes one contract, one admission request, and one or more runtime guarantees
+- `execution_plan` is the resulting safe upper-bound invocation plan
+
+That M4 layer does not do M5 minimization, does not claim that compatibility precheck alone is admission, and does not label its execution plans as signed unless a real verifiable plan-signing path exists.
 
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 

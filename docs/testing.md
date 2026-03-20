@@ -22,6 +22,29 @@ cargo test -p guild-mcp --test guild_cli --test codex_workflow --test mcp_server
 
 These proof flows intentionally keep using explicit temp or `target/dev-local-registry/...` roots so they never depend on or mutate a developer's real `~/.guild` or `~/.codex`.
 
+## Draft Schema Bundle Validation
+
+The draft admission bundle under `docs/schemas/draft-v1/` now has its own focused validation path:
+
+```bash
+python3 -m venv /tmp/guild-schema-venv
+/tmp/guild-schema-venv/bin/pip install -r docs/schemas/draft-v1/requirements.txt
+/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/validate_examples.py
+/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/compatibility_check.py
+```
+
+`validate_examples.py` covers schema validation plus the checked-in `admit`, `downgrade`, `migrate`, and `refuse` execution-plan examples. `compatibility_check.py` remains the narrower hard-requirement precheck and regenerates `docs/schemas/draft-v1/compatibility_matrix.md`.
+
+If you want one direct M4 admission run:
+
+```bash
+/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/admission_engine.py \
+  --contract docs/schemas/draft-v1/examples/zero-authority.contract.json \
+  --request docs/schemas/draft-v1/examples/zero-authority.migrate.request.json \
+  --runtime docs/schemas/draft-v1/examples/node-wasi-basic.runtime.json \
+  --runtime docs/schemas/draft-v1/examples/wasmtime-strict.runtime.json
+```
+
 ## CLI Smoke Flows
 
 Minimal local CLI smoke:

@@ -1,6 +1,13 @@
-# Guild M3 Schemas, v1.0.0
+# Guild Draft Schemas, v1.0.0
 
-This is the first locked schema cut for Guild’s authority-admission system.
+This bundle is the current draft schema surface for Guild's M3 and M4 admission work.
+
+It now covers two distinct layers:
+
+- M3 hard-requirement precheck over `skill_contract` plus `runtime_guarantee`
+- M4 invocation-specific admission over `skill_contract` plus `admission_request` plus one or more `runtime_guarantee` documents, producing an `execution_plan`
+
+This bundle is still draft. It is useful and now executable, but it is not repo-wide canonical truth until the schema vocabulary and the repository's implemented capability-family surface are aligned.
 
 ## Design stance
 
@@ -8,27 +15,33 @@ This is the first locked schema cut for Guild’s authority-admission system.
 - Keep the schema name `skill_contract` for roadmap continuity, but the subject inside the record is a **portable executable component**, not product-marketing mush.
 - Treat enums as part of the protocol. Do **not** replace them with free-form strings unless you enjoy turning admission logic into soup.
 - Keep forward compatibility in `extensions`, not in random top-level keys.
+- Fail closed on omitted or unknown runtime guarantees.
+- Keep hard contract requirements separate from request-time narrowing.
+- Keep M4 honest: it derives a safe upper bound for one invocation. It does **not** minimize that bound.
 
 ## Core records
 
 - `skill_contract.schema.json`
 - `runtime_guarantee.schema.json`
+- `admission_request.schema.json`
+- `execution_plan.schema.json`
 - `proof_record.schema.json`
 - `witness_record.schema.json`
 - shared definitions in `common.schema.json`
 
 ## Why `authority_ceiling` is in `skill_contract`
 
-You asked for required effects and forbidden effects. That is not enough for minimization.
+You asked for required effects and forbidden effects. That is not enough for admission planning.
+
 The planner needs a **declared maximum grant envelope** to start from. That is what `authority_ceiling` is.
 
 Think of the three sets like this:
 
 - `required_effects`: effects the component must retain
 - `forbidden_effects`: effects the component may never obtain
-- `authority_ceiling`: the largest admissible grant set the planner may consider before minimization
+- `authority_ceiling`: the largest admissible grant set M4 may consider before any later minimization phase
 
-Without `authority_ceiling`, the minimizer turns into a philosophy seminar.
+Without `authority_ceiling`, the planner turns into a philosophy seminar.
 
 ## Ordered comparisons used by admission
 
@@ -46,50 +59,109 @@ These orderings are not enforced by JSON Schema itself. The admission engine mus
 ### `witness_level`
 `summary < decision < hostcall < full`
 
-## Comparison rules
+## Admission model
 
-- For ordered fields, the runtime must be **at least** the requested minimum.
-- For policy-mode fields expressed as `required_mode`, the runtime must list that mode in `supported_modes`.
-- For `component.wit_world`, the runtime must explicitly publish `component_model_support.wit_worlds`.
-- Omitted or unknown `wit_worlds` support fails closed. Empty arrays are allowed and mean the runtime currently publishes support for no WIT worlds.
-- For witness support, the runtime must support:
-  - at least the requested witness level
-  - at least one acceptable tamper-evidence mode
-  - at least one acceptable signature mode
-  - every required boolean capability
+### Hard requirements
+
+The hard-requirement path is shared by `compatibility_check.py` and `admission_engine.py`.
+
+It currently enforces:
+
+- component-model compatibility
+- explicit WIT-world publication
+- required effect-class support
+- required-effect scope enforceability
+- ordered and mode-based runtime guarantee thresholds
+- witness-support minimums
+
+If a runtime omits a required guarantee or publishes an unknown value, the result is fail-closed denial.
+
+### Request-time narrowing
+
+M4 then evaluates the invocation request against the contract ceiling and the selected runtime:
+
+- requested authority may be narrowed to a stricter granted set
+- denied requested authority is explicit and reason-coded
+- denied requested authority does **not** automatically imply refusal
+- refusal happens only when hard requirements fail or no safe upper-bound plan can be derived
+
+### Decision outcomes
+
+`execution_plan` uses one exact decision enum:
+
+- `admit`
+- `downgrade`
+- `migrate`
+- `refuse`
+
+The important distinction is:
+
+- `compatibility_matrix.md` is a hard-requirement precheck artifact
+- `execution_plan` is the M4 admission artifact for a specific invocation
+
+Migration is runtime reselection, not silent relaxation.
+
+### M4 does not do M5 work
+
+This bundle now emits a safe upper-bound `execution_plan`.
+
+It still does **not** do:
+
+- counterfactual shadow execution
+- authority minimization
+- proof-record creation from minimization trials
+- silent runtime widening because a narrow request is hard to enforce
+
+That is later work.
 
 ## Files included
 
 ### Schemas
+
 - `common.schema.json`
 - `skill_contract.schema.json`
 - `runtime_guarantee.schema.json`
+- `admission_request.schema.json`
+- `execution_plan.schema.json`
 - `proof_record.schema.json`
 - `witness_record.schema.json`
 
 ### Examples
+
 - `examples/local-log-analyzer.contract.json`
 - `examples/zero-authority.contract.json`
 - `examples/fetch-transform.contract.json`
 - `examples/cluster-rollout.contract.json`
 - `examples/wasmtime-strict.runtime.json`
 - `examples/node-wasi-basic.runtime.json`
+- `examples/zero-authority.admit.request.json`
+- `examples/zero-authority.admit.plan.json`
+- `examples/zero-authority.migrate.request.json`
+- `examples/zero-authority.migrate.plan.json`
+- `examples/fetch-transform.downgrade.request.json`
+- `examples/fetch-transform.downgrade.plan.json`
+- `examples/cluster-rollout.refuse.request.json`
+- `examples/cluster-rollout.refuse.plan.json`
 - `examples/local-log-analyzer.proof.json`
 - `examples/cluster-rollout.witness.json`
 
 ### Utilities
+
+- `admission_engine.py`
+- `compatibility_check.py`
 - `validate_examples.py`
 - `compatibility_matrix.md`
 
 ## Status
 
-This bundle is a **proposal / draft contract surface** for M3. It is not repo-wide normative truth until the capability-family vocabulary is aligned in the corresponding SPECS.md and ARCHITECTURE.md update.
+This bundle remains a **proposal / draft contract surface**.
 
-This patch keeps the bundle in draft status on purpose. The schemas now fail closed on omitted WIT-world support, but the schema bundle still uses an effect-class vocabulary that is broader than the current canonical runtime capability-family surface implemented in the repository.
+Two things are true at the same time:
 
-## Current mapping to repo norms
+- a portable component can declare broader enforcement requirements than the current runtime slice implements
+- component portability is **not** the same thing as enforcement portability
 
-The current repository product surface is the host-owned typed capability-family model in `SPECS.md` and `ARCHITECTURE.md`. The schema bundle remains a draft vocabulary mapped onto that surface.
+Current mapping boundaries:
 
 | Schema bundle term | Current repo term | Status |
 |---|---|---|
@@ -103,38 +175,28 @@ The current repository product surface is the host-owned typed capability-family
 | no direct schema effect-class for `emit-evidence` | `emit-evidence` | unmapped in this draft bundle |
 | no direct schema effect-class for `log-write` | `log-write` | unmapped in this draft bundle |
 
-Two things are true at the same time:
+Until those gaps are closed, this directory must stay explicitly labeled as draft.
 
-- a portable component can declare broader enforcement requirements than the current runtime slice implements
-- component portability is **not** the same thing as enforcement portability
+## Signing status
 
-If a runtime does not explicitly publish support for the required WIT world or effect vocabulary, admission must deny rather than infer support.
+The bundle now includes schema hooks for an optional `plan_signature`, but checked-in M4 execution plans are **unsigned**.
 
-## Locked decisions in this cut
+That is deliberate.
 
-1. `kind` + `version` are required on every top-level record.
-2. Digests are structured as `{ algorithm, value }`, not as an opaque string, and digest length is bound to the declared algorithm.
-3. Delegation is explicit, typed, and bounded.
-4. Witnessing is a first-class schema concern, not an afterthought bolted onto logs.
-5. Runtime guarantees describe **what can be enforced**, not just what someone hopes is true. Component-model compatibility, explicit WIT-world publication, and required effect-class support are admission checks, not advisory metadata.
-
-## Deliberate omissions
-
-These are not in v1 on purpose:
-
-- embedded policy DSLs
-- arbitrary expression evaluators
-- free-form comparator programs
-- open-ended resource kinds
-- implicit ambient authority
-
-Those can come back later if they earn their keep.
+The wider repository already has real Ed25519 signing for installed bundles, but this draft bundle does not yet have a reused, verifiable generic plan-signing path. Until that exists, the M4 plan artifacts must not be described as signed.
 
 ## Validation status
 
-All bundled example files validate cleanly against the bundled schemas **when run with the directory-local validation dependencies installed**.
+All bundled examples validate cleanly against the bundled schemas when run with the directory-local validation dependencies installed.
 
-`compatibility_check.py` also regenerates the derived compatibility matrix and asserts the fail-closed negative probes for omitted and unsupported `wit_worlds` support.
+`validate_examples.py` now verifies:
+
+- schema validation for the bundled contracts, runtimes, requests, plans, proof, and witness examples
+- exact expected-plan output for the `admit`, `downgrade`, `migrate`, and `refuse` admission examples
+- deterministic repeated execution-plan output for the same inputs
+- explicit negative probes for omitted and invalid runtime guarantees
+
+`compatibility_check.py` regenerates the derived hard-requirement compatibility matrix and asserts the fail-closed negative probes for omitted and unsupported `wit_worlds` support.
 
 ### Reproducible validation
 
@@ -144,13 +206,17 @@ python3 -m venv .venv
 pip install -r requirements.txt
 python3 validate_examples.py
 python3 compatibility_check.py
+python3 admission_engine.py \
+  --contract examples/zero-authority.contract.json \
+  --request examples/zero-authority.migrate.request.json \
+  --runtime examples/node-wasi-basic.runtime.json \
+  --runtime examples/wasmtime-strict.runtime.json
 ```
 
 ## Next build target
 
-Use these schemas to implement:
-1. runtime guarantee publication
-2. contract ingestion
-3. deterministic compatibility checks
-4. proof-record creation from shadow-run minimization
-5. witness-record emission on hostcalls
+The next honest follow-ons are:
+
+1. vocabulary alignment with the repository's canonical capability-family surface
+2. real reusable plan-signing support, if the repository grows a verifiable generic signing path
+3. later M5 minimization and proof generation on top of the M4 upper-bound plan

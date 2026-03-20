@@ -1,0 +1,545 @@
+{
+  "chosen_runtime": null,
+  "component_digest": {
+    "algorithm": "sha256",
+    "value": "bf1dc94321cd91c6428b6c81de14342fff34b1cc5ff1f2591789da15997d4e8c"
+  },
+  "contract_digest": {
+    "algorithm": "sha256",
+    "value": "73158871928cf3261d11f37b97acecaed3796a365b2c4041ceb2639a44e017a4"
+  },
+  "contract_id": "urn:guild:contract:cluster-rollout:v1",
+  "decision": "refuse",
+  "decision_reason_codes": [
+    "NO_ADMISSIBLE_RUNTIME",
+    "REQUESTED_WITNESS_LEVEL_UNAVAILABLE",
+    "REQUIRED_EFFECT_UNSUPPORTED",
+    "REQUIRED_SCOPE_NOT_ENFORCEABLE",
+    "RUNTIME_ANTI_REPLAY_UNSUPPORTED",
+    "RUNTIME_AUDIENCE_BINDING_UNSUPPORTED",
+    "RUNTIME_AUTHORITY_PLAN_DIGEST_UNSUPPORTED",
+    "RUNTIME_CALL_CHAIN_BINDING_UNSUPPORTED",
+    "RUNTIME_CHILD_PROCESS_MODE_UNSUPPORTED",
+    "RUNTIME_EXECUTION_ISOLATION_TOO_WEAK",
+    "RUNTIME_FILESYSTEM_ISOLATION_TOO_WEAK",
+    "RUNTIME_MAX_HOPS_ENFORCEMENT_UNSUPPORTED",
+    "RUNTIME_NETWORK_GRANULARITY_TOO_WEAK",
+    "RUNTIME_REDACTED_IO_HASHES_UNSUPPORTED",
+    "RUNTIME_REVOCATION_MODE_UNSUPPORTED",
+    "RUNTIME_SIGNATURE_MODE_UNSUPPORTED",
+    "RUNTIME_TAMPER_EVIDENCE_MODE_UNSUPPORTED",
+    "RUNTIME_TOKEN_PASSTHROUGH_MODE_UNSUPPORTED",
+    "RUNTIME_TRUSTED_TIME_SOURCE_UNSUPPORTED",
+    "RUNTIME_WITNESS_LEVEL_UNSUPPORTED"
+  ],
+  "delegation_token_policy_inputs": {
+    "anti_replay_required": true,
+    "audience_binding_inputs": [
+      "cluster-prod"
+    ],
+    "audience_binding_required": true,
+    "call_chain_binding_required": true,
+    "contract_delegation_policy": {
+      "allowed_effect_classes": [
+        "net.connect"
+      ],
+      "anti_replay_required": true,
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "max_hops": 1,
+      "mode": "bounded_hops",
+      "ttl_seconds_max": 60
+    },
+    "delegation_chain_input": {
+      "caller_chain": [
+        "urn:guild:actor:ops-user",
+        "urn:guild:workflow:cluster-rollout"
+      ],
+      "requested_max_hops": 1
+    },
+    "max_hops_enforced_required": true,
+    "required_revocation_mode": "hard_kill_live",
+    "required_token_passthrough_mode": "one_hop_bound",
+    "resource_binding_inputs": [
+      {
+        "audience": "cluster-prod",
+        "effect_class": "net.connect",
+        "resource": "https://kube-api.prod.example.internal/apis/"
+      },
+      {
+        "audience": "cluster-prod",
+        "effect_class": "secret.read",
+        "resource": "vault://prod/kube-api/token"
+      }
+    ],
+    "runtime_default_revocation_mode": null,
+    "runtime_default_token_passthrough_mode": null
+  },
+  "denied_authority": [],
+  "export_name": "apply_rollout",
+  "granted_authority": {
+    "delegation_policy": {
+      "allowed_effect_classes": [
+        "net.connect"
+      ],
+      "anti_replay_required": true,
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "max_hops": 1,
+      "mode": "bounded_hops",
+      "ttl_seconds_max": 60
+    },
+    "grants": [],
+    "plan_id": "urn:guild:request:cluster-rollout:refuse:v1:granted",
+    "ttl_seconds": 60
+  },
+  "hard_requirement_status": {
+    "satisfied": false,
+    "unsatisfied_requirements": [
+      {
+        "reason": {
+          "detail": {},
+          "message": "no supplied runtime candidate satisfied the hard requirements and request-time constraints",
+          "reason_code": "NO_ADMISSIBLE_RUNTIME"
+        },
+        "requirement_kind": "runtime_candidate",
+        "subject": "urn:guild:request:cluster-rollout:refuse:v1"
+      }
+    ]
+  },
+  "input_class_fingerprint": {
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "92cfe6ab8245cbd80c17ae7a977f93e5ad83b5bb834179ba060e952298721de6"
+    },
+    "kind": "json-schema-hash"
+  },
+  "kind": "guild.execution_plan",
+  "plan_id": "urn:guild:request:cluster-rollout:refuse:v1:execution-plan",
+  "plan_validity": {
+    "contract_ttl_seconds_max": 60,
+    "requested_ttl_seconds": 60,
+    "source": "contract_and_request",
+    "ttl_seconds": 60
+  },
+  "preferred_runtime_guarantee_id": "urn:guild:runtime:node-wasi-basic:v1",
+  "proof_prerequisites": [],
+  "request_id": "urn:guild:request:cluster-rollout:refuse:v1",
+  "request_narrowing_applied": false,
+  "requested_authority": {
+    "delegation_policy": {
+      "allowed_effect_classes": [
+        "net.connect"
+      ],
+      "anti_replay_required": true,
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "max_hops": 1,
+      "mode": "bounded_hops",
+      "ttl_seconds_max": 60
+    },
+    "grants": [
+      {
+        "cardinality": {
+          "max_bytes": 1048576,
+          "max_calls": 20
+        },
+        "effect_class": "net.connect",
+        "scope": {
+          "audiences": [
+            {
+              "host": "kube-api.prod.example.internal",
+              "methods": [
+                "GET",
+                "PATCH",
+                "POST"
+              ],
+              "path_prefixes": [
+                "/api/",
+                "/apis/"
+              ],
+              "ports": [
+                443
+              ],
+              "schemes": [
+                "https"
+              ]
+            }
+          ],
+          "kind": "network"
+        }
+      },
+      {
+        "cardinality": {
+          "max_bytes": 1048576,
+          "max_calls": 50
+        },
+        "effect_class": "fs.read",
+        "scope": {
+          "follow_mounts": false,
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/plan/**"
+          ],
+          "symlink_policy": "deny"
+        }
+      },
+      {
+        "cardinality": {
+          "max_calls": 10
+        },
+        "effect_class": "capability.delegate",
+        "scope": {
+          "audiences": [
+            "kube-api.prod.example.internal:443"
+          ],
+          "effect_classes": [
+            "net.connect"
+          ],
+          "kind": "delegation",
+          "max_hops": 1
+        }
+      },
+      {
+        "cardinality": {
+          "max_calls": 10
+        },
+        "effect_class": "component.invoke",
+        "scope": {
+          "component_digests": [
+            {
+              "algorithm": "sha256",
+              "value": "e0c8d6e76ebb881397b1c9818f81e30890db02b2bb72d31e10e3fc1c6619b149"
+            }
+          ],
+          "exports": [
+            "apply_manifest_patch"
+          ],
+          "kind": "component"
+        }
+      },
+      {
+        "cardinality": {
+          "max_calls": 2
+        },
+        "effect_class": "secret.read",
+        "scope": {
+          "kind": "secret",
+          "secret_ids": [
+            "vault://prod/kube-api/token"
+          ]
+        }
+      }
+    ],
+    "plan_id": "urn:guild:request:cluster-rollout:refuse:v1:requested",
+    "ttl_seconds": 60
+  },
+  "runtime_evaluations": [
+    {
+      "admissible": false,
+      "chosen": false,
+      "hard_requirements_satisfied": false,
+      "preferred": true,
+      "reason_codes": [
+        "REQUESTED_WITNESS_LEVEL_UNAVAILABLE",
+        "REQUIRED_EFFECT_UNSUPPORTED",
+        "REQUIRED_SCOPE_NOT_ENFORCEABLE",
+        "RUNTIME_ANTI_REPLAY_UNSUPPORTED",
+        "RUNTIME_AUDIENCE_BINDING_UNSUPPORTED",
+        "RUNTIME_AUTHORITY_PLAN_DIGEST_UNSUPPORTED",
+        "RUNTIME_CALL_CHAIN_BINDING_UNSUPPORTED",
+        "RUNTIME_CHILD_PROCESS_MODE_UNSUPPORTED",
+        "RUNTIME_EXECUTION_ISOLATION_TOO_WEAK",
+        "RUNTIME_FILESYSTEM_ISOLATION_TOO_WEAK",
+        "RUNTIME_MAX_HOPS_ENFORCEMENT_UNSUPPORTED",
+        "RUNTIME_NETWORK_GRANULARITY_TOO_WEAK",
+        "RUNTIME_REDACTED_IO_HASHES_UNSUPPORTED",
+        "RUNTIME_REVOCATION_MODE_UNSUPPORTED",
+        "RUNTIME_SIGNATURE_MODE_UNSUPPORTED",
+        "RUNTIME_TAMPER_EVIDENCE_MODE_UNSUPPORTED",
+        "RUNTIME_TOKEN_PASSTHROUGH_MODE_UNSUPPORTED",
+        "RUNTIME_TRUSTED_TIME_SOURCE_UNSUPPORTED",
+        "RUNTIME_WITNESS_LEVEL_UNSUPPORTED"
+      ],
+      "runtime": {
+        "id": "node-wasi",
+        "vendor": "Node.js",
+        "version": "basic-profile-2026-03"
+      },
+      "runtime_guarantee_id": "urn:guild:runtime:node-wasi-basic:v1",
+      "unsatisfied_requirements": [
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish support for a required effect class",
+            "reason_code": "REQUIRED_EFFECT_UNSUPPORTED"
+          },
+          "requirement_kind": "effect_class",
+          "subject": "capability.delegate"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish support for a required effect class",
+            "reason_code": "REQUIRED_EFFECT_UNSUPPORTED"
+          },
+          "requirement_kind": "effect_class",
+          "subject": "component.invoke"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish support for a required effect class",
+            "reason_code": "REQUIRED_EFFECT_UNSUPPORTED"
+          },
+          "requirement_kind": "effect_class",
+          "subject": "secret.read"
+        },
+        {
+          "reason": {
+            "detail": {
+              "required_effect": {
+                "cardinality": {
+                  "max_bytes": 1048576,
+                  "max_calls": 20
+                },
+                "effect_class": "net.connect",
+                "scope": {
+                  "audiences": [
+                    {
+                      "host": "kube-api.prod.example.internal",
+                      "methods": [
+                        "GET",
+                        "PATCH",
+                        "POST"
+                      ],
+                      "path_prefixes": [
+                        "/api/",
+                        "/apis/"
+                      ],
+                      "ports": [
+                        443
+                      ],
+                      "schemes": [
+                        "https"
+                      ]
+                    }
+                  ],
+                  "kind": "network"
+                }
+              }
+            },
+            "message": "runtime cannot enforce the scope constraints on a required effect",
+            "reason_code": "REQUIRED_SCOPE_NOT_ENFORCEABLE"
+          },
+          "requirement_kind": "required_effect_scope",
+          "subject": "net.connect"
+        },
+        {
+          "reason": {
+            "detail": {
+              "published": "best_effort",
+              "required": "strong"
+            },
+            "message": "runtime execution isolation assurance was weaker than required",
+            "reason_code": "RUNTIME_EXECUTION_ISOLATION_TOO_WEAK"
+          },
+          "requirement_kind": "runtime_guarantee",
+          "subject": "execution_isolation_assurance"
+        },
+        {
+          "reason": {
+            "detail": {
+              "published": "path_filter",
+              "required": "preopen_only"
+            },
+            "message": "runtime filesystem isolation class was weaker than required",
+            "reason_code": "RUNTIME_FILESYSTEM_ISOLATION_TOO_WEAK"
+          },
+          "requirement_kind": "runtime_guarantee",
+          "subject": "filesystem_isolation_class"
+        },
+        {
+          "reason": {
+            "detail": {
+              "published": "binary",
+              "required": "url"
+            },
+            "message": "runtime network policy granularity was weaker than required",
+            "reason_code": "RUNTIME_NETWORK_GRANULARITY_TOO_WEAK"
+          },
+          "requirement_kind": "runtime_guarantee",
+          "subject": "network_policy_granularity"
+        },
+        {
+          "reason": {
+            "detail": {
+              "required_mode": "forbidden",
+              "supported_modes": [
+                "unrestricted"
+              ]
+            },
+            "message": "runtime did not publish the required policy mode",
+            "reason_code": "RUNTIME_CHILD_PROCESS_MODE_UNSUPPORTED"
+          },
+          "requirement_kind": "runtime_guarantee",
+          "subject": "child_process_policy"
+        },
+        {
+          "reason": {
+            "detail": {
+              "required_mode": "one_hop_bound",
+              "supported_modes": [
+                "unrestricted"
+              ]
+            },
+            "message": "runtime did not publish the required policy mode",
+            "reason_code": "RUNTIME_TOKEN_PASSTHROUGH_MODE_UNSUPPORTED"
+          },
+          "requirement_kind": "runtime_guarantee",
+          "subject": "token_passthrough_policy"
+        },
+        {
+          "reason": {
+            "detail": {
+              "required_mode": "hard_kill_live",
+              "supported_modes": [
+                "expiry_only"
+              ]
+            },
+            "message": "runtime did not publish the required policy mode",
+            "reason_code": "RUNTIME_REVOCATION_MODE_UNSUPPORTED"
+          },
+          "requirement_kind": "runtime_guarantee",
+          "subject": "revocation_behavior"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish a required delegation enforcement guarantee",
+            "reason_code": "RUNTIME_AUDIENCE_BINDING_UNSUPPORTED"
+          },
+          "requirement_kind": "delegation_enforcement",
+          "subject": "audience_binding"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish a required delegation enforcement guarantee",
+            "reason_code": "RUNTIME_CALL_CHAIN_BINDING_UNSUPPORTED"
+          },
+          "requirement_kind": "delegation_enforcement",
+          "subject": "call_chain_binding"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish a required delegation enforcement guarantee",
+            "reason_code": "RUNTIME_ANTI_REPLAY_UNSUPPORTED"
+          },
+          "requirement_kind": "delegation_enforcement",
+          "subject": "anti_replay"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish a required delegation enforcement guarantee",
+            "reason_code": "RUNTIME_MAX_HOPS_ENFORCEMENT_UNSUPPORTED"
+          },
+          "requirement_kind": "delegation_enforcement",
+          "subject": "max_hops_enforced"
+        },
+        {
+          "reason": {
+            "detail": {
+              "required_level": "full",
+              "supported_levels": [
+                "summary",
+                "decision"
+              ]
+            },
+            "message": "runtime witness support was weaker than required",
+            "reason_code": "RUNTIME_WITNESS_LEVEL_UNSUPPORTED"
+          },
+          "requirement_kind": "witness_support",
+          "subject": "minimum_level"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish an acceptable tamper-evidence mode",
+            "reason_code": "RUNTIME_TAMPER_EVIDENCE_MODE_UNSUPPORTED"
+          },
+          "requirement_kind": "witness_support",
+          "subject": "tamper_evidence_modes"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish an acceptable witness signature mode",
+            "reason_code": "RUNTIME_SIGNATURE_MODE_UNSUPPORTED"
+          },
+          "requirement_kind": "witness_support",
+          "subject": "signature_modes"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish a required witness capability",
+            "reason_code": "RUNTIME_TRUSTED_TIME_SOURCE_UNSUPPORTED"
+          },
+          "requirement_kind": "witness_support",
+          "subject": "trusted_time_source"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish a required witness capability",
+            "reason_code": "RUNTIME_REDACTED_IO_HASHES_UNSUPPORTED"
+          },
+          "requirement_kind": "witness_support",
+          "subject": "redacted_io_hashes"
+        },
+        {
+          "reason": {
+            "detail": {},
+            "message": "runtime did not publish a required witness capability",
+            "reason_code": "RUNTIME_AUTHORITY_PLAN_DIGEST_UNSUPPORTED"
+          },
+          "requirement_kind": "witness_support",
+          "subject": "authority_plan_digest"
+        },
+        {
+          "reason": {
+            "detail": {
+              "requested_witness_level": "full",
+              "supported_levels": [
+                "summary",
+                "decision"
+              ]
+            },
+            "message": "runtime could not satisfy the requested witness level",
+            "reason_code": "REQUESTED_WITNESS_LEVEL_UNAVAILABLE"
+          },
+          "requirement_kind": "requested_witness_level",
+          "subject": "full"
+        }
+      ]
+    }
+  ],
+  "version": "1.0.0",
+  "witness_policy": {
+    "acceptable_signature_modes": [
+      "external_signer"
+    ],
+    "acceptable_tamper_evidence_modes": [
+      "merkle_chain"
+    ],
+    "contract_witness_level": "full",
+    "effective_witness_level": "full",
+    "prerequisites": [],
+    "requested_witness_level": "full",
+    "supported_levels": []
+  }
+}
