@@ -174,6 +174,14 @@
       },
       "uniqueItems": true
     },
+    "supported_canonical_families": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "common.schema.json#/$defs/canonical_effect_family"
+      },
+      "uniqueItems": true
+    },
     "notes": {
       "type": "string"
     },
@@ -195,7 +203,8 @@
     "revocation_behavior",
     "delegation_enforcement",
     "witness_support",
-    "supported_effect_classes"
+    "supported_effect_classes",
+    "supported_canonical_families"
   ],
   "additionalProperties": false
 }

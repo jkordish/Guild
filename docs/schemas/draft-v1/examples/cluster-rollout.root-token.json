@@ -35,7 +35,7 @@
     },
     "runtime_guarantee_digest": {
       "algorithm": "sha256",
-      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+      "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
     },
     "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
   },
@@ -45,7 +45,7 @@
   },
   "contract_digest": {
     "algorithm": "sha256",
-    "value": "73158871928cf3261d11f37b97acecaed3796a365b2c4041ceb2639a44e017a4"
+    "value": "26f13a40b68d55427fcc86f66b6ab2e992b427591e5216f6f2049625acfa2e9d"
   },
   "delegation": {
     "max_hops": 1,
@@ -54,7 +54,7 @@
   },
   "execution_plan_digest": {
     "algorithm": "sha256",
-    "value": "a9b01e1d3f9037b9316f38118fd3504f06e8187b3b2027d23d183dac67148192"
+    "value": "b6bbcf6052c0f1b4dcb8d48f0f771e81fbb17e4c5a4798a86ab58214bcf93dff"
   },
   "execution_plan_id": "urn:guild:request:cluster-rollout:admit:v1:execution-plan",
   "expires_at": "2026-03-20T13:06:00Z",
@@ -197,9 +197,9 @@
     "canonicalization": "guild-json-c14n-v1",
     "claims_digest": {
       "algorithm": "sha256",
-      "value": "3475899f34d13c18cf920dcb965afcdb644dd34142d422a39cc8757dbf4217e6"
+      "value": "4a6cd1827043b0425d11f87a3324bf51f1d66465b8abe8abc7886ebf587e815d"
     },
-    "mac_base64": "te+e6tou2c98QFZPMWrB9s6Ee1Ssjlgw/edphPbHmac=",
+    "mac_base64": "AZD48lE+7cdP4nz9Bg9uz1e3KR2fcZ4xb3lNeJl/GnU=",
     "mode": "hmac-sha256"
   },
   "replay_protection": {

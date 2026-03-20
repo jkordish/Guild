@@ -1,0 +1,19 @@
+{
+  "kind": "guild.comparator_profile",
+  "comparator_id": "urn:guild:comparator:runtime-http-read:missing-harness:v1",
+  "version": "1.0.0",
+  "comparator_kind": "declared_postconditions",
+  "reference": "runtime-http-read.postconditions.missing.v1",
+  "checker_ref": "urn:guild:checker:runtime-http-read:missing:v1",
+  "inputs": {
+    "expected_fields": [
+      "status",
+      "selected_fields"
+    ]
+  },
+  "assumptions": {
+    "ambient_clock_controlled": true,
+    "ambient_network_controlled": true,
+    "ambient_random_controlled": true
+  }
+}

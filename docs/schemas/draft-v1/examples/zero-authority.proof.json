@@ -18,7 +18,7 @@
     ],
     "cache_key_digest": {
       "algorithm": "sha256",
-      "value": "a84c0a9a0f27847d9bbe15c5361ebd7b397f0fb2d4891c45b791655a9d3b9d0a"
+      "value": "fee39ac3ef1b4c92c98ac1755813610b9d1bda3c288a82143a422c6113768fc3"
     },
     "key_material": {
       "comparator_digest": {
@@ -31,11 +31,11 @@
       },
       "contract_digest": {
         "algorithm": "sha256",
-        "value": "90969f04d6a0a5d3990af114ac918e3053bf568444bfce4d5d598d246d8e6770"
+        "value": "1888184126b0cc95b54b06e909e307d5510de8d86337d40316960ca1d1cf518f"
       },
       "execution_plan_digest": {
         "algorithm": "sha256",
-        "value": "5eac69cecce737fdf1c45dcec079e29c5137d543b2bf697b7b101252dee33117"
+        "value": "a78469eb69213935e4bb0247818d05ca05819b87571aa6c4085b5cc465021ffe"
       },
       "export_name": "summarize",
       "harness_id": "urn:guild:harness:draft-v1:example-bounded",
@@ -55,7 +55,7 @@
       "minimization_algorithm_version": "1.0.0",
       "runtime_guarantee_digest": {
         "algorithm": "sha256",
-        "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+        "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
       },
       "shrink_model_version": "1.0.0"
     },
@@ -71,7 +71,7 @@
     },
     "runtime_guarantee_digest": {
       "algorithm": "sha256",
-      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+      "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
     },
     "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
   },
@@ -100,12 +100,12 @@
   },
   "contract_digest": {
     "algorithm": "sha256",
-    "value": "90969f04d6a0a5d3990af114ac918e3053bf568444bfce4d5d598d246d8e6770"
+    "value": "1888184126b0cc95b54b06e909e307d5510de8d86337d40316960ca1d1cf518f"
   },
   "created_at": "2026-03-20T12:30:00Z",
   "execution_plan_digest": {
     "algorithm": "sha256",
-    "value": "5eac69cecce737fdf1c45dcec079e29c5137d543b2bf697b7b101252dee33117"
+    "value": "a78469eb69213935e4bb0247818d05ca05819b87571aa6c4085b5cc465021ffe"
   },
   "execution_plan_id": "urn:guild:request:zero-authority:admit:v1:execution-plan",
   "expires_at": null,

@@ -44,7 +44,7 @@
   "execution_plan": {
     "execution_plan_digest": {
       "algorithm": "sha256",
-      "value": "5eac69cecce737fdf1c45dcec079e29c5137d543b2bf697b7b101252dee33117"
+      "value": "a78469eb69213935e4bb0247818d05ca05819b87571aa6c4085b5cc465021ffe"
     },
     "execution_plan_id": "urn:guild:request:zero-authority:admit:v1:execution-plan"
   },
@@ -83,7 +83,7 @@
   "proof_basis": {
     "proof_digest": {
       "algorithm": "sha256",
-      "value": "d44b146b6e0e1d6ffd074aaf60bbb3360954c68097862022878647eaefcc1179"
+      "value": "e337ed9cd0b1568196b49c78c6efd47e01f18802a03bdb45f3c7eff59244663a"
     },
     "proof_id": "urn:guild:request:zero-authority:admit:v1:execution-plan:m5-proof",
     "proof_status": "exact_minimal"
@@ -92,9 +92,9 @@
     "canonicalization": "guild-json-c14n-v1",
     "claims_digest": {
       "algorithm": "sha256",
-      "value": "48ed3a7c466f632f2668ab33bc683721efc409e6c1b38c95f4f2ddac944af733"
+      "value": "9b417a7215c2300032c48cf2641621047410c618a52f53a4b3a0c0a7c4bee277"
     },
-    "mac_base64": "TzmhZGqV86tESwXkuuzYhSdbBXOA1xSgNxCnLf5lxfg=",
+    "mac_base64": "U0TKDiHxM2G6rqlFmfyxPWM1oAXQG6FcdGbNuRaQX7g=",
     "mode": "hmac-sha256"
   },
   "reason_codes": [],
@@ -107,7 +107,7 @@
     "raw_trace_included": false,
     "redacted_content_digest": {
       "algorithm": "sha256",
-      "value": "8d506bb8c19af74d5ff49f18be46793e54a98831c09a325631c82a4584a9ea7a"
+      "value": "db24e1779274bae4420d388b35a30f87747b688b5fc2063f1d9a01f19580987b"
     },
     "redacted_fields": [
       "call_chain.links",
@@ -123,7 +123,7 @@
     },
     "runtime_guarantee_digest": {
       "algorithm": "sha256",
-      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+      "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
     },
     "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
   },
@@ -134,7 +134,7 @@
     },
     "contract_digest": {
       "algorithm": "sha256",
-      "value": "90969f04d6a0a5d3990af114ac918e3053bf568444bfce4d5d598d246d8e6770"
+      "value": "1888184126b0cc95b54b06e909e307d5510de8d86337d40316960ca1d1cf518f"
     },
     "export_name": "summarize",
     "input_class_fingerprint": {
@@ -157,14 +157,14 @@
     "parent_token_id": null,
     "token_digest": {
       "algorithm": "sha256",
-      "value": "2fc2406dc3f14b37bbe80b3592e94ec80c4855538bf4a59f5d33007da813c02e"
+      "value": "03f53e3d0f2ef00dd47ce1a5a9194dada8891356053305045447d81000867240"
     },
     "token_id": "urn:guild:token:zero-authority:root:v1",
     "verification_decision": "allow",
     "verification_reason_codes": [],
     "verification_result_digest": {
       "algorithm": "sha256",
-      "value": "ac3b2f42f0d6b38df9f55e316f3c608406df7a954ae0f2dc41b94b24b4b91ae1"
+      "value": "94545df24bbb66fa3ae9d90ce0e8bc3257d6289145480152dad08edd60541ab0"
     },
     "verification_verified": true
   },

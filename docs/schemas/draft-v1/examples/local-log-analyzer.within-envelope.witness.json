@@ -73,7 +73,7 @@
   "execution_plan": {
     "execution_plan_digest": {
       "algorithm": "sha256",
-      "value": "f979dd978b716c828518dac3e83b86783e77d46b951cc6175fefce83b0f8b028"
+      "value": "6cf1c319d8c99f3c478edaeae4ea437f84819e13ab36ac1fa6cd6c2c8d91373d"
     },
     "execution_plan_id": "urn:guild:request:local-log-analyzer:admit:v1:execution-plan"
   },
@@ -143,7 +143,7 @@
   "proof_basis": {
     "proof_digest": {
       "algorithm": "sha256",
-      "value": "5273268cddeac106d3f20af0dbdf84c682f4bd7027df9ef9b85d2c0fd4073319"
+      "value": "f7cc8899fe7af9f03ad25567741c2e182dfa160ddb87cfe96d614870de97da82"
     },
     "proof_id": "urn:guild:request:local-log-analyzer:admit:v1:execution-plan:m5-proof",
     "proof_status": "exact_minimal"
@@ -152,9 +152,9 @@
     "canonicalization": "guild-json-c14n-v1",
     "claims_digest": {
       "algorithm": "sha256",
-      "value": "07739dd490adbf6cfeb33cf65418335a070d7e89747b4e0864e40bdc6ca7445e"
+      "value": "606ffc8f9501fb5f0f0301dc87a7b15e36dd31cc93dbb36aeb6d5054c1b8f8c9"
     },
-    "mac_base64": "SRKz2XR6a1prQx9ue2FbUmWsjA6OgCIHjvy95Ngym34=",
+    "mac_base64": "XDHV39V34ZQOp3h1SXjA71xAEdWDC/YY9yVRcDw6oKU=",
     "mode": "hmac-sha256"
   },
   "reason_codes": [],
@@ -167,7 +167,7 @@
     "raw_trace_included": false,
     "redacted_content_digest": {
       "algorithm": "sha256",
-      "value": "9e648ce4a66d35115486f50ad370b6e4150ffcb2d3411ab807cc8ae10943c227"
+      "value": "fe973430f1dbac6b8fcd606ba69bd696bc5cc7be2384c0111cd615a7b3fb9245"
     },
     "redacted_fields": [
       "call_chain.links",
@@ -183,7 +183,7 @@
     },
     "runtime_guarantee_digest": {
       "algorithm": "sha256",
-      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+      "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
     },
     "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
   },
@@ -194,7 +194,7 @@
     },
     "contract_digest": {
       "algorithm": "sha256",
-      "value": "cbaf2c465088d9eefa1233f85d9e7aa81fedf40a042daf100ce951f8d04a2078"
+      "value": "38fe445095b97673a4be5f35f1ffa8859d1ebdad79435c0698044331c4fccd7a"
     },
     "export_name": "analyze_logs",
     "input_class_fingerprint": {
@@ -217,14 +217,14 @@
     "parent_token_id": null,
     "token_digest": {
       "algorithm": "sha256",
-      "value": "ded600c32bf2bd12c81a4231bb103df174413abfb5a0ed19774e7dfb2eb3bbce"
+      "value": "c31ce6bdf7e428cb406d70905f96d20f137b1cba1147d7ad15ae9a24529630ca"
     },
     "token_id": "urn:guild:token:local-log-analyzer:root:v1",
     "verification_decision": "allow",
     "verification_reason_codes": [],
     "verification_result_digest": {
       "algorithm": "sha256",
-      "value": "21f105a5943aed70d0b862778b39adf28751733342973771409b0db915efc561"
+      "value": "d55b7f394016d75f6d7458827797cee86df1b31d629fdf31da839e9d500dd3d8"
     },
     "verification_verified": true
   },

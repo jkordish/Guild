@@ -11,7 +11,7 @@ from admission_core import (
 )
 from minimization_core import build_minimization_proof
 from token_core import create_child_token, create_root_token, verify_token
-from witness_core import verify_claim, verify_witness
+from witness_core import generate_witness, verify_claim, verify_witness
 from witness_examples import build_witness_fixtures
 
 
@@ -20,6 +20,8 @@ EXAMPLES = [
     ("skill_contract.schema.json", "examples/zero-authority.contract.json"),
     ("skill_contract.schema.json", "examples/fetch-transform.contract.json"),
     ("skill_contract.schema.json", "examples/cluster-rollout.contract.json"),
+    ("skill_contract.schema.json", "examples/runtime-http-read.contract.json"),
+    ("skill_contract.schema.json", "examples/runtime-emit-evidence-zero.contract.json"),
     ("runtime_guarantee.schema.json", "examples/wasmtime-strict.runtime.json"),
     ("runtime_guarantee.schema.json", "examples/node-wasi-basic.runtime.json"),
     ("comparator_profile.schema.json", "examples/local-log-analyzer.canonical-json.comparator.json"),
@@ -27,6 +29,7 @@ EXAMPLES = [
     ("comparator_profile.schema.json", "examples/fetch-transform.postconditions.comparator.json"),
     ("comparator_profile.schema.json", "examples/fetch-transform.bounded.comparator.json"),
     ("comparator_profile.schema.json", "examples/zero-authority.pure.comparator.json"),
+    ("comparator_profile.schema.json", "examples/runtime-http-read.unavailable.comparator.json"),
     ("proof_record.schema.json", "examples/local-log-analyzer.proof.json"),
     ("proof_record.schema.json", "examples/local-log-analyzer.cache-hit.proof.json"),
     ("proof_record.schema.json", "examples/local-log-analyzer.comparator-unavailable.proof.json"),
@@ -49,6 +52,8 @@ EXAMPLES = [
     ("admission_request.schema.json", "examples/local-log-analyzer.admit.request.json"),
     ("admission_request.schema.json", "examples/cluster-rollout.refuse.request.json"),
     ("admission_request.schema.json", "examples/cluster-rollout.admit.request.json"),
+    ("admission_request.schema.json", "examples/runtime-http-read.admit.request.json"),
+    ("admission_request.schema.json", "examples/runtime-emit-evidence-zero.admit.request.json"),
     ("execution_plan.schema.json", "examples/zero-authority.admit.plan.json"),
     ("execution_plan.schema.json", "examples/zero-authority.migrate.plan.json"),
     ("execution_plan.schema.json", "examples/fetch-transform.downgrade.plan.json"),
@@ -936,6 +941,239 @@ def verify_witness_cases() -> list[str]:
     return failures
 
 
+def verify_live_runtime_alignment_cases() -> list[str]:
+    failures: list[str] = []
+    issuer = m6_issuer()
+    issuer_keys = m6_issuer_keys()
+    runtime = load_json("examples/wasmtime-strict.runtime.json")
+
+    http_contract = load_json("examples/runtime-http-read.contract.json")
+    http_request = load_json("examples/runtime-http-read.admit.request.json")
+    http_invocation = load_json("examples/runtime-http-read.invocation.json")
+    http_comparator = load_json("examples/runtime-http-read.unavailable.comparator.json")
+    http_record = load_json("examples/runtime-http-success.execution-record.json")
+    http_blocked_record = load_json("examples/runtime-http-blocked.execution-record.json")
+
+    http_plan = build_execution_plan(http_contract, http_request, [runtime])
+    if http_plan["decision"] != "admit":
+        failures.append("runtime-http-read admission did not produce an admit plan for the live HTTP case")
+        return failures
+
+    http_proof = build_minimization_proof(
+        http_plan,
+        http_contract,
+        http_request,
+        runtime,
+        http_invocation,
+        http_comparator,
+        created_at="2026-03-20T20:10:00Z",
+    )
+    if http_proof["proof_status"] != "not_proven":
+        failures.append("runtime-http-read proof did not stay honest about the missing live minimization harness")
+    http_witness_proof = None
+
+    http_token = create_root_token(
+        http_plan,
+        http_contract,
+        issuer,
+        holder_id="urn:guild:service:runtime-http-read",
+        issued_at="2026-03-20T20:10:30Z",
+        proof=http_proof,
+        allow_upper_bound=True,
+        audiences=["runtime-http-read"],
+        resource_bindings=[
+            {
+                "effect_class": "net.connect",
+                "audience": "runtime-http-read",
+                "resource": "http://127.0.0.1:18080/response.json",
+            }
+        ],
+        chain_links=["urn:guild:actor:runtime-alignment-test"],
+    )
+    if http_token.get("kind") != "guild.delegated_capability_token":
+        failures.append("runtime-http-read token issuance did not produce a delegated capability token")
+        return failures
+
+    http_witness = generate_witness(
+        plan=http_plan,
+        contract=http_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-20T20:11:00Z",
+        invocation_input=http_invocation,
+        proof=http_witness_proof,
+        token=http_token,
+        observation={
+            "source_kind": "live-runtime-hook",
+            "execution_record": http_record,
+        },
+        redaction_profile="none",
+    )
+    http_witness_repeat = generate_witness(
+        plan=http_plan,
+        contract=http_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-20T20:11:00Z",
+        invocation_input=http_invocation,
+        proof=http_witness_proof,
+        token=http_token,
+        observation={
+            "source_kind": "live-runtime-hook",
+            "execution_record": http_record,
+        },
+        redaction_profile="none",
+    )
+    if canonical_json(http_witness) != canonical_json(http_witness_repeat):
+        failures.append("runtime-http-read live witness generation was not deterministic for identical runtime-native input")
+
+    http_verification = verify_witness(
+        http_witness,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T20:12:00Z",
+        plan=http_plan,
+        contract=http_contract,
+        proof=http_witness_proof,
+        token=http_token,
+    )
+    if not http_verification["verified"] or http_verification["witness_status"] != "within_envelope":
+        failures.append("runtime-http-read live witness did not verify as within_envelope")
+
+    http_claim = verify_claim(
+        http_witness,
+        {
+            "claim_type": "no_network_egress_except_allowlist",
+            "network_allowlist": [
+                {
+                    "host": "127.0.0.1",
+                    "ports": [18080],
+                    "schemes": ["http"],
+                    "path_prefixes": ["/response.json"],
+                    "methods": ["GET"],
+                }
+            ],
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T20:12:00Z",
+        plan=http_plan,
+        contract=http_contract,
+        proof=http_witness_proof,
+        token=http_token,
+    )
+    if http_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("runtime-http-read live witness did not satisfy the covered network allowlist claim")
+
+    coverage_entry = http_witness["observation_coverage"]["families"][0]
+    if coverage_entry["family"] != "http-request" or coverage_entry["mapping_status"] != "narrowing":
+        failures.append("runtime-http-read live witness did not classify the net.connect -> http-request bridge as a narrowing mapping")
+
+    blocked_witness = generate_witness(
+        plan=http_plan,
+        contract=http_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-20T20:11:30Z",
+        invocation_input=http_invocation,
+        proof=http_witness_proof,
+        token=http_token,
+        observation={
+            "source_kind": "live-runtime-hook",
+            "execution_record": http_blocked_record,
+        },
+        redaction_profile="none",
+    )
+    if "net.connect" in blocked_witness["actual_exercised_authority"]["effect_classes"]:
+        failures.append("runtime-http-read blocked live witness conflated blocked authority with exercised authority")
+    if "net.connect" not in blocked_witness["blocked_attempted_authority"]["effect_classes"]:
+        failures.append("runtime-http-read blocked live witness did not preserve the blocked HTTP attempt distinctly")
+    blocked_claim = verify_claim(
+        blocked_witness,
+        {
+            "claim_type": "no_blocked_attempts_of_classes",
+            "effect_classes": ["net.connect"],
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T20:12:00Z",
+        plan=http_plan,
+        contract=http_contract,
+        proof=http_witness_proof,
+        token=http_token,
+    )
+    if blocked_claim["claim_evaluation"]["status"] != "violated":
+        failures.append("runtime-http-read blocked live witness did not fail the blocked-attempt claim")
+
+    emit_contract = load_json("examples/runtime-emit-evidence-zero.contract.json")
+    emit_request = load_json("examples/runtime-emit-evidence-zero.admit.request.json")
+    emit_invocation = load_json("examples/runtime-emit-evidence.invocation.json")
+    emit_record = load_json("examples/runtime-emit-evidence.execution-record.json")
+
+    emit_plan = build_execution_plan(emit_contract, emit_request, [runtime])
+    if emit_plan["decision"] != "admit":
+        failures.append("runtime-emit-evidence-zero admission did not produce an admit plan")
+        return failures
+
+    emit_proof = build_minimization_proof(
+        emit_plan,
+        emit_contract,
+        emit_request,
+        runtime,
+        emit_invocation,
+        http_comparator,
+        created_at="2026-03-20T20:13:00Z",
+    )
+    emit_witness_proof = None
+    emit_token = create_root_token(
+        emit_plan,
+        emit_contract,
+        issuer,
+        holder_id="urn:guild:service:runtime-emit-evidence-zero",
+        issued_at="2026-03-20T20:13:30Z",
+        proof=emit_proof,
+        allow_upper_bound=True,
+        chain_links=["urn:guild:actor:runtime-alignment-test"],
+    )
+    emit_witness = generate_witness(
+        plan=emit_plan,
+        contract=emit_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-20T20:14:00Z",
+        invocation_input=emit_invocation,
+        proof=emit_witness_proof,
+        token=emit_token if emit_token.get("kind") == "guild.delegated_capability_token" else None,
+        observation={
+            "source_kind": "live-runtime-hook",
+            "execution_record": emit_record,
+        },
+        redaction_profile="none",
+    )
+    emit_verification = verify_witness(
+        emit_witness,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T20:14:30Z",
+        plan=emit_plan,
+        contract=emit_contract,
+        proof=emit_witness_proof,
+        token=emit_token if emit_token.get("kind") == "guild.delegated_capability_token" else None,
+    )
+    if not emit_verification["verified"] or emit_verification["witness_status"] != "coverage_limited":
+        failures.append("runtime-emit-evidence live witness did not verify as coverage_limited")
+    emit_claim = verify_claim(
+        emit_witness,
+        {"claim_type": "no_authority_use_outside_plan"},
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T20:14:30Z",
+        plan=emit_plan,
+        contract=emit_contract,
+        proof=emit_witness_proof,
+        token=emit_token if emit_token.get("kind") == "guild.delegated_capability_token" else None,
+    )
+    if emit_claim["claim_evaluation"]["status"] != "not_provable":
+        failures.append("runtime-emit-evidence live witness did not fail closed for an unsupported-family absence claim")
+
+    return failures
+
+
 def main() -> int:
     registry = build_registry()
     failures: list[str] = []
@@ -945,6 +1183,7 @@ def main() -> int:
     failures.extend(verify_minimization_cases())
     failures.extend(verify_token_cases())
     failures.extend(verify_witness_cases())
+    failures.extend(verify_live_runtime_alignment_cases())
 
     if failures:
         print("Validation failed:")
@@ -952,7 +1191,7 @@ def main() -> int:
             print(f" - {failure}")
         return 1
 
-    print("All bundled examples, admission cases, minimization cases, M6 token cases, and M7 witness cases validate cleanly.")
+    print("All bundled examples, admission cases, minimization cases, token cases, witness cases, and live runtime alignment cases validate cleanly.")
     return 0
 
 

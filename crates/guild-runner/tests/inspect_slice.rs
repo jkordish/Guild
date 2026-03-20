@@ -6,14 +6,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use guild_registry::{LocalRegistry, LocalSourceInstaller, SkillRegistry, execution_resource_uri};
 use guild_runner::{Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
-    AbiVersion, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
-    CapabilityId, CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, EvidenceRef,
-    ExecutionMode, ExecutionStatus, FilesystemConstraints, FilesystemOperation, FilesystemRoot,
-    GrantedCapability, HttpMethod, HttpRequestConstraints, HttpScheme, InstalledVerificationState,
-    InvokeDependencyConstraints, LocalTrustTier, LogConstraints, PolicyDecision,
-    PolicyDecisionOutcome, PolicyReason, ReadResourceConstraints, RedactionClass,
-    RequestedSkillRef, ResolvedExecutionEnvelope, ResourceKind, Severity, SkillKey,
-    VersionRequirement,
+    AbiVersion, AuthorityObservation, AuthorityObservationStatus, CallerRequest, CapabilityAccess,
+    CapabilityConstraints, CapabilityGrantSet, CapabilityId, CapabilityRequirement,
+    EmitEvidenceConstraints, EvidenceAudience, EvidenceRef, ExecutionMode, ExecutionStatus,
+    FilesystemConstraints, FilesystemOperation, FilesystemRoot, GrantedCapability, HttpMethod,
+    HttpRequestConstraints, HttpScheme, InstalledVerificationState, InvokeDependencyConstraints,
+    LocalTrustTier, LogConstraints, PolicyDecision, PolicyDecisionOutcome, PolicyReason,
+    ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope,
+    ResourceKind, Severity, SkillKey, VersionRequirement,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -645,6 +645,20 @@ fn runner_executes_example_skill_and_wraps_execution_record() {
     assert_eq!(record.provenance.resolved_skill, installed.resolved_ref);
     assert!(record.provenance.started_at_utc.is_some());
     assert!(record.provenance.finished_at_utc.is_some());
+    assert_eq!(record.authority_observations.len(), 1);
+    match &record.authority_observations[0] {
+        AuthorityObservation::EmitEvidence { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            assert_eq!(detail.mime_type, "application/json");
+            assert_eq!(
+                detail.evidence_uri.as_deref(),
+                Some(record.emitted_evidence[0].uri.as_str())
+            );
+            assert_eq!(detail.result_error, None);
+            assert_eq!(detail.denial, None);
+        }
+        other => panic!("expected canonical emit-evidence observation, got {other:?}"),
+    }
     assert_eq!(record, stored);
     assert!(record.metrics.duration_ms <= record.metrics.duration_ms);
 

@@ -15,16 +15,19 @@ use guild_manifest::SkillManifest;
 use guild_registry::{InstalledSkill, RegistryError, SkillRegistry, execution_resource_uri};
 use guild_sdk_rust::GuildSkill;
 use guild_types::{
-    AbiVersion, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
-    CapabilityId, CapabilityRequirement, ChildExecutionRecord, Diagnostic, Effect,
-    EmitEvidenceConstraints, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
-    EvidenceRef, ExecutionContext, ExecutionMetrics, ExecutionMode, ExecutionPhase,
-    ExecutionReceipt, ExecutionRecord, ExecutionStatus, FilesystemConstraints, FilesystemOperation,
-    FilesystemRoot, GrantedCapability, GuildResourceScope, GuildResourceUri, HttpMethod,
-    HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme, InvokeDependencyConstraints,
-    LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints, Mutability, PolicyDecision,
-    PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule,
-    PolicyRuleEffect, PolicyRuleTarget, Provenance, ReadResourceConstraints, RedactionClass,
+    AbiVersion, AuthorityObservation, AuthorityObservationFailure, AuthorityObservationStatus,
+    CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
+    CapabilityRequirement, ChildExecutionRecord, Diagnostic, Effect,
+    EmitEvidenceAuthorityObservation, EmitEvidenceConstraints, EvidenceAudience,
+    EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionContext, ExecutionMetrics,
+    ExecutionMode, ExecutionPhase, ExecutionReceipt, ExecutionRecord, ExecutionStatus,
+    FilesystemConstraints, FilesystemOperation, FilesystemRoot, GrantedCapability,
+    GuildResourceScope, GuildResourceUri, HttpAuthorityObservation, HttpMethod, HttpRequest,
+    HttpRequestConstraints, HttpResponse, HttpScheme, InvokeDependencyConstraints,
+    InvokeSkillAuthorityObservation, LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints,
+    LogWriteAuthorityObservation, Mutability, PolicyDecision, PolicyDecisionOutcome, PolicyProfile,
+    PolicyProfileBinding, PolicyReason, PolicyRule, PolicyRuleEffect, PolicyRuleTarget, Provenance,
+    ReadResourceAuthorityObservation, ReadResourceConstraints, RedactionClass,
     ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind,
     Severity, SkillError, SkillOutput, TerminationDetail, host_now_utc, mint_host_execution_id,
 };
@@ -213,6 +216,7 @@ pub struct RuntimeOutcome {
     pub output: SkillOutput,
     pub emitted_evidence: Vec<EvidenceRef>,
     pub child_executions: Vec<ChildExecutionRecord>,
+    pub authority_observations: Vec<AuthorityObservation>,
     pub network_requests: u32,
 }
 
@@ -221,6 +225,7 @@ pub struct RuntimeFailure {
     pub error: Box<ExecutionError>,
     pub emitted_evidence: Vec<EvidenceRef>,
     pub child_executions: Vec<ChildExecutionRecord>,
+    pub authority_observations: Vec<AuthorityObservation>,
     pub network_requests: u32,
 }
 
@@ -457,6 +462,7 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                authority_observations: Vec::new(),
                 network_requests: 0,
             })?;
 
@@ -472,6 +478,7 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                authority_observations: Vec::new(),
                 network_requests: 0,
             })?;
 
@@ -490,6 +497,7 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                authority_observations: Vec::new(),
                 network_requests: 0,
             });
         }
@@ -508,6 +516,7 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 ),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                authority_observations: Vec::new(),
                 network_requests: 0,
             })?;
 
@@ -517,12 +526,14 @@ impl RuntimeAdapter for InProcessRuntimeAdapter {
                 output,
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                authority_observations: Vec::new(),
                 network_requests: 0,
             })
             .map_err(|error| RuntimeFailure {
                 error: Box::new(ExecutionError::from(error)),
                 emitted_evidence: Vec::new(),
                 child_executions: Vec::new(),
+                authority_observations: Vec::new(),
                 network_requests: 0,
             })
     }
@@ -696,6 +707,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                         error: Box::new(error),
                         emitted_evidence: Vec::new(),
                         child_executions: Vec::new(),
+                        authority_observations: Vec::new(),
                         network_requests: 0,
                     });
                 }
@@ -706,6 +718,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                     error: Box::new(error),
                     emitted_evidence: Vec::new(),
                     child_executions: Vec::new(),
+                    authority_observations: Vec::new(),
                     network_requests: 0,
                 })?;
         let wit_input = serde_json::to_string(input).expect("execution input serializes");
@@ -727,6 +740,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                 )),
                 emitted_evidence: store.data().emitted_evidence.clone(),
                 child_executions: store.data().child_executions.clone(),
+                authority_observations: store.data().authority_observations.clone(),
                 network_requests: store.data().network_requests,
             })?;
 
@@ -736,6 +750,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                     error: Box::new(error),
                     emitted_evidence: store.data().emitted_evidence.clone(),
                     child_executions: store.data().child_executions.clone(),
+                    authority_observations: store.data().authority_observations.clone(),
                     network_requests: store.data().network_requests,
                 })?;
                 validate_emitted_evidence(&output, &store.data().emitted_evidence).map_err(
@@ -743,6 +758,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                         error: Box::new(error),
                         emitted_evidence: store.data().emitted_evidence.clone(),
                         child_executions: store.data().child_executions.clone(),
+                        authority_observations: store.data().authority_observations.clone(),
                         network_requests: store.data().network_requests,
                     },
                 )?;
@@ -750,6 +766,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                     output,
                     emitted_evidence: store.data().emitted_evidence.clone(),
                     child_executions: store.data().child_executions.clone(),
+                    authority_observations: store.data().authority_observations.clone(),
                     network_requests: store.data().network_requests,
                 })
             }
@@ -757,6 +774,7 @@ impl RuntimeAdapter for WasmtimeRuntimeAdapter {
                 error: Box::new(from_wit_skill_error(error)),
                 emitted_evidence: store.data().emitted_evidence.clone(),
                 child_executions: store.data().child_executions.clone(),
+                authority_observations: store.data().authority_observations.clone(),
                 network_requests: store.data().network_requests,
             }),
         }
@@ -769,6 +787,7 @@ struct WasmStoreState {
     host: Arc<dyn RuntimeHost>,
     child_executions: Vec<ChildExecutionRecord>,
     emitted_evidence: Vec<EvidenceRef>,
+    authority_observations: Vec<AuthorityObservation>,
     network_requests: u32,
     wasi: WasiCtx,
     table: ResourceTable,
@@ -786,6 +805,7 @@ impl WasmStoreState {
             host,
             child_executions: Vec::new(),
             emitted_evidence: Vec::new(),
+            authority_observations: Vec::new(),
             network_requests: 0,
             wasi: WasiCtxBuilder::new().build(),
             table: ResourceTable::new(),
@@ -794,6 +814,257 @@ impl WasmStoreState {
 
     fn grants(&self) -> &CapabilityGrantSet {
         &self.execution.granted_capabilities
+    }
+
+    fn authority_failure_from_denial(denial: &CapabilityDenial) -> AuthorityObservationFailure {
+        AuthorityObservationFailure {
+            code: denial.code.clone(),
+            message: denial.message.clone(),
+            detail: Some(denial.detail.clone()),
+        }
+    }
+
+    fn authority_failure_from_skill_error(error: &SkillError) -> AuthorityObservationFailure {
+        AuthorityObservationFailure {
+            code: error.code.clone(),
+            message: error.message.clone(),
+            detail: error.detail.clone(),
+        }
+    }
+
+    fn push_blocked_emit_evidence(
+        &mut self,
+        request: &EvidenceEmissionRequest,
+        denial: &CapabilityDenial,
+    ) {
+        self.authority_observations
+            .push(AuthorityObservation::EmitEvidence {
+                status: AuthorityObservationStatus::Blocked,
+                detail: EmitEvidenceAuthorityObservation {
+                    mime_type: request.mime_type.clone(),
+                    audience: request.audience.clone(),
+                    redaction: request.redaction.clone(),
+                    size_bytes: u64::try_from(request.payload.len()).unwrap_or(u64::MAX),
+                    title: request.title.clone(),
+                    evidence_uri: None,
+                    sha256: None,
+                    denial: Some(Self::authority_failure_from_denial(denial)),
+                    result_error: None,
+                },
+            });
+    }
+
+    fn push_exercised_emit_evidence(
+        &mut self,
+        request: &EvidenceEmissionRequest,
+        evidence: Option<&EvidenceRef>,
+        result_error: Option<&SkillError>,
+    ) {
+        self.authority_observations
+            .push(AuthorityObservation::EmitEvidence {
+                status: AuthorityObservationStatus::Exercised,
+                detail: EmitEvidenceAuthorityObservation {
+                    mime_type: request.mime_type.clone(),
+                    audience: request.audience.clone(),
+                    redaction: request.redaction.clone(),
+                    size_bytes: u64::try_from(request.payload.len()).unwrap_or(u64::MAX),
+                    title: request.title.clone(),
+                    evidence_uri: evidence.map(|value| value.uri.clone()),
+                    sha256: evidence.and_then(|value| value.sha256.clone()),
+                    denial: None,
+                    result_error: result_error.map(Self::authority_failure_from_skill_error),
+                },
+            });
+    }
+
+    fn push_blocked_log(&mut self, level: Severity, denial: &CapabilityDenial) {
+        self.authority_observations
+            .push(AuthorityObservation::LogWrite {
+                status: AuthorityObservationStatus::Blocked,
+                detail: LogWriteAuthorityObservation {
+                    level,
+                    denial: Some(Self::authority_failure_from_denial(denial)),
+                },
+            });
+    }
+
+    fn push_exercised_log(&mut self, level: Severity) {
+        self.authority_observations
+            .push(AuthorityObservation::LogWrite {
+                status: AuthorityObservationStatus::Exercised,
+                detail: LogWriteAuthorityObservation {
+                    level,
+                    denial: None,
+                },
+            });
+    }
+
+    fn push_blocked_read_resource(&mut self, uri: &str, denial: &CapabilityDenial) {
+        self.authority_observations
+            .push(AuthorityObservation::ReadResource {
+                status: AuthorityObservationStatus::Blocked,
+                detail: ReadResourceAuthorityObservation {
+                    uri: uri.to_owned(),
+                    resource_kind: GuildResourceUri::parse(uri)
+                        .ok()
+                        .map(|parsed| parsed.kind()),
+                    mime_type: None,
+                    bytes: None,
+                    sha256: None,
+                    denial: Some(Self::authority_failure_from_denial(denial)),
+                    result_error: None,
+                },
+            });
+    }
+
+    fn push_exercised_read_resource(
+        &mut self,
+        uri: &str,
+        result: Option<&ResourceReadResult>,
+        result_error: Option<&SkillError>,
+    ) {
+        self.authority_observations
+            .push(AuthorityObservation::ReadResource {
+                status: AuthorityObservationStatus::Exercised,
+                detail: ReadResourceAuthorityObservation {
+                    uri: uri.to_owned(),
+                    resource_kind: GuildResourceUri::parse(uri)
+                        .ok()
+                        .map(|parsed| parsed.kind()),
+                    mime_type: result.map(|value| value.mime_type.clone()),
+                    bytes: result.map(|value| u64::try_from(value.bytes.len()).unwrap_or(u64::MAX)),
+                    sha256: result.and_then(|value| value.sha256.clone()),
+                    denial: None,
+                    result_error: result_error.map(Self::authority_failure_from_skill_error),
+                },
+            });
+    }
+
+    fn push_blocked_invoke_skill(&mut self, alias: &str, denial: &CapabilityDenial) {
+        self.authority_observations
+            .push(AuthorityObservation::InvokeSkill {
+                status: AuthorityObservationStatus::Blocked,
+                detail: InvokeSkillAuthorityObservation {
+                    alias: alias.to_owned(),
+                    child_execution_id: None,
+                    child_status: None,
+                    denial: Some(Self::authority_failure_from_denial(denial)),
+                    result_error: None,
+                },
+            });
+    }
+
+    fn push_exercised_invoke_skill(
+        &mut self,
+        alias: &str,
+        child_execution_id: Option<&str>,
+        child_status: Option<&ExecutionStatus>,
+        result_error: Option<&SkillError>,
+    ) {
+        self.authority_observations
+            .push(AuthorityObservation::InvokeSkill {
+                status: AuthorityObservationStatus::Exercised,
+                detail: InvokeSkillAuthorityObservation {
+                    alias: alias.to_owned(),
+                    child_execution_id: child_execution_id.map(ToOwned::to_owned),
+                    child_status: child_status.cloned(),
+                    denial: None,
+                    result_error: result_error.map(Self::authority_failure_from_skill_error),
+                },
+            });
+    }
+
+    fn push_blocked_http_request(
+        &mut self,
+        request: &HttpRequest,
+        redirects_followed: u8,
+        denial: &CapabilityDenial,
+    ) {
+        self.authority_observations
+            .push(AuthorityObservation::HttpRequest {
+                status: AuthorityObservationStatus::Blocked,
+                detail: HttpAuthorityObservation {
+                    request: request.clone(),
+                    response_status: None,
+                    response_content_type: None,
+                    response_bytes: None,
+                    redirects_followed: Some(redirects_followed),
+                    denial: Some(Self::authority_failure_from_denial(denial)),
+                    result_error: None,
+                },
+            });
+    }
+
+    fn push_exercised_http_request(
+        &mut self,
+        request: &HttpRequest,
+        redirects_followed: u8,
+        response: Option<&HttpResponse>,
+        result_error: Option<&SkillError>,
+    ) {
+        self.authority_observations
+            .push(AuthorityObservation::HttpRequest {
+                status: AuthorityObservationStatus::Exercised,
+                detail: HttpAuthorityObservation {
+                    request: request.clone(),
+                    response_status: response.map(|value| value.status),
+                    response_content_type: response.and_then(|value| value.content_type.clone()),
+                    response_bytes: response
+                        .map(|value| u64::try_from(value.body.len()).unwrap_or(u64::MAX)),
+                    redirects_followed: Some(redirects_followed),
+                    denial: None,
+                    result_error: result_error.map(Self::authority_failure_from_skill_error),
+                },
+            });
+    }
+
+    fn parse_live_http_request(
+        &mut self,
+        request: &HttpRequest,
+        redirects_followed: u8,
+        pending_redirect: Option<&PendingRedirect>,
+    ) -> wasmtime::Result<ParsedHttpRequest> {
+        parse_http_request(request).map_err(|denial| {
+            let denial = pending_redirect.as_ref().map_or(denial.clone(), |pending| {
+                redirect_location_invalid_denial(
+                    &pending.from_url,
+                    pending.status,
+                    &pending.location,
+                    &denial,
+                )
+            });
+            self.push_blocked_http_request(request, redirects_followed, &denial);
+            capability_denial_trap(&denial)
+        })
+    }
+
+    fn authorize_live_http_request(
+        &mut self,
+        request: &HttpRequest,
+        parsed_request: &ParsedHttpRequest,
+        redirects_followed: u8,
+        pending_redirect: Option<&PendingRedirect>,
+    ) -> wasmtime::Result<HttpExecutionPolicy> {
+        CapabilityEvaluator::authorize_http_request(
+            self.grants(),
+            &self.execution.budget,
+            self.network_requests,
+            request,
+            parsed_request,
+        )
+        .map_err(|denial| {
+            let denial = pending_redirect.as_ref().map_or(denial.clone(), |pending| {
+                redirect_target_not_granted_denial(
+                    &pending.from_url,
+                    pending.status,
+                    &pending.location,
+                    &request.url,
+                    &denial,
+                )
+            });
+            self.push_blocked_http_request(request, redirects_followed, &denial);
+            capability_denial_trap(&denial)
+        })
     }
 }
 
@@ -847,6 +1118,7 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
             self.grants(),
             &CapabilityOperation::EmitEvidence { request: &request },
         ) {
+            self.push_blocked_emit_evidence(&request, &denial);
             return Err(capability_denial_trap(&denial));
         }
 
@@ -856,9 +1128,13 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
         {
             Ok(evidence) => {
                 self.emitted_evidence.push(evidence.clone());
+                self.push_exercised_emit_evidence(&request, Some(&evidence), None);
                 Ok(Ok(to_wit_evidence(&evidence)))
             }
-            Err(error) => Ok(Err(format!("{}: {}", error.code, error.message))),
+            Err(error) => {
+                self.push_exercised_emit_evidence(&request, None, Some(&error));
+                Ok(Err(format!("{}: {}", error.code, error.message)))
+            }
         }
     }
 
@@ -868,13 +1144,18 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
         message: String,
     ) -> wasmtime::Result<()> {
         let level = from_wit_severity(level);
-        if let Err(denial) =
-            CapabilityEvaluator::authorize(self.grants(), &CapabilityOperation::Log { level })
-        {
+        if let Err(denial) = CapabilityEvaluator::authorize(
+            self.grants(),
+            &CapabilityOperation::Log {
+                level: level.clone(),
+            },
+        ) {
+            self.push_blocked_log(level.clone(), &denial);
             return Err(capability_denial_trap(&denial));
         }
 
         let _ = message;
+        self.push_exercised_log(level);
         Ok(())
     }
 
@@ -893,6 +1174,7 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
                         "uri": uri,
                     }),
                 };
+                self.push_blocked_read_resource(&uri, &denial);
                 return Err(capability_denial_trap(&denial));
             }
         };
@@ -904,12 +1186,19 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
                 parsed_uri: &parsed_uri,
             },
         ) {
+            self.push_blocked_read_resource(&uri, &denial);
             return Err(capability_denial_trap(&denial));
         }
 
         match self.host.read_resource(&uri) {
-            Ok(result) => Ok(Ok(to_wit_resource_read_result(&result))),
-            Err(error) => Ok(Err(format!("{}: {}", error.code, error.message))),
+            Ok(result) => {
+                self.push_exercised_read_resource(&uri, Some(&result), None);
+                Ok(Ok(to_wit_resource_read_result(&result)))
+            }
+            Err(error) => {
+                self.push_exercised_read_resource(&uri, None, Some(&error));
+                Ok(Err(format!("{}: {}", error.code, error.message)))
+            }
         }
     }
 
@@ -943,16 +1232,36 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
             &input,
         ) {
             Ok(outcome) => {
+                self.push_exercised_invoke_skill(
+                    &request.alias,
+                    Some(&outcome.record.execution_id),
+                    Some(&outcome.record.status),
+                    None,
+                );
                 self.child_executions.push(outcome.record);
                 Ok(Ok(to_wit_skill_output(&outcome.output)))
             }
             Err(error) => {
                 let error = *error;
                 if let Some(denial) = error.denial {
+                    self.push_blocked_invoke_skill(&request.alias, &denial);
                     return Err(capability_denial_trap(&denial));
                 }
                 if let Some(record) = error.record {
+                    self.push_exercised_invoke_skill(
+                        &request.alias,
+                        Some(&record.execution_id),
+                        Some(&record.status),
+                        Some(&error.skill_error),
+                    );
                     self.child_executions.push(*record);
+                } else {
+                    self.push_exercised_invoke_skill(
+                        &request.alias,
+                        None,
+                        None,
+                        Some(&error.skill_error),
+                    );
                 }
 
                 Ok(Err(to_wit_skill_error(&error.skill_error)))
@@ -968,67 +1277,51 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
         let mut request = from_wit_http_request(request);
         let mut redirects_followed = 0_u8;
         let mut redirect_context: Option<PendingRedirect> = None;
-
         loop {
             let pending_redirect = redirect_context.take();
-            let parsed_request = parse_http_request(&request).map_err(|denial| {
-                let denial = pending_redirect.as_ref().map_or(denial.clone(), |pending| {
-                    redirect_location_invalid_denial(
-                        &pending.from_url,
-                        pending.status,
-                        &pending.location,
-                        &denial,
-                    )
-                });
-                capability_denial_trap(&denial)
-            })?;
-            let policy = CapabilityEvaluator::authorize_http_request(
-                self.grants(),
-                &self.execution.budget,
-                self.network_requests,
+            let parsed_request = self.parse_live_http_request(
+                &request,
+                redirects_followed,
+                pending_redirect.as_ref(),
+            )?;
+            let policy = self.authorize_live_http_request(
                 &request,
                 &parsed_request,
-            )
-            .map_err(|denial| {
-                let denial = pending_redirect.as_ref().map_or(denial.clone(), |pending| {
-                    redirect_target_not_granted_denial(
-                        &pending.from_url,
-                        pending.status,
-                        &pending.location,
-                        &request.url,
-                        &denial,
-                    )
-                });
-                capability_denial_trap(&denial)
-            })?;
-
+                redirects_followed,
+                pending_redirect.as_ref(),
+            )?;
             self.network_requests = self.network_requests.saturating_add(1);
             match self
                 .host
                 .http_request(&request, policy.timeout, policy.max_response_bytes)
             {
                 Ok(response) => {
+                    self.push_exercised_http_request(
+                        &request,
+                        redirects_followed,
+                        Some(&response.response),
+                        None,
+                    );
                     if !is_redirect_status(response.response.status) {
                         return Ok(Ok(to_wit_http_response(&response.response)));
                     }
-
                     let Some(location) = response.redirect_location else {
                         let denial = redirect_location_missing_denial(
                             &request.url,
                             response.response.status,
                         );
+                        self.push_blocked_http_request(&request, redirects_followed, &denial);
                         return Err(capability_denial_trap(&denial));
                     };
-
                     if !policy.follow_redirects {
                         let denial = redirect_not_allowed_denial(
                             &request.url,
                             response.response.status,
                             &location,
                         );
+                        self.push_blocked_http_request(&request, redirects_followed, &denial);
                         return Err(capability_denial_trap(&denial));
                     }
-
                     if redirects_followed >= policy.max_redirects {
                         let denial = redirect_hop_limit_denial(
                             &request.url,
@@ -1036,11 +1329,13 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
                             &location,
                             policy.max_redirects,
                         );
+                        self.push_blocked_http_request(&request, redirects_followed, &denial);
                         return Err(capability_denial_trap(&denial));
                     }
-
-                    request = build_redirect_request(&request, &location)
-                        .map_err(|denial| capability_denial_trap(&denial))?;
+                    request = build_redirect_request(&request, &location).map_err(|denial| {
+                        self.push_blocked_http_request(&request, redirects_followed, &denial);
+                        capability_denial_trap(&denial)
+                    })?;
                     redirects_followed = redirects_followed.saturating_add(1);
                     redirect_context = Some(PendingRedirect {
                         from_url: response.response.url,
@@ -1048,7 +1343,15 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
                         location,
                     });
                 }
-                Err(error) => return Ok(Err(format!("{}: {}", error.code, error.message))),
+                Err(error) => {
+                    self.push_exercised_http_request(
+                        &request,
+                        redirects_followed,
+                        None,
+                        Some(&error),
+                    );
+                    return Ok(Err(format!("{}: {}", error.code, error.message)));
+                }
             }
         }
     }
@@ -1151,6 +1454,7 @@ where
                 error,
                 Vec::new(),
                 &[],
+                Vec::new(),
                 0,
             ));
         }
@@ -1173,6 +1477,7 @@ where
                         *failure.error,
                         failure.child_executions,
                         &failure.emitted_evidence,
+                        failure.authority_observations,
                         failure.network_requests,
                     ));
                 }
@@ -1196,6 +1501,7 @@ where
             termination: None,
             granted_capabilities: envelope.granted_capabilities.clone(),
             emitted_evidence: Self::load_evidence_records(registry, &outcome.emitted_evidence)?,
+            authority_observations: outcome.authority_observations,
             metrics: ExecutionMetrics {
                 duration_ms,
                 network_requests: outcome.network_requests,
@@ -1646,6 +1952,7 @@ where
         error: ExecutionError,
         child_executions: Vec<ChildExecutionRecord>,
         emitted_evidence: &[EvidenceRef],
+        authority_observations: Vec<AuthorityObservation>,
         network_requests: u32,
     ) -> ExecutionError
     where
@@ -1673,6 +1980,7 @@ where
             granted_capabilities: context.envelope.granted_capabilities.clone(),
             emitted_evidence: Self::load_evidence_records(registry, emitted_evidence)
                 .unwrap_or_default(),
+            authority_observations,
             metrics: ExecutionMetrics {
                 duration_ms: context.duration_ms,
                 network_requests,

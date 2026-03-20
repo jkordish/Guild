@@ -329,8 +329,9 @@
       "type": "string",
       "enum": [
         "exact",
-        "lossy",
-        "unmapped"
+        "narrowing",
+        "partial",
+        "unsupported"
       ]
     },
     "witness_derivation_status": {
@@ -358,14 +359,17 @@
         "OBSERVED_EFFECT_OUTSIDE_TOKEN",
         "PLAN_LINKAGE_MISMATCH",
         "PROOF_LINKAGE_MISMATCH",
+        "LIVE_RUNTIME_ALIGNMENT_INCOMPLETE",
+        "RUNTIME_OBSERVATION_UNMAPPABLE",
         "REDACTION_PREVENTS_CLAIM_VERIFICATION",
         "REDACTION_HASH_MISMATCH",
         "RUNTIME_BINDING_MISMATCH",
         "TOKEN_LINKAGE_MISMATCH",
         "TOKEN_VERIFICATION_FAILED",
         "TRACE_PARSE_FAILED",
-        "VOCABULARY_MAPPING_LOSSY",
-        "VOCABULARY_MAPPING_UNMAPPED",
+        "VOCABULARY_MAPPING_NARROWING",
+        "VOCABULARY_MAPPING_PARTIAL",
+        "VOCABULARY_MAPPING_UNSUPPORTED",
         "WITNESS_ISSUER_UNKNOWN",
         "WITNESS_KEY_ID_UNKNOWN",
         "WITNESS_MAC_INVALID",
@@ -614,6 +618,36 @@
         "random.read",
         "component.invoke",
         "capability.delegate"
+      ]
+    },
+    "canonical_effect_family": {
+      "type": "string",
+      "enum": [
+        "http-request",
+        "read-resource",
+        "invoke-skill",
+        "emit-evidence",
+        "log-write",
+        "filesystem",
+        "get-secret",
+        "cache-read",
+        "cache-write",
+        "monotonic-clock",
+        "wall-clock"
+      ]
+    },
+    "canonical_scope_kind": {
+      "type": "string",
+      "enum": [
+        "network",
+        "resource",
+        "skill",
+        "evidence",
+        "log",
+        "filesystem",
+        "secret",
+        "cache",
+        "clock"
       ]
     },
     "glob_or_path": {

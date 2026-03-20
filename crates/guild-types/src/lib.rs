@@ -1950,6 +1950,118 @@ pub struct ExecutionMetrics {
     pub cache_misses: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum AuthorityObservationStatus {
+    Exercised,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct AuthorityObservationFailure {
+    pub code: String,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct HttpAuthorityObservation {
+    pub request: HttpRequest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_status: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redirects_followed: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial: Option<AuthorityObservationFailure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_error: Option<AuthorityObservationFailure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ReadResourceAuthorityObservation {
+    pub uri: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_kind: Option<ResourceKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial: Option<AuthorityObservationFailure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_error: Option<AuthorityObservationFailure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct EmitEvidenceAuthorityObservation {
+    pub mime_type: String,
+    pub audience: EvidenceAudience,
+    pub redaction: RedactionClass,
+    pub size_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_uri: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial: Option<AuthorityObservationFailure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_error: Option<AuthorityObservationFailure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct InvokeSkillAuthorityObservation {
+    pub alias: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_execution_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child_status: Option<ExecutionStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial: Option<AuthorityObservationFailure>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_error: Option<AuthorityObservationFailure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct LogWriteAuthorityObservation {
+    pub level: Severity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denial: Option<AuthorityObservationFailure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(tag = "family", rename_all = "kebab-case")]
+pub enum AuthorityObservation {
+    HttpRequest {
+        status: AuthorityObservationStatus,
+        detail: HttpAuthorityObservation,
+    },
+    ReadResource {
+        status: AuthorityObservationStatus,
+        detail: ReadResourceAuthorityObservation,
+    },
+    InvokeSkill {
+        status: AuthorityObservationStatus,
+        detail: InvokeSkillAuthorityObservation,
+    },
+    EmitEvidence {
+        status: AuthorityObservationStatus,
+        detail: EmitEvidenceAuthorityObservation,
+    },
+    LogWrite {
+        status: AuthorityObservationStatus,
+        detail: LogWriteAuthorityObservation,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct Provenance {
     pub resolved_skill: ResolvedSkillRef,
@@ -2017,6 +2129,8 @@ pub struct ExecutionRecord {
     pub granted_capabilities: CapabilityGrantSet,
     #[serde(default)]
     pub emitted_evidence: Vec<EvidenceRecord>,
+    #[serde(default)]
+    pub authority_observations: Vec<AuthorityObservation>,
     #[serde(default)]
     pub metrics: ExecutionMetrics,
     pub provenance: Provenance,

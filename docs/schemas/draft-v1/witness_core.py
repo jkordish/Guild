@@ -18,6 +18,14 @@ from admission_core import (
     validate_instance,
 )
 from minimization_core import HARNESS_ID, HARNESS_VERSION, run_example_harness
+from runtime_alignment import (
+    LIVE_RUNTIME_SOURCE_KIND,
+    MAPPING_EXACT,
+    MAPPING_NARROWING,
+    MAPPING_PARTIAL,
+    MAPPING_UNSUPPORTED,
+    observation_bundle_from_execution_record,
+)
 from token_core import (
     TOKEN_CANONICALIZATION,
     TOKEN_PROTECTION_MODE,
@@ -38,7 +46,6 @@ VERIFICATION_KIND = "guild.witness_verification_result"
 VERIFICATION_VERSION = "1.0.0"
 DEFAULT_SOURCE_KIND = "bounded-observation-fixture"
 HARNESS_SOURCE_KIND = "draft-example-harness"
-LIVE_RUNTIME_SOURCE_KIND = "live-runtime-hook"
 SUPPORTED_SOURCE_KINDS = {
     DEFAULT_SOURCE_KIND,
     HARNESS_SOURCE_KIND,
@@ -149,9 +156,9 @@ def combine_coverage_status(values: list[str]) -> str:
 
 
 def observed_family_status(entry: dict[str, Any]) -> str:
-    if entry["mapping_status"] == "unmapped":
+    if entry["mapping_status"] == MAPPING_UNSUPPORTED:
         return "insufficient"
-    if entry["mapping_status"] == "lossy" and entry["status"] == "complete":
+    if entry["mapping_status"] == MAPPING_PARTIAL and entry["status"] == "complete":
         return "partial"
     return entry["status"]
 
@@ -165,10 +172,12 @@ def relation_reason_codes(status: str) -> list[str]:
 
 
 def mapping_reason_codes(mapping_status: str) -> list[str]:
-    if mapping_status == "lossy":
-        return ["VOCABULARY_MAPPING_LOSSY"]
-    if mapping_status == "unmapped":
-        return ["VOCABULARY_MAPPING_UNMAPPED"]
+    if mapping_status == MAPPING_NARROWING:
+        return ["VOCABULARY_MAPPING_NARROWING"]
+    if mapping_status == MAPPING_PARTIAL:
+        return ["VOCABULARY_MAPPING_PARTIAL"]
+    if mapping_status == MAPPING_UNSUPPORTED:
+        return ["VOCABULARY_MAPPING_UNSUPPORTED"]
     return []
 
 
@@ -220,7 +229,7 @@ def normalize_unmapped_observation(value: dict[str, Any]) -> dict[str, Any]:
         sorted(
             value.get("reason_codes", [])
             + relation_reason_codes(coverage_status)
-            + mapping_reason_codes("unmapped")
+            + mapping_reason_codes(MAPPING_UNSUPPORTED)
         )
     )
     normalized = {
@@ -237,7 +246,7 @@ def normalize_unmapped_observation(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_coverage_entry(value: dict[str, Any]) -> dict[str, Any]:
-    mapping_status = value.get("mapping_status", "exact")
+    mapping_status = value.get("mapping_status", MAPPING_EXACT)
     normalized_status = observed_family_status(
         {
             "status": value.get("status", "complete"),
@@ -251,7 +260,10 @@ def normalize_coverage_entry(value: dict[str, Any]) -> dict[str, Any]:
         "status": normalized_status,
         "mapping_status": mapping_status,
         "supports_positive_facts": value.get("supports_positive_facts", True),
-        "supports_absence_claims": value.get("supports_absence_claims", normalized_status == "complete"),
+        "supports_absence_claims": value.get(
+            "supports_absence_claims",
+            normalized_status == "complete" and mapping_status in {MAPPING_EXACT, MAPPING_NARROWING},
+        ),
         "scope_descriptors": stable_unique_strings(sorted(value.get("scope_descriptors", []))),
         "reason_codes": stable_unique_strings(
             sorted(
@@ -284,7 +296,7 @@ def coverage_entry_for_family(
             "status": status,
             "mapping_status": mapping_status,
             "supports_positive_facts": True,
-            "supports_absence_claims": status == "complete" and mapping_status == "exact",
+            "supports_absence_claims": status == "complete" and mapping_status in {MAPPING_EXACT, MAPPING_NARROWING},
             "scope_descriptors": scope_descriptors,
             "reason_codes": [],
             "notes": notes,
@@ -314,7 +326,7 @@ def coverage_entries_from_harness(
                 draft_effect_class=effect_class,
                 scope_kind=scope_kind,
                 status="complete",
-                mapping_status="exact",
+                mapping_status=MAPPING_EXACT,
                 scope_descriptors=stable_unique_strings(sorted(descriptors[effect_class])),
                 notes="Bounded draft-v1 example harness coverage. This is not a runtime-general observation claim.",
             )
@@ -343,7 +355,7 @@ def coverage_entries_from_observation(
                 "draft_effect_class": effect_class,
                 "scope_kind": scope_kind_for_effect(effect_class),
                 "status": "complete",
-                "mapping_status": "exact",
+                "mapping_status": MAPPING_EXACT,
                 "scope_descriptors": [],
                 "supports_positive_facts": True,
                 "supports_absence_claims": True,
@@ -479,7 +491,10 @@ def compare_to_required_basis(witness: dict[str, Any]) -> str:
         return "out_of_envelope"
     if (
         witness["observation_coverage"]["overall_status"] != "complete"
-        or any(entry["mapping_status"] != "exact" for entry in witness["observation_coverage"]["families"])
+        or any(
+            entry["mapping_status"] not in {MAPPING_EXACT, MAPPING_NARROWING}
+            for entry in witness["observation_coverage"]["families"]
+        )
         or witness["unmapped_observations"]
     ):
         return "coverage_limited"
@@ -609,6 +624,11 @@ def observation_bundle(
     source_kind = observation.get("source_kind", DEFAULT_SOURCE_KIND)
     if source_kind not in SUPPORTED_SOURCE_KINDS:
         reason_codes.append("OBSERVATION_SOURCE_UNSUPPORTED")
+    if source_kind == LIVE_RUNTIME_SOURCE_KIND and observation.get("execution_record") is not None:
+        return observation_bundle_from_execution_record(
+            observation["execution_record"],
+            authority_plan,
+        )
     observed_effects = stable_unique_dicts(
         [normalize_effect(effect) for effect in observation.get("observed_effects", [])]
     )
@@ -902,10 +922,12 @@ def generate_witness(
         witness_reason_codes.append("OBSERVATION_COVERAGE_PARTIAL")
     if overall_status == "insufficient":
         witness_reason_codes.append("OBSERVATION_COVERAGE_INSUFFICIENT")
-    if any(entry["mapping_status"] == "lossy" for entry in coverage_families):
-        witness_reason_codes.append("VOCABULARY_MAPPING_LOSSY")
-    if any(entry["mapping_status"] == "unmapped" for entry in coverage_families) or unmapped_observations:
-        witness_reason_codes.append("VOCABULARY_MAPPING_UNMAPPED")
+    if any(entry["mapping_status"] == MAPPING_NARROWING for entry in coverage_families):
+        witness_reason_codes.append("VOCABULARY_MAPPING_NARROWING")
+    if any(entry["mapping_status"] == MAPPING_PARTIAL for entry in coverage_families):
+        witness_reason_codes.append("VOCABULARY_MAPPING_PARTIAL")
+    if any(entry["mapping_status"] == MAPPING_UNSUPPORTED for entry in coverage_families) or unmapped_observations:
+        witness_reason_codes.append("VOCABULARY_MAPPING_UNSUPPORTED")
 
     witness = {
         "kind": WITNESS_KIND,
@@ -1025,12 +1047,17 @@ def minimal_consistency_reason_codes(witness: dict[str, Any]) -> list[str]:
         reason_codes.append("WITNESS_REASON_CODES_INCONSISTENT")
     if witness["observation_coverage"]["overall_status"] == "insufficient" and "OBSERVATION_COVERAGE_INSUFFICIENT" not in witness["reason_codes"]:
         reason_codes.append("WITNESS_REASON_CODES_INCONSISTENT")
-    if any(entry["mapping_status"] == "lossy" for entry in witness["observation_coverage"]["families"]) and "VOCABULARY_MAPPING_LOSSY" not in witness["reason_codes"]:
+    if any(entry["mapping_status"] == MAPPING_NARROWING for entry in witness["observation_coverage"]["families"]) and "VOCABULARY_MAPPING_NARROWING" not in witness["reason_codes"]:
         reason_codes.append("WITNESS_REASON_CODES_INCONSISTENT")
     if (
-        any(entry["mapping_status"] == "unmapped" for entry in witness["observation_coverage"]["families"])
+        any(entry["mapping_status"] == MAPPING_PARTIAL for entry in witness["observation_coverage"]["families"])
+        and "VOCABULARY_MAPPING_PARTIAL" not in witness["reason_codes"]
+    ):
+        reason_codes.append("WITNESS_REASON_CODES_INCONSISTENT")
+    if (
+        any(entry["mapping_status"] == MAPPING_UNSUPPORTED for entry in witness["observation_coverage"]["families"])
         or witness["unmapped_observations"]
-    ) and "VOCABULARY_MAPPING_UNMAPPED" not in witness["reason_codes"]:
+    ) and "VOCABULARY_MAPPING_UNSUPPORTED" not in witness["reason_codes"]:
         reason_codes.append("WITNESS_REASON_CODES_INCONSISTENT")
     if witness["envelope_comparison"]["plan"]["status"] == "outside" and "OBSERVED_EFFECT_OUTSIDE_PLAN" not in witness["reason_codes"]:
         reason_codes.append("WITNESS_REASON_CODES_INCONSISTENT")

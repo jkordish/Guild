@@ -6,6 +6,10 @@ This matrix is intentionally narrower than full M4 admission. It covers the shar
 
 The precheck enforces component-model compatibility, explicit WIT-world publication, required effect-class support, required-effect enforceability, and the published runtime guarantee thresholds.
 
+Bundled runtime examples now publish two different vocabulary surfaces on purpose: `supported_canonical_families` is the live runtime truth surface, while `supported_effect_classes` remains the draft-v1 compatibility surface used by this hard-requirement precheck and the checked M4, M5, and M6 examples.
+
+All bundled contracts in this directory now declare the live inspect world `guild-skill-inspect-v1`, so WIT-world checks here are aligned to the real Rust inspect entrypoint rather than the older example-local names.
+
 Published `witness_support` values in this table are M4 hard-requirement inputs only. They do not by themselves imply runtime-general M7 observation completeness.
 
 Negative fail-closed probes for omitted and unsupported `wit_worlds` declarations are asserted by `compatibility_check.py` but omitted from this table because they mutate the base runtime examples.

@@ -1,0 +1,65 @@
+{
+  "receipt": {
+    "execution_id": "019d0cda-53b0-7210-8656-99f1673be17c",
+    "uri": "guild://executions/019d0cda-53b0-7210-8656-99f1673be17c",
+    "trace_id": "trace-1",
+    "status": "succeeded"
+  },
+  "request": {
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "hello-inspect"
+      },
+      "version_req": "^0.1"
+    },
+    "input": {
+      "name": "Ada"
+    }
+  },
+  "resolved_skill": {
+    "key": {
+      "namespace": "example",
+      "name": "hello-inspect"
+    },
+    "version": "0.1.0",
+    "digest": "sha256:9878310506fa7fc567cdb991b838e82b5e5848a2eec6ad8a8012b78f34290f53"
+  },
+  "status": "succeeded",
+  "granted_capabilities": {
+    "grants": [
+      {
+        "id": "emit-evidence",
+        "access": "write",
+        "constraints": {
+          "max_bytes": 65536,
+          "audiences": [
+            "user"
+          ],
+          "redactions": [
+            "none"
+          ]
+        }
+      }
+    ]
+  },
+  "authority_observations": [
+    {
+      "family": "emit-evidence",
+      "status": "exercised",
+      "detail": {
+        "mime_type": "application/json",
+        "audience": "user",
+        "redaction": "none",
+        "size_bytes": 244,
+        "title": "hello-inspect snapshot",
+        "evidence_uri": "guild://objects/records/019d0cda-5fba-76c2-beec-f8a6faee0fb8",
+        "sha256": "sha256:7e1ddb0fd1a32693ea58e12d924cdbe1639eb5f2c01817f3b50a0602ae53438a"
+      }
+    }
+  ],
+  "provenance": {
+    "started_at_utc": "2026-03-20T20:05:28.112411284Z",
+    "finished_at_utc": "2026-03-20T20:05:31.199975965Z"
+  }
+}

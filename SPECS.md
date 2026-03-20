@@ -436,18 +436,26 @@ The stricter interpretation wins:
 - M7 witness outputs MUST be described as bounded observed-authority records rather than runtime-general attestations
 - denied requested authority MAY yield a downgrade rather than a refusal when hard requirements still hold
 
+For M8a, the live Rust vocabulary is now the canonical runtime vocabulary for this repository:
+
+- `runtime_guarantee.supported_canonical_families` MUST be treated as the authoritative live-runtime family list
+- `supported_effect_classes` MAY remain as a draft-v1 compatibility surface, but it MUST NOT be described as the canonical live-runtime truth surface
+- the currently active canonical runtime families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+
 Current mapping boundaries:
 
 | `docs/schemas/draft-v1/` term | Current repository term | Contract status |
 |---|---|---|
-| `component.wit_world` | active inspect world `guild-skill-inspect-v1` plus host-owned runtime-entrypoint checks | related but not identical |
-| `component.invoke` | `invoke-skill` | close mapping |
-| `net.connect`, `net.resolve` | `http-request` | broader draft term vs narrower implemented runtime family |
-| `fs.read`, `fs.write`, `fs.list` | `filesystem` | related host-side contract, but still rejected before guest execution in the active inspect slice |
+| `component.wit_world` | active inspect world `guild-skill-inspect-v1` plus host-owned runtime-entrypoint checks | bundled contracts now target the live inspect world explicitly |
+| `component.invoke` | `invoke-skill` | narrowing compatibility mapping |
+| `net.connect`, `net.resolve` | `http-request` | broader draft term vs narrower implemented runtime family; only explicit HTTP(S) GET or HEAD `net.connect` scopes map safely |
+| `fs.read`, `fs.write`, `fs.list` | `filesystem` | partial; still rejected before guest execution in the active inspect slice |
+| `secret.read` | `get-secret` | partial; no live inspect enforcement or observation path yet |
+| `clock.read` | `wall-clock` | partial; draft term is less precise than the runtime family split |
 | `capability.delegate` | host-owned child-grant reduction and delegation enforcement | related but split across policy and runtime semantics |
-| no direct schema effect-class for `read-resource` | `read-resource` | unmapped in the draft bundle |
-| no direct schema effect-class for `emit-evidence` | `emit-evidence` | unmapped in the draft bundle |
-| no direct schema effect-class for `log-write` | `log-write` | unmapped in the draft bundle |
+| no direct schema effect-class for `read-resource` | `read-resource` | live-observed in Rust, but unsupported in draft-v1 claim semantics |
+| no direct schema effect-class for `emit-evidence` | `emit-evidence` | live-observed in Rust, but unsupported in draft-v1 claim semantics |
+| no direct schema effect-class for `log-write` | `log-write` | live-observed in Rust, but unsupported in draft-v1 claim semantics |
 
 Until those vocabulary gaps are closed across the repository, `docs/schemas/draft-v1/` MUST stay explicitly labeled as draft/proposal surface rather than being described as normative repo truth.
 
@@ -510,7 +518,10 @@ That M7 path has hard limits:
 - unmapped or lossy runtime-native observations MUST produce `coverage_limited` or `unverifiable` outcomes, not silent success
 - redaction MUST NOT be described as verified when it removes facts required for the requested claim
 - the current draft implementation MUST be described as HMAC MAC protection over canonical JSON claims, not as public-key signatures or public attestation
-- the current witness path MUST NOT be described as runtime-general completeness because the live Rust inspect surface still lacks a durable per-effect exercised-authority stream aligned with this vocabulary
+- the current live Rust runtime now persists durable per-effect `authority_observations` for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- the current witness path MAY describe runtime-backed exercised-authority and absence claims only where that live stream maps safely into the draft-v1 vocabulary
+- today that safe runtime-backed draft-v1 claim path exists only for `http-request`, and only through the conservative `net.connect` compatibility alias for explicit HTTP(S) GET or HEAD scopes
+- live `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations MUST remain `coverage_limited`, `unsupported`, or `unverifiable` in draft-v1 claim results until the draft vocabulary gains direct canonical representation for them
 
 ## 14. Execution Semantics
 

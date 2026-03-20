@@ -7,7 +7,7 @@
     },
     "runtime_guarantee_digest": {
       "algorithm": "sha256",
-      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+      "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
     },
     "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
   },
@@ -17,7 +17,7 @@
   },
   "contract_digest": {
     "algorithm": "sha256",
-    "value": "73158871928cf3261d11f37b97acecaed3796a365b2c4041ceb2639a44e017a4"
+    "value": "26f13a40b68d55427fcc86f66b6ab2e992b427591e5216f6f2049625acfa2e9d"
   },
   "contract_id": "urn:guild:contract:cluster-rollout:v1",
   "decision": "admit",
@@ -202,7 +202,7 @@
       "detail": {
         "contract_digest": {
           "algorithm": "sha256",
-          "value": "73158871928cf3261d11f37b97acecaed3796a365b2c4041ceb2639a44e017a4"
+          "value": "26f13a40b68d55427fcc86f66b6ab2e992b427591e5216f6f2049625acfa2e9d"
         }
       },
       "required": true
@@ -212,7 +212,7 @@
       "detail": {
         "runtime_guarantee_digest": {
           "algorithm": "sha256",
-          "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+          "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
         }
       },
       "required": true

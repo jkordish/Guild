@@ -13,9 +13,7 @@
       "0.2.0"
     ],
     "wit_worlds": [
-      "analyzer",
-      "fetcher",
-      "ops.rollout"
+      "guild-skill-inspect-v1"
     ]
   },
   "execution_isolation_assurance": "strong",
@@ -79,6 +77,13 @@
     "random.read",
     "component.invoke",
     "capability.delegate"
+  ],
+  "supported_canonical_families": [
+    "http-request",
+    "read-resource",
+    "invoke-skill",
+    "emit-evidence",
+    "log-write"
   ],
   "notes": "Reference high-assurance runtime profile."
 }

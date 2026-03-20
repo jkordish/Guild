@@ -6,11 +6,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use guild_registry::{LocalRegistry, LocalSourceInstaller, SkillRegistry};
 use guild_runner::{ExecutionError, Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
-    Budget, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
-    CapabilityId, ExecutionMode, ExecutionRecord, ExecutionStatus, GrantedCapability, HttpMethod,
-    HttpRequestConstraints, HttpScheme, InvokeDependencyConstraints, PolicyDecision,
-    PolicyDecisionOutcome, RequestedSkillRef, ResolvedExecutionEnvelope, SkillKey,
-    VersionRequirement,
+    AuthorityObservation, AuthorityObservationStatus, Budget, CallerRequest, CapabilityAccess,
+    CapabilityConstraints, CapabilityGrantSet, CapabilityId, ExecutionMode, ExecutionRecord,
+    ExecutionStatus, GrantedCapability, HttpMethod, HttpRequestConstraints, HttpScheme,
+    InvokeDependencyConstraints, PolicyDecision, PolicyDecisionOutcome, RequestedSkillRef,
+    ResolvedExecutionEnvelope, SkillKey, VersionRequirement,
 };
 use serde_json::{Value, json};
 
@@ -478,6 +478,18 @@ fn http_happy_path_executes_through_real_host_path() {
         Value::String("deterministic".into())
     );
     assert_eq!(output.structured["json_summary"]["root_kind"], "object");
+    assert_eq!(record.authority_observations.len(), 1);
+    match &record.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            assert_eq!(detail.request.method, HttpMethod::Get);
+            assert_eq!(detail.request.url, server.json_url());
+            assert_eq!(detail.response_status, Some(200));
+            assert_eq!(detail.denial, None);
+            assert_eq!(detail.result_error, None);
+        }
+        other => panic!("expected canonical http-request observation, got {other:?}"),
+    }
 }
 
 #[test]
@@ -513,6 +525,20 @@ fn unauthorized_host_is_rejected_by_host_owned_http_denial() {
         record.termination.as_ref().unwrap().code,
         "http-request-host-not-granted"
     );
+    assert_eq!(record.authority_observations.len(), 1);
+    match &record.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Blocked);
+            assert_eq!(detail.request.url, server.json_url());
+            assert_eq!(detail.response_status, None);
+            assert_eq!(
+                detail.denial.as_ref().map(|value| value.code.as_str()),
+                Some("http-request-host-not-granted")
+            );
+            assert_eq!(detail.result_error, None);
+        }
+        other => panic!("expected blocked canonical http-request observation, got {other:?}"),
+    }
 }
 
 #[test]

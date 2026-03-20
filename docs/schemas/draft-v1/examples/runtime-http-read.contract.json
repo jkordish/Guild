@@ -1,0 +1,146 @@
+{
+  "kind": "guild.skill_contract",
+  "version": "1.0.0",
+  "contract_id": "urn:guild:contract:runtime-http-read:v1",
+  "component": {
+    "name": "inspect-http-json",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "695a732b9caf3adca2dcb77d9467976541809255a2b050ec0d030533bf890a88"
+    },
+    "component_model": "wasm-component",
+    "component_model_version": "0.2.0",
+    "wit_world": "guild-skill-inspect-v1"
+  },
+  "export": {
+    "name": "inspect_http_json",
+    "interface": "example/inspect-http-json",
+    "version": "1.0.0"
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "ac8ab4fe8898002fe4c13ef4d5fdbb1ffafd237070966d750474970fe56d9cb7"
+    }
+  },
+  "required_effects": [
+    {
+      "effect_class": "net.connect",
+      "scope": {
+        "kind": "network",
+        "audiences": [
+          {
+            "host": "127.0.0.1",
+            "ports": [
+              18080
+            ],
+            "schemes": [
+              "http"
+            ],
+            "path_prefixes": [
+              "/response.json"
+            ],
+            "methods": [
+              "GET"
+            ]
+          }
+        ]
+      },
+      "cardinality": {
+        "max_calls": 1,
+        "max_bytes": 4096
+      },
+      "justification": "Fetch one bounded JSON document through the live inspect http-request host surface."
+    }
+  ],
+  "forbidden_effects": [
+    {
+      "effect_class": "capability.delegate",
+      "scope": {
+        "kind": "delegation"
+      },
+      "justification": "No downstream delegation."
+    }
+  ],
+  "authority_ceiling": [
+    {
+      "effect_class": "net.connect",
+      "scope": {
+        "kind": "network",
+        "audiences": [
+          {
+            "host": "127.0.0.1",
+            "ports": [
+              18080
+            ],
+            "schemes": [
+              "http"
+            ],
+            "path_prefixes": [
+              "/response.json"
+            ],
+            "methods": [
+              "GET"
+            ]
+          }
+        ]
+      },
+      "cardinality": {
+        "max_calls": 1,
+        "max_bytes": 4096
+      }
+    }
+  ],
+  "required_runtime_guarantees": {
+    "execution_isolation_assurance": {
+      "minimum": "strong"
+    },
+    "filesystem_isolation_class": {
+      "minimum": "preopen_only"
+    },
+    "network_policy_granularity": {
+      "minimum": "url"
+    },
+    "child_process_policy": {
+      "required_mode": "forbidden"
+    },
+    "token_passthrough_policy": {
+      "required_mode": "forbidden"
+    },
+    "revocation_behavior": {
+      "required_mode": "lease"
+    },
+    "delegation_enforcement": {
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "anti_replay_required": true,
+      "max_hops_enforced_required": true
+    },
+    "witness_support": {
+      "minimum_level": "hostcall",
+      "acceptable_tamper_evidence_modes": [
+        "hash_chain",
+        "merkle_chain"
+      ],
+      "acceptable_signature_modes": [
+        "runtime_key",
+        "external_signer"
+      ],
+      "trusted_time_source_required": true,
+      "redacted_io_hashes_required": true,
+      "authority_plan_digest_required": true
+    }
+  },
+  "delegation_policy": {
+    "mode": "forbidden",
+    "max_hops": 0,
+    "audience_binding_required": true,
+    "call_chain_binding_required": true,
+    "anti_replay_required": true,
+    "ttl_seconds_max": 300
+  },
+  "witness_level": "hostcall",
+  "notes": "Alignment example for a live inspect-http-json execution. Canonical live family is http-request; draft-v1 net.connect is retained only as a conservative compatibility alias."
+}

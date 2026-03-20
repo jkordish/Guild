@@ -290,15 +290,23 @@ The current example skills now include single-record and execution-tree explanat
 
 The draft M3/M4 schema bundle under `docs/schemas/draft-v1/` is still draft vocabulary layered on top of this runtime, not a replacement for this runtime description. The current repository truth is the host-owned capability-family and inspect-world model described here.
 
+The live Rust vocabulary now wins explicitly:
+
+- `runtime_guarantee.supported_canonical_families` is the authoritative live-runtime family list for the draft bundle
+- `supported_effect_classes` remains a temporary draft-v1 compatibility list for legacy M4, M5, and M6 examples
+- the current active canonical families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+
 That draft mapping is intentionally explicit:
 
 | `docs/schemas/draft-v1/` term | Current runtime term | Relationship |
 |---|---|---|
-| `component.wit_world` | `guild-skill-inspect-v1` runtime-entrypoint / world checks | related but not identical |
-| `component.invoke` | `invoke-skill` | close mapping |
-| `net.connect`, `net.resolve` | `http-request` | schema bundle is broader than the implemented runtime surface |
-| `fs.*` effect classes | `filesystem` family | related host-side contract, but active inspect still rejects filesystem before guest start |
-| no direct schema effect-class | `read-resource`, `emit-evidence`, `log-write` | currently unmapped in the draft bundle |
+| `component.wit_world` | `guild-skill-inspect-v1` runtime-entrypoint / world checks | bundled contracts now target the live inspect world explicitly |
+| `component.invoke` | `invoke-skill` | narrowing compatibility mapping |
+| `net.connect`, `net.resolve` | `http-request` | draft term is broader; only explicit HTTP(S) GET or HEAD `net.connect` scopes map safely |
+| `fs.*` effect classes | `filesystem` family | partial; active inspect still rejects filesystem before guest start |
+| `secret.read` | `get-secret` | partial; no live inspect enforcement or observation path yet |
+| `clock.read` | `wall-clock` | partial; draft term is less precise than the runtime family split |
+| no direct schema effect-class | `read-resource`, `emit-evidence`, `log-write` | live-observed in Rust, but unsupported in draft-v1 claim semantics |
 
 This is why the schema bundle remains marked draft: component portability and effect vocabulary portability are not the same thing as enforcement portability of the current runtime slice.
 
@@ -347,10 +355,12 @@ That M7 layer is intentionally honest about what it is and what it is not:
 - it records exercised authority, blocked attempted authority, and granted-but-unused authority as distinct concepts
 - it treats absence claims as coverage-sensitive rather than as a default success path
 - it reuses the same draft-local HMAC-SHA256 MAC over canonical JSON claims used by M6, so it is not a public attestation mechanism
-- it is currently complete only for the bundled draft example harnesses and the explicit bounded observation fixtures used by the checked examples
-- it is not wired into a runtime-general Rust exercised-authority stream because the live runner still persists aggregate execution records, evidence records, policy decisions, and some counters rather than a durable per-effect observation trace aligned with the draft-v1 effect vocabulary
+- it is currently complete for the bundled draft example harnesses and explicit bounded observation fixtures, and it now also consumes the live Rust `ExecutionRecord.authority_observations` stream for the active runtime families
+- the live runner now persists durable per-effect exercised and blocked observations for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- draft-v1 currently maps live `http-request` into its own vocabulary only through a conservative `net.connect` compatibility alias, so runtime-backed negative claims are currently honest only for that family
+- live `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations are carried into draft-v1 witnesses as explicit unmapped or coverage-limited records rather than being silently treated as supported
 
-So the current draft M7 path is useful for bounded exercised-authority verification, but it still does not justify runtime-general witness completeness claims for the live Rust runtime.
+So the current draft M7 path is useful for bounded exercised-authority verification, and it is now live-runtime-backed for `http-request`, but it still does not justify runtime-general witness completeness claims across the full live Rust capability surface.
 
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 

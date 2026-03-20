@@ -397,7 +397,7 @@ def runtime_mapping_limited_observation() -> dict[str, Any]:
                 "draft_effect_class": None,
                 "scope_kind": None,
                 "status": "insufficient",
-                "mapping_status": "unmapped",
+                "mapping_status": "unsupported",
                 "scope_descriptors": ["runtime-native:http_request"],
                 "supports_positive_facts": False,
                 "supports_absence_claims": False,
@@ -414,7 +414,7 @@ def runtime_mapping_limited_observation() -> dict[str, Any]:
                     "surface": "inspect-hook",
                 },
                 "coverage_status": "insufficient",
-                "reason_codes": [],
+                "reason_codes": ["RUNTIME_OBSERVATION_UNMAPPABLE"],
             }
         ],
         "raw_trace": {

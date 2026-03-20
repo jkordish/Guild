@@ -1,6 +1,6 @@
 # Guild Draft Schemas, v1.0.0
 
-This bundle is the current draft schema surface for Guild's M3, M4, one bounded M5 proof path, one draft-local M6 token path, and one bounded M7 witness path.
+This bundle is the current draft schema surface for Guild's M3, M4, one bounded M5 proof path, one draft-local M6 token path, one bounded M7 witness path, and one explicit M8a runtime-alignment layer.
 
 It now covers five distinct layers:
 
@@ -10,7 +10,40 @@ It now covers five distinct layers:
 - M6 delegated capability-token issuance and verification over an admissible `execution_plan`, optional `proof_record`, explicit audience and resource bindings, and an optional parent token
 - M7 witness generation and verification over an admissible `execution_plan`, optional `proof_record`, optional verified token basis, and bounded execution observations, producing a `witness_record` plus a `witness_verification_result`
 
-This bundle is still draft. It is useful and now executable, but it is not repo-wide canonical truth until the schema vocabulary and the repository's implemented capability-family surface are aligned.
+This bundle is still draft. It is useful and now executable, but it is not repo-wide canonical truth until the schema vocabulary and the repository's implemented capability-family surface are fully aligned.
+
+## M8a status
+
+The live Rust capability-family surface is now the canonical runtime vocabulary for this repository.
+
+The active canonical runtime families are:
+
+- `http-request`
+- `read-resource`
+- `invoke-skill`
+- `emit-evidence`
+- `log-write`
+
+`runtime_guarantee.supported_canonical_families` names that live surface.
+
+`runtime_guarantee.supported_effect_classes` still exists, but only as a draft-v1 compatibility surface for the checked M4, M5, and M6 examples. It is not the canonical runtime truth surface.
+
+Current draft-v1 compatibility mapping status is explicit and machine-usable:
+
+- `net.connect` -> `http-request`: `narrowing`
+- `component.invoke` -> `invoke-skill`: `narrowing`
+- `fs.read`, `fs.write`, `fs.list` -> `filesystem`: `partial`
+- `secret.read` -> `get-secret`: `partial`
+- `clock.read` -> `wall-clock`: `partial`
+- no direct draft effect-class -> `read-resource`, `emit-evidence`, `log-write`: `unsupported`
+
+Current live alignment status is also explicit:
+
+- the live Rust runner now persists durable `authority_observations` for exercised and blocked attempts in `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- draft-v1 M7 can currently verify runtime-backed positive and negative claims only for `http-request`, and only through the conservative `net.connect` compatibility alias for explicit HTTP(S) GET or HEAD scopes
+- live `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations are recorded and carried into draft-v1 witnesses, but they remain `coverage_limited` or `unverifiable` for absence-style claims because draft-v1 still has no direct effect-class for those families
+- M5 remains example-bounded for all families; there is still no runtime-general live minimization proof path
+- M6 remains a draft-local HMAC token layer; it binds to the chosen runtime identity honestly, but it still does not justify runtime-general enforcement claims for any family
 
 ## Design stance
 
@@ -23,7 +56,7 @@ This bundle is still draft. It is useful and now executable, but it is not repo-
 - Keep M4 honest: it derives a safe upper bound for one invocation. It does **not** minimize that bound.
 - Keep M5 honest: it may only preserve or reduce the M4 upper bound, it may never widen authority, and it must not claim exact minimality unless the explored search model actually proves it.
 - Keep M6 honest: it may materialize only the M4 upper bound or a proof-backed M5 subset, it may never widen either one, and it must say plainly whether the draft path is using a MAC or a signature.
-- Keep M7 honest: it records observed exercised authority and verifies narrow fixed claims against that observation. It does **not** infer absence from incomplete coverage, and it does **not** claim runtime-general completeness while the draft effect vocabulary still diverges from the live Rust inspect surface.
+- Keep M7 honest: it records observed exercised authority and verifies narrow fixed claims against that observation. It does **not** infer absence from incomplete coverage, and it does **not** claim runtime-general completeness beyond the families whose live Rust observations are actually mapped safely into this draft vocabulary.
 
 ## Core records
 
@@ -202,9 +235,9 @@ Its current limits are also explicit:
 
 - the bounded draft harnesses are the only complete observation source in this milestone
 - explicit observation fixtures may also be used for checked negative cases, mapping-limit cases, and blocked-attempt cases
-- the live Rust runtime does **not** yet publish a durable per-effect exercised-authority stream that lines up cleanly with the draft-v1 effect vocabulary
+- the live Rust runtime now publishes a durable per-effect `authority_observations` stream for the active runtime families, but draft-v1 only maps `http-request` safely into its own effect vocabulary today
 - witness protection in draft-v1 is the same shared-secret HMAC-SHA256 MAC over canonical JSON claims used by M6, not a public signature or attestation mechanism
-- M7 therefore remains useful but not runtime-general
+- M7 therefore remains useful but only partially runtime-general: `http-request` is wired through the live Rust observation path into draft-v1 witness claims, while `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` remain coverage-limited in this bundle
 
 ## Files included
 
@@ -272,6 +305,16 @@ Its current limits are also explicit:
 - `examples/cluster-rollout.witness.json`
 - `examples/runtime-mapping-limited.witness.json`
 - `examples/local-log-analyzer.runtime-mismatch.witness.json`
+- `examples/runtime-http-read.contract.json`
+- `examples/runtime-http-read.admit.request.json`
+- `examples/runtime-http-read.invocation.json`
+- `examples/runtime-http-read.unavailable.comparator.json`
+- `examples/runtime-http-success.execution-record.json`
+- `examples/runtime-http-blocked.execution-record.json`
+- `examples/runtime-emit-evidence-zero.contract.json`
+- `examples/runtime-emit-evidence-zero.admit.request.json`
+- `examples/runtime-emit-evidence.invocation.json`
+- `examples/runtime-emit-evidence.execution-record.json`
 
 ### Utilities
 
@@ -300,15 +343,17 @@ Current mapping boundaries:
 
 | Schema bundle term | Current repo term | Status |
 |---|---|---|
-| `component.wit_world` | `runtime.entrypoint` / active inspect world `guild-skill-inspect-v1` | related but not identical |
-| `component.invoke` | `invoke-skill` | close mapping |
-| `net.connect`, `net.resolve` | `http-request` | not equivalent; repo runtime is narrower and host-mediated |
-| `fs.read`, `fs.write`, `fs.list` | `filesystem` | related, but active inspect runtime still rejects filesystem before guest start |
+| `component.wit_world` | `runtime.entrypoint` / active inspect world `guild-skill-inspect-v1` | bundled contracts now target the live inspect world explicitly |
+| `component.invoke` | `invoke-skill` | narrowing compatibility mapping |
+| `net.connect`, `net.resolve` | `http-request` | not equivalent; only explicit HTTP(S) GET or HEAD `net.connect` scopes map safely |
+| `fs.read`, `fs.write`, `fs.list` | `filesystem` | partial; active inspect runtime still rejects filesystem before guest start |
 | `capability.delegate` | child-grant reduction plus host-owned delegation enforcement | related but split across policy and runtime layers |
 | witness / proof records | `ExecutionRecord`, `EvidenceRecord`, `PolicyDecision`, host-owned receipts and evidence metadata | overlapping concepts, not one-to-one |
-| no direct schema effect-class for `read-resource` | `read-resource` | unmapped in this draft bundle |
-| no direct schema effect-class for `emit-evidence` | `emit-evidence` | unmapped in this draft bundle |
-| no direct schema effect-class for `log-write` | `log-write` | unmapped in this draft bundle |
+| `secret.read` | `get-secret` | partial; no live inspect enforcement or observation path yet |
+| `clock.read` | `wall-clock` | partial; draft-v1 is less precise than the runtime family split |
+| no direct schema effect-class for `read-resource` | `read-resource` | live-observed but unsupported in draft-v1 claims |
+| no direct schema effect-class for `emit-evidence` | `emit-evidence` | live-observed but unsupported in draft-v1 claims |
+| no direct schema effect-class for `log-write` | `log-write` | live-observed but unsupported in draft-v1 claims |
 
 Until those gaps are closed, this directory must stay explicitly labeled as draft.
 
@@ -377,6 +422,7 @@ All bundled examples validate cleanly against the bundled schemas when run with 
 - fixed-claim evaluation success for proof-backed token absence and bounded delegation claims
 - explicit non-success for negative claims blocked by incomplete coverage or redaction
 - deterministic repeated M7 witness generation and MAC output for identical inputs
+- live-runtime alignment cases covering canonical runtime-family recording, conservative `http-request` -> `net.connect` narrowing, blocked live HTTP attempts, unsupported live `emit-evidence` mapping, deterministic canonicalization, and coverage-limited negative-claim behavior
 
 `compatibility_check.py` regenerates the derived hard-requirement compatibility matrix and asserts the fail-closed negative probes for omitted and unsupported `wit_worlds` support.
 

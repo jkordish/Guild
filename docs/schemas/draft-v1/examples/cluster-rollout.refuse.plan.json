@@ -6,7 +6,7 @@
   },
   "contract_digest": {
     "algorithm": "sha256",
-    "value": "73158871928cf3261d11f37b97acecaed3796a365b2c4041ceb2639a44e017a4"
+    "value": "26f13a40b68d55427fcc86f66b6ab2e992b427591e5216f6f2049625acfa2e9d"
   },
   "contract_id": "urn:guild:contract:cluster-rollout:v1",
   "decision": "refuse",

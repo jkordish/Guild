@@ -1,0 +1,84 @@
+{
+  "receipt": {
+    "execution_id": "019d0cd9-c397-7e52-ad0b-4f6a1f0d6eb8",
+    "uri": "guild://executions/019d0cd9-c397-7e52-ad0b-4f6a1f0d6eb8",
+    "trace_id": "trace-1",
+    "status": "rejected"
+  },
+  "request": {
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "inspect-http-json"
+      },
+      "version_req": "^0.1"
+    },
+    "input": {
+      "method": "get",
+      "url": "http://127.0.0.1:18080/response.json"
+    }
+  },
+  "resolved_skill": {
+    "key": {
+      "namespace": "example",
+      "name": "inspect-http-json"
+    },
+    "version": "0.1.0",
+    "digest": "sha256:695a732b9caf3adca2dcb77d9467976541809255a2b050ec0d030533bf890a88"
+  },
+  "status": "rejected",
+  "granted_capabilities": {
+    "grants": [
+      {
+        "id": "http-request",
+        "access": "read",
+        "constraints": {
+          "allowed_schemes": [
+            "http"
+          ],
+          "allowed_hosts": [
+            "localhost"
+          ],
+          "allowed_ports": [
+            18080
+          ],
+          "allowed_methods": [
+            "get"
+          ],
+          "allowed_path_prefixes": [
+            "/response.json"
+          ],
+          "max_timeout_ms": 2000,
+          "max_response_bytes": 4096,
+          "allow_loopback": true
+        }
+      }
+    ]
+  },
+  "authority_observations": [
+    {
+      "family": "http-request",
+      "status": "blocked",
+      "detail": {
+        "request": {
+          "method": "get",
+          "url": "http://127.0.0.1:18080/response.json",
+          "timeout_ms": null
+        },
+        "redirects_followed": 0,
+        "denial": {
+          "code": "http-request-host-not-granted",
+          "message": "http-request host was not granted for this execution",
+          "detail": {
+            "host": "127.0.0.1",
+            "url": "http://127.0.0.1:18080/response.json"
+          }
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "started_at_utc": "2026-03-20T20:04:51.223715502Z",
+    "finished_at_utc": "2026-03-20T20:04:55.041038015Z"
+  }
+}

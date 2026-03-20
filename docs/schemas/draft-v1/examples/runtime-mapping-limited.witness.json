@@ -29,7 +29,7 @@
   "execution_plan": {
     "execution_plan_digest": {
       "algorithm": "sha256",
-      "value": "e21283c3227399fd2cab2c1ba215c00650f5022a77e12c5dd4948666f0a7bf7a"
+      "value": "59aa63dfd121c4bfbc1aca36fc165e7f544f39ad29f356d421c96c7e1f589dd6"
     },
     "execution_plan_id": "urn:guild:request:fetch-transform:no-reduction:v1:execution-plan"
   },
@@ -59,10 +59,10 @@
       {
         "draft_effect_class": null,
         "family": "rust.inspect.http_request",
-        "mapping_status": "unmapped",
+        "mapping_status": "unsupported",
         "reason_codes": [
           "OBSERVATION_COVERAGE_INSUFFICIENT",
-          "VOCABULARY_MAPPING_UNMAPPED"
+          "VOCABULARY_MAPPING_UNSUPPORTED"
         ],
         "scope_descriptors": [
           "runtime-native:http_request"
@@ -86,14 +86,14 @@
     "canonicalization": "guild-json-c14n-v1",
     "claims_digest": {
       "algorithm": "sha256",
-      "value": "c6bca8029259de76d9b83568ad9ab42f28557637d34840d5d252be96b8ececcd"
+      "value": "9150bf357d64ea581ed0313d6512e18affb6708a5f617f79aab7997d7205043f"
     },
-    "mac_base64": "1PeTK1PmNcTnej1+h55qyUz9GcowkwUGz6NOeYylJXY=",
+    "mac_base64": "dSbQSP5SkIzqGkMkJyMW3xKy4na1vokQ+KioKSz4Z6E=",
     "mode": "hmac-sha256"
   },
   "reason_codes": [
     "OBSERVATION_COVERAGE_INSUFFICIENT",
-    "VOCABULARY_MAPPING_UNMAPPED"
+    "VOCABULARY_MAPPING_UNSUPPORTED"
   ],
   "redaction": {
     "profile": "none",
@@ -104,7 +104,7 @@
     "raw_trace_included": false,
     "redacted_content_digest": {
       "algorithm": "sha256",
-      "value": "5876b87930bfe09f4a602b1da0e976aed9cc43338849f60584a3d0ba8465cbc4"
+      "value": "e1b3a7299fa08d46b43cd578eb6806ae6fe9547af59397c2fc4e2e8e77ca1b4d"
     },
     "redacted_fields": [
       "raw_trace"
@@ -119,7 +119,7 @@
     },
     "runtime_guarantee_digest": {
       "algorithm": "sha256",
-      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+      "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
     },
     "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
   },
@@ -130,7 +130,7 @@
     },
     "contract_digest": {
       "algorithm": "sha256",
-      "value": "6f297ea89ccd12696b30db79de1a5ce71223e33c2a0799888fb5bb553af4bff8"
+      "value": "1ff026ac8874caa2fc6c8a5ce72283b6336bcd5cab58cb008de0e9cd6ac95dfe"
     },
     "export_name": "fetch_and_transform",
     "input_class_fingerprint": {
@@ -157,7 +157,8 @@
       "observed_as": "exercised",
       "reason_codes": [
         "OBSERVATION_COVERAGE_INSUFFICIENT",
-        "VOCABULARY_MAPPING_UNMAPPED"
+        "RUNTIME_OBSERVATION_UNMAPPABLE",
+        "VOCABULARY_MAPPING_UNSUPPORTED"
       ]
     }
   ],

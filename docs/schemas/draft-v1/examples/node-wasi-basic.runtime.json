@@ -13,9 +13,7 @@
       "0.2.0"
     ],
     "wit_worlds": [
-      "analyzer",
-      "fetcher",
-      "ops.rollout"
+      "guild-skill-inspect-v1"
     ]
   },
   "execution_isolation_assurance": "best_effort",
@@ -72,6 +70,10 @@
     "env.read",
     "clock.read",
     "random.read"
+  ],
+  "supported_canonical_families": [
+    "filesystem",
+    "wall-clock"
   ],
   "notes": "Convenience profile for trusted code only, not high-assurance admission."
 }

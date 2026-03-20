@@ -97,7 +97,7 @@
     ],
     "cache_key_digest": {
       "algorithm": "sha256",
-      "value": "439fcf6d8a55167ecb151d9ae9ea48ba5e31b88977d09778be818296a17eb5a5"
+      "value": "61323b0dfa890b7363db33b02a2ec504bba039381ab1f03b7b3a611bf7dc748d"
     },
     "key_material": {
       "comparator_digest": {
@@ -110,11 +110,11 @@
       },
       "contract_digest": {
         "algorithm": "sha256",
-        "value": "6f297ea89ccd12696b30db79de1a5ce71223e33c2a0799888fb5bb553af4bff8"
+        "value": "1ff026ac8874caa2fc6c8a5ce72283b6336bcd5cab58cb008de0e9cd6ac95dfe"
       },
       "execution_plan_digest": {
         "algorithm": "sha256",
-        "value": "e21283c3227399fd2cab2c1ba215c00650f5022a77e12c5dd4948666f0a7bf7a"
+        "value": "59aa63dfd121c4bfbc1aca36fc165e7f544f39ad29f356d421c96c7e1f589dd6"
       },
       "export_name": "fetch_and_transform",
       "harness_id": "urn:guild:harness:draft-v1:example-bounded",
@@ -134,7 +134,7 @@
       "minimization_algorithm_version": "1.0.0",
       "runtime_guarantee_digest": {
         "algorithm": "sha256",
-        "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+        "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
       },
       "shrink_model_version": "1.0.0"
     },
@@ -4398,7 +4398,7 @@
     },
     "runtime_guarantee_digest": {
       "algorithm": "sha256",
-      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+      "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
     },
     "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
   },
@@ -4428,12 +4428,12 @@
   },
   "contract_digest": {
     "algorithm": "sha256",
-    "value": "6f297ea89ccd12696b30db79de1a5ce71223e33c2a0799888fb5bb553af4bff8"
+    "value": "1ff026ac8874caa2fc6c8a5ce72283b6336bcd5cab58cb008de0e9cd6ac95dfe"
   },
   "created_at": "2026-03-20T12:20:00Z",
   "execution_plan_digest": {
     "algorithm": "sha256",
-    "value": "e21283c3227399fd2cab2c1ba215c00650f5022a77e12c5dd4948666f0a7bf7a"
+    "value": "59aa63dfd121c4bfbc1aca36fc165e7f544f39ad29f356d421c96c7e1f589dd6"
   },
   "execution_plan_id": "urn:guild:request:fetch-transform:no-reduction:v1:execution-plan",
   "expires_at": null,
