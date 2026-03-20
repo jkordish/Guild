@@ -73,15 +73,36 @@ impl Drop for TempFixtureDir {
     }
 }
 
-fn guild_command(env_registry_root: Option<&Path>) -> Command {
+fn guild_command_with_options(
+    env_registry_root: Option<&Path>,
+    home_dir: Option<&Path>,
+    current_dir: Option<&Path>,
+) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_guild"));
-    command.current_dir(repo_root());
+    match current_dir {
+        Some(current_dir) => {
+            command.current_dir(current_dir);
+        }
+        None => {
+            command.current_dir(repo_root());
+        }
+    }
     if let Some(root) = env_registry_root {
         command.env("GUILD_REGISTRY_ROOT", root);
     } else {
         command.env_remove("GUILD_REGISTRY_ROOT");
     }
+    if let Some(home_dir) = home_dir {
+        command.env("HOME", home_dir);
+        command.env_remove("USERPROFILE");
+        command.env_remove("HOMEDRIVE");
+        command.env_remove("HOMEPATH");
+    }
     command
+}
+
+fn guild_command(env_registry_root: Option<&Path>) -> Command {
+    guild_command_with_options(env_registry_root, None, None)
 }
 
 fn run_guild(args: &[&str], env_registry_root: Option<&Path>) -> Output {
@@ -91,8 +112,48 @@ fn run_guild(args: &[&str], env_registry_root: Option<&Path>) -> Output {
         .unwrap()
 }
 
+fn run_guild_with_home(args: &[&str], home_dir: &Path) -> Output {
+    guild_command_with_options(None, Some(home_dir), None)
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+fn run_guild_with_home_and_cwd(args: &[&str], home_dir: &Path, current_dir: &Path) -> Output {
+    guild_command_with_options(None, Some(home_dir), Some(current_dir))
+        .args(args)
+        .output()
+        .unwrap()
+}
+
 fn run_guild_success(args: &[&str], env_registry_root: Option<&Path>) -> String {
     let output = run_guild(args, env_registry_root);
+    assert!(
+        output.status.success(),
+        "guild command failed\nargs: {args:?}\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
+fn run_guild_success_with_home(args: &[&str], home_dir: &Path) -> String {
+    let output = run_guild_with_home(args, home_dir);
+    assert!(
+        output.status.success(),
+        "guild command failed\nargs: {args:?}\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
+fn run_guild_success_with_home_and_cwd(
+    args: &[&str],
+    home_dir: &Path,
+    current_dir: &Path,
+) -> String {
+    let output = run_guild_with_home_and_cwd(args, home_dir, current_dir);
     assert!(
         output.status.success(),
         "guild command failed\nargs: {args:?}\nstdout:\n{}\nstderr:\n{}",
@@ -218,15 +279,139 @@ fn read_command_distinguishes_evidence_payload_and_metadata_resources() {
 }
 
 #[test]
-fn missing_registry_root_fails_with_explicit_guidance() {
-    let output = run_guild(&["inspect", "skill://example/hello-inspect@^0.1"], None);
+fn read_only_commands_do_not_create_the_default_registry_root() {
+    let temp = TempFixtureDir::new("guild-cli-default-root-read");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&home_dir).unwrap();
+    let default_root = home_dir.join(".guild");
+
+    let output = run_guild_with_home(&["list", "--json"], &home_dir);
     assert!(!output.status.success());
 
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("pass `--registry-root <path>` or set `GUILD_REGISTRY_ROOT`"));
     assert!(
-        stderr.contains("there is no implicit `.guild/` or `target/dev-local-registry/...` root")
+        stderr.contains("read-only commands do not initialize a new root"),
+        "{stderr}"
     );
+    assert!(
+        stderr.contains(default_root.to_string_lossy().as_ref()),
+        "{stderr}"
+    );
+    assert!(!default_root.exists());
+}
+
+#[test]
+fn default_registry_root_is_used_when_no_override_is_present() {
+    let temp = TempFixtureDir::new("guild-cli-default-root-write");
+    let home_dir = temp.path().join("home");
+    fs::create_dir_all(&home_dir).unwrap();
+    let default_root = home_dir.join(".guild");
+    let source_root = hello_source_dir().display().to_string();
+
+    let _ = run_guild_success_with_home(&["install", &source_root], &home_dir);
+    assert!(default_root.join("installed").exists());
+
+    let grants_json = emit_evidence_grants_json();
+    let inspect_output = run_guild_success_with_home(
+        &[
+            "inspect",
+            "skill://example/hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &grants_json,
+            "--json",
+        ],
+        &home_dir,
+    );
+    let inspect_value: Value = parse_json_stdout(&inspect_output);
+    assert_eq!(
+        inspect_value["summary"].as_str(),
+        Some("Hello, Ada. Guild inspect is working."),
+    );
+}
+
+#[test]
+fn init_creates_the_default_registry_root() {
+    let temp = TempFixtureDir::new("guild-cli-init-default-root");
+    let home_dir = temp.path().join("home");
+    let default_root = home_dir.join(".guild");
+    fs::create_dir_all(&home_dir).unwrap();
+
+    let stdout = run_guild_success_with_home(&["init"], &home_dir);
+    assert!(stdout.contains("Guild init ready."));
+    assert!(stdout.contains(default_root.to_string_lossy().as_ref()));
+    assert!(stdout.contains("status: created"));
+    assert!(stdout.contains(env!("CARGO_BIN_EXE_guild")));
+    assert!(stdout.contains("Codex CLI registration:"));
+    assert!(stdout.contains("Codex MCP config snippet:"));
+    assert!(stdout.contains("mcp serve --stdio"));
+    assert!(default_root.exists());
+    assert!(default_root.join("installed").exists());
+    assert!(default_root.join("executions").exists());
+}
+
+#[test]
+fn init_can_fold_in_codex_setup_for_the_default_root() {
+    let temp = TempFixtureDir::new("guild-cli-init-codex");
+    let home_dir = temp.path().join("home");
+    let project_dir = temp.path().join("project");
+    let default_root = home_dir.join(".guild");
+    let global_config = home_dir.join(".codex").join("config.toml");
+    let project_config = project_dir.join(".codex").join("config.toml");
+    fs::create_dir_all(&home_dir).unwrap();
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::create_dir_all(global_config.parent().unwrap()).unwrap();
+    fs::create_dir_all(project_config.parent().unwrap()).unwrap();
+    fs::write(&global_config, "[profiles]\ndefault = \"safe\"\n").unwrap();
+    fs::write(&project_config, "[project]\nname = \"demo\"\n").unwrap();
+
+    let args = ["init", "--global", "--project"];
+    let first_stdout = run_guild_success_with_home_and_cwd(&args, &home_dir, &project_dir);
+    assert!(default_root.exists());
+    assert!(first_stdout.contains("Guild init ready."));
+    assert!(first_stdout.contains("updated:"));
+    assert!(first_stdout.contains(env!("CARGO_BIN_EXE_guild")));
+
+    let first_global = fs::read_to_string(&global_config).unwrap();
+    let first_project = fs::read_to_string(&project_config).unwrap();
+    assert!(first_global.contains("[profiles]"));
+    assert!(first_global.contains("[mcp_servers.guild-local]"));
+    assert!(first_global.contains(env!("CARGO_BIN_EXE_guild")));
+    assert!(!first_global.contains("--registry-root"));
+    assert!(first_project.contains("[project]"));
+    assert!(first_project.contains("[mcp_servers.guild-local]"));
+
+    let second_stdout = run_guild_success_with_home_and_cwd(&args, &home_dir, &project_dir);
+    assert!(second_stdout.contains("unchanged:"));
+    assert_eq!(first_global, fs::read_to_string(&global_config).unwrap());
+    assert_eq!(first_project, fs::read_to_string(&project_config).unwrap());
+}
+
+#[test]
+fn env_registry_root_overrides_the_default_home_root() {
+    let temp = TempFixtureDir::new("guild-cli-env-root");
+    let home_dir = temp.path().join("home");
+    let env_root = temp.path().join("env-root");
+    let default_root = home_dir.join(".guild");
+    fs::create_dir_all(&home_dir).unwrap();
+    install_with_cli(&env_root);
+
+    let grants_json = emit_evidence_grants_json();
+    let output = guild_command_with_options(Some(&env_root), Some(&home_dir), None)
+        .args([
+            "inspect",
+            "skill://example/hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &grants_json,
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert!(!default_root.exists());
 }
 
 #[test]
@@ -709,8 +894,18 @@ fn codex_subcommand_print_config_honors_global_registry_root() {
 fn codex_subcommand_help_is_available_through_guild_cli() {
     let stdout = run_guild_success(&["codex", "--help"], None);
     assert!(stdout.contains("usage: guild [--registry-root <path>] codex"));
+    assert!(stdout.contains("<bootstrap|print-config|scenario|smoke>"));
+    assert!(!stdout.contains("setup          "));
+    assert!(stdout.contains("dogfood"));
     assert!(stdout.contains("scenario"));
     assert!(stdout.contains("smoke"));
+}
+
+#[test]
+fn top_level_help_lists_init_as_a_first_class_command() {
+    let stdout = run_guild_success(&["--help"], None);
+    assert!(stdout.contains("init"));
+    assert!(stdout.contains("create the selected Guild root"));
 }
 
 #[test]

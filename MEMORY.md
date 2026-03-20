@@ -16,7 +16,7 @@ What is materially real today:
 - evidence persists as durable local Guild objects with distinct blob identity and per-emission evidence-record identity
 - evidence metadata is now directly readable as a first-class companion resource under `guild://objects/records/{evidence_record_id}/metadata` while the existing evidence-record URI still dereferences payload bytes
 - Guild now runs as a real MCP server over stdio, not just an internal façade with MCP-shaped concepts
-- Guild now has a primary `guild codex` workflow surface that bootstraps a local Codex dogfood root, prints the exact stdio MCP config for the real server, prepares deterministic local scenarios, and runs deterministic Codex smoke flows over that same path, while `guild-codex` remains as a compatibility alias
+- Guild now has one current `guild init` operator setup path for persistent local/Codex wiring, while `guild codex` remains the deterministic dogfood and smoke surface against the real stdio server
 - Trusted repos can now load thin workflow-oriented Codex skills from `.agents/skills` for incident triage, policy-denial debugging, bundle verification checks, and execution-tree investigation without widening Guild's public MCP surface
 - Guild now also has three inspect-only authority-debug example skills over durable execution records: `explain-capability-denial`, `diff-execution-authority`, and `explain-http-authority`
 - Guild now has a real bounded `http-request` capability family in the active inspect slice
@@ -58,7 +58,7 @@ Where the repository is now:
 - The integrity-hardening pass is complete for the current inspect-only substrate: host-minted execution IDs, create-only execution persistence, split evidence record identity, ambiguity rejection, atomic installs, unified host-owned denials, honest inspect capability surface, canonical Guild URI authz, and host-stamped timestamps are all in place.
 - The remaining unsupported-import ambiguity in the active inspect slice is now closed: broader capability imports stay absent from the inspect ABI, broader Guild component imports are preflighted, and unsupported runtime surface is persisted distinctly from policy denial and operational runtime failure.
 - Guild now also has a real stdio MCP server surface over that same runtime and storage path, with one honest public tool (`guild.inspect`) plus durable Guild resources.
-- Guild is now straightforward to connect to Codex over that same stdio surface: `guild codex bootstrap` prepares a local dogfood root, prints the cwd-independent `codex mcp add ... -- <command>` registration, prints the matching `config.toml` snippet, and prints the exact `guild codex scenario ...` and `guild codex smoke ...` commands for the recommended flows, while `guild-codex` remains available for compatibility.
+- Guild is now straightforward to connect to Codex over that same stdio surface: `guild init` creates the default local root and prints the current Codex wiring, `guild init --global` or `guild init --project` write persistent Codex config explicitly, and `guild codex bootstrap` / `scenario` / `smoke` remain the deterministic repo-local dogfood path.
 - Guild can now use persisted execution records to answer practical operator questions about authority: why one execution was denied or reduced, how two executions differed, and whether one candidate loopback/IP-literal HTTP request fits a stored grant without performing the request.
 - The checked-in repo skills under `.agents/skills` now package those realistic Codex workflows as thin wrappers around the same shared scenario helpers and Guild MCP resources.
 
@@ -99,8 +99,8 @@ What this means in practice:
 - Replaced raw-prefix `read-resource` authorization with parsed canonical Guild URI scope matching and fail-closed URI validation.
 - Stamped durable execution provenance with real host-generated UTC start and finish timestamps across top-level and child records.
 - Added a real stdio MCP server entrypoint with honest initialize/capabilities, one public tool (`guild.inspect`), Guild URI resources, and resource templates.
-- Added a thin `guild-codex` workflow helper that bootstraps a fresh local Guild root for Codex, installs the recommended example skills, prints the exact stdio launch/config snippets for the real `guild-mcp-server`, and now runs the recommended deterministic smoke flows through the same shared helper path used by the compatibility examples.
-- Added `guild-codex scenario` with deterministic `recent-failure-triage`, `policy-denial-debug`, and `execution-tree` setup flows that return subject/query URIs plus one recommended Codex ask string for each scenario.
+- Added the `guild codex` workflow surface that bootstraps a fresh local Guild root for Codex dogfooding, installs the recommended example skills, prints the exact stdio launch/config snippets for the real `guild mcp serve --stdio` path, and runs deterministic smoke flows through the same shared helper path used by the checked-in examples.
+- Added `guild codex scenario` with deterministic `recent-failure-triage`, `policy-denial-debug`, and `execution-tree` setup flows that return subject/query URIs plus one recommended Codex ask string for each scenario.
 - Added a real host-mediated `http-request` capability family with typed host enforcement and a Wasmtime-backed outbound HTTP path behind the existing Guild guest ABI.
 - Added the primitive `inspect-http-json` example skill plus a local deterministic HTTP proof flow and regression coverage for denial, timeout, response-size, and nested child-grant reduction behavior.
 - Extended the local policy proof flow so it now contrasts trusted vs restricted imported HTTP authority under named profiles and uses `explain-execution` to summarize the persisted host-owned denial.
@@ -180,7 +180,7 @@ What this means in practice:
 ### MCP server surface
 
 - `guild-mcp-server` can be launched as a stdio MCP subprocess against a local Guild root.
-- `guild codex` provides the supported local Codex setup path by bootstrapping a local root, printing the exact cwd-independent `codex mcp add ... -- <command>` and `config.toml` snippets for that same stdio server, preparing deterministic scenario roots, and running helper-level smoke flows against an already prepared root.
+- `guild init` provides the supported local Codex setup path by creating the local root and printing or writing the exact cwd-independent `codex mcp add ... -- <command>` and `config.toml` snippets for that same stdio server, while `guild codex` prepares deterministic scenario roots and runs helper-level smoke flows against already prepared roots.
 - `guild codex bootstrap` installs the query and authority-debug example skills so the local dogfood root is ready for manual operator-style follow-up inspection without widening the public MCP surface.
 - `guild codex scenario --scenario recent-failure-triage|policy-denial-debug|execution-tree --json` returns deterministic execution/query URIs plus one recommended Codex ask string for that workflow.
 - Repo-scoped Codex helpers now live under `.agents/skills` and stay intentionally thin by wrapping `guild codex scenario --json` instead of adding new top-level Guild tools.
@@ -395,3 +395,8 @@ Regression coverage now includes:
 - resource-aware query-summary skill execution against bounded execution-query resources discovered through the same backend
 - documented primitive and composite portability proof flows using separate registry A / bundle / registry B roots
 - documented negative trust proof flow for untrusted and tampered signed bundles
+- operator-facing root resolution now defaults to `--registry-root` > `GUILD_REGISTRY_ROOT` > `~/.guild`, with no cwd-local `.guild/` fallback and no `target/dev-local-registry/...` operator default
+- read-only operator commands now open existing registry state without creating a fresh default root, while write-oriented commands can honestly initialize the selected root
+- `guild init` is now the single current local bootstrap path for creating the selected Guild root and optionally folding in Codex setup writes, and the unreleased extra `guild-codex` binary has been removed so the repo presents one supported CLI path
+- `guild init` is now the explicit persistent Codex integration workflow: it creates the selected Guild root, prints the real stdio launch command / `codex mcp add ...` registration / TOML snippet, and can idempotently update `~/.codex/config.toml` and `.codex/config.toml` against the running `guild` binary
+- ADR 0019, README, command-language docs, testing docs, and AGENTS guidance now describe `guild` as the first-class Cargo-installable local operator tool with persistent `~/.guild` defaults, while deterministic proofs and examples still use explicit temp or `target/dev-local-registry/...` roots so CI and local verification never touch a developer home directory

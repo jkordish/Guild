@@ -22,7 +22,13 @@ The goal is a platform for portable, auditable, reusable skills, not a pile of t
 
 Guild now has one real first-class local CLI: `guild`.
 
-If `guild` is already on your `PATH`, use it directly. From the repository, use the repo-local wrapper:
+Install it as the normal operator entrypoint with:
+
+```bash
+cargo install --path crates/guild-mcp --bin guild
+```
+
+If you are working from the repository instead, use the repo-local wrapper:
 
 ```bash
 cargo run -q -p guild-mcp --bin guild -- ...
@@ -30,6 +36,7 @@ cargo run -q -p guild-mcp --bin guild -- ...
 
 The current local command surface is:
 
+- `guild init`
 - `guild inspect`
 - `guild read`
 - `guild list`
@@ -52,26 +59,32 @@ Public docs prefer canonical `skill://...` refs. The CLI also accepts bare `<nam
 
 ## Quickstart
 
-Guild requires explicit local registry root selection for CLI operations. There is no implicit `.guild/` or `target/dev-local-registry/...` fallback: pass `--registry-root <path>`, or set `GUILD_REGISTRY_ROOT`.
+Guild now has one sane local root rule for the operator-facing CLI:
+
+- `--registry-root <path>` wins
+- otherwise `GUILD_REGISTRY_ROOT`
+- otherwise Guild uses `~/.guild`
+
+Guild does not create a cwd-local `.guild/` directory. Read-only commands fail clearly if the selected root does not exist yet. `guild init` is the explicit way to create the selected root up front, and write-oriented commands such as `install`, `inspect`, `import`, `pull`, and the setup/bootstrap helpers can also create the selected root honestly when they are already doing real work.
 
 ### Install, List, Inspect, Read
 
 ```bash
-export GUILD_REGISTRY_ROOT=target/dev-local-registry/hello
+guild init
 
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
+guild install examples/skills/hello-inspect
 
-cargo run -q -p guild-mcp --bin guild -- list
+guild list
 
-cargo run -q -p guild-mcp --bin guild -- inspect \
+guild inspect \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
   --json
 
-cargo run -q -p guild-mcp --bin guild -- list executions --limit 5
+guild list executions --limit 5
 
-cargo run -q -p guild-mcp --bin guild -- read guild://executions/<execution-id>
+guild read guild://executions/<execution-id>
 ```
 
 What that flow shows:
@@ -81,6 +94,13 @@ What that flow shows:
 - `inspect` executes a human-facing `skill://...` ref through the real Guild path
 - success returns a durable `guild://executions/...` receipt
 - `read` goes back through the same resource backend used by MCP and guest `read-resource`
+
+If you want an explicit non-default root for local proofs or CI, keep passing it:
+
+```bash
+export GUILD_REGISTRY_ROOT=target/dev-local-registry/hello
+cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
+```
 
 ### Trust And Transport
 
@@ -113,7 +133,7 @@ That flow stays honest to the substrate:
 Guild ships a real stdio MCP server through the same CLI:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/mcp-local mcp serve --stdio
+guild mcp serve --stdio
 ```
 
 The public MCP surface is intentionally small:
@@ -129,14 +149,23 @@ MCP protocol hygiene in the current milestone stays honest to the real runtime:
 - `resources/list` remains a bounded recent-execution view over durable records rather than a general search/index surface
 - stdio is the only MCP transport in this milestone; subscriptions, list-changed notifications, HTTP transport, and more public tools remain intentionally deferred
 
-For Codex, Guild keeps one helper path instead of inventing a second server model:
+For persistent Codex integration, use the explicit setup workflow:
+
+```bash
+guild init
+guild init --global
+```
+
+`guild init` is now the one current local setup path. It creates the resolved Guild root, prints the exact `guild mcp serve --stdio` wiring for Codex, and `guild init --global` or `guild init --project` explicitly write the matching Codex config. The operator path no longer depends on a separate `guild codex setup` command.
+
+For deterministic local dogfood from the repository, Guild still keeps the existing helper path:
 
 ```bash
 cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
 cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/dev-local-registry/codex-local
 ```
 
-`guild codex` is the primary workflow surface for bootstrap, deterministic scenario prep, and smoke flows. `guild-codex` remains available as a compatibility alias for older scripts. The real local server launch it prints is `guild mcp serve --stdio`.
+`guild codex` is now the deterministic repo-local dogfood and smoke surface: bootstrap, Cargo-based `print-config`, scenario prep, and smoke flows.
 
 ## What Is Real Today
 

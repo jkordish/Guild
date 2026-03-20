@@ -520,6 +520,27 @@ impl LocalRegistry {
         }
 
         let root = ensure_registry_layout(root)?;
+        Self::load_from_canonical_root(root)
+    }
+
+    /// Load an existing local registry view without creating missing layout
+    /// directories.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the registry root does not exist, points at a source
+    /// skill directory, or installed manifests cannot be loaded and validated.
+    pub fn load_existing(root: impl AsRef<Path>) -> Result<Self, RegistryError> {
+        let root = root.as_ref();
+        if let Some(error) = detect_source_skill_root(root)? {
+            return Err(error);
+        }
+
+        let root = open_existing_registry_root(root)?;
+        Self::load_from_canonical_root(root)
+    }
+
+    fn load_from_canonical_root(root: PathBuf) -> Result<Self, RegistryError> {
         let mut installed = Vec::new();
         let installed_root = installed_root(&root);
 
@@ -1366,7 +1387,12 @@ fn query_execution_records_from_root(
 }
 
 fn load_execution_records_sorted(root: &Path) -> Result<Vec<ExecutionRecord>, RegistryError> {
-    let mut entries: Vec<_> = fs::read_dir(executions_root(root))
+    let executions_root = executions_root(root);
+    if !executions_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries: Vec<_> = fs::read_dir(&executions_root)
         .map_err(|error| {
             RegistryError::new(
                 "execution-list-read-failed",
@@ -2026,6 +2052,34 @@ fn ensure_registry_layout(path: impl AsRef<Path>) -> Result<PathBuf, RegistryErr
     }
 
     Ok(root)
+}
+
+fn open_existing_registry_root(path: impl AsRef<Path>) -> Result<PathBuf, RegistryError> {
+    let path = path.as_ref();
+
+    if !path.exists() {
+        return Err(RegistryError::new(
+            "registry-root-missing",
+            "Guild registry root does not exist yet",
+        )
+        .with_detail(path.display().to_string()));
+    }
+
+    if !path.is_dir() {
+        return Err(RegistryError::new(
+            "registry-root-invalid",
+            "Guild registry root was not a directory",
+        )
+        .with_detail(path.display().to_string()));
+    }
+
+    path.canonicalize().map_err(|error| {
+        RegistryError::new(
+            "registry-root-open-failed",
+            "failed to open Guild registry root",
+        )
+        .with_detail(error.to_string())
+    })
 }
 
 fn open_existing_directory(path: impl AsRef<Path>) -> Result<PathBuf, RegistryError> {

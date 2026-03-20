@@ -217,6 +217,15 @@ The current repository now also exposes a real stdio MCP server surface over tha
 
 Unsuccessful `guild.inspect` executions that reached a real resolved execution attempt MUST be surfaced over MCP as tool execution errors while preserving the persisted execution record and receipt URI.
 
+The current repository also exposes one thin local operator CLI over that same substrate:
+
+- `guild` is the canonical Cargo-installable operator binary for the current implementation
+- operator-facing root selection resolves as `--registry-root <path>`, then `GUILD_REGISTRY_ROOT`, then `~/.guild`
+- there is no cwd-local `.guild/` default and no `target/dev-local-registry/...` operator default
+- read-only commands do not silently create a missing root, while write-oriented commands may create the selected root when they are already performing real local mutation
+- `guild init` is the current persistent local bootstrap workflow: it creates the selected root, prints the exact `guild mcp serve --stdio` wiring for the running `guild` binary, and may explicitly and idempotently update global or project Codex config files
+- `guild codex` remains the deterministic repo-local dogfood and smoke surface for bootstrap, config-printing, scenario preparation, and stdio smoke flows; it is not the normal persistent operator setup path
+
 ## 10. Identity and Resolution
 
 ### 9.1 Requested skill identity

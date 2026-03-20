@@ -22,7 +22,9 @@ use guild_types::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use toml_edit::{Array, DocumentMut, InlineTable, Item, Table, Value as TomlValue};
 
+use crate::paths;
 use crate::protocol::{
     CallToolResult, InitializeResult, PROTOCOL_VERSION_2025_11_25, ReadResourceResult,
 };
@@ -32,7 +34,6 @@ use crate::{CLI_BINARY_NAME, GuildMcpFacade, InspectRequest, McpError};
 mod http_test_server;
 
 pub const DEFAULT_CODEX_SERVER_NAME: &str = "guild-local";
-const DEFAULT_CODEX_REGISTRY_ROOT: &str = "target/dev-local-registry/codex-local";
 const GUILD_MCP_MANIFEST_RELATIVE_PATH: &str = "crates/guild-mcp/Cargo.toml";
 const EXAMPLE_NAMESPACE: &str = "example";
 const EXAMPLE_VERSION_REQUIREMENT: &str = "^0.1";
@@ -92,10 +93,25 @@ pub struct CodexBootstrapSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct CodexServerConfig {
     pub name: String,
-    pub cwd: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<PathBuf>,
     pub command: String,
     pub args: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CodexConfigWriteStatus {
+    Updated,
+    Unchanged,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct CodexConfigWriteResult {
+    pub path: PathBuf,
+    pub status: CodexConfigWriteStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -477,9 +493,19 @@ pub fn guild_mcp_manifest_path() -> PathBuf {
     repo_root().join(GUILD_MCP_MANIFEST_RELATIVE_PATH)
 }
 
-#[must_use]
-pub fn default_registry_root() -> PathBuf {
-    repo_root().join(DEFAULT_CODEX_REGISTRY_ROOT)
+/// Resolve the operator default Guild registry root.
+///
+/// # Errors
+///
+/// Returns an error if the current user's home directory cannot be resolved.
+pub fn default_registry_root() -> Result<PathBuf, CodexWorkflowError> {
+    paths::default_registry_root().map_err(|error| {
+        CodexWorkflowError::new(
+            "codex-default-root-unavailable",
+            "failed to resolve the default Guild root",
+        )
+        .with_detail(json!({ "cause": error.to_string() }))
+    })
 }
 
 #[must_use]
@@ -534,14 +560,6 @@ pub fn recommended_smoke_commands(registry_root: impl AsRef<Path>) -> Vec<String
         )
     })
     .collect()
-}
-
-#[must_use]
-pub fn legacy_print_config_command(registry_root: impl AsRef<Path>) -> String {
-    format!(
-        "cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root {}",
-        shell_quote(&absolute_path(registry_root).to_string_lossy())
-    )
 }
 
 /// Build the default local Codex dogfood root by installing the example skills
@@ -606,7 +624,7 @@ pub fn codex_server_config(
 
     CodexServerConfig {
         name: name.into(),
-        cwd: repo_root(),
+        cwd: Some(repo_root()),
         command: "cargo".into(),
         args: vec![
             "run".into(),
@@ -624,72 +642,199 @@ pub fn codex_server_config(
     }
 }
 
+/// Resolve the absolute path to the running `guild` binary.
+///
+/// # Errors
+///
+/// Returns an error if the current executable path cannot be discovered or
+/// canonicalized.
+pub fn running_guild_binary() -> Result<PathBuf, CodexWorkflowError> {
+    let path = std::env::current_exe().map_err(|error| {
+        CodexWorkflowError::new(
+            "codex-guild-binary-unavailable",
+            "failed to resolve the running `guild` binary path",
+        )
+        .with_detail(json!({ "cause": error.to_string() }))
+    })?;
+
+    path.canonicalize().map_err(|error| {
+        CodexWorkflowError::new(
+            "codex-guild-binary-open-failed",
+            "failed to canonicalize the running `guild` binary path",
+        )
+        .with_detail(json!({
+            "path": path.display().to_string(),
+            "cause": error.to_string(),
+        }))
+    })
+}
+
+/// Build the persistent Codex stdio server configuration for an installed
+/// `guild` binary.
+///
+/// # Errors
+///
+/// Returns an error if the requested `guild` binary path cannot be
+/// canonicalized or the default Guild root cannot be resolved.
+pub fn installed_guild_server_config(
+    registry_root: impl AsRef<Path>,
+    name: impl Into<String>,
+    guild_binary: impl AsRef<Path>,
+) -> Result<CodexServerConfig, CodexWorkflowError> {
+    let registry_root = absolute_path(registry_root);
+    let default_registry_root = default_registry_root()?;
+    let guild_binary = guild_binary.as_ref().canonicalize().map_err(|error| {
+        CodexWorkflowError::new(
+            "codex-guild-binary-open-failed",
+            "failed to canonicalize the requested `guild` binary path",
+        )
+        .with_detail(json!({
+            "path": guild_binary.as_ref().display().to_string(),
+            "cause": error.to_string(),
+        }))
+    })?;
+
+    let mut args = Vec::new();
+    if registry_root != default_registry_root {
+        args.push("--registry-root".into());
+        args.push(registry_root.to_string_lossy().into_owned());
+    }
+    args.extend(["mcp", "serve", "--stdio"].into_iter().map(str::to_owned));
+
+    Ok(CodexServerConfig {
+        name: name.into(),
+        cwd: None,
+        command: guild_binary.to_string_lossy().into_owned(),
+        args,
+        env: BTreeMap::new(),
+    })
+}
+
+/// Upsert one Guild MCP server entry into a Codex TOML config file.
+///
+/// # Errors
+///
+/// Returns an error if the existing config cannot be read or parsed, if the
+/// parent directory cannot be created, or if the updated TOML cannot be
+/// written back to disk.
+pub fn write_codex_config(
+    path: impl AsRef<Path>,
+    config: &CodexServerConfig,
+) -> Result<CodexConfigWriteResult, CodexWorkflowError> {
+    let path = path.as_ref().to_path_buf();
+    let original = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => {
+            return Err(CodexWorkflowError::new(
+                "codex-config-read-failed",
+                "failed to read Codex config file",
+            )
+            .with_detail(json!({
+                "path": path.display().to_string(),
+                "cause": error.to_string(),
+            })));
+        }
+    };
+
+    let mut document = if original.is_empty() {
+        DocumentMut::new()
+    } else {
+        original.parse::<DocumentMut>().map_err(|error| {
+            CodexWorkflowError::new(
+                "codex-config-parse-failed",
+                "failed to parse Codex config TOML",
+            )
+            .with_detail(json!({
+                "path": path.display().to_string(),
+                "cause": error.to_string(),
+            }))
+        })?
+    };
+    upsert_server_config(&mut document, config)?;
+    let updated = document.to_string();
+    let status = if updated == original {
+        CodexConfigWriteStatus::Unchanged
+    } else {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                CodexWorkflowError::new(
+                    "codex-config-parent-create-failed",
+                    "failed to create the Codex config parent directory",
+                )
+                .with_detail(json!({
+                    "path": parent.display().to_string(),
+                    "cause": error.to_string(),
+                }))
+            })?;
+        }
+        fs::write(&path, updated).map_err(|error| {
+            CodexWorkflowError::new(
+                "codex-config-write-failed",
+                "failed to write Codex config TOML",
+            )
+            .with_detail(json!({
+                "path": path.display().to_string(),
+                "cause": error.to_string(),
+            }))
+        })?;
+        CodexConfigWriteStatus::Updated
+    };
+
+    Ok(CodexConfigWriteResult { path, status })
+}
+
 impl CodexServerConfig {
     /// Render the exact local command used to launch the Guild stdio MCP server
     /// outside Codex.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the config does not carry `GUILD_REGISTRY_ROOT`, which is a
-    /// required invariant for instances built through `codex_server_config`.
     #[must_use]
     pub fn manual_server_command(&self) -> String {
-        let registry_root = self.registry_root_env();
-        format!(
-            "{} --registry-root {}",
-            self.quoted_command_line(),
-            shell_quote(registry_root)
-        )
+        match self.quoted_env_assignments() {
+            Some(env) => format!("{env} {}", self.quoted_command_line()),
+            None => self.quoted_command_line(),
+        }
     }
 
     /// Render the `codex mcp add` command matching this local stdio server
     /// configuration.
+    #[must_use]
+    pub fn codex_mcp_add_command(&self) -> String {
+        let mut command = format!("codex mcp add {}", shell_quote(&self.name));
+        for (key, value) in &self.env {
+            let _ = write!(command, " --env {}", shell_quote(&format!("{key}={value}")));
+        }
+        let _ = write!(command, " -- {}", self.quoted_command_line());
+        command
+    }
+
+    /// Render just the TOML snippet for this Codex MCP server entry.
     ///
     /// # Panics
     ///
-    /// Panics if the config does not carry `GUILD_REGISTRY_ROOT`, which is a
-    /// required invariant for instances built through `codex_server_config`.
-    #[must_use]
-    pub fn codex_mcp_add_command(&self) -> String {
-        let registry_root = self.registry_root_env();
-        format!(
-            "codex mcp add {} --env GUILD_REGISTRY_ROOT={} -- {}",
-            shell_quote(&self.name),
-            shell_quote(registry_root),
-            self.quoted_command_line(),
-        )
-    }
-
+    /// Panics if this in-memory server config cannot be represented as TOML.
+    /// That indicates a programming error in Guild's own config renderer.
     #[must_use]
     pub fn config_toml(&self) -> String {
-        let args = self
-            .args
-            .iter()
-            .map(|arg| toml_string(arg))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let env = self
-            .env
-            .iter()
-            .map(|(key, value)| format!("{key} = {}", toml_string(value)))
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        format!(
-            "[mcp_servers.{}]\ncwd = {}\ncommand = {}\nargs = [{}]\nenv = {{ {} }}",
-            self.name,
-            toml_string(&self.cwd.to_string_lossy()),
-            toml_string(&self.command),
-            args,
-            env
-        )
+        let mut document = DocumentMut::new();
+        upsert_server_config(&mut document, self)
+            .expect("Codex server config always renders to valid TOML");
+        document.to_string().trim_end().to_owned()
     }
 
-    fn registry_root_env(&self) -> &str {
-        self.env
-            .get("GUILD_REGISTRY_ROOT")
-            .map(String::as_str)
-            .expect("Codex server config always carries GUILD_REGISTRY_ROOT")
+    #[must_use]
+    pub fn registry_root_display(&self) -> String {
+        if let Some(path) = self.env.get("GUILD_REGISTRY_ROOT") {
+            return path.clone();
+        }
+
+        if let Some(index) = self.args.iter().position(|arg| arg == "--registry-root")
+            && let Some(path) = self.args.get(index + 1)
+        {
+            return path.clone();
+        }
+
+        default_registry_root()
+            .map_or_else(|_| "~/.guild".into(), |path| path.display().to_string())
     }
 
     fn quoted_command_line(&self) -> String {
@@ -699,6 +844,81 @@ impl CodexServerConfig {
         }
         command
     }
+
+    fn quoted_env_assignments(&self) -> Option<String> {
+        if self.env.is_empty() {
+            return None;
+        }
+
+        Some(
+            self.env
+                .iter()
+                .map(|(key, value)| format!("{key}={}", shell_quote(value)))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    }
+}
+
+fn upsert_server_config(
+    document: &mut DocumentMut,
+    config: &CodexServerConfig,
+) -> Result<(), CodexWorkflowError> {
+    if !matches!(document.get("mcp_servers"), None | Some(Item::Table(_))) {
+        return Err(CodexWorkflowError::new(
+            "codex-config-invalid",
+            "existing `mcp_servers` config was not a TOML table",
+        ));
+    }
+
+    if document.get("mcp_servers").is_none() {
+        document["mcp_servers"] = Item::Table(Table::new());
+    }
+
+    let mcp_servers = document["mcp_servers"]
+        .as_table_mut()
+        .expect("mcp_servers was validated as a table");
+
+    if !matches!(mcp_servers.get(&config.name), None | Some(Item::Table(_))) {
+        return Err(CodexWorkflowError::new(
+            "codex-config-invalid",
+            "existing MCP server entry was not a TOML table",
+        )
+        .with_detail(json!({ "server_name": config.name })));
+    }
+
+    if mcp_servers.get(&config.name).is_none() {
+        mcp_servers[&config.name] = Item::Table(Table::new());
+    }
+
+    let server = mcp_servers[&config.name]
+        .as_table_mut()
+        .expect("server entry was validated as a table");
+    server["command"] = Item::Value(TomlValue::from(config.command.as_str()));
+
+    let mut args = Array::new();
+    for arg in &config.args {
+        args.push(arg.as_str());
+    }
+    server["args"] = Item::Value(TomlValue::Array(args));
+
+    if let Some(cwd) = &config.cwd {
+        server["cwd"] = Item::Value(TomlValue::from(cwd.to_string_lossy().as_ref()));
+    } else {
+        server.remove("cwd");
+    }
+
+    if config.env.is_empty() {
+        server.remove("env");
+    } else {
+        let mut env = InlineTable::new();
+        for (key, value) in &config.env {
+            env.insert(key.as_str(), TomlValue::from(value.as_str()));
+        }
+        server["env"] = Item::Value(TomlValue::InlineTable(env));
+    }
+
+    Ok(())
 }
 
 /// Run one or both deterministic Codex dogfood flows over the documented stdio
@@ -718,9 +938,13 @@ pub fn run_codex_smoke(
     validate_codex_smoke_registry(&registry_root, selection)?;
 
     let config = codex_server_config(&registry_root, name);
-    let mut client =
-        McpStdioClient::spawn(&config.command, &config.args, &config.cwd, &config.env)?;
-    let initialized = client.initialize("guild-codex-smoke")?;
+    let mut client = McpStdioClient::spawn(
+        &config.command,
+        &config.args,
+        config.cwd.as_deref(),
+        &config.env,
+    )?;
+    let initialized = client.initialize("codex-workflow-smoke")?;
 
     let flows = selection
         .flows()
@@ -1991,29 +2215,31 @@ impl McpStdioClient {
     fn spawn(
         command: impl AsRef<Path>,
         args: &[String],
-        cwd: &Path,
+        cwd: Option<&Path>,
         env: &BTreeMap<String, String>,
     ) -> Result<Self, CodexWorkflowError> {
-        let mut child = Command::new(command.as_ref())
+        let mut builder = Command::new(command.as_ref());
+        builder
             .args(args)
-            .current_dir(cwd)
             .envs(env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|error| {
-                CodexWorkflowError::new(
-                    "codex-smoke-server-spawn-failed",
-                    "failed to spawn the Guild stdio MCP server",
-                )
-                .with_detail(json!({
-                    "command": command.as_ref(),
-                    "args": args,
-                    "cwd": cwd,
-                    "io_error": error.to_string(),
-                }))
-            })?;
+            .stderr(Stdio::inherit());
+        if let Some(cwd) = cwd {
+            builder.current_dir(cwd);
+        }
+        let mut child = builder.spawn().map_err(|error| {
+            CodexWorkflowError::new(
+                "codex-smoke-server-spawn-failed",
+                "failed to spawn the Guild stdio MCP server",
+            )
+            .with_detail(json!({
+                "command": command.as_ref(),
+                "args": args,
+                "cwd": cwd.map(|path| path.display().to_string()),
+                "io_error": error.to_string(),
+            }))
+        })?;
 
         Ok(Self {
             stdin: child.stdin.take().ok_or_else(|| {
@@ -2159,8 +2385,4 @@ fn shell_quote(value: &str) -> String {
     }
 
     format!("'{}'", value.replace('\'', "'\"'\"'"))
-}
-
-fn toml_string(value: &str) -> String {
-    serde_json::to_string(value).expect("JSON string escaping also works for TOML basic strings")
 }

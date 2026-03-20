@@ -1,6 +1,6 @@
 [package]
 categories.workspace = true
-description = "Small MCP facade and stdio server over the Guild runtime"
+description = "Guild operator CLI and stdio MCP server over the Guild runtime"
 edition.workspace = true
 keywords.workspace = true
 license.workspace = true
@@ -17,11 +17,6 @@ path = "src/bin/guild-mcp-server.rs"
 [[bin]]
 name = "guild"
 path = "src/bin/guild.rs"
-
-[[bin]]
-name = "guild-codex"
-path = "src/bin/guild-codex.rs"
-test = false
 
 [[example]]
 name = "codex_explain_execution_local"
@@ -42,6 +37,7 @@ guild-types = { path = "../guild-types" }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml_edit = "0.22"
 
 [dev-dependencies]
 guild-manifest = { path = "../guild-manifest" }

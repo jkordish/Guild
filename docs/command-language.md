@@ -2,6 +2,12 @@
 
 Guild now has one real local command surface: `guild`.
 
+Install it as the operator entrypoint with:
+
+```bash
+cargo install --path crates/guild-mcp --bin guild
+```
+
 If you are using a built binary, run `guild ...`.
 If you are working from the repository, use the repo-local wrapper:
 
@@ -15,6 +21,7 @@ This document is the source of truth for Guild's public command and URI grammar.
 
 Guild's first-class local verbs are:
 
+- `guild init`
 - `guild inspect`
 - `guild read`
 - `guild list`
@@ -65,13 +72,16 @@ The CLI also accepts bare `<namespace>/<name>@<version-or-range>` as operator co
 
 ## Registry Roots
 
-Registry root selection is explicit:
+Registry root selection is local-first and overrideable:
 
-- there is no implicit `.guild/` root
-- there is no implicit `target/dev-local-registry/...` root
 - `--registry-root <path>` wins
 - otherwise `GUILD_REGISTRY_ROOT`
-- otherwise the CLI fails with usage guidance
+- otherwise Guild uses `~/.guild`
+- there is no cwd-local `.guild/` fallback
+- there is no `target/dev-local-registry/...` operator default
+- `guild init` is the explicit root-creation workflow
+- read-only commands do not initialize a missing root
+- write-oriented commands may create the selected root honestly
 
 ## Trust Scope
 
@@ -101,14 +111,14 @@ Guild does not currently expose a live loaded-runtime module registry. The hones
 Happy path:
 
 ```bash
-export GUILD_REGISTRY_ROOT=target/dev-local-registry/hero
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
-cargo run -q -p guild-mcp --bin guild -- inspect \
+guild init
+guild install examples/skills/hello-inspect
+guild inspect \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
   --json
-cargo run -q -p guild-mcp --bin guild -- read guild://executions/<execution-id>
+guild read guild://executions/<execution-id>
 ```
 
 What this teaches:
@@ -117,6 +127,13 @@ What this teaches:
 - inspect executes a `skill://...` ref, not an ambient tool name
 - success produces a durable `guild://executions/...` receipt
 - read goes back through the same Guild resource backend used by MCP and guest `read-resource`
+
+For deterministic local proofs and CI, continue to pass an explicit temp or target root:
+
+```bash
+export GUILD_REGISTRY_ROOT=target/dev-local-registry/hero
+cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
+```
 
 Host-owned denial:
 
@@ -163,6 +180,7 @@ What this teaches:
 
 The CLI is intentionally thin:
 
+- `guild init` creates the selected local registry layout and may explicitly fold in Codex config writes against the running `guild` binary
 - `guild inspect` uses the same `GuildMcpFacade::inspect` path used by `guild.inspect`
 - `guild read` uses the same local resource backend used by MCP `resources/read` and guest `read-resource`
 - `guild list` uses the local registry's installed-skill view plus recent persisted execution records
@@ -173,9 +191,13 @@ The CLI is intentionally thin:
 
 ## Codex
 
-Codex setup uses the same command language.
+Codex setup and dogfood helpers use the same command language.
 
-- `guild codex` is the primary helper surface for bootstrap, scenario prep, and smoke flows.
-- `guild-codex` remains available as a compatibility wrapper for existing scripts.
-- The real local server launch it prints is now `guild mcp serve --stdio`.
-- The printed Codex config runs the `guild` binary, not a second public server dialect.
+- `guild init` is the one current operator setup path.
+- `guild init` creates the resolved Guild root and prints the `guild mcp serve --stdio` launcher, the `codex mcp add ...` command, and the matching config snippet for the running `guild` binary.
+- `guild init --global` updates `~/.codex/config.toml` explicitly and idempotently.
+- `guild init --project` updates `.codex/config.toml` explicitly and idempotently.
+- `guild codex` is the deterministic repo-local dogfood and smoke surface for `bootstrap`, Cargo-based `print-config`, scenario prep, and smoke flows.
+- The real local server launch stays `guild mcp serve --stdio`.
+- Persistent Codex config now points at the running `guild` binary path rather than at a repo-local `cargo run` launcher.
+- The repo-local `guild codex print-config` helper remains intentionally available for deterministic in-repo dogfood flows and continues to print the Cargo-based launcher with an explicit registry root.

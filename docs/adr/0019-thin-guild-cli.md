@@ -1,7 +1,7 @@
 # ADR 0019: Thin First-Class `guild` CLI
 
 - Status: accepted
-- Date: 2026-03-18
+- Date: 2026-03-19
 
 ## Context
 
@@ -15,14 +15,21 @@ Before this ADR, the repository had:
 
 But the public command language had drifted across conceptual verbs, proof examples, and helper-specific commands. The product story was sharper than the actual operator workflow.
 
-This ADR exists to make the command language real, substrate-backed, and explicit.
+This ADR originally made the command language real, substrate-backed, and explicit.
+
+It is now also the place where Guild intentionally records the move from an explicit-only root posture to sane local operator defaults, because the CLI has become a real persistent local tool rather than a thin proof wrapper.
 
 ## Decision
 
 Guild now ships one thin first-class local CLI binary: `guild`.
 
+The normal operator install path is:
+
+- `cargo install --path crates/guild-mcp --bin guild`
+
 The stable v1 command surface is:
 
+- `guild init`
 - `guild inspect`
 - `guild read`
 - `guild list`
@@ -46,16 +53,21 @@ The CLI is intentionally substrate-backed rather than a second runtime layer:
 - `guild inspect` delegates to the same inspect path used by `guild.inspect`
 - `guild read` delegates to the same resource backend used by MCP `resources/read` and guest `read-resource`
 - install/export/import/push/pull delegate to the current registry and installer substrate
+- `guild init` creates the selected local root and may explicitly fold in local setup tasks such as Codex config writes without inventing a second state model
 - `guild codex` delegates to the existing Codex bootstrap/config/scenario/smoke helpers without creating a second server model
 - `guild mcp serve --stdio` launches the current stdio MCP server without widening the MCP surface
 
-Registry root selection stays explicit and local-first:
+Registry root selection is now local-first with one intentional default:
 
-- there is no implicit `.guild/` root
-- there is no implicit `target/dev-local-registry/...` root
 - `--registry-root <path>` wins
 - otherwise `GUILD_REGISTRY_ROOT`
-- otherwise the CLI fails with usage guidance
+- otherwise Guild uses `~/.guild`
+- there is no cwd-local `.guild/` default
+- there is no `target/dev-local-registry/...` operator default
+- read-only commands do not silently initialize a missing root
+- write-oriented commands may create the selected root honestly when they are already performing real local mutation
+
+This is an intentional change from the earlier explicit-only posture. Guild now has enough real local substrate that a stable home under `~/.guild` reduces friction without introducing cwd-based ambient state.
 
 Canonical public-facing skill syntax uses:
 
@@ -82,13 +94,26 @@ Docs, examples, and site snippets should prefer the canonical `skill://...` form
 - `guild list executions` shows recent persisted execution activity
 - it does not imply a live loaded-runtime module registry or a broader search/indexing surface
 
+`guild init` is the explicit local bootstrap workflow:
+
+- it creates the selected Guild root, including the default `~/.guild` path when no override is present
+- it prints the exact `guild mcp serve --stdio` launcher, `codex mcp add ...` command, and MCP config snippet for the running `guild` binary
+- `--global` and `--project` may explicitly and idempotently update `~/.codex/config.toml` and/or `.codex/config.toml`
+- it does not introduce cwd-local hidden state or silent Codex config edits
+
+`guild codex` remains the deterministic dogfood helper surface:
+
+- `bootstrap`, `print-config`, `scenario`, and `smoke` stay available for repo-local proofs and smoke flows
+- they are not the normal persistent operator setup path
+
 ## Consequences
 
 Positive:
 
 - Guild now has one real local command language
 - README, example docs, Codex workflow docs, and future site snippets can point at honest commands
-- Codex config can launch the `guild` binary directly while `guild codex` stays the primary setup workflow and `guild-codex` remains a thin compatibility wrapper
+- Guild has one predictable local home under `~/.guild` without introducing cwd-local hidden state
+- Codex config can launch the real `guild` binary directly while `guild init` is the single current setup workflow and `guild codex` stays a deterministic proof/dogfood helper surface
 
 Intentional non-decisions:
 

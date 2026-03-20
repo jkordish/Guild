@@ -77,7 +77,19 @@ Responsible for reading durable execution and evidence artifacts and producing g
 
 Responsible for exposing a small honest MCP surface over the existing Guild runtime and resource backend without duplicating execution logic.
 
-### 2.10 Current repository mapping
+### 2.10 Local Operator Shell
+
+Responsible for exposing the same registry, runtime, trust, and resource substrate through one thin local CLI without introducing a second state model.
+
+The current operator shell rules are:
+
+- `guild` is the canonical installed local operator binary
+- operator-facing root selection resolves as `--registry-root <path>`, then `GUILD_REGISTRY_ROOT`, then `~/.guild`
+- there is no cwd-local `.guild/` default
+- `guild init` is the persistent local setup path for creating the selected root and printing or writing Codex stdio configuration
+- `guild codex` remains a deterministic repo-local dogfood and smoke helper surface rather than the normal persistent setup path
+
+### 2.11 Current repository mapping
 
 The current repository maps this architecture onto a small Rust workspace:
 
@@ -85,7 +97,7 @@ The current repository maps this architecture onto a small Rust workspace:
 - `crates/guild-manifest`: manifest model for source and installed skill metadata
 - `crates/guild-registry`: local installer, local registry, bundle export and import, and Guild resource persistence
 - `crates/guild-runner`: execution orchestration, capability evaluation, and runtime adapter boundary
-- `crates/guild-mcp`: MCP-facing facade, stdio MCP server, and proof examples
+- `crates/guild-mcp`: thin `guild` CLI, MCP-facing facade, stdio MCP server, and proof examples
 - `crates/guild-sdk-rust`: guest authoring support for Rust skills
 - `wit/guild-skill-v1.wit`: guest and host ABI contract package, including the active inspect world
 - `examples/skills/`: runnable source skills used to prove the vertical slice

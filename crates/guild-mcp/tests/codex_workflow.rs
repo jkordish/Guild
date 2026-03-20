@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use guild_mcp::codex::{
     CodexBootstrapOutput, CodexScenarioSelection, CodexScenarioSummary, CodexServerConfig,
     CodexSmokeSelection, CodexSmokeSummary, bootstrap_codex_registry, codex_server_config,
-    guild_mcp_manifest_path, legacy_print_config_command,
+    guild_mcp_manifest_path,
 };
 
 #[path = "../../../test-support/mcp_stdio_client.rs"]
@@ -49,7 +49,12 @@ impl Drop for TempRegistryRoot {
 fn spawn_documented_server(
     config: &CodexServerConfig,
 ) -> Result<mcp_stdio_client::McpStdioClient, Box<dyn std::error::Error>> {
-    mcp_stdio_client::McpStdioClient::spawn(&config.command, &config.args, &config.cwd, &config.env)
+    mcp_stdio_client::McpStdioClient::spawn(
+        &config.command,
+        &config.args,
+        config.cwd.as_deref(),
+        &config.env,
+    )
 }
 
 fn run_guild_codex_json(args: &[&str]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -63,20 +68,9 @@ fn run_guild_codex_json(args: &[&str]) -> Result<Vec<u8>, Box<dyn std::error::Er
     Ok(output.stdout)
 }
 
-fn run_legacy_guild_codex_json(args: &[&str]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let output = Command::new("cargo")
-        .current_dir(repo_root())
-        .args(["run", "-q", "-p", "guild-mcp", "--bin", "guild-codex", "--"])
-        .args(args)
-        .output()?;
-
-    assert!(output.status.success(), "{output:?}");
-    Ok(output.stdout)
-}
-
 #[test]
 fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
-    let temp_root = TempRegistryRoot::new("guild-codex-bootstrap");
+    let temp_root = TempRegistryRoot::new("codex-workflow-bootstrap");
     let stdout = run_guild_codex_json(&[
         "bootstrap",
         "--registry-root",
@@ -166,49 +160,24 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
             .codex_mcp_add_command()
             .contains("--manifest-path")
     );
+    assert_eq!(payload.config.cwd.as_ref(), Some(&repo_root()));
     assert!(payload.config.config_toml().contains("cwd = "));
 }
 
 #[test]
 fn documented_config_can_launch_the_stdio_server() {
-    let temp_root = TempRegistryRoot::new("guild-codex-startup");
+    let temp_root = TempRegistryRoot::new("codex-workflow-startup");
     let bootstrap = bootstrap_codex_registry(temp_root.path(), true).unwrap();
     let config = codex_server_config(&bootstrap.registry_root, "guild-local");
     let mut client = spawn_documented_server(&config).unwrap();
-    let initialized = client.initialize("guild-codex-startup-smoke").unwrap();
+    let initialized = client.initialize("codex-workflow-startup-smoke").unwrap();
 
     assert_eq!(initialized.server_info.name, "guild-mcp");
 }
 
 #[test]
-fn legacy_guild_codex_binary_remains_compatible_for_scenarios() {
-    let temp_root = TempRegistryRoot::new("guild-codex-compat");
-    bootstrap_codex_registry(temp_root.path(), true).unwrap();
-
-    let stdout = run_legacy_guild_codex_json(&[
-        "scenario",
-        "--registry-root",
-        &temp_root.path().to_string_lossy(),
-        "--scenario",
-        "execution-tree",
-        "--json",
-    ])
-    .unwrap();
-    let payload: CodexScenarioSummary = serde_json::from_slice(&stdout).unwrap();
-
-    assert_eq!(payload.scenario, CodexScenarioSelection::ExecutionTree);
-    assert_eq!(
-        legacy_print_config_command(temp_root.path()),
-        format!(
-            "cargo run -p guild-mcp --bin guild-codex -- print-config --registry-root {}",
-            temp_root.path().to_string_lossy()
-        )
-    );
-}
-
-#[test]
 fn guild_codex_smoke_explain_execution_json_produces_resources() {
-    let temp_root = TempRegistryRoot::new("guild-codex-explain");
+    let temp_root = TempRegistryRoot::new("codex-workflow-explain");
     bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
     let stdout = run_guild_codex_json(&[
@@ -242,7 +211,7 @@ fn guild_codex_smoke_explain_execution_json_produces_resources() {
 
 #[test]
 fn guild_codex_smoke_explain_execution_tree_json_produces_resources() {
-    let temp_root = TempRegistryRoot::new("guild-codex-tree");
+    let temp_root = TempRegistryRoot::new("codex-workflow-tree");
     bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
     let stdout = run_guild_codex_json(&[
@@ -275,7 +244,7 @@ fn guild_codex_smoke_explain_execution_tree_json_produces_resources() {
 
 #[test]
 fn guild_codex_scenario_recent_failure_triage_json_prepares_query_and_failures() {
-    let temp_root = TempRegistryRoot::new("guild-codex-scenario-failures");
+    let temp_root = TempRegistryRoot::new("codex-workflow-scenario-failures");
     bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
     let stdout = run_guild_codex_json(&[
@@ -307,7 +276,7 @@ fn guild_codex_scenario_recent_failure_triage_json_prepares_query_and_failures()
 
 #[test]
 fn guild_codex_scenario_policy_denial_debug_json_prepares_execution_pairs() {
-    let temp_root = TempRegistryRoot::new("guild-codex-scenario-policy");
+    let temp_root = TempRegistryRoot::new("codex-workflow-scenario-policy");
     bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
     let stdout = run_guild_codex_json(&[
@@ -335,7 +304,7 @@ fn guild_codex_scenario_policy_denial_debug_json_prepares_execution_pairs() {
 
 #[test]
 fn guild_codex_scenario_execution_tree_json_prepares_root_execution() {
-    let temp_root = TempRegistryRoot::new("guild-codex-scenario-tree");
+    let temp_root = TempRegistryRoot::new("codex-workflow-scenario-tree");
     bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
     let stdout = run_guild_codex_json(&[
@@ -361,7 +330,7 @@ fn guild_codex_scenario_execution_tree_json_prepares_root_execution() {
 
 #[test]
 fn guild_codex_smoke_recent_failure_triage_json_produces_resources() {
-    let temp_root = TempRegistryRoot::new("guild-codex-smoke-failures");
+    let temp_root = TempRegistryRoot::new("codex-workflow-smoke-failures");
     bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
     let stdout = run_guild_codex_json(&[
@@ -394,7 +363,7 @@ fn guild_codex_smoke_recent_failure_triage_json_produces_resources() {
 
 #[test]
 fn guild_codex_smoke_policy_denial_debug_json_produces_resources() {
-    let temp_root = TempRegistryRoot::new("guild-codex-smoke-policy");
+    let temp_root = TempRegistryRoot::new("codex-workflow-smoke-policy");
     bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
     let stdout = run_guild_codex_json(&[
@@ -428,7 +397,7 @@ fn guild_codex_smoke_policy_denial_debug_json_produces_resources() {
 
 #[test]
 fn guild_codex_smoke_all_runs_all_documented_flows() {
-    let temp_root = TempRegistryRoot::new("guild-codex-all");
+    let temp_root = TempRegistryRoot::new("codex-workflow-all");
     bootstrap_codex_registry(temp_root.path(), true).unwrap();
 
     let stdout = run_guild_codex_json(&[

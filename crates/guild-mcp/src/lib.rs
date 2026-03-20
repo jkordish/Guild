@@ -22,6 +22,7 @@ use serde_json::Value;
 pub mod cli;
 pub mod codex;
 pub mod codex_cli;
+pub mod paths;
 pub mod protocol;
 pub mod server;
 

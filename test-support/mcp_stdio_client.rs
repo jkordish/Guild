@@ -18,17 +18,20 @@ impl McpStdioClient {
     pub fn spawn(
         command: impl AsRef<Path>,
         args: &[String],
-        cwd: &Path,
+        cwd: Option<&Path>,
         env: &BTreeMap<String, String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut child = Command::new(command.as_ref())
+        let mut builder = Command::new(command.as_ref());
+        builder
             .args(args)
-            .current_dir(cwd)
             .envs(env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()?;
+            .stderr(Stdio::inherit());
+        if let Some(cwd) = cwd {
+            builder.current_dir(cwd);
+        }
+        let mut child = builder.spawn()?;
 
         Ok(Self {
             stdin: child.stdin.take().ok_or("missing child stdin")?,

@@ -1,36 +1,14 @@
 use std::path::PathBuf;
 
 use crate::codex::{
-    CodexBootstrapOutput, CodexScenarioSelection, CodexSmokeSelection, DEFAULT_CODEX_SERVER_NAME,
-    bootstrap_codex_registry, codex_server_config, default_registry_root, prepare_codex_scenario,
-    print_config_command, recommended_proof_commands, recommended_scenario_commands,
-    recommended_smoke_commands, run_codex_smoke,
+    CodexBootstrapOutput, CodexConfigWriteResult, CodexConfigWriteStatus, CodexScenarioSelection,
+    CodexSmokeSelection, DEFAULT_CODEX_SERVER_NAME, bootstrap_codex_registry, codex_server_config,
+    default_registry_root, prepare_codex_scenario, print_config_command,
+    recommended_proof_commands, recommended_scenario_commands, recommended_smoke_commands,
+    run_codex_smoke,
 };
 
-const LEGACY_BINARY_INVOCATION: &str = "guild-codex";
 const GUILD_SUBCOMMAND_INVOCATION: &str = "guild [--registry-root <path>] codex";
-
-#[derive(Debug, Clone, Copy)]
-enum InvocationSurface {
-    LegacyBinary,
-    GuildSubcommand,
-}
-
-impl InvocationSurface {
-    fn usage_prefix(self) -> &'static str {
-        match self {
-            Self::LegacyBinary => LEGACY_BINARY_INVOCATION,
-            Self::GuildSubcommand => GUILD_SUBCOMMAND_INVOCATION,
-        }
-    }
-
-    fn scenario_command_label(self) -> &'static str {
-        match self {
-            Self::LegacyBinary => "guild-codex",
-            Self::GuildSubcommand => "guild codex",
-        }
-    }
-}
 
 #[derive(Debug)]
 enum Command {
@@ -63,21 +41,6 @@ struct ScenarioOptions {
     json: bool,
 }
 
-/// Run the legacy standalone `guild-codex` binary entrypoint.
-///
-/// # Errors
-///
-/// Returns an error if argument parsing fails, the requested workflow cannot
-/// prepare local state, or the underlying Codex helper operation fails.
-pub fn run_legacy_binary(
-    args: impl IntoIterator<Item = String>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = args.into_iter();
-    let _program = args.next();
-    let args = args.collect::<Vec<_>>();
-    run_with_surface(&args, InvocationSurface::LegacyBinary, None)
-}
-
 /// Run the `guild codex ...` subcommand family from the real `guild` CLI.
 ///
 /// # Errors
@@ -88,21 +51,9 @@ pub fn run_guild_subcommand(
     args: &[String],
     default_registry_root_override: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    run_with_surface(
-        args,
-        InvocationSurface::GuildSubcommand,
-        default_registry_root_override,
-    )
-}
-
-fn run_with_surface(
-    args: &[String],
-    surface: InvocationSurface,
-    default_registry_root_override: Option<PathBuf>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    match parse_args(args, surface, default_registry_root_override)? {
+    match parse_args(args, default_registry_root_override)? {
         None => {
-            print_usage(surface);
+            print_usage();
             Ok(())
         }
         Some(Command::Bootstrap(options)) => {
@@ -157,7 +108,6 @@ fn run_with_surface(
 
 fn parse_args(
     args: &[String],
-    surface: InvocationSurface,
     default_registry_root_override: Option<PathBuf>,
 ) -> Result<Option<Command>, Box<dyn std::error::Error>> {
     let Some(subcommand) = args.first().map(String::as_str) else {
@@ -168,8 +118,10 @@ fn parse_args(
         return Ok(None);
     }
 
-    let default_registry_root =
-        default_registry_root_override.unwrap_or_else(default_registry_root);
+    let default_registry_root = match default_registry_root_override {
+        Some(path) => path,
+        None => default_registry_root()?,
+    };
 
     match subcommand {
         "bootstrap" => parse_workflow_options(&args[1..], true, default_registry_root)
@@ -180,7 +132,7 @@ fn parse_args(
             .map(Command::PrintConfig)
             .map(Some)
             .or_else(handle_help_request),
-        "scenario" => parse_scenario_options(&args[1..], surface, default_registry_root)
+        "scenario" => parse_scenario_options(&args[1..], default_registry_root)
             .map(Command::Scenario)
             .map(Some)
             .or_else(handle_help_request),
@@ -192,17 +144,20 @@ fn parse_args(
     }
 }
 
-fn print_usage(surface: InvocationSurface) {
+fn print_usage() {
     println!(
-        "usage: {} <bootstrap|print-config|scenario|smoke> [options]",
-        surface.usage_prefix()
+        "usage: {GUILD_SUBCOMMAND_INVOCATION} <bootstrap|print-config|scenario|smoke> [options]"
+    );
+    println!();
+    println!(
+        "note: `guild init` is the normal operator setup path; `guild codex ...` is for deterministic repo-local dogfood and smoke flows."
     );
     println!();
     println!(
         "bootstrap      create a local Guild root for Codex and install the default dogfood skills"
     );
     println!(
-        "print-config   print the Codex MCP config and launch snippets for an existing or planned Guild root"
+        "print-config   print the deterministic repo-local Codex MCP config for an existing or planned Guild root"
     );
     println!(
         "scenario       seed one deterministic Codex dogfood scenario and print the resulting Guild URIs"
@@ -318,7 +273,6 @@ fn parse_smoke_options(
 
 fn parse_scenario_options(
     args: &[String],
-    surface: InvocationSurface,
     default_registry_root: PathBuf,
 ) -> Result<ScenarioOptions, Box<dyn std::error::Error>> {
     let mut options = ScenarioOptions {
@@ -356,11 +310,7 @@ fn parse_scenario_options(
     }
 
     if !scenario_explicit {
-        return Err(format!(
-            "--scenario is required for {} scenario",
-            surface.scenario_command_label()
-        )
-        .into());
+        return Err("--scenario is required for guild codex scenario".into());
     }
 
     Ok(options)
@@ -414,4 +364,42 @@ fn print_config_output(config: &crate::codex::CodexServerConfig) {
     println!(
         "the launcher uses an explicit Cargo manifest path and runs `guild mcp serve --stdio`, so it does not depend on the current working directory"
     );
+}
+
+pub(crate) fn print_setup_details(
+    guild_binary: &std::path::Path,
+    config: &crate::codex::CodexServerConfig,
+    writes: &[CodexConfigWriteResult],
+    print_config: bool,
+) {
+    println!("guild binary: {}", guild_binary.display());
+    println!("registry root: {}", config.registry_root_display());
+    println!();
+    println!("manual server launch:");
+    println!("{}", config.manual_server_command());
+    println!();
+    println!("Codex CLI registration:");
+    println!("{}", config.codex_mcp_add_command());
+
+    if print_config {
+        println!();
+        println!("Codex MCP config snippet:");
+        println!("{}", config.config_toml());
+    }
+
+    if !writes.is_empty() {
+        println!();
+        println!("config writes:");
+        for write in writes {
+            let status = match write.status {
+                CodexConfigWriteStatus::Updated => "updated",
+                CodexConfigWriteStatus::Unchanged => "unchanged",
+            };
+            println!("- {status}: {}", write.path.display());
+        }
+    }
+}
+
+pub(crate) fn project_codex_config_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    Ok(std::env::current_dir()?.join(".codex").join("config.toml"))
 }

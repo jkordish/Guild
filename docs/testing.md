@@ -20,6 +20,8 @@ If you want the focused CLI and stdio regression suites first:
 cargo test -p guild-mcp --test guild_cli --test codex_workflow --test mcp_server_stdio
 ```
 
+These proof flows intentionally keep using explicit temp or `target/dev-local-registry/...` roots so they never depend on or mutate a developer's real `~/.guild` or `~/.codex`.
+
 ## CLI Smoke Flows
 
 Minimal local CLI smoke:
@@ -79,7 +81,17 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-regist
 
 ## Codex Workflow
 
-Bootstrap and print config:
+Persistent operator setup:
+
+```bash
+guild init
+guild init --global
+guild init --project
+```
+
+`guild init` is the only persistent local setup workflow. It creates the selected Guild root, always prints the current stdio Codex wiring for the running `guild` binary, and `--global` / `--project` make the config writes explicit.
+
+Deterministic repo-local bootstrap and Cargo-based config helper:
 
 ```bash
 cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset

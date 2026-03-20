@@ -18,6 +18,12 @@ use guild_types::{
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::codex::{
+    CodexConfigWriteResult, CodexServerConfig, DEFAULT_CODEX_SERVER_NAME,
+    installed_guild_server_config, running_guild_binary, write_codex_config,
+};
+use crate::codex_cli::{print_setup_details, project_codex_config_path};
+use crate::paths;
 use crate::server::{GuildMcpServer, ServerStartupError};
 use crate::{CLI_BINARY_NAME, GuildMcpFacade, InspectRequest, InspectResponse, McpError};
 
@@ -74,6 +80,20 @@ impl From<serde_json::Error> for CliError {
 #[derive(Debug, Clone)]
 struct GlobalOptions {
     registry_root: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct InitCodexOutput {
+    guild_binary: String,
+    config: CodexServerConfig,
+    writes: Vec<CodexConfigWriteResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct InitCommandOutput {
+    registry_root: String,
+    created_registry_root: bool,
+    codex: InitCodexOutput,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -212,6 +232,7 @@ pub fn run(
             print_usage();
             Ok(())
         }
+        "init" => run_init(&args[1..], &global, env_registry_root),
         "inspect" => run_inspect(&args[1..], &global, env_registry_root),
         "read" => run_read(&args[1..], &global, env_registry_root),
         "list" => run_list(&args[1..], &global, env_registry_root),
@@ -221,7 +242,7 @@ pub fn run(
         "push" => run_push(&args[1..], &global, env_registry_root),
         "pull" => run_pull(&args[1..], &global, env_registry_root),
         "trust" => run_trust(&args[1..], &global, env_registry_root),
-        "codex" => run_codex(&args[1..], &global),
+        "codex" => run_codex(&args[1..], &global, env_registry_root),
         "mcp" => run_mcp(&args[1..], &global, env_registry_root),
         _ => Err(CliError::new(format!("unknown subcommand `{command}`"))),
     }
@@ -251,6 +272,84 @@ fn parse_global_options(
     Ok((GlobalOptions { registry_root }, remaining))
 }
 
+fn run_init(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if !args.is_empty() && is_help(args[0].as_str()) {
+        print_init_usage();
+        return Ok(());
+    }
+
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    let created_registry_root = !registry_root.exists();
+    let mut codex_name = DEFAULT_CODEX_SERVER_NAME.to_owned();
+    let mut global_config = false;
+    let mut project_config = false;
+    let mut json_output = false;
+    let mut index = 0;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--name" => {
+                next_value(args, &mut index, "--name")?.clone_into(&mut codex_name);
+            }
+            "--global" => global_config = true,
+            "--project" => project_config = true,
+            "--json" => json_output = true,
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild init`: `{other}`"
+                )));
+            }
+        }
+        index += 1;
+    }
+
+    LocalRegistry::load(&registry_root)?;
+
+    let guild_binary = running_guild_binary().map_err(|error| CliError::new(error.to_string()))?;
+    let config = installed_guild_server_config(&registry_root, codex_name, &guild_binary)
+        .map_err(|error| CliError::new(error.to_string()))?;
+    let mut writes = Vec::new();
+    if global_config {
+        let global_config_path =
+            paths::global_codex_config_path().map_err(|error| CliError::new(error.to_string()))?;
+        writes.push(
+            write_codex_config(global_config_path, &config)
+                .map_err(|error| CliError::new(error.to_string()))?,
+        );
+    }
+    if project_config {
+        writes.push(
+            write_codex_config(
+                project_codex_config_path().map_err(|error| CliError::new(error.to_string()))?,
+                &config,
+            )
+            .map_err(|error| CliError::new(error.to_string()))?,
+        );
+    }
+
+    let output = InitCommandOutput {
+        registry_root: registry_root.display().to_string(),
+        created_registry_root,
+        codex: InitCodexOutput {
+            guild_binary: guild_binary.display().to_string(),
+            config,
+            writes,
+        },
+    };
+
+    if json_output {
+        print_json(&output)?;
+    } else {
+        print_init_text(&output);
+    }
+
+    Ok(())
+}
+
 fn run_list(
     args: &[String],
     global: &GlobalOptions,
@@ -261,7 +360,7 @@ fn run_list(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     match args.first().map(String::as_str) {
         Some("skills") => run_list_skills(&args[1..], &registry_root),
         Some("executions") => run_list_executions(&args[1..], &registry_root),
@@ -283,7 +382,7 @@ fn run_list_summary(args: &[String], registry_root: &Path) -> Result<(), CliErro
         }
     }
 
-    let registry = LocalRegistry::load(registry_root)?;
+    let registry = build_existing_registry(registry_root)?;
     let installed = summarize_listed_installed_skills(registry.installed());
     let recent_records =
         registry.list_recent_execution_records(DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT)?;
@@ -324,7 +423,7 @@ fn run_list_skills(args: &[String], registry_root: &Path) -> Result<(), CliError
         }
     }
 
-    let registry = LocalRegistry::load(registry_root)?;
+    let registry = build_existing_registry(registry_root)?;
     let installed = summarize_listed_installed_skills(registry.installed());
     let output = ListSkillsOutput {
         registry_root: registry_root.display().to_string(),
@@ -375,7 +474,7 @@ fn run_list_executions(args: &[String], registry_root: &Path) -> Result<(), CliE
         index += 1;
     }
 
-    let registry = LocalRegistry::load(registry_root)?;
+    let registry = build_existing_registry(registry_root)?;
     let records = registry.list_recent_execution_records(limit)?;
     let executions = summarize_listed_executions(&records);
     let output = ListExecutionsOutput {
@@ -404,7 +503,7 @@ fn run_inspect(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     let skill = parse_skill_ref(&args[0])?;
     let mut input_json = None;
     let mut input_file = None;
@@ -501,7 +600,7 @@ fn run_read(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     let uri = args[0].clone();
     let mut output_path = None;
     let mut json_output = false;
@@ -524,8 +623,8 @@ fn run_read(
         index += 1;
     }
 
-    let facade = build_facade(&registry_root)?;
-    let resource = facade.read_resource(&uri).map_err(cli_error_from_mcp)?;
+    let registry = build_existing_registry(&registry_root)?;
+    let resource = registry.read_resource(&uri).map_err(CliError::from)?;
 
     if let Some(path) = output_path {
         fs::write(&path, &resource.bytes)?;
@@ -572,7 +671,7 @@ fn run_install(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     let source_dir = PathBuf::from(&args[0]);
     let mut json_output = false;
     let mut index = 1;
@@ -617,7 +716,7 @@ fn run_export(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     match format {
         "bundle" => run_export_bundle(&args[1..], &registry_root),
         "oci-layout" => run_export_oci_layout(&args[1..], &registry_root),
@@ -633,7 +732,7 @@ fn run_export_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
         return Ok(());
     }
 
-    let registry = LocalRegistry::load(registry_root)?;
+    let registry = build_existing_registry(registry_root)?;
     let root = resolve_installed_skill(&registry, &args[0])?;
     let mut signer = None;
     let mut output_root = None;
@@ -693,7 +792,7 @@ fn run_export_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
         return Ok(());
     }
 
-    let registry = LocalRegistry::load(registry_root)?;
+    let registry = build_existing_registry(registry_root)?;
     let root = resolve_installed_skill(&registry, &args[0])?;
     let mut signer = None;
     let mut output_root = None;
@@ -761,7 +860,7 @@ fn run_import(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     match format {
         "bundle" => run_import_bundle(&args[1..], &registry_root),
         "oci-layout" => run_import_oci_layout(&args[1..], &registry_root),
@@ -861,8 +960,8 @@ fn run_push(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
-    let registry = LocalRegistry::load(&registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    let registry = build_existing_registry(&registry_root)?;
     let root = resolve_installed_skill(&registry, &args[0])?;
     let mut signer = None;
     let mut reference = None;
@@ -934,7 +1033,7 @@ fn run_pull(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     let reference = parse_oci_reference(&args[0])?;
     let mut allow_http = false;
     let mut json_output = false;
@@ -1079,7 +1178,7 @@ fn run_trust_add(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     let mut identity_file = None;
     let mut record_file = None;
     let mut tier = LocalTrustTier::TrustedImported;
@@ -1164,7 +1263,7 @@ fn run_trust_list(
     global: &GlobalOptions,
     env_registry_root: Option<String>,
 ) -> Result<(), CliError> {
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     let mut json_output = false;
 
     for argument in args {
@@ -1210,7 +1309,8 @@ fn run_trust_remove(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    ensure_existing_registry_root(&registry_root)?;
     let publisher_id = args[0].clone();
     if args.len() > 1 {
         return Err(CliError::new(
@@ -1229,8 +1329,13 @@ fn run_trust_remove(
     Ok(())
 }
 
-fn run_codex(args: &[String], global: &GlobalOptions) -> Result<(), CliError> {
-    crate::codex_cli::run_guild_subcommand(args, global.registry_root.clone())
+fn run_codex(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    let default_registry_root = resolve_registry_root(global, env_registry_root)?;
+    crate::codex_cli::run_guild_subcommand(args, Some(default_registry_root))
         .map_err(|error| CliError::new(error.to_string()))
 }
 
@@ -1264,7 +1369,7 @@ fn run_mcp_serve(
         return Ok(());
     }
 
-    let registry_root = require_registry_root(global, env_registry_root)?;
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
     let mut stdio = false;
 
     for argument in args {
@@ -1288,7 +1393,7 @@ fn run_mcp_serve(
     Ok(())
 }
 
-fn require_registry_root(
+fn resolve_registry_root(
     global: &GlobalOptions,
     env_registry_root: Option<String>,
 ) -> Result<PathBuf, CliError> {
@@ -1300,9 +1405,31 @@ fn require_registry_root(
         return Ok(PathBuf::from(path));
     }
 
+    paths::default_registry_root().map_err(|error| CliError::new(error.to_string()))
+}
+
+fn ensure_existing_registry_root(registry_root: &Path) -> Result<(), CliError> {
+    if registry_root.exists() {
+        return Ok(());
+    }
+
     Err(CliError::new(format!(
-        "missing registry root; pass `--registry-root <path>` or set `GUILD_REGISTRY_ROOT`\nthere is no implicit `.guild/` or `target/dev-local-registry/...` root\nexample: {CLI_BINARY_NAME} --registry-root target/dev-local-registry inspect skill://example/hello-inspect@^0.1 --input-json '{{}}'\nexample: export GUILD_REGISTRY_ROOT=target/dev-local-registry"
+        "Guild registry root `{}` does not exist yet\nread-only commands do not initialize a new root\nrun `{CLI_BINARY_NAME} install <source-dir>` to create it, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an existing root",
+        registry_root.display()
     )))
+}
+
+fn build_existing_registry(registry_root: &Path) -> Result<LocalRegistry, CliError> {
+    LocalRegistry::load_existing(registry_root).map_err(|error| {
+        if error.code == "registry-root-missing" {
+            CliError::new(format!(
+                "Guild registry root `{}` does not exist yet\nread-only commands do not initialize a new root\nrun `{CLI_BINARY_NAME} install <source-dir>` to create it, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an existing root",
+                registry_root.display()
+            ))
+        } else {
+            CliError::from(error)
+        }
+    })
 }
 
 fn build_facade(
@@ -1492,6 +1619,27 @@ fn print_read_text(resource: &ResourceReadResult) -> Result<(), CliError> {
     }
 }
 
+fn print_init_text(output: &InitCommandOutput) {
+    println!("Guild init ready.");
+    println!("registry root: {}", output.registry_root);
+    println!(
+        "status: {}",
+        if output.created_registry_root {
+            "created"
+        } else {
+            "already existed"
+        }
+    );
+
+    println!();
+    print_setup_details(
+        Path::new(&output.codex.guild_binary),
+        &output.codex.config,
+        &output.codex.writes,
+        true,
+    );
+}
+
 fn print_import_text(output: &ImportCommandOutput) {
     if output.installed.is_empty() {
         println!("no installed skills were imported");
@@ -1585,6 +1733,7 @@ fn print_usage() {
     println!("usage: guild [--registry-root <path>] <command> [options]");
     println!();
     println!("commands:");
+    println!("  init         create the selected Guild root and print or write Codex setup");
     println!("  inspect      execute a skill through the local inspect path");
     println!("  read         read a Guild resource URI");
     println!("  list         list installed skills and recent persisted executions");
@@ -1594,17 +1743,23 @@ fn print_usage() {
     println!("  push         publish installed state to an OCI registry");
     println!("  pull         pull and import installed state from an OCI registry");
     println!("  trust        manage local publisher identities and trust records");
-    println!("  codex        bootstrap and smoke the real Codex stdio workflow");
+    println!("  codex        run deterministic Codex dogfood and smoke helpers");
     println!("  mcp          launch the existing Guild MCP stdio server");
     println!();
     println!(
-        "registry roots are explicit: `--registry-root` wins, then `GUILD_REGISTRY_ROOT`; there is no implicit `.guild/` or `target/dev-local-registry/...` fallback."
+        "registry roots resolve as `--registry-root`, then `GUILD_REGISTRY_ROOT`, then `~/.guild`; there is no cwd-local `.guild/` fallback."
     );
     println!(
         "canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` is accepted as operator convenience."
     );
     println!("`guild trust ...` manages local trust-store state only.");
     println!("deferred: `guild build` and `guild deploy` are intentionally not implemented.");
+}
+
+fn print_init_usage() {
+    println!(
+        "usage: guild [--registry-root <path>] init [--global] [--project] [--name <server>] [--json]"
+    );
 }
 
 fn print_inspect_usage() {
