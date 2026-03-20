@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Guild Witness Record",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "guild.witness_record"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "witness_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "invocation_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "sequence_no": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timestamp": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "witness_level": {
+      "$ref": "common.schema.json#/$defs/witness_level"
+    },
+    "prev_witness_hash": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "leaf_hash": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "skill_contract_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "component_digest": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "export_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_guarantee_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "proof_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "authority_plan_digest": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "event": {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "policy_decision",
+            "capability_issue",
+            "capability_use",
+            "hostcall",
+            "invocation_result"
+          ]
+        },
+        "effect_class": {
+          "$ref": "common.schema.json#/$defs/effect_class"
+        },
+        "requested_scope": {
+          "$ref": "common.schema.json#/$defs/effect_scope"
+        },
+        "granted_scope": {
+          "$ref": "common.schema.json#/$defs/effect_scope"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "deny",
+            "downgrade",
+            "observe"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "error",
+            "timeout"
+          ]
+        },
+        "resource_audience": {
+          "$ref": "common.schema.json#/$defs/effect_scope"
+        },
+        "input_hash": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "output_hash": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "error_code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metadata": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "event_type"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "enum": [
+                  "capability_issue",
+                  "capability_use",
+                  "hostcall"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "effect_class",
+              "decision"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "policy_decision"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "decision"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "invocation_result"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "status"
+            ]
+          }
+        }
+      ]
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "common.schema.json#/$defs/signature_mode"
+        },
+        "key_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signature_value": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "mode",
+        "key_id",
+        "signature_value"
+      ],
+      "additionalProperties": false
+    },
+    "notes": {
+      "type": "string"
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  },
+  "required": [
+    "kind",
+    "version",
+    "witness_id",
+    "invocation_id",
+    "sequence_no",
+    "timestamp",
+    "witness_level",
+    "prev_witness_hash",
+    "leaf_hash",
+    "skill_contract_id",
+    "component_digest",
+    "export_name",
+    "runtime_guarantee_id",
+    "proof_id",
+    "authority_plan_digest",
+    "event"
+  ],
+  "additionalProperties": false
+}

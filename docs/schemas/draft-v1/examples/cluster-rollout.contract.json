@@ -1,0 +1,299 @@
+{
+  "kind": "guild.skill_contract",
+  "version": "1.0.0",
+  "contract_id": "urn:guild:contract:cluster-rollout:v1",
+  "component": {
+    "name": "cluster-rollout",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "bf1dc94321cd91c6428b6c81de14342fff34b1cc5ff1f2591789da15997d4e8c"
+    },
+    "component_model": "wasm-component",
+    "component_model_version": "0.2.0",
+    "wit_world": "ops.rollout"
+  },
+  "export": {
+    "name": "apply_rollout",
+    "interface": "ops/rollout",
+    "version": "1.0.0"
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "92cfe6ab8245cbd80c17ae7a977f93e5ad83b5bb834179ba060e952298721de6"
+    }
+  },
+  "required_effects": [
+    {
+      "effect_class": "fs.read",
+      "scope": {
+        "kind": "filesystem",
+        "paths": [
+          "/workspace/plan/**"
+        ],
+        "symlink_policy": "deny",
+        "follow_mounts": false
+      },
+      "cardinality": {
+        "max_calls": 50,
+        "max_bytes": 1048576
+      },
+      "justification": "Read rollout manifest and patch plan"
+    },
+    {
+      "effect_class": "net.connect",
+      "scope": {
+        "kind": "network",
+        "audiences": [
+          {
+            "host": "kube-api.prod.example.internal",
+            "ports": [
+              443
+            ],
+            "schemes": [
+              "https"
+            ],
+            "path_prefixes": [
+              "/api/",
+              "/apis/"
+            ],
+            "methods": [
+              "GET",
+              "PATCH",
+              "POST"
+            ]
+          }
+        ]
+      },
+      "cardinality": {
+        "max_calls": 20,
+        "max_bytes": 1048576
+      },
+      "justification": "Apply rollout to Kubernetes API"
+    },
+    {
+      "effect_class": "secret.read",
+      "scope": {
+        "kind": "secret",
+        "secret_ids": [
+          "vault://prod/kube-api/token"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 2
+      },
+      "justification": "Read cluster API token"
+    },
+    {
+      "effect_class": "component.invoke",
+      "scope": {
+        "kind": "component",
+        "component_digests": [
+          {
+            "algorithm": "sha256",
+            "value": "e0c8d6e76ebb881397b1c9818f81e30890db02b2bb72d31e10e3fc1c6619b149"
+          }
+        ],
+        "exports": [
+          "apply_manifest_patch"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 10
+      },
+      "justification": "Invoke child component that computes patch batches"
+    },
+    {
+      "effect_class": "capability.delegate",
+      "scope": {
+        "kind": "delegation",
+        "effect_classes": [
+          "net.connect"
+        ],
+        "audiences": [
+          "kube-api.prod.example.internal:443"
+        ],
+        "max_hops": 1
+      },
+      "cardinality": {
+        "max_calls": 10
+      },
+      "justification": "Delegate a bounded API capability to the child component"
+    }
+  ],
+  "forbidden_effects": [
+    {
+      "effect_class": "proc.spawn",
+      "scope": {
+        "kind": "process",
+        "commands": [
+          "*"
+        ]
+      },
+      "justification": "No shell access in rollout path"
+    },
+    {
+      "effect_class": "env.read",
+      "scope": {
+        "kind": "environment",
+        "names": [
+          "*"
+        ]
+      },
+      "justification": "No ambient credential reads"
+    },
+    {
+      "effect_class": "random.read",
+      "scope": {
+        "kind": "system"
+      },
+      "justification": "No nondeterministic token derivation"
+    }
+  ],
+  "authority_ceiling": [
+    {
+      "effect_class": "fs.read",
+      "scope": {
+        "kind": "filesystem",
+        "paths": [
+          "/workspace/plan/**"
+        ],
+        "symlink_policy": "deny",
+        "follow_mounts": false
+      },
+      "cardinality": {
+        "max_calls": 50,
+        "max_bytes": 1048576
+      }
+    },
+    {
+      "effect_class": "net.connect",
+      "scope": {
+        "kind": "network",
+        "audiences": [
+          {
+            "host": "kube-api.prod.example.internal",
+            "ports": [
+              443
+            ],
+            "schemes": [
+              "https"
+            ],
+            "path_prefixes": [
+              "/api/",
+              "/apis/"
+            ],
+            "methods": [
+              "GET",
+              "PATCH",
+              "POST"
+            ]
+          }
+        ]
+      },
+      "cardinality": {
+        "max_calls": 20,
+        "max_bytes": 1048576
+      }
+    },
+    {
+      "effect_class": "secret.read",
+      "scope": {
+        "kind": "secret",
+        "secret_ids": [
+          "vault://prod/kube-api/token"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 2
+      }
+    },
+    {
+      "effect_class": "component.invoke",
+      "scope": {
+        "kind": "component",
+        "component_digests": [
+          {
+            "algorithm": "sha256",
+            "value": "e0c8d6e76ebb881397b1c9818f81e30890db02b2bb72d31e10e3fc1c6619b149"
+          }
+        ],
+        "exports": [
+          "apply_manifest_patch"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 10
+      }
+    },
+    {
+      "effect_class": "capability.delegate",
+      "scope": {
+        "kind": "delegation",
+        "effect_classes": [
+          "net.connect"
+        ],
+        "audiences": [
+          "kube-api.prod.example.internal:443"
+        ],
+        "max_hops": 1
+      },
+      "cardinality": {
+        "max_calls": 10
+      }
+    }
+  ],
+  "required_runtime_guarantees": {
+    "execution_isolation_assurance": {
+      "minimum": "strong"
+    },
+    "filesystem_isolation_class": {
+      "minimum": "preopen_only"
+    },
+    "network_policy_granularity": {
+      "minimum": "url"
+    },
+    "child_process_policy": {
+      "required_mode": "forbidden"
+    },
+    "token_passthrough_policy": {
+      "required_mode": "one_hop_bound"
+    },
+    "revocation_behavior": {
+      "required_mode": "hard_kill_live"
+    },
+    "delegation_enforcement": {
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "anti_replay_required": true,
+      "max_hops_enforced_required": true
+    },
+    "witness_support": {
+      "minimum_level": "full",
+      "acceptable_tamper_evidence_modes": [
+        "merkle_chain"
+      ],
+      "acceptable_signature_modes": [
+        "external_signer"
+      ],
+      "trusted_time_source_required": true,
+      "redacted_io_hashes_required": true,
+      "authority_plan_digest_required": true
+    }
+  },
+  "delegation_policy": {
+    "mode": "bounded_hops",
+    "max_hops": 1,
+    "allowed_effect_classes": [
+      "net.connect"
+    ],
+    "audience_binding_required": true,
+    "call_chain_binding_required": true,
+    "anti_replay_required": true,
+    "ttl_seconds_max": 60
+  },
+  "witness_level": "full",
+  "notes": "High-assurance operational skill with bounded one-hop delegation."
+}

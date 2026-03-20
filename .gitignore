@@ -5,6 +5,7 @@ Cargo.lock
 .env.*
 .idea/
 .vscode/
+__pycache__/
 *.log
 *.tmp
 dist/

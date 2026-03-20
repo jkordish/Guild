@@ -1,0 +1,262 @@
+{
+  "kind": "guild.skill_contract",
+  "version": "1.0.0",
+  "contract_id": "urn:guild:contract:fetch-transform:v1",
+  "component": {
+    "name": "fetch-transform",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "fec4ee0d8541bab9129a83fb530d1fa0378916beabe80c7ccedbfdd0fd8421f8"
+    },
+    "component_model": "wasm-component",
+    "component_model_version": "0.2.0",
+    "wit_world": "fetcher"
+  },
+  "export": {
+    "name": "fetch_and_transform",
+    "interface": "fetcher/source",
+    "version": "1.0.0"
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "c69ff0208dfc627c10beb81d20babffc27585fd741b1f3d8b3beb32f1e0c6f46"
+    }
+  },
+  "required_effects": [
+    {
+      "effect_class": "fs.read",
+      "scope": {
+        "kind": "filesystem",
+        "paths": [
+          "/workspace/input/**"
+        ],
+        "symlink_policy": "deny",
+        "follow_mounts": false
+      },
+      "cardinality": {
+        "max_calls": 100,
+        "max_bytes": 10485760
+      },
+      "justification": "Read transform configuration"
+    },
+    {
+      "effect_class": "fs.write",
+      "scope": {
+        "kind": "filesystem",
+        "paths": [
+          "/workspace/output/**"
+        ],
+        "symlink_policy": "deny",
+        "follow_mounts": false
+      },
+      "cardinality": {
+        "max_calls": 100,
+        "max_bytes": 10485760
+      },
+      "justification": "Write transformed output"
+    },
+    {
+      "effect_class": "net.connect",
+      "scope": {
+        "kind": "network",
+        "audiences": [
+          {
+            "host": "api.vendor.example.com",
+            "ports": [
+              443
+            ],
+            "schemes": [
+              "https"
+            ],
+            "path_prefixes": [
+              "/v1/source/"
+            ],
+            "methods": [
+              "GET"
+            ]
+          }
+        ]
+      },
+      "cardinality": {
+        "max_calls": 10,
+        "max_bytes": 5242880
+      },
+      "justification": "Fetch upstream source data"
+    },
+    {
+      "effect_class": "secret.read",
+      "scope": {
+        "kind": "secret",
+        "secret_ids": [
+          "vault://prod/vendor/source-api-token"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 2
+      },
+      "justification": "Read API token for upstream fetch"
+    }
+  ],
+  "forbidden_effects": [
+    {
+      "effect_class": "proc.spawn",
+      "scope": {
+        "kind": "process",
+        "commands": [
+          "*"
+        ]
+      },
+      "justification": "No shell outs"
+    },
+    {
+      "effect_class": "capability.delegate",
+      "scope": {
+        "kind": "delegation"
+      },
+      "justification": "No downstream delegation"
+    },
+    {
+      "effect_class": "env.read",
+      "scope": {
+        "kind": "environment",
+        "names": [
+          "*"
+        ]
+      },
+      "justification": "No ambient env access"
+    }
+  ],
+  "authority_ceiling": [
+    {
+      "effect_class": "fs.read",
+      "scope": {
+        "kind": "filesystem",
+        "paths": [
+          "/workspace/input/**"
+        ],
+        "symlink_policy": "deny",
+        "follow_mounts": false
+      },
+      "cardinality": {
+        "max_calls": 100,
+        "max_bytes": 10485760
+      }
+    },
+    {
+      "effect_class": "fs.write",
+      "scope": {
+        "kind": "filesystem",
+        "paths": [
+          "/workspace/output/**"
+        ],
+        "symlink_policy": "deny",
+        "follow_mounts": false
+      },
+      "cardinality": {
+        "max_calls": 100,
+        "max_bytes": 10485760
+      }
+    },
+    {
+      "effect_class": "net.connect",
+      "scope": {
+        "kind": "network",
+        "audiences": [
+          {
+            "host": "api.vendor.example.com",
+            "ports": [
+              443
+            ],
+            "schemes": [
+              "https"
+            ],
+            "path_prefixes": [
+              "/v1/"
+            ],
+            "methods": [
+              "GET"
+            ]
+          }
+        ]
+      },
+      "cardinality": {
+        "max_calls": 10,
+        "max_bytes": 5242880
+      }
+    },
+    {
+      "effect_class": "secret.read",
+      "scope": {
+        "kind": "secret",
+        "secret_ids": [
+          "vault://prod/vendor/source-api-token"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 2
+      }
+    },
+    {
+      "effect_class": "clock.read",
+      "scope": {
+        "kind": "system"
+      },
+      "cardinality": {
+        "max_calls": 10
+      }
+    }
+  ],
+  "required_runtime_guarantees": {
+    "execution_isolation_assurance": {
+      "minimum": "strong"
+    },
+    "filesystem_isolation_class": {
+      "minimum": "preopen_only"
+    },
+    "network_policy_granularity": {
+      "minimum": "host_port"
+    },
+    "child_process_policy": {
+      "required_mode": "forbidden"
+    },
+    "token_passthrough_policy": {
+      "required_mode": "forbidden"
+    },
+    "revocation_behavior": {
+      "required_mode": "lease"
+    },
+    "delegation_enforcement": {
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "anti_replay_required": true,
+      "max_hops_enforced_required": true
+    },
+    "witness_support": {
+      "minimum_level": "hostcall",
+      "acceptable_tamper_evidence_modes": [
+        "hash_chain",
+        "merkle_chain"
+      ],
+      "acceptable_signature_modes": [
+        "runtime_key",
+        "external_signer"
+      ],
+      "trusted_time_source_required": true,
+      "redacted_io_hashes_required": true,
+      "authority_plan_digest_required": true
+    }
+  },
+  "delegation_policy": {
+    "mode": "forbidden",
+    "max_hops": 0,
+    "audience_binding_required": true,
+    "call_chain_binding_required": true,
+    "anti_replay_required": true,
+    "ttl_seconds_max": 300
+  },
+  "witness_level": "hostcall",
+  "notes": "Fetches remote data, transforms it, and writes bounded output."
+}

@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Guild Skill Contract",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "guild.skill_contract"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "contract_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "component": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "component_model": {
+          "type": "string",
+          "enum": [
+            "wasm-component"
+          ]
+        },
+        "component_model_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "wit_world": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_uri": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "name",
+        "digest",
+        "component_model",
+        "component_model_version",
+        "wit_world"
+      ],
+      "additionalProperties": false
+    },
+    "export": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "interface": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "$ref": "common.schema.json#/$defs/semver"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "input_class_fingerprint": {
+      "$ref": "common.schema.json#/$defs/input_class_fingerprint"
+    },
+    "required_effects": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "$ref": "common.schema.json#/$defs/effect_spec"
+      },
+      "default": []
+    },
+    "forbidden_effects": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "$ref": "common.schema.json#/$defs/effect_spec"
+      },
+      "default": []
+    },
+    "authority_ceiling": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "$ref": "common.schema.json#/$defs/effect_spec"
+      },
+      "default": []
+    },
+    "required_runtime_guarantees": {
+      "type": "object",
+      "properties": {
+        "execution_isolation_assurance": {
+          "type": "object",
+          "properties": {
+            "minimum": {
+              "$ref": "common.schema.json#/$defs/execution_isolation_assurance"
+            }
+          },
+          "required": [
+            "minimum"
+          ],
+          "additionalProperties": false
+        },
+        "filesystem_isolation_class": {
+          "type": "object",
+          "properties": {
+            "minimum": {
+              "$ref": "common.schema.json#/$defs/filesystem_isolation_class"
+            }
+          },
+          "required": [
+            "minimum"
+          ],
+          "additionalProperties": false
+        },
+        "network_policy_granularity": {
+          "type": "object",
+          "properties": {
+            "minimum": {
+              "$ref": "common.schema.json#/$defs/network_policy_granularity"
+            }
+          },
+          "required": [
+            "minimum"
+          ],
+          "additionalProperties": false
+        },
+        "child_process_policy": {
+          "type": "object",
+          "properties": {
+            "required_mode": {
+              "$ref": "common.schema.json#/$defs/child_process_mode"
+            }
+          },
+          "required": [
+            "required_mode"
+          ],
+          "additionalProperties": false
+        },
+        "token_passthrough_policy": {
+          "type": "object",
+          "properties": {
+            "required_mode": {
+              "$ref": "common.schema.json#/$defs/token_passthrough_mode"
+            }
+          },
+          "required": [
+            "required_mode"
+          ],
+          "additionalProperties": false
+        },
+        "revocation_behavior": {
+          "type": "object",
+          "properties": {
+            "required_mode": {
+              "$ref": "common.schema.json#/$defs/revocation_mode"
+            }
+          },
+          "required": [
+            "required_mode"
+          ],
+          "additionalProperties": false
+        },
+        "delegation_enforcement": {
+          "type": "object",
+          "properties": {
+            "audience_binding_required": {
+              "type": "boolean"
+            },
+            "call_chain_binding_required": {
+              "type": "boolean"
+            },
+            "anti_replay_required": {
+              "type": "boolean"
+            },
+            "max_hops_enforced_required": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "audience_binding_required",
+            "call_chain_binding_required",
+            "anti_replay_required",
+            "max_hops_enforced_required"
+          ],
+          "additionalProperties": false
+        },
+        "witness_support": {
+          "type": "object",
+          "properties": {
+            "minimum_level": {
+              "$ref": "common.schema.json#/$defs/witness_level"
+            },
+            "acceptable_tamper_evidence_modes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "common.schema.json#/$defs/tamper_evidence_mode"
+              },
+              "uniqueItems": true
+            },
+            "acceptable_signature_modes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "common.schema.json#/$defs/signature_mode"
+              },
+              "uniqueItems": true
+            },
+            "trusted_time_source_required": {
+              "type": "boolean"
+            },
+            "redacted_io_hashes_required": {
+              "type": "boolean"
+            },
+            "authority_plan_digest_required": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "minimum_level",
+            "acceptable_tamper_evidence_modes",
+            "acceptable_signature_modes",
+            "trusted_time_source_required",
+            "redacted_io_hashes_required",
+            "authority_plan_digest_required"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "execution_isolation_assurance",
+        "filesystem_isolation_class",
+        "network_policy_granularity",
+        "child_process_policy",
+        "token_passthrough_policy",
+        "revocation_behavior",
+        "delegation_enforcement",
+        "witness_support"
+      ],
+      "additionalProperties": false
+    },
+    "delegation_policy": {
+      "$ref": "common.schema.json#/$defs/delegation_policy"
+    },
+    "witness_level": {
+      "$ref": "common.schema.json#/$defs/witness_level"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  },
+  "required": [
+    "kind",
+    "version",
+    "contract_id",
+    "component",
+    "export",
+    "input_class_fingerprint",
+    "required_effects",
+    "forbidden_effects",
+    "authority_ceiling",
+    "required_runtime_guarantees",
+    "delegation_policy",
+    "witness_level"
+  ],
+  "additionalProperties": false
+}

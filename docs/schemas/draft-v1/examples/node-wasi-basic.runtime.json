@@ -1,0 +1,77 @@
+{
+  "kind": "guild.runtime_guarantee",
+  "version": "1.0.0",
+  "runtime_guarantee_id": "urn:guild:runtime:node-wasi-basic:v1",
+  "runtime": {
+    "id": "node-wasi",
+    "vendor": "Node.js",
+    "version": "basic-profile-2026-03"
+  },
+  "component_model_support": {
+    "component_model": "wasm-component",
+    "supported_versions": [
+      "0.2.0"
+    ],
+    "wit_worlds": [
+      "analyzer",
+      "fetcher",
+      "ops.rollout"
+    ]
+  },
+  "execution_isolation_assurance": "best_effort",
+  "filesystem_isolation_class": "path_filter",
+  "network_policy_granularity": "binary",
+  "child_process_policy": {
+    "supported_modes": [
+      "unrestricted"
+    ],
+    "default_mode": "unrestricted"
+  },
+  "token_passthrough_policy": {
+    "supported_modes": [
+      "unrestricted"
+    ],
+    "default_mode": "unrestricted"
+  },
+  "revocation_behavior": {
+    "supported_modes": [
+      "expiry_only"
+    ],
+    "default_mode": "expiry_only"
+  },
+  "delegation_enforcement": {
+    "audience_binding": false,
+    "call_chain_binding": false,
+    "anti_replay": false,
+    "max_hops_enforced": false
+  },
+  "witness_support": {
+    "supported_levels": [
+      "summary",
+      "decision"
+    ],
+    "tamper_evidence_modes": [
+      "none",
+      "hash_chain"
+    ],
+    "signature_modes": [
+      "none"
+    ],
+    "trusted_time_source": false,
+    "redacted_io_hashes": false,
+    "authority_plan_digest": false
+  },
+  "supported_effect_classes": [
+    "fs.read",
+    "fs.write",
+    "fs.list",
+    "net.connect",
+    "net.resolve",
+    "proc.spawn",
+    "proc.signal",
+    "env.read",
+    "clock.read",
+    "random.read"
+  ],
+  "notes": "Convenience profile for trusted code only, not high-assurance admission."
+}

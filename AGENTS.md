@@ -4,6 +4,13 @@ This file is for coding agents and human contributors acting like coding agents 
 
 Guild is a **contracts-first** repository. Treat architecture, types, manifests, and execution boundaries as product surface, not internal implementation trivia.
 
+**SANE DEFAULTS. SANE ASSUMPTIONS. SANE EXPECTATIONS. SANE IMPLEMENTATIONS.**
+
+Default to the safer, narrower, more honest path.
+Assume nothing that the contracts, runtime, or docs do not actually guarantee.
+Set expectations that match the real trust boundaries and the real execution surface.
+Implement the boring, explicit, typed, host-mediated thing before anything clever.
+
 ## Canonical docs
 
 Read these first and treat them as the current human-facing source of truth:

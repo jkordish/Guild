@@ -420,6 +420,31 @@ For `http-request`, the current repository exposes a bounded request/response mo
 
 Shared contracts may mention broader capability families for future phases, but the active inspect slice MUST either prune unsupported families from the executable surface or reject them before execution. The current repository chooses preflight rejection.
 
+### 12.7 M3 schema-bundle mapping and draft status
+
+The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3 contract vocabulary. It is useful for tightening admission semantics, but it is not the canonical product vocabulary for the current repository.
+
+The stricter interpretation wins:
+
+- runtime guarantees MUST be explicit rather than inferred
+- omitted or unknown guarantees MUST fail closed
+- component portability MUST NOT be presented as enforcement portability
+
+Current mapping boundaries:
+
+| `docs/schemas/draft-v1/` term | Current repository term | Contract status |
+|---|---|---|
+| `component.wit_world` | active inspect world `guild-skill-inspect-v1` plus host-owned runtime-entrypoint checks | related but not identical |
+| `component.invoke` | `invoke-skill` | close mapping |
+| `net.connect`, `net.resolve` | `http-request` | broader draft term vs narrower implemented runtime family |
+| `fs.read`, `fs.write`, `fs.list` | `filesystem` | related host-side contract, but still rejected before guest execution in the active inspect slice |
+| `capability.delegate` | host-owned child-grant reduction and delegation enforcement | related but split across policy and runtime semantics |
+| no direct schema effect-class for `read-resource` | `read-resource` | unmapped in the draft bundle |
+| no direct schema effect-class for `emit-evidence` | `emit-evidence` | unmapped in the draft bundle |
+| no direct schema effect-class for `log-write` | `log-write` | unmapped in the draft bundle |
+
+Until those vocabulary gaps are closed across the repository, `docs/schemas/draft-v1/` MUST stay explicitly labeled as draft/proposal surface rather than being described as normative repo truth.
+
 ## 14. Execution Semantics
 
 ### 13.1 Execution attempt

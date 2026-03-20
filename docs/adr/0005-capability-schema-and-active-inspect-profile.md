@@ -44,6 +44,8 @@ These map to the currently active inspect capability families:
 - `emit-evidence` with `write` access
 - `log-write` with `write` access
 
+The draft schema bundle under `docs/schemas/draft-v1/` is not a replacement vocabulary for those current product terms. Where the bundle uses broader or differently named effect classes such as `component.invoke`, `net.connect`, or `fs.*`, the repository still treats the host-owned capability-family model above as canonical and keeps the schema bundle explicitly marked draft until that mapping is closed repo-wide.
+
 The current Wasm inspect runtime rejects unsupported capability families before execution.
 
 The active inspect guest ABI is now a dedicated world, `guild-skill-inspect-v1`.

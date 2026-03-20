@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Guild Proof Record",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "guild.proof_record"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "proof_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "skill_contract_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "component_digest": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "export_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "input_class_fingerprint": {
+      "$ref": "common.schema.json#/$defs/input_class_fingerprint"
+    },
+    "runtime_guarantee_id": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "runtime_guarantee_digest": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "proof_method": {
+      "type": "string",
+      "enum": [
+        "counterfactual_shadow_execution",
+        "static_discharge",
+        "hybrid"
+      ]
+    },
+    "comparator": {
+      "$ref": "common.schema.json#/$defs/comparator_spec"
+    },
+    "baseline_authority_plan": {
+      "$ref": "common.schema.json#/$defs/authority_plan"
+    },
+    "minimized_authority_plan": {
+      "$ref": "common.schema.json#/$defs/authority_plan"
+    },
+    "trials": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "trial_id": {
+            "$ref": "common.schema.json#/$defs/identifier"
+          },
+          "candidate_authority_plan": {
+            "$ref": "common.schema.json#/$defs/authority_plan"
+          },
+          "removed_grants": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/effect_spec"
+            }
+          },
+          "trial_result": {
+            "type": "string",
+            "enum": [
+              "equivalent",
+              "non_equivalent",
+              "error",
+              "timeout"
+            ]
+          },
+          "observed_effects": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/effect_spec"
+            }
+          },
+          "comparator_summary": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "match",
+                  "mismatch",
+                  "error"
+                ]
+              },
+              "details": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "trial_id",
+          "candidate_authority_plan",
+          "trial_result",
+          "comparator_summary"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "proven",
+        "failed",
+        "inconclusive",
+        "cached"
+      ]
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "expires_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "invalidation_conditions": {
+      "type": "object",
+      "properties": {
+        "component_digest_change": {
+          "type": "boolean"
+        },
+        "runtime_guarantee_digest_change": {
+          "type": "boolean"
+        },
+        "input_class_fingerprint_change": {
+          "type": "boolean"
+        },
+        "comparator_change": {
+          "type": "boolean"
+        },
+        "witness_divergence": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "component_digest_change",
+        "runtime_guarantee_digest_change",
+        "input_class_fingerprint_change",
+        "comparator_change",
+        "witness_divergence"
+      ],
+      "additionalProperties": false
+    },
+    "notes": {
+      "type": "string"
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  },
+  "required": [
+    "kind",
+    "version",
+    "proof_id",
+    "skill_contract_id",
+    "component_digest",
+    "export_name",
+    "input_class_fingerprint",
+    "runtime_guarantee_id",
+    "runtime_guarantee_digest",
+    "proof_method",
+    "comparator",
+    "baseline_authority_plan",
+    "minimized_authority_plan",
+    "trials",
+    "result",
+    "created_at",
+    "invalidation_conditions"
+  ],
+  "additionalProperties": false
+}

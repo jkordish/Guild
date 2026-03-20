@@ -1,0 +1,842 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Guild Common Definitions",
+  "type": "object",
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9._:/@+-]+$"
+    },
+    "nonempty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "digest": {
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": [
+            "sha256",
+            "sha512",
+            "blake3"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]+$"
+        }
+      },
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "algorithm": {
+                "const": "sha256"
+              }
+            },
+            "required": [
+              "algorithm"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "pattern": "^[A-Fa-f0-9]{64}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "algorithm": {
+                "const": "sha512"
+              }
+            },
+            "required": [
+              "algorithm"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "pattern": "^[A-Fa-f0-9]{128}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "algorithm": {
+                "const": "blake3"
+              }
+            },
+            "required": [
+              "algorithm"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "pattern": "^[A-Fa-f0-9]{64}$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "witness_level": {
+      "type": "string",
+      "enum": [
+        "summary",
+        "decision",
+        "hostcall",
+        "full"
+      ]
+    },
+    "execution_isolation_assurance": {
+      "type": "string",
+      "enum": [
+        "none",
+        "best_effort",
+        "strong"
+      ]
+    },
+    "filesystem_isolation_class": {
+      "type": "string",
+      "enum": [
+        "none",
+        "path_filter",
+        "preopen_only",
+        "virtual_fs",
+        "os_sandbox"
+      ]
+    },
+    "network_policy_granularity": {
+      "type": "string",
+      "enum": [
+        "none",
+        "binary",
+        "domain",
+        "host_port",
+        "url"
+      ]
+    },
+    "child_process_mode": {
+      "type": "string",
+      "enum": [
+        "forbidden",
+        "brokered",
+        "unrestricted"
+      ]
+    },
+    "token_passthrough_mode": {
+      "type": "string",
+      "enum": [
+        "forbidden",
+        "same_invocation_only",
+        "one_hop_bound",
+        "unrestricted"
+      ]
+    },
+    "revocation_mode": {
+      "type": "string",
+      "enum": [
+        "expiry_only",
+        "best_effort_live",
+        "lease",
+        "hard_kill_live"
+      ]
+    },
+    "tamper_evidence_mode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "hash_chain",
+        "merkle_chain"
+      ]
+    },
+    "signature_mode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "runtime_key",
+        "external_signer"
+      ]
+    },
+    "effect_class": {
+      "type": "string",
+      "enum": [
+        "fs.read",
+        "fs.write",
+        "fs.list",
+        "net.connect",
+        "net.resolve",
+        "proc.spawn",
+        "proc.signal",
+        "secret.read",
+        "env.read",
+        "clock.read",
+        "random.read",
+        "component.invoke",
+        "capability.delegate"
+      ]
+    },
+    "glob_or_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hostname_pattern": {
+      "type": "string",
+      "minLength": 1
+    },
+    "http_method": {
+      "type": "string",
+      "enum": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS"
+      ]
+    },
+    "scope_binding": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "input",
+            "caller",
+            "runtime",
+            "context"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transform": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "target",
+        "source",
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "filesystem_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "filesystem"
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/glob_or_path"
+          }
+        },
+        "symlink_policy": {
+          "type": "string",
+          "enum": [
+            "deny",
+            "readonly",
+            "follow"
+          ]
+        },
+        "follow_mounts": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "paths"
+      ],
+      "additionalProperties": false
+    },
+    "network_audience": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "$ref": "#/$defs/hostname_pattern"
+        },
+        "ports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              {
+                "type": "string",
+                "const": "*"
+              }
+            ]
+          }
+        },
+        "schemes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "http",
+                  "https",
+                  "grpc",
+                  "tcp",
+                  "udp"
+                ]
+              },
+              {
+                "type": "string",
+                "const": "*"
+              }
+            ]
+          }
+        },
+        "path_prefixes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "methods": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/http_method"
+              },
+              {
+                "type": "string",
+                "const": "*"
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "host",
+        "ports"
+      ],
+      "additionalProperties": false
+    },
+    "network_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "network"
+        },
+        "audiences": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/network_audience"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "audiences"
+      ],
+      "additionalProperties": false
+    },
+    "process_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "process"
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "argv_patterns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "commands"
+      ],
+      "additionalProperties": false
+    },
+    "secret_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "secret"
+        },
+        "secret_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "secret_ids"
+      ],
+      "additionalProperties": false
+    },
+    "environment_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "environment"
+        },
+        "names": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "names"
+      ],
+      "additionalProperties": false
+    },
+    "system_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "system"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "component_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "component"
+        },
+        "component_digests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/digest"
+          }
+        },
+        "exports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "delegation_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "delegation"
+        },
+        "effect_classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/effect_class"
+          }
+        },
+        "audiences": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "max_hops": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "effect_scope": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/filesystem_scope"
+        },
+        {
+          "$ref": "#/$defs/network_scope"
+        },
+        {
+          "$ref": "#/$defs/process_scope"
+        },
+        {
+          "$ref": "#/$defs/secret_scope"
+        },
+        {
+          "$ref": "#/$defs/environment_scope"
+        },
+        {
+          "$ref": "#/$defs/system_scope"
+        },
+        {
+          "$ref": "#/$defs/component_scope"
+        },
+        {
+          "$ref": "#/$defs/delegation_scope"
+        }
+      ]
+    },
+    "cardinality": {
+      "type": "object",
+      "properties": {
+        "max_calls": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_items": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "effect_spec": {
+      "type": "object",
+      "properties": {
+        "effect_class": {
+          "$ref": "#/$defs/effect_class"
+        },
+        "scope": {
+          "$ref": "#/$defs/effect_scope"
+        },
+        "cardinality": {
+          "$ref": "#/$defs/cardinality"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scope_binding"
+          }
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "effect_class",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "input_class_fingerprint": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "json-schema-hash",
+            "wit-type-hash",
+            "opaque"
+          ]
+        },
+        "canonicalization": {
+          "type": "string",
+          "enum": [
+            "rfc8785-jcs",
+            "wit-canonical",
+            "opaque"
+          ]
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "source_uri": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "kind",
+        "canonicalization",
+        "digest"
+      ],
+      "additionalProperties": false
+    },
+    "delegation_policy": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "forbidden",
+            "same_invocation_only",
+            "bounded_hops"
+          ]
+        },
+        "max_hops": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        },
+        "allowed_effect_classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/effect_class"
+          }
+        },
+        "audience_binding_required": {
+          "type": "boolean"
+        },
+        "call_chain_binding_required": {
+          "type": "boolean"
+        },
+        "anti_replay_required": {
+          "type": "boolean"
+        },
+        "ttl_seconds_max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        }
+      },
+      "required": [
+        "mode",
+        "audience_binding_required",
+        "call_chain_binding_required",
+        "anti_replay_required",
+        "ttl_seconds_max"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "forbidden"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "max_hops": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "same_invocation_only"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "max_hops": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "bounded_hops"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "max_hops",
+              "allowed_effect_classes"
+            ],
+            "properties": {
+              "max_hops": {
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "authority_plan": {
+      "type": "object",
+      "properties": {
+        "plan_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "grants": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/effect_spec"
+          }
+        },
+        "delegation_policy": {
+          "$ref": "#/$defs/delegation_policy"
+        },
+        "ttl_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "issued_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "required": [
+        "plan_id",
+        "grants",
+        "delegation_policy",
+        "ttl_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "witness_support": {
+      "type": "object",
+      "properties": {
+        "supported_levels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/witness_level"
+          },
+          "uniqueItems": true
+        },
+        "tamper_evidence_modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/tamper_evidence_mode"
+          },
+          "uniqueItems": true
+        },
+        "signature_modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/signature_mode"
+          },
+          "uniqueItems": true
+        },
+        "trusted_time_source": {
+          "type": "boolean"
+        },
+        "redacted_io_hashes": {
+          "type": "boolean"
+        },
+        "authority_plan_digest": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "supported_levels",
+        "tamper_evidence_modes",
+        "signature_modes",
+        "trusted_time_source",
+        "redacted_io_hashes",
+        "authority_plan_digest"
+      ],
+      "additionalProperties": false
+    },
+    "comparator_spec": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "canonical_json_hash",
+            "declared_postconditions",
+            "side_effect_trace",
+            "custom"
+          ]
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "extensions": {
+      "type": "object"
+    }
+  }
+}

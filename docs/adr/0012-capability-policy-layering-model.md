@@ -57,6 +57,8 @@ The repository now uses the following terms precisely:
 - Runtime enforcement: the host-side check that a concrete guest operation fits
   the already granted family-specific constraints.
 
+The draft M3 schema bundle under `docs/schemas/draft-v1/` does not replace that terminology. If the bundle uses a broader effect-class vocabulary or names concepts differently, the host-owned requirement/request/grant/denial/enforcement layering in this ADR remains canonical until repo-wide alignment is finished.
+
 The built-in default local profile is intentionally small:
 
 - start from caller-requested capabilities

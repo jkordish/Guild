@@ -1,0 +1,116 @@
+{
+  "kind": "guild.witness_record",
+  "version": "1.0.0",
+  "witness_id": "urn:guild:witness:cluster-rollout:invocation-42:0003",
+  "invocation_id": "urn:guild:invocation:cluster-rollout:42",
+  "sequence_no": 3,
+  "timestamp": "2026-03-20T12:30:10Z",
+  "witness_level": "full",
+  "prev_witness_hash": {
+    "algorithm": "sha256",
+    "value": "08fcc27a7de85226a58edeb3ee6a54c8b08c930b1c1749b7b4b3e7f73dbfa005"
+  },
+  "leaf_hash": {
+    "algorithm": "sha256",
+    "value": "37733735c71bbfaf8bf8e0ca444910d33be958c242156d37a1da2f895e0dfe8d"
+  },
+  "skill_contract_id": "urn:guild:contract:cluster-rollout:v1",
+  "component_digest": {
+    "algorithm": "sha256",
+    "value": "bf1dc94321cd91c6428b6c81de14342fff34b1cc5ff1f2591789da15997d4e8c"
+  },
+  "export_name": "apply_rollout",
+  "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+  "proof_id": "urn:guild:proof:cluster-rollout:v1",
+  "authority_plan_digest": {
+    "algorithm": "sha256",
+    "value": "426ccb48f91cc371d1a1debc27df9dde7eb2773f6b9a8249b60dbce37c99e142"
+  },
+  "event": {
+    "event_type": "hostcall",
+    "effect_class": "net.connect",
+    "requested_scope": {
+      "kind": "network",
+      "audiences": [
+        {
+          "host": "kube-api.prod.example.internal",
+          "ports": [
+            443
+          ],
+          "schemes": [
+            "https"
+          ],
+          "path_prefixes": [
+            "/api/",
+            "/apis/"
+          ],
+          "methods": [
+            "GET",
+            "PATCH",
+            "POST"
+          ]
+        }
+      ]
+    },
+    "granted_scope": {
+      "kind": "network",
+      "audiences": [
+        {
+          "host": "kube-api.prod.example.internal",
+          "ports": [
+            443
+          ],
+          "schemes": [
+            "https"
+          ],
+          "path_prefixes": [
+            "/apis/apps/v1/namespaces/prod/deployments/"
+          ],
+          "methods": [
+            "PATCH"
+          ]
+        }
+      ]
+    },
+    "decision": "allow",
+    "status": "success",
+    "resource_audience": {
+      "kind": "network",
+      "audiences": [
+        {
+          "host": "kube-api.prod.example.internal",
+          "ports": [
+            443
+          ],
+          "schemes": [
+            "https"
+          ],
+          "path_prefixes": [
+            "/apis/apps/v1/namespaces/prod/deployments/"
+          ],
+          "methods": [
+            "PATCH"
+          ]
+        }
+      ]
+    },
+    "input_hash": {
+      "algorithm": "sha256",
+      "value": "4fc8c4a8a68c54cd6b64fd5170e7ea13b13e6abc3963a43be0e51f51c6526628"
+    },
+    "output_hash": {
+      "algorithm": "sha256",
+      "value": "ad5456b5f82901047ee77e5a715d6572340b5db069e78c83e4251a558cd67da0"
+    },
+    "metadata": {
+      "http_status": 200,
+      "delegated_hops_remaining": 0
+    }
+  },
+  "signature": {
+    "mode": "external_signer",
+    "key_id": "kms://guild-prod/witness-signer",
+    "signature_value": "MEUCIGuildWitnessSignaturePlaceholder"
+  },
+  "notes": "Example full witness entry for a bounded rollout PATCH."
+}

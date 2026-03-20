@@ -288,6 +288,20 @@ That projection is intentionally not an isomorphism:
 
 The current example skills now include single-record and execution-tree explanation over stored Guild resources plus one bounded execution-query summary skill. Those examples deepen inspect usefulness by consuming persisted execution lineage, bounded evidence metadata, and bounded query results through the existing host-mediated resource path rather than by widening the runtime surface.
 
+The draft M3 schema bundle under `docs/schemas/draft-v1/` is still draft vocabulary layered on top of this runtime, not a replacement for this runtime description. The current repository truth is the host-owned capability-family and inspect-world model described here.
+
+That draft mapping is intentionally explicit:
+
+| `docs/schemas/draft-v1/` term | Current runtime term | Relationship |
+|---|---|---|
+| `component.wit_world` | `guild-skill-inspect-v1` runtime-entrypoint / world checks | related but not identical |
+| `component.invoke` | `invoke-skill` | close mapping |
+| `net.connect`, `net.resolve` | `http-request` | schema bundle is broader than the implemented runtime surface |
+| `fs.*` effect classes | `filesystem` family | related host-side contract, but active inspect still rejects filesystem before guest start |
+| no direct schema effect-class | `read-resource`, `emit-evidence`, `log-write` | currently unmapped in the draft bundle |
+
+This is why the schema bundle remains marked draft: component portability and effect vocabulary portability are not the same thing as enforcement portability of the current runtime slice.
+
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 
 In the current repository, MCP protocol hygiene is also explicit:

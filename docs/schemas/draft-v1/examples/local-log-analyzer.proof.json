@@ -1,0 +1,293 @@
+{
+  "kind": "guild.proof_record",
+  "version": "1.0.0",
+  "proof_id": "urn:guild:proof:local-log-analyzer:v1",
+  "skill_contract_id": "urn:guild:contract:local-log-analyzer:v1",
+  "component_digest": {
+    "algorithm": "sha256",
+    "value": "3e1e8cd5b8c777384ebadbcbff998788fada07c783ba361a4221fdf0f7d9c940"
+  },
+  "export_name": "analyze_logs",
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "e0fa022083b39a26884d1c48b2239f7a2fbfdef89798eb5b0df7b22762546090"
+    }
+  },
+  "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+  "runtime_guarantee_digest": {
+    "algorithm": "sha256",
+    "value": "7641ece2f38f67ac6eb78eed9cfb2fea0f12a2a9d8558ae7c6e03ffb3abcedd3"
+  },
+  "proof_method": "counterfactual_shadow_execution",
+  "comparator": {
+    "kind": "canonical_json_hash",
+    "reference": "report.v1"
+  },
+  "baseline_authority_plan": {
+    "plan_id": "urn:guild:plan:local-log-analyzer:baseline:v1",
+    "grants": [
+      {
+        "effect_class": "fs.read",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/**"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_calls": 1000,
+          "max_bytes": 1073741824
+        }
+      },
+      {
+        "effect_class": "fs.list",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/**"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_calls": 100
+        }
+      },
+      {
+        "effect_class": "clock.read",
+        "scope": {
+          "kind": "system"
+        },
+        "cardinality": {
+          "max_calls": 10
+        }
+      }
+    ],
+    "delegation_policy": {
+      "mode": "forbidden",
+      "max_hops": 0,
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "anti_replay_required": true,
+      "ttl_seconds_max": 300
+    },
+    "ttl_seconds": 300,
+    "issued_at": "2026-03-20T12:00:00Z"
+  },
+  "minimized_authority_plan": {
+    "plan_id": "urn:guild:plan:local-log-analyzer:minimized:v1",
+    "grants": [
+      {
+        "effect_class": "fs.read",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/**"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_calls": 1000,
+          "max_bytes": 1073741824
+        }
+      },
+      {
+        "effect_class": "clock.read",
+        "scope": {
+          "kind": "system"
+        },
+        "cardinality": {
+          "max_calls": 10
+        }
+      }
+    ],
+    "delegation_policy": {
+      "mode": "forbidden",
+      "max_hops": 0,
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "anti_replay_required": true,
+      "ttl_seconds_max": 300
+    },
+    "ttl_seconds": 300,
+    "issued_at": "2026-03-20T12:00:02Z"
+  },
+  "trials": [
+    {
+      "trial_id": "urn:guild:trial:local-log-analyzer:drop-fs-list",
+      "candidate_authority_plan": {
+        "plan_id": "urn:guild:plan:local-log-analyzer:minimized:v1",
+        "grants": [
+          {
+            "effect_class": "fs.read",
+            "scope": {
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/input/**"
+              ],
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_calls": 1000,
+              "max_bytes": 1073741824
+            }
+          },
+          {
+            "effect_class": "clock.read",
+            "scope": {
+              "kind": "system"
+            },
+            "cardinality": {
+              "max_calls": 10
+            }
+          }
+        ],
+        "delegation_policy": {
+          "mode": "forbidden",
+          "max_hops": 0,
+          "audience_binding_required": true,
+          "call_chain_binding_required": true,
+          "anti_replay_required": true,
+          "ttl_seconds_max": 300
+        },
+        "ttl_seconds": 300,
+        "issued_at": "2026-03-20T12:00:02Z"
+      },
+      "removed_grants": [
+        {
+          "effect_class": "fs.list",
+          "scope": {
+            "kind": "filesystem",
+            "paths": [
+              "/workspace/input/**"
+            ],
+            "symlink_policy": "deny",
+            "follow_mounts": false
+          },
+          "cardinality": {
+            "max_calls": 100
+          }
+        }
+      ],
+      "trial_result": "equivalent",
+      "observed_effects": [
+        {
+          "effect_class": "fs.read",
+          "scope": {
+            "kind": "filesystem",
+            "paths": [
+              "/workspace/input/**"
+            ],
+            "symlink_policy": "deny",
+            "follow_mounts": false
+          },
+          "cardinality": {
+            "max_calls": 1000,
+            "max_bytes": 1073741824
+          },
+          "justification": "Read input logs"
+        },
+        {
+          "effect_class": "clock.read",
+          "scope": {
+            "kind": "system"
+          },
+          "cardinality": {
+            "max_calls": 10
+          },
+          "justification": "Bound report timestamps"
+        }
+      ],
+      "comparator_summary": {
+        "status": "match",
+        "details": "Output hash unchanged across shadow run."
+      }
+    },
+    {
+      "trial_id": "urn:guild:trial:local-log-analyzer:drop-clock-read",
+      "candidate_authority_plan": {
+        "plan_id": "urn:guild:plan:local-log-analyzer:drop-clock-read:v1",
+        "grants": [
+          {
+            "effect_class": "fs.read",
+            "scope": {
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/input/**"
+              ],
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_calls": 1000,
+              "max_bytes": 1073741824
+            }
+          }
+        ],
+        "delegation_policy": {
+          "mode": "forbidden",
+          "max_hops": 0,
+          "audience_binding_required": true,
+          "call_chain_binding_required": true,
+          "anti_replay_required": true,
+          "ttl_seconds_max": 300
+        },
+        "ttl_seconds": 300,
+        "issued_at": "2026-03-20T12:00:01Z"
+      },
+      "removed_grants": [
+        {
+          "effect_class": "clock.read",
+          "scope": {
+            "kind": "system"
+          },
+          "cardinality": {
+            "max_calls": 10
+          }
+        }
+      ],
+      "trial_result": "non_equivalent",
+      "observed_effects": [
+        {
+          "effect_class": "fs.read",
+          "scope": {
+            "kind": "filesystem",
+            "paths": [
+              "/workspace/input/**"
+            ],
+            "symlink_policy": "deny",
+            "follow_mounts": false
+          },
+          "cardinality": {
+            "max_calls": 1000,
+            "max_bytes": 1073741824
+          },
+          "justification": "Read input logs"
+        }
+      ],
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "Timestamped report output changed."
+      }
+    }
+  ],
+  "result": "proven",
+  "created_at": "2026-03-20T12:00:03Z",
+  "expires_at": "2026-03-21T12:00:03Z",
+  "issuer": "guild-planner",
+  "invalidation_conditions": {
+    "component_digest_change": true,
+    "runtime_guarantee_digest_change": true,
+    "input_class_fingerprint_change": true,
+    "comparator_change": true,
+    "witness_divergence": true
+  },
+  "notes": "Demonstrates dropping fs.list while preserving equivalent output."
+}

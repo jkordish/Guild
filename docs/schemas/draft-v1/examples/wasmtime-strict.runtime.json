@@ -1,0 +1,84 @@
+{
+  "kind": "guild.runtime_guarantee",
+  "version": "1.0.0",
+  "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+  "runtime": {
+    "id": "wasmtime",
+    "vendor": "Bytecode Alliance",
+    "version": "strict-profile-2026-03"
+  },
+  "component_model_support": {
+    "component_model": "wasm-component",
+    "supported_versions": [
+      "0.2.0"
+    ],
+    "wit_worlds": [
+      "analyzer",
+      "fetcher",
+      "ops.rollout"
+    ]
+  },
+  "execution_isolation_assurance": "strong",
+  "filesystem_isolation_class": "os_sandbox",
+  "network_policy_granularity": "url",
+  "child_process_policy": {
+    "supported_modes": [
+      "forbidden"
+    ],
+    "default_mode": "forbidden"
+  },
+  "token_passthrough_policy": {
+    "supported_modes": [
+      "forbidden",
+      "same_invocation_only",
+      "one_hop_bound"
+    ],
+    "default_mode": "forbidden"
+  },
+  "revocation_behavior": {
+    "supported_modes": [
+      "expiry_only",
+      "lease",
+      "hard_kill_live"
+    ],
+    "default_mode": "lease"
+  },
+  "delegation_enforcement": {
+    "audience_binding": true,
+    "call_chain_binding": true,
+    "anti_replay": true,
+    "max_hops_enforced": true
+  },
+  "witness_support": {
+    "supported_levels": [
+      "summary",
+      "decision",
+      "hostcall",
+      "full"
+    ],
+    "tamper_evidence_modes": [
+      "hash_chain",
+      "merkle_chain"
+    ],
+    "signature_modes": [
+      "runtime_key",
+      "external_signer"
+    ],
+    "trusted_time_source": true,
+    "redacted_io_hashes": true,
+    "authority_plan_digest": true
+  },
+  "supported_effect_classes": [
+    "fs.read",
+    "fs.write",
+    "fs.list",
+    "net.connect",
+    "net.resolve",
+    "secret.read",
+    "clock.read",
+    "random.read",
+    "component.invoke",
+    "capability.delegate"
+  ],
+  "notes": "Reference high-assurance runtime profile."
+}
