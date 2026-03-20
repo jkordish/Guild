@@ -5,11 +5,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use guild_manifest::PublisherRef;
 use guild_registry::{
-    BundleSignatureEnvelope, InstalledSkill, InstalledSkillBundle, LocalPublisherIdentity,
-    LocalRegistry, LocalSourceInstaller, OciRegistryAuth, OciRegistryReference, OciRegistryTarget,
-    OciRegistryTransportOptions, SkillRegistry, VerificationStatus, execution_query_resource_uri,
-    execution_resource_uri,
+    BundleSignatureEnvelope, ExecutionPlanSignatureEnvelope, InstalledSkill, InstalledSkillBundle,
+    LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller, OciRegistryAuth,
+    OciRegistryReference, OciRegistryTarget, OciRegistryTransportOptions, SkillRegistry,
+    VerificationStatus, execution_query_resource_uri, execution_resource_uri, sign_execution_plan,
+    verify_execution_plan,
 };
 use guild_types::{
     AbiVersion, CapabilityGrantSet, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
@@ -43,6 +45,16 @@ fn composite_source_dir() -> PathBuf {
         .join("examples/skills/hello-composite")
         .canonicalize()
         .unwrap()
+}
+
+fn draft_plan_path(name: &str) -> PathBuf {
+    repo_root()
+        .join("docs/schemas/draft-v1/examples")
+        .join(name)
+}
+
+fn execution_plan_json(name: &str) -> serde_json::Value {
+    serde_json::from_str(&fs::read_to_string(draft_plan_path(name)).unwrap()).unwrap()
 }
 
 fn bundle_json(bundle_root: &Path) -> InstalledSkillBundle {
@@ -105,6 +117,12 @@ fn sha256_digest(bytes: &[u8]) -> String {
 
 fn publisher_identity(installed: &InstalledSkill, path: &Path) -> LocalPublisherIdentity {
     let identity = LocalPublisherIdentity::generate(installed.manifest.publisher.clone()).unwrap();
+    identity.save(path).unwrap();
+    LocalPublisherIdentity::load(path).unwrap()
+}
+
+fn publisher_identity_for_ref(publisher: PublisherRef, path: &Path) -> LocalPublisherIdentity {
+    let identity = LocalPublisherIdentity::generate(publisher).unwrap();
     identity.save(path).unwrap();
     LocalPublisherIdentity::load(path).unwrap()
 }
@@ -705,6 +723,77 @@ fn signed_bundle_export_verifies_against_local_publisher_identity() {
     let signature = Signature::from_bytes(&signature_bytes);
     verifying_key.verify(&bundle_bytes, &signature).unwrap();
     assert_eq!(envelope.publisher_id, identity.publisher.id);
+}
+
+#[test]
+fn execution_plans_can_be_signed_and_verified_against_trusted_publishers() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry");
+    let signer = publisher_identity_for_ref(
+        PublisherRef {
+            id: "local.example".into(),
+            display_name: "Local Example".into(),
+            homepage: None,
+        },
+        &temp.path().join("plan-signer.json"),
+    );
+    let plan = execution_plan_json("zero-authority.admit.plan.json");
+
+    LocalRegistry::trust_publisher(&registry_root, &signer.trusted_record()).unwrap();
+    let signed_plan = sign_execution_plan(&plan, &signer).unwrap();
+    let signature: ExecutionPlanSignatureEnvelope =
+        serde_json::from_value(signed_plan["plan_signature"].clone()).unwrap();
+    let verification = verify_execution_plan(&registry_root, &signed_plan).unwrap();
+
+    assert_eq!(signature.publisher_id, signer.publisher.id);
+    assert_eq!(verification.publisher.id, signer.publisher.id);
+    assert_eq!(verification.trust_tier, LocalTrustTier::TrustedImported);
+    assert_eq!(verification.signed_digest.algorithm, "sha256");
+}
+
+#[test]
+fn execution_plan_verification_fails_when_plan_is_tampered_after_signing() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry");
+    let signer = publisher_identity_for_ref(
+        PublisherRef {
+            id: "local.example".into(),
+            display_name: "Local Example".into(),
+            homepage: None,
+        },
+        &temp.path().join("plan-signer.json"),
+    );
+    let plan = execution_plan_json("zero-authority.admit.plan.json");
+
+    LocalRegistry::trust_publisher(&registry_root, &signer.trusted_record()).unwrap();
+    let mut signed_plan = sign_execution_plan(&plan, &signer).unwrap();
+    signed_plan["decision"] = serde_json::Value::String("downgrade".into());
+
+    let error = verify_execution_plan(&registry_root, &signed_plan).unwrap_err();
+    assert_eq!(error.code, "execution-plan-signature-digest-mismatch");
+}
+
+#[test]
+fn execution_plan_verification_fails_with_wrong_trusted_key_for_same_publisher() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry");
+    let publisher = PublisherRef {
+        id: "local.example".into(),
+        display_name: "Local Example".into(),
+        homepage: None,
+    };
+    let signer =
+        publisher_identity_for_ref(publisher.clone(), &temp.path().join("plan-signer.json"));
+    let wrong_trusted_identity =
+        publisher_identity_for_ref(publisher, &temp.path().join("wrong-plan-signer.json"));
+    let plan = execution_plan_json("zero-authority.admit.plan.json");
+
+    LocalRegistry::trust_publisher(&registry_root, &wrong_trusted_identity.trusted_record())
+        .unwrap();
+    let signed_plan = sign_execution_plan(&plan, &signer).unwrap();
+
+    let error = verify_execution_plan(&registry_root, &signed_plan).unwrap_err();
+    assert_eq!(error.code, "execution-plan-signature-invalid");
 }
 
 #[test]

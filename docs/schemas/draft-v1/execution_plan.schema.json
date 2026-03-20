@@ -607,13 +607,17 @@
     "plan_signature": {
       "type": "object",
       "properties": {
+        "format_version": {
+          "type": "string",
+          "const": "guild-execution-plan-signature-v1"
+        },
         "scheme": {
           "type": "string",
           "enum": [
             "ed25519"
           ]
         },
-        "key_id": {
+        "publisher_id": {
           "type": "string",
           "minLength": 1
         },
@@ -626,8 +630,9 @@
         }
       },
       "required": [
+        "format_version",
         "scheme",
-        "key_id",
+        "publisher_id",
         "signed_digest",
         "signature_base64"
       ],

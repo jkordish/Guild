@@ -6,9 +6,11 @@ use std::path::{Path, PathBuf};
 use base64::Engine as _;
 use guild_manifest::PublisherRef;
 use guild_registry::{
-    InstalledSkill, InstalledTrustMetadata, InstalledVerificationRecord, LocalPublisherIdentity,
-    LocalRegistry, LocalSourceInstaller, OciRegistryReference, OciRegistryTransportOptions,
-    RegistryError, SkillRegistry, TrustedPublisherRecord,
+    ExecutionPlanSignatureEnvelope, ExecutionPlanVerification, InstalledSkill,
+    InstalledTrustMetadata, InstalledVerificationRecord, LocalPublisherIdentity, LocalRegistry,
+    LocalSourceInstaller, OciRegistryReference, OciRegistryTransportOptions, RegistryError,
+    SkillRegistry, StructuredDigest, TrustedPublisherRecord, sign_execution_plan,
+    verify_execution_plan,
 };
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
@@ -209,6 +211,22 @@ struct TrustAddOutput {
 struct TrustListOutput {
     registry_root: String,
     publishers: Vec<TrustedPublisherRecord>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TrustSignPlanOutput {
+    publisher_id: String,
+    output_path: String,
+    signed_digest: StructuredDigest,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TrustVerifyPlanOutput {
+    verified: bool,
+    publisher_id: String,
+    trust_tier: LocalTrustTier,
+    registry_root: String,
+    signed_digest: StructuredDigest,
 }
 
 /// Run the first-class local `guild` CLI against the current process args.
@@ -1094,6 +1112,8 @@ fn run_trust(
         "add" => run_trust_add(&args[1..], global, env_registry_root),
         "list" => run_trust_list(&args[1..], global, env_registry_root),
         "remove" => run_trust_remove(&args[1..], global, env_registry_root),
+        "sign-plan" => run_trust_sign_plan(&args[1..]),
+        "verify-plan" => run_trust_verify_plan(&args[1..], global, env_registry_root),
         _ => Err(CliError::new(format!(
             "unknown trust subcommand `{command}`"
         ))),
@@ -1326,6 +1346,132 @@ fn run_trust_remove(
     }
 
     println!("removed trusted publisher {publisher_id}");
+    Ok(())
+}
+
+fn run_trust_sign_plan(args: &[String]) -> Result<(), CliError> {
+    if !args.is_empty() && is_help(args[0].as_str()) {
+        print_trust_sign_plan_usage();
+        return Ok(());
+    }
+
+    let mut plan_path = None;
+    let mut identity_file = None;
+    let mut output_path = None;
+    let mut json_output = false;
+    let mut index = 0;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--plan" => {
+                plan_path = Some(PathBuf::from(next_value(args, &mut index, "--plan")?));
+            }
+            "--identity-file" => {
+                identity_file = Some(PathBuf::from(next_value(
+                    args,
+                    &mut index,
+                    "--identity-file",
+                )?));
+            }
+            "--output" => {
+                output_path = Some(PathBuf::from(next_value(args, &mut index, "--output")?));
+            }
+            "--json" => json_output = true,
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild trust sign-plan`: `{other}`"
+                )));
+            }
+        }
+        index += 1;
+    }
+
+    let plan_path = plan_path
+        .ok_or_else(|| CliError::new("`guild trust sign-plan` requires --plan <plan.json>"))?;
+    let identity_file = identity_file.ok_or_else(|| {
+        CliError::new("`guild trust sign-plan` requires --identity-file <identity.json>")
+    })?;
+    let output_path = output_path.ok_or_else(|| {
+        CliError::new("`guild trust sign-plan` requires --output <signed-plan.json>")
+    })?;
+
+    let plan: Value =
+        serde_json::from_str(&fs::read_to_string(&plan_path).map_err(CliError::from)?)?;
+    let signer = LocalPublisherIdentity::load(&identity_file)?;
+    let signed_plan = sign_execution_plan(&plan, &signer)?;
+    let signature = parse_signed_plan_signature(&signed_plan)?;
+
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&output_path, serde_json::to_vec_pretty(&signed_plan)?)?;
+
+    let output = TrustSignPlanOutput {
+        publisher_id: signer.publisher.id,
+        output_path: output_path.display().to_string(),
+        signed_digest: signature.signed_digest,
+    };
+
+    if json_output {
+        print_json(&output)?;
+    } else {
+        println!(
+            "signed execution plan as {} to {}",
+            output.publisher_id, output.output_path
+        );
+    }
+
+    Ok(())
+}
+
+fn run_trust_verify_plan(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if !args.is_empty() && is_help(args[0].as_str()) {
+        print_trust_verify_plan_usage();
+        return Ok(());
+    }
+
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    ensure_existing_registry_root(&registry_root)?;
+    let mut plan_path = None;
+    let mut json_output = false;
+    let mut index = 0;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--plan" => {
+                plan_path = Some(PathBuf::from(next_value(args, &mut index, "--plan")?));
+            }
+            "--json" => json_output = true,
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild trust verify-plan`: `{other}`"
+                )));
+            }
+        }
+        index += 1;
+    }
+
+    let plan_path = plan_path.ok_or_else(|| {
+        CliError::new("`guild trust verify-plan` requires --plan <signed-plan.json>")
+    })?;
+    let plan: Value =
+        serde_json::from_str(&fs::read_to_string(&plan_path).map_err(CliError::from)?)?;
+    let verification = verify_execution_plan(&registry_root, &plan)?;
+    let output = trust_verify_output(&registry_root, verification);
+
+    if json_output {
+        print_json(&output)?;
+    } else {
+        println!(
+            "verified execution plan signed by {} ({})",
+            output.publisher_id, output.trust_tier
+        );
+    }
+
     Ok(())
 }
 
@@ -1592,6 +1738,26 @@ fn print_json(value: &impl Serialize) -> Result<(), CliError> {
     Ok(())
 }
 
+fn parse_signed_plan_signature(plan: &Value) -> Result<ExecutionPlanSignatureEnvelope, CliError> {
+    serde_json::from_value(plan.get("plan_signature").cloned().ok_or_else(|| {
+        CliError::new("signed execution plan output did not include plan_signature")
+    })?)
+    .map_err(CliError::from)
+}
+
+fn trust_verify_output(
+    registry_root: &Path,
+    verification: ExecutionPlanVerification,
+) -> TrustVerifyPlanOutput {
+    TrustVerifyPlanOutput {
+        verified: true,
+        publisher_id: verification.publisher.id,
+        trust_tier: verification.trust_tier,
+        registry_root: registry_root.display().to_string(),
+        signed_digest: verification.signed_digest,
+    }
+}
+
 fn print_inspect_text(response: &InspectResponse) {
     println!("{}", response.summary);
     println!("execution: {}", response.structured_content.receipt.uri);
@@ -1845,8 +2011,12 @@ fn print_pull_usage() {
 }
 
 fn print_trust_usage() {
-    println!("usage: guild [--registry-root <path>] trust <generate|add|list|remove> ...");
-    println!("note: `guild trust ...` manages the local trust store only.");
+    println!(
+        "usage: guild [--registry-root <path>] trust <generate|add|list|remove|sign-plan|verify-plan> ..."
+    );
+    println!(
+        "note: `guild trust ...` manages the local trust store and signs or verifies execution plans against that same trust model."
+    );
 }
 
 fn print_trust_generate_usage() {
@@ -1867,6 +2037,18 @@ fn print_trust_list_usage() {
 
 fn print_trust_remove_usage() {
     println!("usage: guild [--registry-root <path>] trust remove <publisher-id>");
+}
+
+fn print_trust_sign_plan_usage() {
+    println!(
+        "usage: guild trust sign-plan --plan <unsigned-plan.json> --identity-file <identity.json> --output <signed-plan.json> [--json]"
+    );
+}
+
+fn print_trust_verify_plan_usage() {
+    println!(
+        "usage: guild [--registry-root <path>] trust verify-plan --plan <signed-plan.json> [--json]"
+    );
 }
 
 fn print_mcp_usage() {

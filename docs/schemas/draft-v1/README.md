@@ -179,11 +179,17 @@ Until those gaps are closed, this directory must stay explicitly labeled as draf
 
 ## Signing status
 
-The bundle now includes schema hooks for an optional `plan_signature`, but checked-in M4 execution plans are **unsigned**.
+The bundle now includes a real `plan_signature` shape plus a reusable signing path through Guild's existing publisher identity and trust-store model.
 
 That is deliberate.
 
-The wider repository already has real Ed25519 signing for installed bundles, but this draft bundle does not yet have a reused, verifiable generic plan-signing path. Until that exists, the M4 plan artifacts must not be described as signed.
+Three things are true at once:
+
+- checked-in M4 execution-plan examples are still **unsigned**
+- `admission_engine.py` still emits unsigned plans by default
+- `guild trust sign-plan` and `guild trust verify-plan` can now sign and verify those plans later using the same Ed25519 publisher identities and trusted publisher records already used for signed bundles
+
+So the M4 plan artifacts must not be described as automatically signed, but they also are no longer blocked on a fake or decorative signing story.
 
 ## Validation status
 
@@ -211,6 +217,19 @@ python3 admission_engine.py \
   --request examples/zero-authority.migrate.request.json \
   --runtime examples/node-wasi-basic.runtime.json \
   --runtime examples/wasmtime-strict.runtime.json
+
+guild trust generate \
+  --publisher-id local.example \
+  --display-name "Local Example" \
+  --output /tmp/guild-plan-signer.json
+guild --registry-root /tmp/guild-plan-registry trust add \
+  --identity-file /tmp/guild-plan-signer.json
+guild trust sign-plan \
+  --plan examples/zero-authority.admit.plan.json \
+  --identity-file /tmp/guild-plan-signer.json \
+  --output /tmp/zero-authority.admit.signed.plan.json
+guild --registry-root /tmp/guild-plan-registry trust verify-plan \
+  --plan /tmp/zero-authority.admit.signed.plan.json
 ```
 
 ## Next build target
@@ -218,5 +237,4 @@ python3 admission_engine.py \
 The next honest follow-ons are:
 
 1. vocabulary alignment with the repository's canonical capability-family surface
-2. real reusable plan-signing support, if the repository grows a verifiable generic signing path
-3. later M5 minimization and proof generation on top of the M4 upper-bound plan
+2. later M5 minimization and proof generation on top of the M4 upper-bound plan

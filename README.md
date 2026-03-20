@@ -182,7 +182,7 @@ The current repository already has:
 - signed local bundle export/import with local trust verification
 - OCI image layout and OCI registry transport for that same installed signed bundle contract
 - a real stdio MCP server with one stable public tool, `guild.inspect`
-- a draft `docs/schemas/draft-v1/` schema bundle with real fail-closed M3 precheck and M4 admission artifacts over its own vocabulary, still explicitly non-canonical and unsigned by default
+- a draft `docs/schemas/draft-v1/` schema bundle with real fail-closed M3 precheck and M4 admission artifacts over its own vocabulary, still explicitly non-canonical and unsigned by default even though plans can now be signed and verified later through `guild trust sign-plan` / `guild trust verify-plan`
 
 For the exhaustive proof commands, regression sweeps, and example-by-example smoke flows, see [`docs/testing.md`](docs/testing.md).
 For the draft admission bundle itself, see [`docs/schemas/draft-v1/README.md`](docs/schemas/draft-v1/README.md); the runnable validation path for that bundle also lives in [`docs/testing.md`](docs/testing.md).

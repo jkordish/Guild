@@ -454,7 +454,7 @@ Within that draft bundle, the current M4 surface is:
 - `execution_plan.schema.json` for the resulting admission artifact
 - `admission_engine.py` for deterministic request evaluation against one contract and one or more runtime guarantees
 
-Those M4 plan artifacts are unsigned by default in this milestone. The wider repository already has real Ed25519 signing for installed bundles, but the draft bundle does not yet reuse that path for arbitrary execution-plan signing, so unsigned plans MUST NOT be described as signed.
+Those M4 plan artifacts are still unsigned by default in this milestone, but they are no longer blocked on fake signing language. The repository now has a real reusable Ed25519 sign/verify path for execution plans through the existing publisher identity and trusted-publisher model. `admission_engine.py` does not sign automatically, and checked-in examples remain unsigned unless a caller explicitly signs them later, so unsigned plans MUST NOT be described as already signed.
 
 ## 14. Execution Semantics
 

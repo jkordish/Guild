@@ -45,6 +45,28 @@ If you want one direct M4 admission run:
   --runtime docs/schemas/draft-v1/examples/wasmtime-strict.runtime.json
 ```
 
+If you want one explicit sign-and-verify pass for a generated M4 plan:
+
+```bash
+cargo run -q -p guild-mcp --bin guild -- trust generate \
+  --publisher-id local.example \
+  --display-name "Local Example" \
+  --output /tmp/guild-plan-signer.json
+
+cargo run -q -p guild-mcp --bin guild -- \
+  --registry-root /tmp/guild-plan-registry trust add \
+  --identity-file /tmp/guild-plan-signer.json
+
+cargo run -q -p guild-mcp --bin guild -- trust sign-plan \
+  --plan docs/schemas/draft-v1/examples/zero-authority.admit.plan.json \
+  --identity-file /tmp/guild-plan-signer.json \
+  --output /tmp/zero-authority.admit.signed.plan.json
+
+cargo run -q -p guild-mcp --bin guild -- \
+  --registry-root /tmp/guild-plan-registry trust verify-plan \
+  --plan /tmp/zero-authority.admit.signed.plan.json
+```
+
 ## CLI Smoke Flows
 
 Minimal local CLI smoke:

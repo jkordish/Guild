@@ -85,10 +85,11 @@ Registry root selection is local-first and overrideable:
 
 ## Trust Scope
 
-`guild trust ...` manages the current local trust store only:
+`guild trust ...` uses the current local trust model only:
 
 - generate local publisher identities
 - add, list, and remove local trusted publisher records
+- sign and verify execution plans against that same local publisher / trust-store model
 - no remote trust distribution
 - no transparency-log semantics
 - no remote publisher policy management
@@ -175,6 +176,24 @@ What this teaches:
 - export/import operate on installed signed bundle semantics, not source directories
 - `guild trust ...` is explicit local trust-store management, not remote trust distribution
 - OCI transport is the same installed signed bundle contract carried through another shape, not a second artifact model
+
+Execution-plan signing:
+
+```bash
+cargo run -q -p guild-mcp --bin guild -- trust sign-plan \
+  --plan docs/schemas/draft-v1/examples/zero-authority.admit.plan.json \
+  --identity-file target/dev-local-registry/local.example.json \
+  --output target/dev-local-registry/zero-authority.admit.signed.plan.json
+
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b trust verify-plan \
+  --plan target/dev-local-registry/zero-authority.admit.signed.plan.json
+```
+
+What this teaches:
+
+- M4 execution plans are still generated unsigned by default
+- plan signing reuses the same publisher identity and trusted-publisher model as bundle signing
+- verification is fail-closed against the local Guild trust store
 
 ## Mapping To Today's Substrate
 

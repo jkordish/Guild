@@ -28,6 +28,12 @@ fn hello_source_dir() -> PathBuf {
     repo_root().join("examples/skills/hello-inspect")
 }
 
+fn draft_plan_path(name: &str) -> PathBuf {
+    repo_root()
+        .join("docs/schemas/draft-v1/examples")
+        .join(name)
+}
+
 fn emit_evidence_grants_json() -> String {
     serde_json::to_string(&CapabilityGrantSet {
         grants: vec![GrantedCapability {
@@ -624,6 +630,180 @@ fn install_export_import_and_trust_commands_work_for_bundle_transport() {
         None,
     );
     assert!(remove_output.contains("removed trusted publisher local.example"));
+}
+
+#[test]
+fn trust_sign_and_verify_plan_commands_work() {
+    let temp = TempFixtureDir::new("guild-cli-plan-sign");
+    let registry_root = temp.path().join("registry");
+    let identity_path = temp.path().join("publisher.json");
+    let signed_plan_path = temp.path().join("signed-plan.json");
+    let registry_root_display = registry_root.display().to_string();
+    let identity = identity_path.display().to_string();
+    let plan = draft_plan_path("zero-authority.admit.plan.json")
+        .display()
+        .to_string();
+    let signed_plan = signed_plan_path.display().to_string();
+
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "generate",
+            "--publisher-id",
+            "local.example",
+            "--display-name",
+            "Local Example",
+            "--output",
+            &identity,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let sign_output = run_guild_success(
+        &[
+            "trust",
+            "sign-plan",
+            "--plan",
+            &plan,
+            "--identity-file",
+            &identity,
+            "--output",
+            &signed_plan,
+            "--json",
+        ],
+        None,
+    );
+    let signed_output: Value = parse_json_stdout(&sign_output);
+    assert_eq!(
+        signed_output["publisher_id"].as_str(),
+        Some("local.example")
+    );
+    assert_eq!(
+        signed_output["signed_digest"]["algorithm"].as_str(),
+        Some("sha256")
+    );
+
+    let signed_plan_json: Value =
+        serde_json::from_str(&fs::read_to_string(&signed_plan_path).unwrap()).unwrap();
+    assert_eq!(
+        signed_plan_json["plan_signature"]["publisher_id"].as_str(),
+        Some("local.example")
+    );
+
+    let verify_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "verify-plan",
+            "--plan",
+            &signed_plan,
+            "--json",
+        ],
+        None,
+    );
+    let verified_output: Value = parse_json_stdout(&verify_output);
+    assert_eq!(verified_output["verified"].as_bool(), Some(true));
+    assert_eq!(
+        verified_output["publisher_id"].as_str(),
+        Some("local.example")
+    );
+    assert_eq!(
+        verified_output["signed_digest"]["algorithm"].as_str(),
+        Some("sha256")
+    );
+}
+
+#[test]
+fn trust_verify_plan_rejects_tampered_signed_plan() {
+    let temp = TempFixtureDir::new("guild-cli-plan-verify-fail");
+    let registry_root = temp.path().join("registry");
+    let identity_path = temp.path().join("publisher.json");
+    let signed_plan_path = temp.path().join("signed-plan.json");
+    let registry_root_display = registry_root.display().to_string();
+    let identity = identity_path.display().to_string();
+    let plan = draft_plan_path("zero-authority.admit.plan.json")
+        .display()
+        .to_string();
+    let signed_plan = signed_plan_path.display().to_string();
+
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "generate",
+            "--publisher-id",
+            "local.example",
+            "--display-name",
+            "Local Example",
+            "--output",
+            &identity,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "sign-plan",
+            "--plan",
+            &plan,
+            "--identity-file",
+            &identity,
+            "--output",
+            &signed_plan,
+        ],
+        None,
+    );
+
+    let mut signed_plan_json: Value =
+        serde_json::from_str(&fs::read_to_string(&signed_plan_path).unwrap()).unwrap();
+    signed_plan_json["decision"] = Value::String("downgrade".into());
+    fs::write(
+        &signed_plan_path,
+        serde_json::to_vec_pretty(&signed_plan_json).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_guild(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "verify-plan",
+            "--plan",
+            &signed_plan,
+        ],
+        None,
+    );
+    assert!(
+        !output.status.success(),
+        "verify-plan unexpectedly succeeded\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("execution-plan-signature-digest-mismatch"));
 }
 
 #[test]

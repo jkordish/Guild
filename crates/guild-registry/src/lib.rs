@@ -122,6 +122,29 @@ pub struct BundleSignatureEnvelope {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct StructuredDigest {
+    pub algorithm: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ExecutionPlanSignatureEnvelope {
+    pub format_version: String,
+    pub scheme: SignatureScheme,
+    pub publisher_id: String,
+    pub signed_digest: StructuredDigest,
+    pub signature_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ExecutionPlanVerification {
+    pub publisher: PublisherRef,
+    pub scheme: SignatureScheme,
+    pub signed_digest: StructuredDigest,
+    pub trust_tier: LocalTrustTier,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct LocalPublisherIdentity {
     pub publisher: PublisherRef,
     pub scheme: SignatureScheme,
@@ -424,6 +447,75 @@ impl LocalPublisherIdentity {
             }
         }
     }
+}
+
+/// Sign an execution-plan JSON value using an existing local publisher identity.
+///
+/// The signed payload is the canonical JSON form of the execution plan with the
+/// top-level `plan_signature` field removed. The input plan must already be an
+/// unsigned `guild.execution_plan` object.
+///
+/// # Errors
+///
+/// Returns an error if the plan is not a valid execution-plan JSON object, the
+/// input already contains a non-null signature, the signing identity is invalid,
+/// or the signed plan cannot be serialized.
+pub fn sign_execution_plan(
+    plan: &Value,
+    signer: &LocalPublisherIdentity,
+) -> Result<Value, RegistryError> {
+    let mut unsigned_plan = unsigned_execution_plan_payload(plan)?;
+    if plan_signature_field(plan).is_some() {
+        return Err(RegistryError::new(
+            "execution-plan-already-signed",
+            "execution plan already contained a non-null plan signature",
+        ));
+    }
+
+    let payload_bytes = canonical_json_bytes(&unsigned_plan);
+    let signature = sign_execution_plan_payload(signer, &payload_bytes)?;
+    let object = unsigned_plan.as_object_mut().ok_or_else(|| {
+        RegistryError::new(
+            "execution-plan-invalid",
+            "execution plan must be a top-level JSON object",
+        )
+    })?;
+    object.insert(
+        "plan_signature".into(),
+        serde_json::to_value(signature).map_err(|error| {
+            RegistryError::new(
+                "json-serialize-failed",
+                "failed to serialize the execution plan signature",
+            )
+            .with_detail(error.to_string())
+        })?,
+    );
+    Ok(unsigned_plan)
+}
+
+/// Verify a signed execution-plan JSON value against the local Guild trust store.
+///
+/// The signed payload is the canonical JSON form of the execution plan with the
+/// top-level `plan_signature` field removed.
+///
+/// # Errors
+///
+/// Returns an error if the plan is malformed or unsigned, the signing metadata
+/// does not match the trusted publisher record, the trusted publisher is absent,
+/// or the signature does not verify.
+pub fn verify_execution_plan(
+    root: impl AsRef<Path>,
+    plan: &Value,
+) -> Result<ExecutionPlanVerification, RegistryError> {
+    let signature = execution_plan_signature(plan)?;
+    let trusted_publisher = load_trusted_publisher_for_subject(
+        root.as_ref(),
+        &signature.publisher_id,
+        "execution-plan-publisher-untrusted",
+        "execution-plan publisher was not trusted by the target Guild root",
+        signature.publisher_id.clone(),
+    )?;
+    verify_execution_plan_with_trusted_publisher(plan, &signature, &trusted_publisher)
 }
 
 pub trait SkillRegistry {
@@ -2703,6 +2795,7 @@ fn percent_encode_component(input: &str) -> String {
 
 const BUNDLE_FORMAT_VERSION: &str = "guild-installed-bundle-v2";
 const BUNDLE_SIGNATURE_FORMAT_VERSION: &str = "guild-installed-bundle-signature-v1";
+const EXECUTION_PLAN_SIGNATURE_FORMAT_VERSION: &str = "guild-execution-plan-signature-v1";
 const VERIFICATION_FILENAME: &str = "verification.json";
 
 #[derive(Debug, Clone)]
@@ -3552,6 +3645,34 @@ fn read_bundle_signature(bundle_root: &Path) -> Result<BundleSignatureEnvelope, 
     parse_bundle_signature_bytes(&bytes)
 }
 
+fn plan_signature_field(plan: &Value) -> Option<&Value> {
+    plan.as_object()
+        .and_then(|object| object.get("plan_signature"))
+        .and_then(|value| if value.is_null() { None } else { Some(value) })
+}
+
+fn unsigned_execution_plan_payload(plan: &Value) -> Result<Value, RegistryError> {
+    let mut payload = plan.clone();
+    let object = payload.as_object_mut().ok_or_else(|| {
+        RegistryError::new(
+            "execution-plan-invalid",
+            "execution plan must be a top-level JSON object",
+        )
+    })?;
+    match object.get("kind").and_then(Value::as_str) {
+        Some("guild.execution_plan") => {}
+        Some(_) | None => {
+            return Err(RegistryError::new(
+                "execution-plan-invalid",
+                "execution plan must declare kind `guild.execution_plan`",
+            )
+            .with_detail(object.get("kind").cloned().unwrap_or(Value::Null)));
+        }
+    }
+    object.remove("plan_signature");
+    Ok(payload)
+}
+
 fn parse_bundle_signature_bytes(bytes: &[u8]) -> Result<BundleSignatureEnvelope, RegistryError> {
     let signature: BundleSignatureEnvelope = serde_json::from_slice(bytes).map_err(|error| {
         RegistryError::new(
@@ -3575,29 +3696,82 @@ fn parse_bundle_signature_bytes(bytes: &[u8]) -> Result<BundleSignatureEnvelope,
     Ok(signature)
 }
 
+fn execution_plan_signature(plan: &Value) -> Result<ExecutionPlanSignatureEnvelope, RegistryError> {
+    let signature_value = plan_signature_field(plan).ok_or_else(|| {
+        RegistryError::new(
+            "execution-plan-signature-missing",
+            "execution plan did not contain a plan signature",
+        )
+    })?;
+    let signature: ExecutionPlanSignatureEnvelope = serde_json::from_value(signature_value.clone())
+        .map_err(|error| {
+            RegistryError::new(
+                "execution-plan-signature-parse-failed",
+                "failed to parse execution plan signature metadata",
+            )
+            .with_detail(error.to_string())
+        })?;
+    if signature.format_version != EXECUTION_PLAN_SIGNATURE_FORMAT_VERSION {
+        return Err(RegistryError::new(
+            "execution-plan-signature-format-unsupported",
+            "execution plan signature format version is unsupported",
+        )
+        .with_detail(serde_json::json!({
+            "expected": EXECUTION_PLAN_SIGNATURE_FORMAT_VERSION,
+            "actual": signature.format_version,
+        })));
+    }
+    Ok(signature)
+}
+
 fn load_trusted_publisher(
     root: &Path,
     publisher_id: &str,
 ) -> Result<TrustedPublisherRecord, RegistryError> {
+    load_trusted_publisher_for_subject(
+        root,
+        publisher_id,
+        "bundle-publisher-untrusted",
+        "signed bundle publisher was not trusted by the target Guild root",
+        publisher_id,
+    )
+}
+
+fn load_trusted_publisher_for_subject(
+    root: &Path,
+    publisher_id: &str,
+    not_found_code: &'static str,
+    not_found_message: &'static str,
+    not_found_detail: impl Into<Value>,
+) -> Result<TrustedPublisherRecord, RegistryError> {
     let path = trusted_publisher_path(root, publisher_id);
-    read_trusted_publisher_record_with_not_found_detail(&path, publisher_id)
+    read_trusted_publisher_record_with_not_found_detail(
+        &path,
+        not_found_code,
+        not_found_message,
+        not_found_detail,
+    )
 }
 
 fn read_trusted_publisher_record(path: &Path) -> Result<TrustedPublisherRecord, RegistryError> {
-    read_trusted_publisher_record_with_not_found_detail(path, path.display().to_string())
+    read_trusted_publisher_record_with_not_found_detail(
+        path,
+        "trusted-publisher-missing",
+        "trusted publisher record was not found",
+        path.display().to_string(),
+    )
 }
 
 fn read_trusted_publisher_record_with_not_found_detail(
     path: &Path,
+    not_found_code: &'static str,
+    not_found_message: &'static str,
     not_found_detail: impl Into<Value>,
 ) -> Result<TrustedPublisherRecord, RegistryError> {
     let contents = fs::read_to_string(path).map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
-            RegistryError::new(
-                "bundle-publisher-untrusted",
-                "signed bundle publisher was not trusted by the target Guild root",
-            )
-            .with_detail(not_found_detail.into())
+            RegistryError::new(not_found_code, not_found_message)
+                .with_detail(not_found_detail.into())
         } else {
             RegistryError::new(
                 "trusted-publisher-read-failed",
@@ -3723,6 +3897,76 @@ fn validate_trusted_publisher_record(
     Ok(())
 }
 
+fn verify_execution_plan_with_trusted_publisher(
+    plan: &Value,
+    signature: &ExecutionPlanSignatureEnvelope,
+    trusted_publisher: &TrustedPublisherRecord,
+) -> Result<ExecutionPlanVerification, RegistryError> {
+    let payload = unsigned_execution_plan_payload(plan)?;
+    let payload_bytes = canonical_json_bytes(&payload);
+    let expected_digest = sha256_structured_digest(&payload_bytes);
+
+    if signature.publisher_id != trusted_publisher.publisher.id {
+        return Err(RegistryError::new(
+            "execution-plan-signature-publisher-mismatch",
+            "execution plan signature publisher id did not match the trusted publisher",
+        )
+        .with_detail(serde_json::json!({
+            "trusted_publisher_id": trusted_publisher.publisher.id,
+            "signature_publisher_id": signature.publisher_id,
+        })));
+    }
+    if signature.scheme != trusted_publisher.scheme {
+        return Err(RegistryError::new(
+            "execution-plan-signature-scheme-mismatch",
+            "trusted publisher record used a different signature scheme than the signed execution plan",
+        ));
+    }
+    if signature.signed_digest.algorithm != "sha256" {
+        return Err(RegistryError::new(
+            "execution-plan-signature-digest-unsupported",
+            "execution plan signatures currently require a sha256 signed digest",
+        )
+        .with_detail(serde_json::json!({
+            "actual": signature.signed_digest.algorithm,
+        })));
+    }
+    if signature.signed_digest != expected_digest {
+        return Err(RegistryError::new(
+            "execution-plan-signature-digest-mismatch",
+            "execution plan signature metadata did not match the execution plan bytes",
+        )
+        .with_detail(serde_json::json!({
+            "expected": expected_digest,
+            "actual": signature.signed_digest,
+        })));
+    }
+
+    let verifying_key = trusted_publisher_verifying_key(trusted_publisher)?;
+    let signature_bytes = decode_fixed_base64::<64>(
+        &signature.signature_base64,
+        "execution-plan-signature-invalid",
+        "execution plan signature bytes were invalid",
+    )?;
+    let signature_bytes = Signature::from_bytes(&signature_bytes);
+    verifying_key
+        .verify(&payload_bytes, &signature_bytes)
+        .map_err(|error| {
+            RegistryError::new(
+                "execution-plan-signature-invalid",
+                "execution plan signature verification failed",
+            )
+            .with_detail(error.to_string())
+        })?;
+
+    Ok(ExecutionPlanVerification {
+        publisher: trusted_publisher.publisher.clone(),
+        scheme: trusted_publisher.scheme.clone(),
+        signed_digest: signature.signed_digest.clone(),
+        trust_tier: trusted_publisher.trust_tier.clone(),
+    })
+}
+
 fn sign_bundle_payload(
     signer: &LocalPublisherIdentity,
     bundle_bytes: &[u8],
@@ -3738,11 +3982,73 @@ fn sign_bundle_payload(
     })
 }
 
+fn sign_execution_plan_payload(
+    signer: &LocalPublisherIdentity,
+    payload_bytes: &[u8],
+) -> Result<ExecutionPlanSignatureEnvelope, RegistryError> {
+    let signing_key = signer.signing_key()?;
+    let signature = signing_key.sign(payload_bytes);
+    Ok(ExecutionPlanSignatureEnvelope {
+        format_version: EXECUTION_PLAN_SIGNATURE_FORMAT_VERSION.into(),
+        scheme: signer.scheme.clone(),
+        publisher_id: signer.publisher.id.clone(),
+        signed_digest: sha256_structured_digest(payload_bytes),
+        signature_base64: base64_encode(&signature.to_bytes()),
+    })
+}
+
 fn json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, RegistryError> {
     serde_json::to_vec_pretty(value).map_err(|error| {
         RegistryError::new("json-serialize-failed", "failed to serialize JSON")
             .with_detail(error.to_string())
     })
+}
+
+fn canonical_json_bytes(value: &Value) -> Vec<u8> {
+    let mut buffer = String::new();
+    write_canonical_json(value, &mut buffer);
+    buffer.into_bytes()
+}
+
+fn write_canonical_json(value: &Value, output: &mut String) {
+    match value {
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+            output.push_str(&serde_json::to_string(value).expect("primitive JSON serializes"));
+        }
+        Value::Array(items) => {
+            output.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    output.push(',');
+                }
+                write_canonical_json(item, output);
+            }
+            output.push(']');
+        }
+        Value::Object(map) => {
+            let mut entries: Vec<_> = map.iter().collect();
+            entries.sort_by(|left, right| left.0.cmp(right.0));
+            output.push('{');
+            for (index, (key, item)) in entries.into_iter().enumerate() {
+                if index > 0 {
+                    output.push(',');
+                }
+                output.push_str(
+                    &serde_json::to_string(key).expect("object keys serialize as strings"),
+                );
+                output.push(':');
+                write_canonical_json(item, output);
+            }
+            output.push('}');
+        }
+    }
+}
+
+fn sha256_structured_digest(bytes: &[u8]) -> StructuredDigest {
+    StructuredDigest {
+        algorithm: "sha256".into(),
+        value: sha256_bytes(bytes),
+    }
 }
 
 fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), RegistryError> {

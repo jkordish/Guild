@@ -308,7 +308,7 @@ That draft bundle now also contains a real M4 admission layer for its own vocabu
 - `admission_engine.py` consumes one contract, one admission request, and one or more runtime guarantees
 - `execution_plan` is the resulting safe upper-bound invocation plan
 
-That M4 layer does not do M5 minimization, does not claim that compatibility precheck alone is admission, and does not label its execution plans as signed unless a real verifiable plan-signing path exists.
+That M4 layer does not do M5 minimization, does not claim that compatibility precheck alone is admission, and still emits unsigned plans by default. The repository now has a real verifiable sign/verify path for those plans through the existing publisher identity and trusted-publisher model, but signing is an explicit later step rather than part of admission derivation itself.
 
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 

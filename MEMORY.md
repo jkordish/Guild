@@ -21,7 +21,7 @@ What is materially real today:
 - Guild now also has three inspect-only authority-debug example skills over durable execution records: `explain-capability-denial`, `diff-execution-authority`, and `explain-http-authority`
 - Guild now has a real bounded `http-request` capability family in the active inspect slice
 - Guild can now export and import the same signed installed bundles either as native bundle directories, local OCI image layouts, or OCI registry artifacts
-- the draft schema bundle under `docs/schemas/draft-v1/` now has a real fail-closed M4 admission layer with `admission_request` and safe upper-bound `execution_plan` artifacts plus checked `admit` / `downgrade` / `migrate` / `refuse` examples, while remaining explicitly draft vocabulary and leaving execution plans unsigned by default
+- the draft schema bundle under `docs/schemas/draft-v1/` now has a real fail-closed M4 admission layer with `admission_request` and safe upper-bound `execution_plan` artifacts plus checked `admit` / `downgrade` / `migrate` / `refuse` examples, while remaining explicitly draft vocabulary and leaving execution plans unsigned by default unless they are later signed through the existing publisher/trust model
 - MCP resource reads and guest-side `read-resource` calls use the same local backend
 - bounded execution-query resources and templates now derive from that same local backend, so persisted executions can be discovered without already knowing an exact execution URI
 - a resource-aware explain skill can read stored execution and evidence artifacts through the Wasm host boundary, including failed and rejected records
@@ -63,6 +63,7 @@ Where the repository is now:
 - Guild can now use persisted execution records to answer practical operator questions about authority: why one execution was denied or reduced, how two executions differed, and whether one candidate loopback/IP-literal HTTP request fits a stored grant without performing the request.
 - The checked-in repo skills under `.agents/skills` now package those realistic Codex workflows as thin wrappers around the same shared scenario helpers and Guild MCP resources.
 - The draft schema bundle now has its own real M3/M4 validation story: `compatibility_check.py` remains a hard-requirement precheck, `admission_engine.py` derives safe upper-bound plans for one invocation, and the checked validation path stays in the bundle-local Python scripts rather than in the Rust workspace test sweep.
+- The repository now also has a real reusable execution-plan signing path through the same Ed25519 publisher identities and trusted-publisher records already used for signed bundles; M4 plan generation itself stays unsigned by default.
 
 What this means in practice:
 
