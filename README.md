@@ -4,7 +4,7 @@
 
 Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild packages operational know-how as versioned, capability-scoped, portable skills that can be resolved, executed, inspected, and shared without giving guests ambient authority.
 
-> Status: pre-alpha. The current repository has a real local inspect-first vertical slice: source skills install into digest-pinned executable state, `skill://...` refs resolve before execution, Wasm component skills run through Wasmtime, execution and evidence artifacts persist under `guild://...`, signed installed bundles can move through native bundle, OCI layout, and OCI registry transport, and the real stdio MCP server still exposes one stable public tool: `guild.inspect`.
+> Status: pre-alpha. Current milestone status is explicit: M3 and M4 are implemented as the draft-v1 schema and admission bundle under `docs/schemas/draft-v1/`; M5 and M6 are implemented there as bounded draft-v1 proof and token paths; M7 is complete as the bounded draft-v1 witness layer; M8a is complete as the live-runtime vocabulary and observation-alignment bridge; M9 and M10 have not started. The live Rust runtime surface is canonical. The draft bundle remains draft.
 
 ## Why Guild
 
@@ -167,9 +167,20 @@ cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/
 
 `guild codex` is now the deterministic repo-local dogfood and smoke surface: bootstrap, Cargo-based `print-config`, scenario prep, and smoke flows.
 
+## Milestone Status
+
+- `M3 Define the schemas`: implemented as the draft-v1 schema bundle under `docs/schemas/draft-v1/`, with checked examples and deterministic validation.
+- `M4 Build the admission engine`: implemented in that same draft-v1 bundle, producing fail-closed `admit`, `downgrade`, `migrate`, and `refuse` execution plans.
+- `M5 Build the counterfactual authority minimizer`: implemented as a bounded draft-v1 minimization path with explicit statuses such as `exact_minimal`, `bounded_minimal`, `reduced`, `no_reduction`, and `not_proven`.
+- `M6 Build delegation-chain-bound capability tokens`: implemented as a bounded draft-v1 token path with proof-backed issuance by default, explicit `m4_upper_bound` issuance, and fail-closed verification.
+- `M7 Build the bounded draft-v1 witness layer`: complete for the bounded draft-v1 witness path, including exercised authority, blocked attempts, coverage semantics, redaction semantics, and fixed claim checks.
+- `M8a Runtime Alignment and Canonical Effect Vocabulary`: complete as the bridge from draft harness truth to live runtime truth. The live Rust capability-family surface is canonical, the runtime persists durable `authority_observations`, and draft-v1 now maps live runtime data through explicit `exact`, `narrowing`, `partial`, and `unsupported` outcomes.
+- `M9 Draft the patent packet`: not started.
+- `M10 Filing hygiene`: not started.
+
 ## What Is Real Today
 
-The current repository already has:
+The current runtime and transport slice already has:
 
 - source-to-installed lifecycle with atomic local installs
 - `RequestedSkillRef -> ResolvedSkillRef` execution boundaries
@@ -177,12 +188,26 @@ The current repository already has:
 - inspect-only primitive and composite skills
 - alias-scoped child dependency invocation
 - durable host-owned execution and evidence records under `guild://...`
+- durable live-runtime `authority_observations` for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
 - guest-side `read-resource` over the same backend MCP uses
 - explain/debug skills over persisted artifacts
 - signed local bundle export/import with local trust verification
 - OCI image layout and OCI registry transport for that same installed signed bundle contract
 - a real stdio MCP server with one stable public tool, `guild.inspect`
-- a draft `docs/schemas/draft-v1/` schema bundle with real fail-closed M3 precheck and M4 admission artifacts over its own vocabulary, still explicitly non-canonical and unsigned by default even though plans can now be signed and verified later through `guild trust sign-plan` / `guild trust verify-plan`
+
+The current draft control-plane slice already has:
+
+- M3 and M4 contract/runtime/request/plan artifacts under `docs/schemas/draft-v1/`
+- M5 bounded minimization proofs
+- M6 bounded delegated capability tokens
+- M7 bounded witness generation and verification
+- M8a live-runtime alignment fixtures and validators
+
+The current boundary is also explicit:
+
+- the live Rust runtime vocabulary is canonical
+- the draft-v1 bundle is still draft and still non-canonical
+- runtime-backed draft-v1 claim support is narrow today: `http-request` is wired through the conservative `net.connect` compatibility alias, while live `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` remain coverage-limited or unsupported in draft-v1 claim semantics
 
 For the exhaustive proof commands, regression sweeps, and example-by-example smoke flows, see [`docs/testing.md`](docs/testing.md).
 For the draft admission bundle itself, see [`docs/schemas/draft-v1/README.md`](docs/schemas/draft-v1/README.md); the runnable validation path for that bundle also lives in [`docs/testing.md`](docs/testing.md).
