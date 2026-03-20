@@ -420,9 +420,9 @@ For `http-request`, the current repository exposes a bounded request/response mo
 
 Shared contracts may mention broader capability families for future phases, but the active inspect slice MUST either prune unsupported families from the executable surface or reject them before execution. The current repository chooses preflight rejection.
 
-### 12.7 M3/M4/M5 schema-bundle mapping and draft status
+### 12.7 M3/M4/M5/M6 schema-bundle mapping and draft status
 
-The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3/M4/M5 contract vocabulary. It is useful for tightening admission and minimization semantics, but it is not the canonical product vocabulary for the current repository.
+The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3/M4/M5/M6 contract vocabulary. It is useful for tightening admission, minimization, and token-materialization semantics, but it is not the canonical product vocabulary for the current repository.
 
 The stricter interpretation wins:
 
@@ -431,6 +431,8 @@ The stricter interpretation wins:
 - component portability MUST NOT be presented as enforcement portability
 - hard-requirement compatibility precheck MUST NOT be presented as the full admission decision
 - M4 `execution_plan` artifacts MUST be described as safe upper-bound invocation plans, not minimized authority proofs
+- M5 proof outputs MUST preserve their non-binary status vocabulary rather than being collapsed into a fake minimal/non-minimal story
+- M6 token outputs MUST be described as invocation-bound delegated capability tokens, not as runtime-general enforcement receipts or witness records
 - denied requested authority MAY yield a downgrade rather than a refusal when hard requirements still hold
 
 Current mapping boundaries:
@@ -468,6 +470,28 @@ That M5 path has hard limits:
 - it MUST fail closed on comparator failure, comparator unavailability, runtime mismatch, or replay-harness gaps
 - it MUST NOT claim runtime-general minimization because the current proof harness is only real for the bundled draft examples
 - it MUST distinguish `exact_minimal`, `bounded_minimal`, `reduced`, `no_reduction`, and `not_proven`
+
+The current draft-bundle M6 surface is narrower than a full attestation system:
+
+- `delegated_capability_token.schema.json` for root and child capability-token claims
+- `token_verification_result.schema.json` for explicit allow or deny verification output
+- `token_engine.py` plus `token_core.py` for draft-local issuance and verification
+
+That M6 path has hard limits:
+
+- it MUST NEVER issue authority outside the admissible M4 `execution_plan`
+- it MUST issue from the M5 final authority subset when an acceptable proof exists
+- it MUST refuse issuance by default when no acceptable proof exists unless the caller explicitly enables upper-bound issuance
+- it MUST mark upper-bound issuance explicitly as `issuance_basis: m4_upper_bound`
+- it MUST emit an explicit empty-capability token for zero-authority issuance rather than an ambiguous implicit no-op
+- it MUST bind issued tokens to an explicit holder, one invocation call chain, and the chosen runtime identity published by the applicable M4 plan
+- it MUST default to non-pass-through behavior
+- child issuance MUST require an explicit parent token and MUST remain a subset of both the parent token and the applicable M4 or M5 authority envelope
+- child issuance MUST NOT broaden scope, audience, runtime binding, expiry, or delegation depth
+- verification MUST fail closed on schema mismatch, unknown issuer, unknown key id, invalid cryptographic protection, replay, expiry, not-before violation, audience mismatch, holder mismatch, runtime mismatch, call-chain mismatch, parent mismatch, or parent-child broadening
+- the current draft implementation MUST be described as HMAC MAC protection over canonical JSON claims, not as public-key signatures
+- the current replay and revocation story MUST be described as local verifier-state behavior only, not as distributed replay protection or distributed revocation
+- M6 MUST NOT be presented as the later M7 witness layer
 
 ## 14. Execution Semantics
 

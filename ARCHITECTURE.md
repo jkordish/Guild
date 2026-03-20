@@ -319,6 +319,23 @@ The same draft bundle now also contains one bounded M5 layer for its own vocabul
 
 That M5 layer is intentionally not wired into the current runtime-general Rust execution path because the draft effect vocabulary still does not match the live inspect capability surface closely enough to claim a broader proof harness honestly.
 
+That draft bundle now also contains one draft-local M6 token layer for its own vocabulary:
+
+- `token_engine.py` issues and verifies invocation-bound delegated capability tokens from an admissible M4 plan and an optional M5 proof
+- `delegated_capability_token.schema.json` describes both root and child token claims
+- `token_verification_result.schema.json` describes the fail-closed verifier output
+- root issuance defaults to proof-backed issuance and refuses by default when no acceptable proof exists unless the caller explicitly enables upper-bound issuance
+- child issuance is explicit, non-pass-through by default, and stays bounded by both the parent token and the applicable M4 or M5 authority envelope
+
+That M6 layer is also intentionally narrower than the eventual runtime story:
+
+- it uses a draft-local shared-secret HMAC MAC over canonical JSON claims rather than a public verifiable signature or attestation mechanism
+- replay detection and revocation hooks are local verifier-state features for the bundled harness, not a distributed control-plane
+- runtime binding is only as strong as the draft bundle's runtime-guarantee identity and vocabulary alignment
+- it is not the later M7 witness layer and does not by itself prove exercised authority
+
+So the draft M6 path is useful for tightening control-plane semantics, but it still does not justify runtime-general enforcement claims for the live Rust runtime.
+
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 
 In the current repository, MCP protocol hygiene is also explicit:

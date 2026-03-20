@@ -202,6 +202,112 @@
         "bypassed"
       ]
     },
+    "token_issuance_basis": {
+      "type": "string",
+      "enum": [
+        "m5_proven_subset",
+        "m4_upper_bound"
+      ]
+    },
+    "token_delegation_mode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "one_hop",
+        "bounded_hops"
+      ]
+    },
+    "token_protection_mode": {
+      "type": "string",
+      "enum": [
+        "hmac-sha256"
+      ]
+    },
+    "token_replay_mode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "single_use"
+      ]
+    },
+    "issued_token_passthrough_mode": {
+      "type": "string",
+      "enum": [
+        "forbidden",
+        "same_invocation_only",
+        "one_hop_bound"
+      ]
+    },
+    "token_issuance_reason_code": {
+      "type": "string",
+      "enum": [
+        "CRYPTO_PRIMITIVE_UNAVAILABLE",
+        "DELEGATION_HOPS_EXHAUSTED",
+        "DELEGATION_NOT_ALLOWED",
+        "PARENT_CHILD_AUDIENCE_BROADENING",
+        "PARENT_CHILD_CALL_CHAIN_MISMATCH",
+        "PARENT_CHILD_DELEGATION_BROADENING",
+        "PARENT_CHILD_RUNTIME_BROADENING",
+        "PARENT_CHILD_SCOPE_BROADENING",
+        "PARENT_CHILD_TTL_BROADENING",
+        "PARENT_TOKEN_INVALID",
+        "PARENT_TOKEN_REQUIRED",
+        "PLAN_CONTRACT_MISMATCH",
+        "PLAN_NOT_ADMISSIBLE",
+        "PLAN_RUNTIME_MISMATCH",
+        "PROOF_NOT_ACCEPTABLE",
+        "PROOF_PLAN_MISMATCH",
+        "PROOF_RUNTIME_MISMATCH",
+        "REPLAY_STATE_UNAVAILABLE",
+        "TOKEN_AUDIENCE_BINDING_REQUIRED",
+        "TOKEN_CALL_CHAIN_BINDING_REQUIRED",
+        "TOKEN_EXPIRY_EXCEEDS_PLAN",
+        "TOKEN_EXPIRY_EXCEEDS_PROOF",
+        "TOKEN_HOLDER_BINDING_REQUIRED",
+        "TOKEN_PASSTHROUGH_FORBIDDEN",
+        "TOKEN_RUNTIME_BINDING_REQUIRED",
+        "TOKEN_SCOPE_EXCEEDS_PLAN",
+        "TOKEN_SCOPE_EXCEEDS_PROOF",
+        "UPPER_BOUND_ISSUANCE_DISALLOWED"
+      ]
+    },
+    "token_verification_reason_code": {
+      "type": "string",
+      "enum": [
+        "AUDIENCE_MISMATCH",
+        "CALL_CHAIN_MISMATCH",
+        "CRYPTO_PRIMITIVE_UNAVAILABLE",
+        "CRYPTO_PROTECTION_INVALID",
+        "DELEGATION_HOPS_EXHAUSTED",
+        "HOLDER_BINDING_MISMATCH",
+        "ISSUER_UNKNOWN",
+        "KEY_ID_UNKNOWN",
+        "PARENT_CHILD_AUDIENCE_BROADENING",
+        "PARENT_CHILD_DELEGATION_BROADENING",
+        "PARENT_CHILD_RUNTIME_BROADENING",
+        "PARENT_CHILD_SCOPE_BROADENING",
+        "PARENT_CHILD_TTL_BROADENING",
+        "PARENT_TOKEN_INVALID",
+        "PARENT_TOKEN_REQUIRED",
+        "PLAN_CONTRACT_MISMATCH",
+        "PLAN_NOT_ADMISSIBLE",
+        "PLAN_RUNTIME_MISMATCH",
+        "PROOF_NOT_ACCEPTABLE",
+        "PROOF_PLAN_MISMATCH",
+        "PROOF_RUNTIME_MISMATCH",
+        "REPLAY_STATE_UNAVAILABLE",
+        "RESOURCE_BINDING_MISMATCH",
+        "RUNTIME_BINDING_MISMATCH",
+        "TOKEN_EXPIRED",
+        "TOKEN_NOT_YET_VALID",
+        "TOKEN_PASSTHROUGH_FORBIDDEN",
+        "TOKEN_REPLAYED",
+        "TOKEN_REVOKED",
+        "TOKEN_SCHEMA_INVALID",
+        "TOKEN_SCOPE_EXCEEDS_PLAN",
+        "TOKEN_SCOPE_EXCEEDS_PROOF"
+      ]
+    },
     "trial_result": {
       "type": "string",
       "enum": [

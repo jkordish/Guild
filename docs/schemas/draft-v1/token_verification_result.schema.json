@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Guild Token Verification Result",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "guild.token_verification_result"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "deny"
+      ]
+    },
+    "verified": {
+      "type": "boolean"
+    },
+    "verification_time": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "token_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "token_digest": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "issuer_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "key_id": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/token_verification_reason_code"
+      },
+      "uniqueItems": true
+    },
+    "bound_context": {
+      "type": "object",
+      "properties": {
+        "holder_id": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "audiences": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/nonempty_string"
+          },
+          "uniqueItems": true
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "effect_class": {
+                "$ref": "common.schema.json#/$defs/effect_class"
+              },
+              "audience": {
+                "$ref": "common.schema.json#/$defs/nonempty_string"
+              },
+              "resource": {
+                "$ref": "common.schema.json#/$defs/nonempty_string"
+              }
+            },
+            "required": [
+              "effect_class",
+              "audience",
+              "resource"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "runtime_guarantee_id": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/identifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "call_chain_digest": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "holder_id",
+        "audiences",
+        "resources",
+        "runtime_guarantee_id",
+        "call_chain_digest"
+      ],
+      "additionalProperties": false
+    },
+    "replay_state": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "common.schema.json#/$defs/token_replay_mode"
+        },
+        "checked": {
+          "type": "boolean"
+        },
+        "replay_cache_key": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "checked",
+        "replay_cache_key"
+      ],
+      "additionalProperties": false
+    },
+    "notes": {
+      "type": "string"
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  },
+  "required": [
+    "kind",
+    "version",
+    "decision",
+    "verified",
+    "verification_time",
+    "token_id",
+    "token_digest",
+    "issuer_id",
+    "key_id",
+    "reason_codes",
+    "bound_context",
+    "replay_state"
+  ],
+  "additionalProperties": false
+}

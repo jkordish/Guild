@@ -26,6 +26,8 @@ SCHEMA_FILES = [
     "witness_record.schema.json",
     "admission_request.schema.json",
     "execution_plan.schema.json",
+    "delegated_capability_token.schema.json",
+    "token_verification_result.schema.json",
 ]
 
 ORDER = {

@@ -45,6 +45,17 @@ It now also covers the draft-bundle M5 examples:
 - zero-authority exact minimality
 - strict cache bypass when runtime, comparator, or plan identity changes
 
+It now also covers the draft-bundle M6 examples:
+
+- proof-backed root issuance from an acceptable M5 proof
+- explicit upper-bound issuance only when policy allows it
+- explicit refusal by default when proof-backed issuance is unavailable and upper-bound issuance is not enabled
+- one-hop delegated child issuance with narrower scope, audience, and TTL
+- explicit empty-capability token issuance for zero-authority invocations
+- fail-closed verification for replay, audience mismatch, holder mismatch, passthrough attempts, parent-child broadening, runtime mismatch, call-chain mismatch, and expiry
+
+The current M6 protection mechanism in this draft harness is a shared-secret HMAC MAC over canonical JSON claims. It is not a public-key signature flow, and the replay/revocation checks are local verifier-state mechanisms only.
+
 If you want one direct M4 admission run:
 
 ```bash
@@ -67,6 +78,45 @@ If you want one direct M5 proof run over an already-admissible plan:
   --comparator-profile docs/schemas/draft-v1/examples/local-log-analyzer.canonical-json.comparator.json \
   --created-at 2026-03-20T12:10:00Z \
   --cache-dir /tmp/guild-m5-cache
+```
+
+If you want one direct M6 root-issuance run:
+
+```bash
+/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/token_engine.py issue-root \
+  --plan docs/schemas/draft-v1/examples/local-log-analyzer.admit.plan.json \
+  --contract docs/schemas/draft-v1/examples/local-log-analyzer.contract.json \
+  --proof docs/schemas/draft-v1/examples/local-log-analyzer.proof.json \
+  --holder-id urn:guild:service:local-log-analyzer \
+  --issuer-id urn:guild:issuer:draft-control-plane:v1 \
+  --key-id draft-hmac-2026-03 \
+  --shared-secret guild-draft-shared-secret-2026-03 \
+  --issuer-epoch 3 \
+  --issued-at 2026-03-20T13:00:00Z \
+  --token-id urn:guild:token:local-log-analyzer:root:v1
+```
+
+If you want one direct M6 verification run over the checked delegated-child example:
+
+```bash
+/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/token_engine.py verify \
+  --token docs/schemas/draft-v1/examples/cluster-rollout.child-token.json \
+  --issuer-id urn:guild:issuer:draft-control-plane:v1 \
+  --key-id draft-hmac-2026-03 \
+  --shared-secret guild-draft-shared-secret-2026-03 \
+  --verification-time 2026-03-20T13:05:20Z \
+  --holder-id urn:guild:service:kube-api-client \
+  --runtime-guarantee-id urn:guild:runtime:wasmtime-strict:v1 \
+  --plan docs/schemas/draft-v1/examples/cluster-rollout.admit.plan.json \
+  --contract docs/schemas/draft-v1/examples/cluster-rollout.contract.json \
+  --parent-token docs/schemas/draft-v1/examples/cluster-rollout.root-token.json \
+  --audience cluster-prod \
+  --resource-binding-json '{"effect_class":"net.connect","audience":"cluster-prod","resource":"https://kube-api.prod.example.internal/apis/apps/"}' \
+  --chain-link urn:guild:actor:ops-user \
+  --chain-link urn:guild:workflow:cluster-rollout \
+  --chain-link urn:guild:token:cluster-rollout:root:v1 \
+  --chain-link urn:guild:service:kube-api-client \
+  --replay-state-dir /tmp/guild-m6-replay
 ```
 
 If you want one explicit sign-and-verify pass for a generated M4 plan:

@@ -1,12 +1,13 @@
 # Guild Draft Schemas, v1.0.0
 
-This bundle is the current draft schema surface for Guild's M3, M4, and one bounded M5 proof path.
+This bundle is the current draft schema surface for Guild's M3, M4, one bounded M5 proof path, and one draft-local M6 token path.
 
-It now covers two distinct layers:
+It now covers four distinct layers:
 
 - M3 hard-requirement precheck over `skill_contract` plus `runtime_guarantee`
 - M4 invocation-specific admission over `skill_contract` plus `admission_request` plus one or more `runtime_guarantee` documents, producing an `execution_plan`
 - M5 counterfactual minimization over an admissible `execution_plan` plus deterministic invocation inputs plus one `comparator_profile`, producing a `proof_record`
+- M6 delegated capability-token issuance and verification over an admissible `execution_plan`, optional `proof_record`, explicit audience and resource bindings, and an optional parent token
 
 This bundle is still draft. It is useful and now executable, but it is not repo-wide canonical truth until the schema vocabulary and the repository's implemented capability-family surface are aligned.
 
@@ -20,6 +21,7 @@ This bundle is still draft. It is useful and now executable, but it is not repo-
 - Keep hard contract requirements separate from request-time narrowing.
 - Keep M4 honest: it derives a safe upper bound for one invocation. It does **not** minimize that bound.
 - Keep M5 honest: it may only preserve or reduce the M4 upper bound, it may never widen authority, and it must not claim exact minimality unless the explored search model actually proves it.
+- Keep M6 honest: it may materialize only the M4 upper bound or a proof-backed M5 subset, it may never widen either one, and it must say plainly whether the draft path is using a MAC or a signature.
 
 ## Core records
 
@@ -29,6 +31,8 @@ This bundle is still draft. It is useful and now executable, but it is not repo-
 - `execution_plan.schema.json`
 - `comparator_profile.schema.json`
 - `proof_record.schema.json`
+- `delegated_capability_token.schema.json`
+- `token_verification_result.schema.json`
 - `witness_record.schema.json`
 - shared definitions in `common.schema.json`
 
@@ -142,6 +146,36 @@ The current proof-status vocabulary is:
 - `no_reduction`
 - `not_proven`
 
+### M6 delegated capability token model
+
+The current M6 layer is deliberately narrow:
+
+- it consumes one admissible `execution_plan`
+- it may consume one `proof_record`
+- it requires explicit holder binding
+- it binds the token to one invocation call chain and one chosen runtime
+- it emits either one `delegated_capability_token` or one structured refusal result
+- it verifies tokens through one `token_verification_result`
+
+Its default stance is the stricter honest one:
+
+- root issuance is proof-backed by default
+- if no acceptable M5 proof exists, issuance refuses by default
+- M4 upper-bound issuance only happens when the caller explicitly enables it, and the token is marked `issuance_basis: m4_upper_bound`
+- zero-authority invocations emit an explicit empty-capability token rather than an ambiguous "no token required" result
+- root tokens are non-pass-through by default
+- child issuance is explicit, bounded, and must narrow or preserve scope, audience, runtime binding, expiry, and delegation depth
+- presenting a parent token directly to an unintended downstream consumer fails closed
+
+The current M6 layer is also deliberately limited:
+
+- cryptographic protection is a draft-local HMAC-SHA256 MAC over canonical JSON, not a public-key signature
+- the verifier must already know the issuer id, key id, and shared secret
+- replay protection is local verifier-side state keyed by token id plus chain identity; it is not distributed replay protection
+- revocation is a local verifier denylist and issuer-epoch hook; it is not distributed revocation
+- the token layer is still draft/example-bounded because the runtime vocabulary alignment problem that limits M5 also limits any stronger M6 enforcement claim
+- M6 does not implement the later M7 witness layer; it only leaves room for future witness linkage
+
 ## Files included
 
 ### Schemas
@@ -153,6 +187,8 @@ The current proof-status vocabulary is:
 - `execution_plan.schema.json`
 - `comparator_profile.schema.json`
 - `proof_record.schema.json`
+- `delegated_capability_token.schema.json`
+- `token_verification_result.schema.json`
 - `witness_record.schema.json`
 
 ### Examples
@@ -173,6 +209,8 @@ The current proof-status vocabulary is:
 - `examples/fetch-transform.no-reduction.plan.json`
 - `examples/cluster-rollout.refuse.request.json`
 - `examples/cluster-rollout.refuse.plan.json`
+- `examples/cluster-rollout.admit.request.json`
+- `examples/cluster-rollout.admit.plan.json`
 - `examples/local-log-analyzer.admit.request.json`
 - `examples/local-log-analyzer.admit.plan.json`
 - `examples/local-log-analyzer.invocation.json`
@@ -181,14 +219,19 @@ The current proof-status vocabulary is:
 - `examples/local-log-analyzer.proof.json`
 - `examples/local-log-analyzer.cache-hit.proof.json`
 - `examples/local-log-analyzer.comparator-unavailable.proof.json`
+- `examples/local-log-analyzer.proof-backed.root-token.json`
 - `examples/fetch-transform.invocation.json`
 - `examples/fetch-transform.postconditions.comparator.json`
 - `examples/fetch-transform.bounded.comparator.json`
 - `examples/fetch-transform.no-reduction.proof.json`
 - `examples/fetch-transform.bounded.proof.json`
+- `examples/fetch-transform.upper-bound-refusal.json`
 - `examples/zero-authority.invocation.json`
 - `examples/zero-authority.pure.comparator.json`
 - `examples/zero-authority.proof.json`
+- `examples/zero-authority.empty-token.json`
+- `examples/cluster-rollout.root-token.json`
+- `examples/cluster-rollout.child-token.json`
 - `examples/cluster-rollout.witness.json`
 
 ### Utilities
@@ -198,6 +241,8 @@ The current proof-status vocabulary is:
 - `compatibility_check.py`
 - `validate_examples.py`
 - `minimization_core.py`
+- `token_core.py`
+- `token_engine.py`
 - `compatibility_matrix.md`
 
 ## Status
@@ -225,7 +270,11 @@ Current mapping boundaries:
 
 Until those gaps are closed, this directory must stay explicitly labeled as draft.
 
-## Signing status
+The M6 token files in this directory are therefore draft control-plane artifacts. They bind authority to the chosen runtime id and guarantee digest already modeled by the draft examples, but they do **not** by themselves justify any runtime-general enforcement claim for the live Rust runtime.
+
+## Cryptographic status
+
+### M4 plan signing status
 
 The bundle now includes a real `plan_signature` shape plus a reusable signing path through Guild's existing publisher identity and trust-store model.
 
@@ -239,6 +288,21 @@ Three things are true at once:
 
 So the M4 plan artifacts must not be described as automatically signed, but they also are no longer blocked on a fake or decorative signing story.
 
+### M6 token protection status
+
+The M6 token path uses a different and narrower mechanism:
+
+- `delegated_capability_token` carries inline canonicalization and protection metadata
+- `token_engine.py` computes an HMAC-SHA256 MAC over canonical JSON claims
+- that MAC is verified only by verifiers that already share the issuer secret
+
+That means:
+
+- this is issuer/verifier shared-secret protection
+- this is **not** public verifiability
+- this is **not** a detached signature workflow
+- this is a draft control-plane mechanism for the bundled harness, not final distributed attestation
+
 ## Validation status
 
 All bundled examples validate cleanly against the bundled schemas when run with the directory-local validation dependencies installed.
@@ -251,6 +315,9 @@ All bundled examples validate cleanly against the bundled schemas when run with 
 - exact checked proof output for the bundled M5 reduction, no-reduction, bounded-minimal, zero-authority, comparator-unavailable, and cache-hit cases
 - strict cache-bypass probes when runtime, comparator, or plan identity changes
 - explicit negative probes for omitted and invalid runtime guarantees
+- exact checked M6 token output for proof-backed root issuance, explicit upper-bound issuance, delegated child issuance, upper-bound refusal, and zero-authority empty-token issuance
+- verification success and fail-closed denial for replay, wrong audience, wrong holder, passthrough attempts, chain mismatch, runtime mismatch, broadening, and expiry cases
+- deterministic repeated M6 issuance for identical claims and key material
 
 `compatibility_check.py` regenerates the derived hard-requirement compatibility matrix and asserts the fail-closed negative probes for omitted and unsupported `wit_worlds` support.
 
@@ -276,6 +343,35 @@ python3 minimization_engine.py \
   --comparator-profile examples/local-log-analyzer.canonical-json.comparator.json \
   --created-at 2026-03-20T12:10:00Z \
   --cache-dir /tmp/guild-m5-cache
+python3 token_engine.py issue-root \
+  --plan examples/local-log-analyzer.admit.plan.json \
+  --contract examples/local-log-analyzer.contract.json \
+  --proof examples/local-log-analyzer.proof.json \
+  --holder-id urn:guild:service:local-log-analyzer \
+  --issuer-id urn:guild:issuer:draft-control-plane:v1 \
+  --key-id draft-hmac-2026-03 \
+  --shared-secret guild-draft-shared-secret-2026-03 \
+  --issuer-epoch 3 \
+  --issued-at 2026-03-20T13:00:00Z \
+  --token-id urn:guild:token:local-log-analyzer:root:v1
+python3 token_engine.py verify \
+  --token examples/cluster-rollout.child-token.json \
+  --issuer-id urn:guild:issuer:draft-control-plane:v1 \
+  --key-id draft-hmac-2026-03 \
+  --shared-secret guild-draft-shared-secret-2026-03 \
+  --verification-time 2026-03-20T13:05:20Z \
+  --holder-id urn:guild:service:kube-api-client \
+  --runtime-guarantee-id urn:guild:runtime:wasmtime-strict:v1 \
+  --plan examples/cluster-rollout.admit.plan.json \
+  --contract examples/cluster-rollout.contract.json \
+  --parent-token examples/cluster-rollout.root-token.json \
+  --audience cluster-prod \
+  --resource-binding-json '{"effect_class":"net.connect","audience":"cluster-prod","resource":"https://kube-api.prod.example.internal/apis/apps/"}' \
+  --chain-link urn:guild:actor:ops-user \
+  --chain-link urn:guild:workflow:cluster-rollout \
+  --chain-link urn:guild:token:cluster-rollout:root:v1 \
+  --chain-link urn:guild:service:kube-api-client \
+  --replay-state-dir /tmp/guild-m6-replay
 
 guild trust generate \
   --publisher-id local.example \
@@ -297,4 +393,5 @@ The next honest follow-ons are:
 
 1. vocabulary alignment with the repository's canonical capability-family surface
 2. replacing the example-bounded M5 harness with a real runtime-general minimization/replay substrate
-3. later M6 delegation-token materialization on top of the still-separate M4/M5 outputs
+3. replacing the draft-local M6 shared-secret token harness with the eventual repo-supported runtime-attestation and revocation story, if and when the runtime surface actually supports those claims
+4. later M7 witness materialization and exercised-authority verification on top of the still-separate M4/M5/M6 outputs

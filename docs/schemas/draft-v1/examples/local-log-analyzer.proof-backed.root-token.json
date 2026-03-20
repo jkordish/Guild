@@ -1,0 +1,135 @@
+{
+  "audience_binding": {
+    "audiences": [],
+    "resources": []
+  },
+  "call_chain": {
+    "chain_digest": {
+      "algorithm": "sha256",
+      "value": "2a8ccd2eb6563045acb12820b56aa271dcf70caf7ab50cda2bd6222500b70dfb"
+    },
+    "chain_id": "urn:guild:request:local-log-analyzer:admit:v1:call-chain",
+    "links": [
+      "urn:guild:actor:ops-user"
+    ]
+  },
+  "chosen_runtime": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "component_digest": {
+    "algorithm": "sha256",
+    "value": "3e1e8cd5b8c777384ebadbcbff998788fada07c783ba361a4221fdf0f7d9c940"
+  },
+  "contract_digest": {
+    "algorithm": "sha256",
+    "value": "cbaf2c465088d9eefa1233f85d9e7aa81fedf40a042daf100ce951f8d04a2078"
+  },
+  "delegation": {
+    "max_hops": 0,
+    "mode": "none",
+    "remaining_hops": 0
+  },
+  "execution_plan_digest": {
+    "algorithm": "sha256",
+    "value": "f979dd978b716c828518dac3e83b86783e77d46b951cc6175fefce83b0f8b028"
+  },
+  "execution_plan_id": "urn:guild:request:local-log-analyzer:admit:v1:execution-plan",
+  "expires_at": "2026-03-20T13:05:00Z",
+  "export_name": "analyze_logs",
+  "granted_authority": {
+    "delegation_policy": {
+      "anti_replay_required": true,
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "max_hops": 0,
+      "mode": "forbidden",
+      "ttl_seconds_max": 300
+    },
+    "grants": [
+      {
+        "cardinality": {
+          "max_bytes": 1073741824,
+          "max_calls": 1000
+        },
+        "effect_class": "fs.read",
+        "scope": {
+          "follow_mounts": false,
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/**"
+          ],
+          "symlink_policy": "deny"
+        }
+      },
+      {
+        "cardinality": {
+          "max_calls": 10
+        },
+        "effect_class": "clock.read",
+        "scope": {
+          "kind": "system"
+        }
+      }
+    ],
+    "plan_id": "urn:guild:request:local-log-analyzer:admit:v1:granted:candidate:remove:1:2",
+    "ttl_seconds": 300
+  },
+  "holder_binding": {
+    "holder_id": "urn:guild:service:local-log-analyzer",
+    "issued_for_delegatee": false
+  },
+  "input_class_fingerprint": {
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "e0fa022083b39a26884d1c48b2239f7a2fbfdef89798eb5b0df7b22762546090"
+    },
+    "kind": "json-schema-hash"
+  },
+  "issuance_basis": "m5_proven_subset",
+  "issued_at": "2026-03-20T13:00:00Z",
+  "issuer": {
+    "issuer_epoch": 3,
+    "issuer_id": "urn:guild:issuer:draft-control-plane:v1",
+    "key_id": "draft-hmac-2026-03"
+  },
+  "kind": "guild.delegated_capability_token",
+  "not_before": "2026-03-20T13:00:00Z",
+  "notes": "Issued from the M5 proven authority subset.",
+  "parent_token": null,
+  "passthrough_policy": "forbidden",
+  "proof_id": "urn:guild:request:local-log-analyzer:admit:v1:execution-plan:m5-proof",
+  "proof_status": "exact_minimal",
+  "protection": {
+    "canonicalization": "guild-json-c14n-v1",
+    "claims_digest": {
+      "algorithm": "sha256",
+      "value": "b51e9b9ca95c3273dfb957ce949fccbbc5b9710bec2722f68a51a0f3667951ee"
+    },
+    "mac_base64": "2LrMOPhs/oYbCXzcfdNwjXc3Kr7RpNUdC6bWOs8ZEuQ=",
+    "mode": "hmac-sha256"
+  },
+  "replay_protection": {
+    "mode": "single_use",
+    "replay_cache_key": {
+      "algorithm": "sha256",
+      "value": "013323eeccdf88237c111490dc229ffb3ce1ba571e1c4c600fe06a1d2bab0dc7"
+    }
+  },
+  "request_id": "urn:guild:request:local-log-analyzer:admit:v1",
+  "revocation_hooks": {
+    "issuer_epoch": 3
+  },
+  "skill_contract_id": "urn:guild:contract:local-log-analyzer:v1",
+  "token_id": "urn:guild:token:local-log-analyzer:root:v1",
+  "version": "1.0.0"
+}

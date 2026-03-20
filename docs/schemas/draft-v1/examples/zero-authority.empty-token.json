@@ -1,0 +1,107 @@
+{
+  "audience_binding": {
+    "audiences": [],
+    "resources": []
+  },
+  "call_chain": {
+    "chain_digest": {
+      "algorithm": "sha256",
+      "value": "638efd028ebcc1da7a579a973d2d42951c470267ebb0a8aecb8682083a6d0859"
+    },
+    "chain_id": "urn:guild:request:zero-authority:admit:v1:call-chain",
+    "links": [
+      "urn:guild:actor:user"
+    ]
+  },
+  "chosen_runtime": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "component_digest": {
+    "algorithm": "sha256",
+    "value": "df78342cd5b5f401a3ab4ee69e5d42d4cbaf0d8f67f1fb8e947c3b9d93d84f8e"
+  },
+  "contract_digest": {
+    "algorithm": "sha256",
+    "value": "90969f04d6a0a5d3990af114ac918e3053bf568444bfce4d5d598d246d8e6770"
+  },
+  "delegation": {
+    "max_hops": 0,
+    "mode": "none",
+    "remaining_hops": 0
+  },
+  "execution_plan_digest": {
+    "algorithm": "sha256",
+    "value": "5eac69cecce737fdf1c45dcec079e29c5137d543b2bf697b7b101252dee33117"
+  },
+  "execution_plan_id": "urn:guild:request:zero-authority:admit:v1:execution-plan",
+  "expires_at": "2026-03-20T13:17:00Z",
+  "export_name": "summarize",
+  "granted_authority": {
+    "delegation_policy": {
+      "anti_replay_required": false,
+      "audience_binding_required": false,
+      "call_chain_binding_required": false,
+      "max_hops": 0,
+      "mode": "forbidden",
+      "ttl_seconds_max": 300
+    },
+    "grants": [],
+    "plan_id": "urn:guild:request:zero-authority:admit:v1:granted",
+    "ttl_seconds": 120
+  },
+  "holder_binding": {
+    "holder_id": "urn:guild:service:zero-authority",
+    "issued_for_delegatee": false
+  },
+  "input_class_fingerprint": {
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "26d18e0d615b0955ec36aa4b5b891dcf8865e726bc77f26b8b305fbb7f89fb68"
+    },
+    "kind": "json-schema-hash"
+  },
+  "issuance_basis": "m5_proven_subset",
+  "issued_at": "2026-03-20T13:15:00Z",
+  "issuer": {
+    "issuer_epoch": 3,
+    "issuer_id": "urn:guild:issuer:draft-control-plane:v1",
+    "key_id": "draft-hmac-2026-03"
+  },
+  "kind": "guild.delegated_capability_token",
+  "not_before": "2026-03-20T13:15:00Z",
+  "notes": "Issued from the M5 proven authority subset.",
+  "parent_token": null,
+  "passthrough_policy": "forbidden",
+  "proof_id": "urn:guild:request:zero-authority:admit:v1:execution-plan:m5-proof",
+  "proof_status": "exact_minimal",
+  "protection": {
+    "canonicalization": "guild-json-c14n-v1",
+    "claims_digest": {
+      "algorithm": "sha256",
+      "value": "a9173662c56877738f8b3e5f76dea54f15a971ab4412ed47d81cdf1cbc9aca24"
+    },
+    "mac_base64": "9fTbVely2dtFOlvSM9WJq6CS32yRUrkVLsA9+s6bQoc=",
+    "mode": "hmac-sha256"
+  },
+  "replay_protection": {
+    "mode": "none",
+    "replay_cache_key": null
+  },
+  "request_id": "urn:guild:request:zero-authority:admit:v1",
+  "revocation_hooks": {
+    "issuer_epoch": 3
+  },
+  "skill_contract_id": "urn:guild:contract:zero-authority:v1",
+  "token_id": "urn:guild:token:zero-authority:root:v1",
+  "version": "1.0.0"
+}

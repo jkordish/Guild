@@ -1,0 +1,13 @@
+{
+  "decision": "refuse",
+  "detail": {},
+  "issued": false,
+  "kind": "guild.token_issuance_result",
+  "message": "root token issuance failed because no acceptable authority basis was available.",
+  "reason_codes": [
+    "PROOF_NOT_ACCEPTABLE",
+    "UPPER_BOUND_ISSUANCE_DISALLOWED"
+  ],
+  "token": null,
+  "version": "1.0.0"
+}

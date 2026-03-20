@@ -1,0 +1,155 @@
+{
+  "audience_binding": {
+    "audiences": [
+      "cluster-prod"
+    ],
+    "resources": [
+      {
+        "audience": "cluster-prod",
+        "effect_class": "net.connect",
+        "resource": "https://kube-api.prod.example.internal/apis/apps/"
+      }
+    ]
+  },
+  "call_chain": {
+    "chain_digest": {
+      "algorithm": "sha256",
+      "value": "e5027dca116b6cc646644ffdacbf130147fe22dfada9a8cf8d978f075df643c0"
+    },
+    "chain_id": "urn:guild:request:cluster-rollout:admit:v1:call-chain",
+    "links": [
+      "urn:guild:actor:ops-user",
+      "urn:guild:workflow:cluster-rollout",
+      "urn:guild:token:cluster-rollout:root:v1",
+      "urn:guild:service:kube-api-client"
+    ]
+  },
+  "chosen_runtime": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "component_digest": {
+    "algorithm": "sha256",
+    "value": "bf1dc94321cd91c6428b6c81de14342fff34b1cc5ff1f2591789da15997d4e8c"
+  },
+  "contract_digest": {
+    "algorithm": "sha256",
+    "value": "73158871928cf3261d11f37b97acecaed3796a365b2c4041ceb2639a44e017a4"
+  },
+  "delegation": {
+    "max_hops": 0,
+    "mode": "none",
+    "remaining_hops": 0
+  },
+  "execution_plan_digest": {
+    "algorithm": "sha256",
+    "value": "a9b01e1d3f9037b9316f38118fd3504f06e8187b3b2027d23d183dac67148192"
+  },
+  "execution_plan_id": "urn:guild:request:cluster-rollout:admit:v1:execution-plan",
+  "expires_at": "2026-03-20T13:05:40Z",
+  "export_name": "apply_rollout",
+  "granted_authority": {
+    "delegation_policy": {
+      "anti_replay_required": true,
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "max_hops": 0,
+      "mode": "forbidden",
+      "ttl_seconds_max": 30
+    },
+    "grants": [
+      {
+        "cardinality": {
+          "max_bytes": 524288,
+          "max_calls": 5
+        },
+        "effect_class": "net.connect",
+        "scope": {
+          "audiences": [
+            {
+              "host": "kube-api.prod.example.internal",
+              "methods": [
+                "PATCH"
+              ],
+              "path_prefixes": [
+                "/apis/apps/"
+              ],
+              "ports": [
+                443
+              ],
+              "schemes": [
+                "https"
+              ]
+            }
+          ],
+          "kind": "network"
+        }
+      }
+    ],
+    "plan_id": "urn:guild:token:cluster-rollout:child-authority:v1",
+    "ttl_seconds": 30
+  },
+  "holder_binding": {
+    "holder_id": "urn:guild:service:kube-api-client",
+    "issued_for_delegatee": true
+  },
+  "input_class_fingerprint": {
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "92cfe6ab8245cbd80c17ae7a977f93e5ad83b5bb834179ba060e952298721de6"
+    },
+    "kind": "json-schema-hash"
+  },
+  "issuance_basis": "m4_upper_bound",
+  "issued_at": "2026-03-20T13:05:10Z",
+  "issuer": {
+    "issuer_epoch": 3,
+    "issuer_id": "urn:guild:issuer:draft-control-plane:v1",
+    "key_id": "draft-hmac-2026-03"
+  },
+  "kind": "guild.delegated_capability_token",
+  "not_before": "2026-03-20T13:05:10Z",
+  "notes": "Delegated child token. The parent token remains non-pass-through and cannot be redeemed directly by the child holder.",
+  "parent_token": {
+    "token_digest": {
+      "algorithm": "sha256",
+      "value": "b42f58393d2e3ff013e98d387d7555056fe6bfc33f929c8a78fed4f810c2609d"
+    },
+    "token_id": "urn:guild:token:cluster-rollout:root:v1"
+  },
+  "passthrough_policy": "forbidden",
+  "proof_id": null,
+  "proof_status": null,
+  "protection": {
+    "canonicalization": "guild-json-c14n-v1",
+    "claims_digest": {
+      "algorithm": "sha256",
+      "value": "5e69bd220ceef7c97c4131ff9239cf11f5b25345b153e90f775466ed5c4995e3"
+    },
+    "mac_base64": "Q1fIHVLWzGjIO2bnv5b5K2RHr65b10IvlGc0J2VkCU4=",
+    "mode": "hmac-sha256"
+  },
+  "replay_protection": {
+    "mode": "single_use",
+    "replay_cache_key": {
+      "algorithm": "sha256",
+      "value": "2f6c28302c5c06b767415d145f15f79241ccde473d465b5c147fba91dae6f1b0"
+    }
+  },
+  "request_id": "urn:guild:request:cluster-rollout:admit:v1",
+  "revocation_hooks": {
+    "issuer_epoch": 3
+  },
+  "skill_contract_id": "urn:guild:contract:cluster-rollout:v1",
+  "token_id": "urn:guild:token:cluster-rollout:child:v1",
+  "version": "1.0.0"
+}
