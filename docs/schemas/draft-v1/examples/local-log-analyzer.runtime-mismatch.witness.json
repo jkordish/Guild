@@ -1,0 +1,235 @@
+{
+  "actual_exercised_authority": {
+    "effect_classes": [
+      "clock.read",
+      "fs.read"
+    ],
+    "effects": [
+      {
+        "cardinality": {
+          "max_bytes": 106,
+          "max_calls": 2
+        },
+        "effect_class": "fs.read",
+        "scope": {
+          "follow_mounts": false,
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/service-a.log",
+            "/workspace/input/service-b.log"
+          ],
+          "symlink_policy": "deny"
+        }
+      },
+      {
+        "cardinality": {
+          "max_calls": 1
+        },
+        "effect_class": "clock.read",
+        "scope": {
+          "kind": "system"
+        }
+      }
+    ],
+    "effects_redacted": false,
+    "total_effects": 2
+  },
+  "audience_binding": {
+    "audiences": [],
+    "resources": []
+  },
+  "blocked_attempted_authority": {
+    "effect_classes": [],
+    "effects": [],
+    "effects_redacted": false,
+    "observable": false,
+    "total_effects": 0
+  },
+  "call_chain": {
+    "chain_digest": {
+      "algorithm": "sha256",
+      "value": "2a8ccd2eb6563045acb12820b56aa271dcf70caf7ab50cda2bd6222500b70dfb"
+    },
+    "chain_id": "urn:guild:request:local-log-analyzer:admit:v1:call-chain",
+    "links": null
+  },
+  "envelope_comparison": {
+    "plan": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
+    },
+    "proof": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
+    },
+    "token": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
+    }
+  },
+  "execution_plan": {
+    "execution_plan_digest": {
+      "algorithm": "sha256",
+      "value": "f979dd978b716c828518dac3e83b86783e77d46b951cc6175fefce83b0f8b028"
+    },
+    "execution_plan_id": "urn:guild:request:local-log-analyzer:admit:v1:execution-plan"
+  },
+  "execution_window": {
+    "finished_at": null,
+    "started_at": null
+  },
+  "granted_but_unused_authority": {
+    "derivation_status": "complete",
+    "fully_unused_grants": [],
+    "fully_unused_grants_redacted": false,
+    "reason_codes": []
+  },
+  "holder_binding": {
+    "holder_id": "urn:guild:service:local-log-analyzer",
+    "issued_for_delegatee": false
+  },
+  "issued_at": "2026-03-20T13:02:00Z",
+  "issuer": {
+    "issuer_epoch": 3,
+    "issuer_id": "urn:guild:issuer:draft-control-plane:v1",
+    "key_id": "draft-hmac-2026-03"
+  },
+  "kind": "guild.witness_record",
+  "notes": "M7 draft-v1 witness over bounded observation. This does not claim runtime-general completeness.",
+  "observation_coverage": {
+    "families": [
+      {
+        "draft_effect_class": "clock.read",
+        "family": "clock.read",
+        "mapping_status": "exact",
+        "notes": "Bounded draft-v1 example harness coverage. This is not a runtime-general observation claim.",
+        "reason_codes": [],
+        "scope_descriptors": [
+          "clock.read"
+        ],
+        "scope_kind": "system",
+        "status": "complete",
+        "supports_absence_claims": true,
+        "supports_positive_facts": true
+      },
+      {
+        "draft_effect_class": "fs.read",
+        "family": "fs.read",
+        "mapping_status": "exact",
+        "notes": "Bounded draft-v1 example harness coverage. This is not a runtime-general observation claim.",
+        "reason_codes": [],
+        "scope_descriptors": [
+          "/workspace/input/**",
+          "/workspace/input/service-a.log",
+          "/workspace/input/service-b.log"
+        ],
+        "scope_kind": "filesystem",
+        "status": "complete",
+        "supports_absence_claims": true,
+        "supports_positive_facts": true
+      }
+    ],
+    "overall_status": "complete"
+  },
+  "observation_source": {
+    "notes": "Bounded draft-v1 example harness observation. This does not claim runtime-general completeness.",
+    "source_id": "urn:guild:harness:draft-v1:example-bounded",
+    "source_kind": "draft-example-harness",
+    "version": "1.0.0"
+  },
+  "proof_basis": {
+    "proof_digest": {
+      "algorithm": "sha256",
+      "value": "5273268cddeac106d3f20af0dbdf84c682f4bd7027df9ef9b85d2c0fd4073319"
+    },
+    "proof_id": "urn:guild:request:local-log-analyzer:admit:v1:execution-plan:m5-proof",
+    "proof_status": "exact_minimal"
+  },
+  "protection": {
+    "canonicalization": "guild-json-c14n-v1",
+    "claims_digest": {
+      "algorithm": "sha256",
+      "value": "2e80b7c13b87f91bb538ae5cb9bbd4cf37f2618cb87d9da6fcad046dccd9c35e"
+    },
+    "mac_base64": "kUzpX63UToihx267J6Dvp1ZC0pcGsbfSqIVhJSLUKA8=",
+    "mode": "hmac-sha256"
+  },
+  "reason_codes": [],
+  "redaction": {
+    "profile": "summary_only",
+    "raw_trace_digest": {
+      "algorithm": "sha256",
+      "value": "fb66105e3a4d687aa09a02d1fe5fd7dd58464686d1f3c0eca2b697b182d94bc5"
+    },
+    "raw_trace_included": false,
+    "redacted_content_digest": {
+      "algorithm": "sha256",
+      "value": "406e128cad44c797b39d47a5a46f7204e4c63331d6ee5462cd6e33be918d3eca"
+    },
+    "redacted_fields": [
+      "call_chain.links",
+      "raw_trace"
+    ]
+  },
+  "request_id": "urn:guild:request:local-log-analyzer:admit:v1",
+  "runtime_binding": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:node-wasi-basic:v1"
+  },
+  "subject": {
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "3e1e8cd5b8c777384ebadbcbff998788fada07c783ba361a4221fdf0f7d9c940"
+    },
+    "contract_digest": {
+      "algorithm": "sha256",
+      "value": "cbaf2c465088d9eefa1233f85d9e7aa81fedf40a042daf100ce951f8d04a2078"
+    },
+    "export_name": "analyze_logs",
+    "input_class_fingerprint": {
+      "canonicalization": "rfc8785-jcs",
+      "digest": {
+        "algorithm": "sha256",
+        "value": "e0fa022083b39a26884d1c48b2239f7a2fbfdef89798eb5b0df7b22762546090"
+      },
+      "kind": "json-schema-hash"
+    },
+    "invocation_input_digest": {
+      "algorithm": "sha256",
+      "value": "b8cf37f8eff16800bdec1535615a20f1bb3f1a44626ab05c3e4a4cb6e9c53a75"
+    },
+    "skill_contract_id": "urn:guild:contract:local-log-analyzer:v1"
+  },
+  "token_basis": {
+    "issuance_basis": "m5_proven_subset",
+    "parent_token_digest": null,
+    "parent_token_id": null,
+    "token_digest": {
+      "algorithm": "sha256",
+      "value": "ded600c32bf2bd12c81a4231bb103df174413abfb5a0ed19774e7dfb2eb3bbce"
+    },
+    "token_id": "urn:guild:token:local-log-analyzer:root:v1",
+    "verification_decision": "allow",
+    "verification_reason_codes": [],
+    "verification_result_digest": {
+      "algorithm": "sha256",
+      "value": "21f105a5943aed70d0b862778b39adf28751733342973771409b0db915efc561"
+    },
+    "verification_verified": true
+  },
+  "unmapped_observations": [],
+  "version": "1.0.0",
+  "witness_id": "urn:guild:request:local-log-analyzer:admit:v1:execution-plan:witness",
+  "witness_status": "within_envelope"
+}

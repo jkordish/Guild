@@ -336,6 +336,22 @@ That M6 layer is also intentionally narrower than the eventual runtime story:
 
 So the draft M6 path is useful for tightening control-plane semantics, but it still does not justify runtime-general enforcement claims for the live Rust runtime.
 
+That draft bundle now also contains one bounded M7 witness layer for its own vocabulary:
+
+- `witness_engine.py` generates `witness_record` artifacts from an admissible M4 plan, an optional M5 proof, an optional verified M6 token basis, and one bounded observation source
+- `witness_core.py` verifies witness MACs, bindings, coverage semantics, envelope comparisons, redaction hashes, and one small fixed claim vocabulary
+- `witness_verification_result.schema.json` captures the explicit verifier output for both witness verification and fixed claim checks
+
+That M7 layer is intentionally honest about what it is and what it is not:
+
+- it records exercised authority, blocked attempted authority, and granted-but-unused authority as distinct concepts
+- it treats absence claims as coverage-sensitive rather than as a default success path
+- it reuses the same draft-local HMAC-SHA256 MAC over canonical JSON claims used by M6, so it is not a public attestation mechanism
+- it is currently complete only for the bundled draft example harnesses and the explicit bounded observation fixtures used by the checked examples
+- it is not wired into a runtime-general Rust exercised-authority stream because the live runner still persists aggregate execution records, evidence records, policy decisions, and some counters rather than a durable per-effect observation trace aligned with the draft-v1 effect vocabulary
+
+So the current draft M7 path is useful for bounded exercised-authority verification, but it still does not justify runtime-general witness completeness claims for the live Rust runtime.
+
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 
 In the current repository, MCP protocol hygiene is also explicit:

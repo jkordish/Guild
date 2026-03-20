@@ -1,0 +1,206 @@
+{
+  "actual_exercised_authority": {
+    "effect_classes": [
+      "clock.read",
+      "fs.read",
+      "fs.write",
+      "net.connect",
+      "secret.read"
+    ],
+    "effects": [],
+    "effects_redacted": true,
+    "total_effects": 5
+  },
+  "audience_binding": {
+    "audiences": [],
+    "resources": []
+  },
+  "blocked_attempted_authority": {
+    "effect_classes": [],
+    "effects": [],
+    "effects_redacted": true,
+    "observable": false,
+    "total_effects": 0
+  },
+  "call_chain": null,
+  "envelope_comparison": {
+    "plan": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
+    },
+    "proof": null,
+    "token": null
+  },
+  "execution_plan": {
+    "execution_plan_digest": {
+      "algorithm": "sha256",
+      "value": "e21283c3227399fd2cab2c1ba215c00650f5022a77e12c5dd4948666f0a7bf7a"
+    },
+    "execution_plan_id": "urn:guild:request:fetch-transform:no-reduction:v1:execution-plan"
+  },
+  "execution_window": {
+    "finished_at": null,
+    "started_at": null
+  },
+  "granted_but_unused_authority": {
+    "derivation_status": "complete",
+    "fully_unused_grants": [],
+    "fully_unused_grants_redacted": true,
+    "reason_codes": []
+  },
+  "holder_binding": null,
+  "issued_at": "2026-03-20T13:03:40Z",
+  "issuer": {
+    "issuer_epoch": 3,
+    "issuer_id": "urn:guild:issuer:draft-control-plane:v1",
+    "key_id": "draft-hmac-2026-03"
+  },
+  "kind": "guild.witness_record",
+  "notes": "M7 draft-v1 witness over bounded observation. This does not claim runtime-general completeness.",
+  "observation_coverage": {
+    "families": [
+      {
+        "draft_effect_class": "clock.read",
+        "family": "clock.read",
+        "mapping_status": "exact",
+        "reason_codes": [],
+        "scope_descriptors": [
+          "clock.read"
+        ],
+        "scope_kind": "system",
+        "status": "complete",
+        "supports_absence_claims": true,
+        "supports_positive_facts": true
+      },
+      {
+        "draft_effect_class": "fs.read",
+        "family": "fs.read",
+        "mapping_status": "exact",
+        "reason_codes": [],
+        "scope_descriptors": [
+          "/workspace/input/transform-config.json"
+        ],
+        "scope_kind": "filesystem",
+        "status": "complete",
+        "supports_absence_claims": true,
+        "supports_positive_facts": true
+      },
+      {
+        "draft_effect_class": "fs.write",
+        "family": "fs.write",
+        "mapping_status": "exact",
+        "reason_codes": [],
+        "scope_descriptors": [
+          "/workspace/output/daily-result.json"
+        ],
+        "scope_kind": "filesystem",
+        "status": "complete",
+        "supports_absence_claims": true,
+        "supports_positive_facts": true
+      },
+      {
+        "draft_effect_class": "net.connect",
+        "family": "net.connect",
+        "mapping_status": "exact",
+        "reason_codes": [],
+        "scope_descriptors": [
+          "GET:https://api.vendor.example.com:443/v1/source/daily.json"
+        ],
+        "scope_kind": "network",
+        "status": "complete",
+        "supports_absence_claims": true,
+        "supports_positive_facts": true
+      },
+      {
+        "draft_effect_class": "secret.read",
+        "family": "secret.read",
+        "mapping_status": "exact",
+        "reason_codes": [],
+        "scope_descriptors": [
+          "vault://prod/vendor/source-api-token"
+        ],
+        "scope_kind": "secret",
+        "status": "complete",
+        "supports_absence_claims": true,
+        "supports_positive_facts": true
+      }
+    ],
+    "overall_status": "complete"
+  },
+  "observation_source": {
+    "notes": "Complete bounded observation before witness redaction removes concrete effect details.",
+    "source_id": "urn:guild:observation:fixture:fetch-transform:redacted:v1",
+    "source_kind": "bounded-observation-fixture",
+    "version": "1.0.0"
+  },
+  "proof_basis": null,
+  "protection": {
+    "canonicalization": "guild-json-c14n-v1",
+    "claims_digest": {
+      "algorithm": "sha256",
+      "value": "fcbc9e600099f877a9a3fc8fc0f0a7b3b673ca0de16445a4b1f1a83a207f32fc"
+    },
+    "mac_base64": "gRINXfPEeK/T4SEGrs/0VL2fVATES1/7aIWeS3Wg14I=",
+    "mode": "hmac-sha256"
+  },
+  "reason_codes": [],
+  "redaction": {
+    "profile": "counts_only",
+    "raw_trace_digest": {
+      "algorithm": "sha256",
+      "value": "5192eba23bd49ba120d5104447c7e2ed52f7fda98f7800f9780d68961daaba4f"
+    },
+    "raw_trace_included": false,
+    "redacted_content_digest": {
+      "algorithm": "sha256",
+      "value": "f8937f54995837bc7608a74b5b9780cb3867e5525f0322a4b38dc6cad5ccc7c5"
+    },
+    "redacted_fields": [
+      "actual_exercised_authority.effects",
+      "blocked_attempted_authority.effects",
+      "call_chain.links",
+      "granted_but_unused_authority.fully_unused_grants",
+      "raw_trace"
+    ]
+  },
+  "request_id": "urn:guild:request:fetch-transform:no-reduction:v1",
+  "runtime_binding": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "subject": {
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "fec4ee0d8541bab9129a83fb530d1fa0378916beabe80c7ccedbfdd0fd8421f8"
+    },
+    "contract_digest": {
+      "algorithm": "sha256",
+      "value": "6f297ea89ccd12696b30db79de1a5ce71223e33c2a0799888fb5bb553af4bff8"
+    },
+    "export_name": "fetch_and_transform",
+    "input_class_fingerprint": {
+      "canonicalization": "rfc8785-jcs",
+      "digest": {
+        "algorithm": "sha256",
+        "value": "c69ff0208dfc627c10beb81d20babffc27585fd741b1f3d8b3beb32f1e0c6f46"
+      },
+      "kind": "json-schema-hash"
+    },
+    "invocation_input_digest": null,
+    "skill_contract_id": "urn:guild:contract:fetch-transform:v1"
+  },
+  "token_basis": null,
+  "unmapped_observations": [],
+  "version": "1.0.0",
+  "witness_id": "urn:guild:request:fetch-transform:no-reduction:v1:execution-plan:witness",
+  "witness_status": "within_envelope"
+}

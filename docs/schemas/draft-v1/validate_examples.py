@@ -11,6 +11,8 @@ from admission_core import (
 )
 from minimization_core import build_minimization_proof
 from token_core import create_child_token, create_root_token, verify_token
+from witness_core import verify_claim, verify_witness
+from witness_examples import build_witness_fixtures
 
 
 EXAMPLES = [
@@ -32,6 +34,14 @@ EXAMPLES = [
     ("proof_record.schema.json", "examples/fetch-transform.bounded.proof.json"),
     ("proof_record.schema.json", "examples/zero-authority.proof.json"),
     ("witness_record.schema.json", "examples/cluster-rollout.witness.json"),
+    ("witness_record.schema.json", "examples/local-log-analyzer.within-envelope.witness.json"),
+    ("witness_record.schema.json", "examples/local-log-analyzer.out-of-envelope.witness.json"),
+    ("witness_record.schema.json", "examples/fetch-transform.coverage-limited.witness.json"),
+    ("witness_record.schema.json", "examples/fetch-transform.redacted-claim-blocked.witness.json"),
+    ("witness_record.schema.json", "examples/fetch-transform.blocked-attempt.witness.json"),
+    ("witness_record.schema.json", "examples/zero-authority.witness.json"),
+    ("witness_record.schema.json", "examples/runtime-mapping-limited.witness.json"),
+    ("witness_record.schema.json", "examples/local-log-analyzer.runtime-mismatch.witness.json"),
     ("admission_request.schema.json", "examples/zero-authority.admit.request.json"),
     ("admission_request.schema.json", "examples/zero-authority.migrate.request.json"),
     ("admission_request.schema.json", "examples/fetch-transform.downgrade.request.json"),
@@ -666,6 +676,266 @@ def verify_token_cases() -> list[str]:
     return failures
 
 
+def verify_witness_cases() -> list[str]:
+    failures: list[str] = []
+    fixtures = build_witness_fixtures()
+    fixtures_repeat = build_witness_fixtures()
+    issuer_keys = {
+        "urn:guild:issuer:draft-control-plane:v1": {
+            "draft-hmac-2026-03": "guild-draft-shared-secret-2026-03"
+        }
+    }
+
+    for filename, data in fixtures.items():
+        checked = load_json(f"examples/{filename}")
+        if canonical_json(data["witness"]) != canonical_json(checked):
+            failures.append(f"{filename}: generated witness did not match the checked example")
+        if canonical_json(data["witness"]) != canonical_json(fixtures_repeat[filename]["witness"]):
+            failures.append(f"{filename}: repeated witness generation was non-deterministic")
+
+    within = fixtures["local-log-analyzer.within-envelope.witness.json"]
+    within_verification = verify_witness(
+        within["witness"],
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=within["plan"],
+        contract=within["contract"],
+        proof=within["proof"],
+        token=within["token"],
+    )
+    if not within_verification["verified"] or within_verification["witness_status"] != "within_envelope":
+        failures.append("within-envelope witness did not verify cleanly as within_envelope")
+    within_claim = verify_claim(
+        within["witness"],
+        {"claim_type": "no_authority_use_outside_token"},
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=within["plan"],
+        contract=within["contract"],
+        proof=within["proof"],
+        token=within["token"],
+    )
+    if within_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("within-envelope witness did not satisfy the proof-backed token absence claim")
+
+    out_of_envelope = fixtures["local-log-analyzer.out-of-envelope.witness.json"]
+    out_verification = verify_witness(
+        out_of_envelope["witness"],
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=out_of_envelope["plan"],
+        contract=out_of_envelope["contract"],
+        proof=out_of_envelope["proof"],
+        token=out_of_envelope["token"],
+    )
+    if not out_verification["verified"] or out_verification["witness_status"] != "out_of_envelope":
+        failures.append("out-of-envelope witness did not verify as an authentic out_of_envelope record")
+    out_claim = verify_claim(
+        out_of_envelope["witness"],
+        {"claim_type": "no_authority_use_outside_token"},
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=out_of_envelope["plan"],
+        contract=out_of_envelope["contract"],
+        proof=out_of_envelope["proof"],
+        token=out_of_envelope["token"],
+    )
+    if out_claim["claim_evaluation"]["status"] != "violated" or "OBSERVED_EFFECT_OUTSIDE_TOKEN" not in out_claim["claim_evaluation"]["reason_codes"]:
+        failures.append("out-of-envelope witness did not report token-envelope violation correctly")
+
+    coverage_limited = fixtures["fetch-transform.coverage-limited.witness.json"]
+    coverage_verification = verify_witness(
+        coverage_limited["witness"],
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=coverage_limited["plan"],
+        contract=coverage_limited["contract"],
+    )
+    if not coverage_verification["verified"] or coverage_verification["witness_status"] != "coverage_limited":
+        failures.append("coverage-limited witness did not verify as coverage_limited")
+    coverage_claim = verify_claim(
+        coverage_limited["witness"],
+        {
+            "claim_type": "no_network_egress_except_allowlist",
+            "network_allowlist": [
+                {
+                    "host": "api.vendor.example.com",
+                    "ports": [443],
+                    "schemes": ["https"],
+                    "path_prefixes": ["/v1/source/daily.json"],
+                    "methods": ["GET"],
+                }
+            ],
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=coverage_limited["plan"],
+        contract=coverage_limited["contract"],
+    )
+    if coverage_claim["claim_evaluation"]["status"] != "not_provable" or "CLAIM_NOT_PROVABLE_FROM_COVERAGE" not in coverage_claim["claim_evaluation"]["reason_codes"]:
+        failures.append("coverage-limited witness did not fail closed for the network absence claim")
+
+    redacted = fixtures["fetch-transform.redacted-claim-blocked.witness.json"]
+    redacted_verification = verify_witness(
+        redacted["witness"],
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=redacted["plan"],
+        contract=redacted["contract"],
+    )
+    if not redacted_verification["verified"] or redacted_verification["witness_status"] != "within_envelope":
+        failures.append("counts-only redacted witness did not remain a valid within_envelope record")
+    redacted_claim = verify_claim(
+        redacted["witness"],
+        {
+            "claim_type": "no_filesystem_writes_outside_prefixes",
+            "paths": ["/workspace/output/**"],
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=redacted["plan"],
+        contract=redacted["contract"],
+    )
+    if redacted_claim["claim_evaluation"]["status"] != "not_provable" or "REDACTION_PREVENTS_CLAIM_VERIFICATION" not in redacted_claim["claim_evaluation"]["reason_codes"]:
+        failures.append("redacted witness did not fail closed for the filesystem absence claim")
+
+    blocked = fixtures["fetch-transform.blocked-attempt.witness.json"]
+    blocked_verification = verify_witness(
+        blocked["witness"],
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=blocked["plan"],
+        contract=blocked["contract"],
+    )
+    if not blocked_verification["verified"] or blocked_verification["witness_status"] != "within_envelope":
+        failures.append("blocked-attempt witness did not verify as a valid within_envelope record")
+    if "net.connect" in blocked["witness"]["actual_exercised_authority"]["effect_classes"]:
+        failures.append("blocked-attempt witness incorrectly conflated blocked network activity with exercised authority")
+    if "net.connect" not in blocked["witness"]["blocked_attempted_authority"]["effect_classes"]:
+        failures.append("blocked-attempt witness did not preserve blocked network activity separately")
+    blocked_claim = verify_claim(
+        blocked["witness"],
+        {
+            "claim_type": "no_blocked_attempts_of_classes",
+            "effect_classes": ["net.connect"],
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=blocked["plan"],
+        contract=blocked["contract"],
+    )
+    if blocked_claim["claim_evaluation"]["status"] != "violated":
+        failures.append("blocked-attempt witness did not report the blocked net.connect attempt")
+
+    cluster = fixtures["cluster-rollout.witness.json"]
+    cluster_verification = verify_witness(
+        cluster["witness"],
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=cluster["plan"],
+        contract=cluster["contract"],
+        token=cluster["token"],
+        parent_token=cluster["parent_token"],
+    )
+    if not cluster_verification["verified"] or cluster_verification["witness_status"] != "within_envelope":
+        failures.append("delegation-chain witness did not verify as within_envelope")
+    cluster_claim_ok = verify_claim(
+        cluster["witness"],
+        {
+            "claim_type": "no_delegation_beyond_hops",
+            "max_hops": 1,
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=cluster["plan"],
+        contract=cluster["contract"],
+        token=cluster["token"],
+        parent_token=cluster["parent_token"],
+    )
+    if cluster_claim_ok["claim_evaluation"]["status"] != "satisfied":
+        failures.append("delegation-chain witness did not satisfy the one-hop delegation claim")
+    cluster_claim_bad = verify_claim(
+        cluster["witness"],
+        {
+            "claim_type": "no_delegation_beyond_hops",
+            "max_hops": 0,
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=cluster["plan"],
+        contract=cluster["contract"],
+        token=cluster["token"],
+        parent_token=cluster["parent_token"],
+    )
+    if cluster_claim_bad["claim_evaluation"]["status"] != "violated":
+        failures.append("delegation-chain witness did not fail the zero-hop delegation claim")
+
+    zero = fixtures["zero-authority.witness.json"]
+    zero_verification = verify_witness(
+        zero["witness"],
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=zero["plan"],
+        contract=zero["contract"],
+        proof=zero["proof"],
+        token=zero["token"],
+    )
+    if not zero_verification["verified"] or zero_verification["witness_status"] != "within_envelope":
+        failures.append("zero-authority witness did not verify cleanly")
+    if zero["witness"]["actual_exercised_authority"]["total_effects"] != 0:
+        failures.append("zero-authority witness unexpectedly recorded exercised authority")
+    if zero["witness"]["blocked_attempted_authority"]["total_effects"] != 0:
+        failures.append("zero-authority witness unexpectedly recorded blocked attempts")
+    zero_claim = verify_claim(
+        zero["witness"],
+        {"claim_type": "no_authority_use_outside_token"},
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=zero["plan"],
+        contract=zero["contract"],
+        proof=zero["proof"],
+        token=zero["token"],
+    )
+    if zero_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("zero-authority witness did not satisfy the no-authority-use claim")
+
+    mapping = fixtures["runtime-mapping-limited.witness.json"]
+    mapping_verification = verify_witness(
+        mapping["witness"],
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=mapping["plan"],
+        contract=mapping["contract"],
+    )
+    if not mapping_verification["verified"] or mapping_verification["witness_status"] != "coverage_limited":
+        failures.append("runtime-mapping-limited witness did not verify as coverage_limited")
+    mapping_claim = verify_claim(
+        mapping["witness"],
+        {"claim_type": "no_authority_use_outside_plan"},
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=mapping["plan"],
+        contract=mapping["contract"],
+    )
+    if mapping_claim["claim_evaluation"]["status"] != "not_provable" or "CLAIM_NOT_PROVABLE_FROM_COVERAGE" not in mapping_claim["claim_evaluation"]["reason_codes"]:
+        failures.append("runtime-mapping-limited witness did not fail closed for an absence claim")
+
+    runtime_mismatch = fixtures["local-log-analyzer.runtime-mismatch.witness.json"]
+    mismatch_verification = verify_witness(
+        runtime_mismatch["witness"],
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T16:00:00Z",
+        plan=runtime_mismatch["plan"],
+        contract=runtime_mismatch["contract"],
+        proof=runtime_mismatch["proof"],
+        token=runtime_mismatch["token"],
+    )
+    if mismatch_verification["verified"] or "RUNTIME_BINDING_MISMATCH" not in mismatch_verification["reason_codes"]:
+        failures.append("runtime-binding-mismatch witness did not fail closed with RUNTIME_BINDING_MISMATCH")
+
+    return failures
+
+
 def main() -> int:
     registry = build_registry()
     failures: list[str] = []
@@ -674,6 +944,7 @@ def main() -> int:
     failures.extend(verify_invalid_runtime_probes(registry))
     failures.extend(verify_minimization_cases())
     failures.extend(verify_token_cases())
+    failures.extend(verify_witness_cases())
 
     if failures:
         print("Validation failed:")
@@ -681,7 +952,7 @@ def main() -> int:
             print(f" - {failure}")
         return 1
 
-    print("All bundled examples, admission cases, minimization cases, and M6 token cases validate cleanly.")
+    print("All bundled examples, admission cases, minimization cases, M6 token cases, and M7 witness cases validate cleanly.")
     return 0
 
 

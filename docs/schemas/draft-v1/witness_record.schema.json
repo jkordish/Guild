@@ -2,6 +2,658 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Guild Witness Record",
   "type": "object",
+  "$defs": {
+    "digest_or_null": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "identifier_or_null": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "timestamp_or_null": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "issuer": {
+      "type": "object",
+      "properties": {
+        "issuer_id": {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        "key_id": {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        "issuer_epoch": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "issuer_id",
+        "key_id",
+        "issuer_epoch"
+      ],
+      "additionalProperties": false
+    },
+    "execution_plan_binding": {
+      "type": "object",
+      "properties": {
+        "execution_plan_id": {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        "execution_plan_digest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        }
+      },
+      "required": [
+        "execution_plan_id",
+        "execution_plan_digest"
+      ],
+      "additionalProperties": false
+    },
+    "runtime_binding": {
+      "type": "object",
+      "properties": {
+        "runtime_guarantee_id": {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        "runtime_guarantee_digest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "runtime": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "vendor": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "runtime_guarantee_id",
+        "runtime_guarantee_digest",
+        "runtime"
+      ],
+      "additionalProperties": false
+    },
+    "proof_basis": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "proof_id": {
+              "$ref": "common.schema.json#/$defs/identifier"
+            },
+            "proof_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "proof_status": {
+              "$ref": "common.schema.json#/$defs/proof_status"
+            }
+          },
+          "required": [
+            "proof_id",
+            "proof_digest",
+            "proof_status"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "token_basis": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "token_id": {
+              "$ref": "common.schema.json#/$defs/identifier"
+            },
+            "token_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "issuance_basis": {
+              "$ref": "common.schema.json#/$defs/token_issuance_basis"
+            },
+            "parent_token_id": {
+              "$ref": "#/$defs/identifier_or_null"
+            },
+            "parent_token_digest": {
+              "$ref": "#/$defs/digest_or_null"
+            },
+            "verification_result_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "verification_decision": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "deny"
+              ]
+            },
+            "verification_verified": {
+              "type": "boolean"
+            },
+            "verification_reason_codes": {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/token_verification_reason_code"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "token_id",
+            "token_digest",
+            "issuance_basis",
+            "parent_token_id",
+            "parent_token_digest",
+            "verification_result_digest",
+            "verification_decision",
+            "verification_verified",
+            "verification_reason_codes"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "properties": {
+        "skill_contract_id": {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        "contract_digest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "component_digest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "export_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_class_fingerprint": {
+          "$ref": "common.schema.json#/$defs/input_class_fingerprint"
+        },
+        "invocation_input_digest": {
+          "$ref": "#/$defs/digest_or_null"
+        }
+      },
+      "required": [
+        "skill_contract_id",
+        "contract_digest",
+        "component_digest",
+        "export_name",
+        "input_class_fingerprint",
+        "invocation_input_digest"
+      ],
+      "additionalProperties": false
+    },
+    "holder_binding": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "holder_id": {
+              "$ref": "common.schema.json#/$defs/identifier"
+            },
+            "issued_for_delegatee": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "holder_id",
+            "issued_for_delegatee"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "call_chain": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "chain_id": {
+              "$ref": "common.schema.json#/$defs/identifier"
+            },
+            "chain_digest": {
+              "$ref": "common.schema.json#/$defs/digest"
+            },
+            "links": {
+              "oneOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "common.schema.json#/$defs/identifier"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "chain_id",
+            "chain_digest",
+            "links"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "observation_source": {
+      "type": "object",
+      "properties": {
+        "source_id": {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        "source_kind": {
+          "$ref": "common.schema.json#/$defs/observation_source_kind"
+        },
+        "version": {
+          "$ref": "common.schema.json#/$defs/semver"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_kind",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "coverage_entry": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "$ref": "common.schema.json#/$defs/nonempty_string"
+        },
+        "draft_effect_class": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/effect_class"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope_kind": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/effect_scope_kind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "common.schema.json#/$defs/witness_coverage_status"
+        },
+        "mapping_status": {
+          "$ref": "common.schema.json#/$defs/witness_mapping_status"
+        },
+        "supports_positive_facts": {
+          "type": "boolean"
+        },
+        "supports_absence_claims": {
+          "type": "boolean"
+        },
+        "scope_descriptors": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/nonempty_string"
+          },
+          "uniqueItems": true
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/witness_reason_code"
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "family",
+        "draft_effect_class",
+        "scope_kind",
+        "status",
+        "mapping_status",
+        "supports_positive_facts",
+        "supports_absence_claims",
+        "scope_descriptors",
+        "reason_codes"
+      ],
+      "additionalProperties": false
+    },
+    "authority_summary": {
+      "type": "object",
+      "properties": {
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/effect_spec"
+          }
+        },
+        "effect_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/effect_class"
+          },
+          "uniqueItems": true
+        },
+        "total_effects": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "effects_redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "effects",
+        "effect_classes",
+        "total_effects",
+        "effects_redacted"
+      ],
+      "additionalProperties": false
+    },
+    "blocked_effect_observation": {
+      "type": "object",
+      "properties": {
+        "effect": {
+          "$ref": "common.schema.json#/$defs/effect_spec"
+        },
+        "reason_code": {
+          "$ref": "common.schema.json#/$defs/nonempty_string"
+        },
+        "message": {
+          "$ref": "common.schema.json#/$defs/nonempty_string"
+        },
+        "details_digest": {
+          "$ref": "#/$defs/digest_or_null"
+        }
+      },
+      "required": [
+        "effect",
+        "reason_code",
+        "message",
+        "details_digest"
+      ],
+      "additionalProperties": false
+    },
+    "blocked_authority_summary": {
+      "type": "object",
+      "properties": {
+        "observable": {
+          "type": "boolean"
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/blocked_effect_observation"
+          }
+        },
+        "effect_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/effect_class"
+          },
+          "uniqueItems": true
+        },
+        "total_effects": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "effects_redacted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "observable",
+        "effects",
+        "effect_classes",
+        "total_effects",
+        "effects_redacted"
+      ],
+      "additionalProperties": false
+    },
+    "unused_authority_summary": {
+      "type": "object",
+      "properties": {
+        "derivation_status": {
+          "$ref": "common.schema.json#/$defs/witness_derivation_status"
+        },
+        "fully_unused_grants": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/effect_spec"
+          }
+        },
+        "fully_unused_grants_redacted": {
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/witness_reason_code"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "derivation_status",
+        "fully_unused_grants",
+        "fully_unused_grants_redacted",
+        "reason_codes"
+      ],
+      "additionalProperties": false
+    },
+    "unmapped_observation": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "$ref": "common.schema.json#/$defs/nonempty_string"
+        },
+        "observed_as": {
+          "type": "string",
+          "enum": [
+            "exercised",
+            "blocked"
+          ]
+        },
+        "details_summary": {
+          "$ref": "common.schema.json#/$defs/nonempty_string"
+        },
+        "details_digest": {
+          "$ref": "#/$defs/digest_or_null"
+        },
+        "coverage_status": {
+          "$ref": "common.schema.json#/$defs/witness_coverage_status"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/witness_reason_code"
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "family",
+        "observed_as",
+        "details_summary",
+        "details_digest",
+        "coverage_status",
+        "reason_codes"
+      ],
+      "additionalProperties": false
+    },
+    "envelope_comparison": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "within",
+            "outside",
+            "not_applicable"
+          ]
+        },
+        "outside_effects": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/effect_spec"
+          }
+        },
+        "outside_effect_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/effect_class"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "status",
+        "outside_effects",
+        "outside_effect_classes"
+      ],
+      "additionalProperties": false
+    },
+    "execution_window": {
+      "type": "object",
+      "properties": {
+        "started_at": {
+          "$ref": "#/$defs/timestamp_or_null"
+        },
+        "finished_at": {
+          "$ref": "#/$defs/timestamp_or_null"
+        }
+      },
+      "required": [
+        "started_at",
+        "finished_at"
+      ],
+      "additionalProperties": false
+    },
+    "redaction": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "$ref": "common.schema.json#/$defs/redaction_profile"
+        },
+        "raw_trace_included": {
+          "type": "boolean"
+        },
+        "raw_trace_digest": {
+          "$ref": "#/$defs/digest_or_null"
+        },
+        "redacted_fields": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/nonempty_string"
+          },
+          "uniqueItems": true
+        },
+        "redacted_content_digest": {
+          "$ref": "#/$defs/digest_or_null"
+        }
+      },
+      "required": [
+        "profile",
+        "raw_trace_included",
+        "raw_trace_digest",
+        "redacted_fields",
+        "redacted_content_digest"
+      ],
+      "additionalProperties": false
+    },
+    "protection": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "common.schema.json#/$defs/token_protection_mode"
+        },
+        "canonicalization": {
+          "type": "string",
+          "const": "guild-json-c14n-v1"
+        },
+        "claims_digest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "mac_base64": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "mode",
+        "canonicalization",
+        "claims_digest",
+        "mac_base64"
+      ],
+      "additionalProperties": false
+    }
+  },
   "properties": {
     "kind": {
       "const": "guild.witness_record"
@@ -12,182 +664,148 @@
     "witness_id": {
       "$ref": "common.schema.json#/$defs/identifier"
     },
-    "invocation_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+    "issuer": {
+      "$ref": "#/$defs/issuer"
     },
-    "sequence_no": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "timestamp": {
+    "issued_at": {
       "$ref": "common.schema.json#/$defs/timestamp"
     },
-    "witness_level": {
-      "$ref": "common.schema.json#/$defs/witness_level"
-    },
-    "prev_witness_hash": {
-      "oneOf": [
-        {
-          "$ref": "common.schema.json#/$defs/digest"
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
-    "leaf_hash": {
-      "$ref": "common.schema.json#/$defs/digest"
-    },
-    "skill_contract_id": {
+    "request_id": {
       "$ref": "common.schema.json#/$defs/identifier"
     },
-    "component_digest": {
-      "$ref": "common.schema.json#/$defs/digest"
+    "execution_plan": {
+      "$ref": "#/$defs/execution_plan_binding"
     },
-    "export_name": {
-      "type": "string",
-      "minLength": 1
+    "proof_basis": {
+      "$ref": "#/$defs/proof_basis"
     },
-    "runtime_guarantee_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+    "token_basis": {
+      "$ref": "#/$defs/token_basis"
     },
-    "proof_id": {
-      "$ref": "common.schema.json#/$defs/identifier"
+    "subject": {
+      "$ref": "#/$defs/subject"
     },
-    "authority_plan_digest": {
-      "$ref": "common.schema.json#/$defs/digest"
+    "runtime_binding": {
+      "$ref": "#/$defs/runtime_binding"
     },
-    "event": {
+    "audience_binding": {
       "type": "object",
       "properties": {
-        "event_type": {
-          "type": "string",
-          "enum": [
-            "policy_decision",
-            "capability_issue",
-            "capability_use",
-            "hostcall",
-            "invocation_result"
-          ]
+        "audiences": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/nonempty_string"
+          },
+          "uniqueItems": true
         },
-        "effect_class": {
-          "$ref": "common.schema.json#/$defs/effect_class"
-        },
-        "requested_scope": {
-          "$ref": "common.schema.json#/$defs/effect_scope"
-        },
-        "granted_scope": {
-          "$ref": "common.schema.json#/$defs/effect_scope"
-        },
-        "decision": {
-          "type": "string",
-          "enum": [
-            "allow",
-            "deny",
-            "downgrade",
-            "observe"
-          ]
-        },
-        "status": {
-          "type": "string",
-          "enum": [
-            "success",
-            "error",
-            "timeout"
-          ]
-        },
-        "resource_audience": {
-          "$ref": "common.schema.json#/$defs/effect_scope"
-        },
-        "input_hash": {
-          "$ref": "common.schema.json#/$defs/digest"
-        },
-        "output_hash": {
-          "$ref": "common.schema.json#/$defs/digest"
-        },
-        "error_code": {
-          "type": "string",
-          "minLength": 1
-        },
-        "metadata": {
-          "type": "object"
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/resource_binding"
+          }
         }
       },
       "required": [
-        "event_type"
-      ],
-      "additionalProperties": false,
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "event_type": {
-                "enum": [
-                  "capability_issue",
-                  "capability_use",
-                  "hostcall"
-                ]
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "effect_class",
-              "decision"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "event_type": {
-                "const": "policy_decision"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "decision"
-            ]
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "event_type": {
-                "const": "invocation_result"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "status"
-            ]
-          }
-        }
-      ]
-    },
-    "signature": {
-      "type": "object",
-      "properties": {
-        "mode": {
-          "$ref": "common.schema.json#/$defs/signature_mode"
-        },
-        "key_id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "signature_value": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "required": [
-        "mode",
-        "key_id",
-        "signature_value"
+        "audiences",
+        "resources"
       ],
       "additionalProperties": false
+    },
+    "holder_binding": {
+      "$ref": "#/$defs/holder_binding"
+    },
+    "call_chain": {
+      "$ref": "#/$defs/call_chain"
+    },
+    "observation_source": {
+      "$ref": "#/$defs/observation_source"
+    },
+    "observation_coverage": {
+      "type": "object",
+      "properties": {
+        "overall_status": {
+          "$ref": "common.schema.json#/$defs/witness_coverage_status"
+        },
+        "families": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/coverage_entry"
+          }
+        }
+      },
+      "required": [
+        "overall_status",
+        "families"
+      ],
+      "additionalProperties": false
+    },
+    "actual_exercised_authority": {
+      "$ref": "#/$defs/authority_summary"
+    },
+    "blocked_attempted_authority": {
+      "$ref": "#/$defs/blocked_authority_summary"
+    },
+    "granted_but_unused_authority": {
+      "$ref": "#/$defs/unused_authority_summary"
+    },
+    "unmapped_observations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unmapped_observation"
+      }
+    },
+    "envelope_comparison": {
+      "type": "object",
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/envelope_comparison"
+        },
+        "proof": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/envelope_comparison"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "token": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/envelope_comparison"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "plan",
+        "proof",
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "execution_window": {
+      "$ref": "#/$defs/execution_window"
+    },
+    "witness_status": {
+      "$ref": "common.schema.json#/$defs/witness_status"
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/witness_reason_code"
+      },
+      "uniqueItems": true
+    },
+    "redaction": {
+      "$ref": "#/$defs/redaction"
+    },
+    "protection": {
+      "$ref": "#/$defs/protection"
     },
     "notes": {
       "type": "string"
@@ -200,19 +818,29 @@
     "kind",
     "version",
     "witness_id",
-    "invocation_id",
-    "sequence_no",
-    "timestamp",
-    "witness_level",
-    "prev_witness_hash",
-    "leaf_hash",
-    "skill_contract_id",
-    "component_digest",
-    "export_name",
-    "runtime_guarantee_id",
-    "proof_id",
-    "authority_plan_digest",
-    "event"
+    "issuer",
+    "issued_at",
+    "request_id",
+    "execution_plan",
+    "proof_basis",
+    "token_basis",
+    "subject",
+    "runtime_binding",
+    "audience_binding",
+    "holder_binding",
+    "call_chain",
+    "observation_source",
+    "observation_coverage",
+    "actual_exercised_authority",
+    "blocked_attempted_authority",
+    "granted_but_unused_authority",
+    "unmapped_observations",
+    "envelope_comparison",
+    "execution_window",
+    "witness_status",
+    "reason_codes",
+    "redaction",
+    "protection"
   ],
   "additionalProperties": false
 }

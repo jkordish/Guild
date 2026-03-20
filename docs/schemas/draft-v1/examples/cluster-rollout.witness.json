@@ -1,116 +1,233 @@
 {
-  "kind": "guild.witness_record",
-  "version": "1.0.0",
-  "witness_id": "urn:guild:witness:cluster-rollout:invocation-42:0003",
-  "invocation_id": "urn:guild:invocation:cluster-rollout:42",
-  "sequence_no": 3,
-  "timestamp": "2026-03-20T12:30:10Z",
-  "witness_level": "full",
-  "prev_witness_hash": {
-    "algorithm": "sha256",
-    "value": "08fcc27a7de85226a58edeb3ee6a54c8b08c930b1c1749b7b4b3e7f73dbfa005"
-  },
-  "leaf_hash": {
-    "algorithm": "sha256",
-    "value": "37733735c71bbfaf8bf8e0ca444910d33be958c242156d37a1da2f895e0dfe8d"
-  },
-  "skill_contract_id": "urn:guild:contract:cluster-rollout:v1",
-  "component_digest": {
-    "algorithm": "sha256",
-    "value": "bf1dc94321cd91c6428b6c81de14342fff34b1cc5ff1f2591789da15997d4e8c"
-  },
-  "export_name": "apply_rollout",
-  "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
-  "proof_id": "urn:guild:proof:cluster-rollout:v1",
-  "authority_plan_digest": {
-    "algorithm": "sha256",
-    "value": "426ccb48f91cc371d1a1debc27df9dde7eb2773f6b9a8249b60dbce37c99e142"
-  },
-  "event": {
-    "event_type": "hostcall",
-    "effect_class": "net.connect",
-    "requested_scope": {
-      "kind": "network",
-      "audiences": [
-        {
-          "host": "kube-api.prod.example.internal",
-          "ports": [
-            443
+  "actual_exercised_authority": {
+    "effect_classes": [
+      "net.connect"
+    ],
+    "effects": [
+      {
+        "cardinality": {
+          "max_bytes": 2048,
+          "max_calls": 1
+        },
+        "effect_class": "net.connect",
+        "scope": {
+          "audiences": [
+            {
+              "host": "kube-api.prod.example.internal",
+              "methods": [
+                "PATCH"
+              ],
+              "path_prefixes": [
+                "/apis/apps/v1/namespaces/prod/deployments/api"
+              ],
+              "ports": [
+                443
+              ],
+              "schemes": [
+                "https"
+              ]
+            }
           ],
-          "schemes": [
-            "https"
-          ],
-          "path_prefixes": [
-            "/api/",
-            "/apis/"
-          ],
-          "methods": [
-            "GET",
-            "PATCH",
-            "POST"
-          ]
+          "kind": "network"
         }
-      ]
-    },
-    "granted_scope": {
-      "kind": "network",
-      "audiences": [
-        {
-          "host": "kube-api.prod.example.internal",
-          "ports": [
-            443
-          ],
-          "schemes": [
-            "https"
-          ],
-          "path_prefixes": [
-            "/apis/apps/v1/namespaces/prod/deployments/"
-          ],
-          "methods": [
-            "PATCH"
-          ]
-        }
-      ]
-    },
-    "decision": "allow",
-    "status": "success",
-    "resource_audience": {
-      "kind": "network",
-      "audiences": [
-        {
-          "host": "kube-api.prod.example.internal",
-          "ports": [
-            443
-          ],
-          "schemes": [
-            "https"
-          ],
-          "path_prefixes": [
-            "/apis/apps/v1/namespaces/prod/deployments/"
-          ],
-          "methods": [
-            "PATCH"
-          ]
-        }
-      ]
-    },
-    "input_hash": {
+      }
+    ],
+    "effects_redacted": false,
+    "total_effects": 1
+  },
+  "audience_binding": {
+    "audiences": [
+      "cluster-prod"
+    ],
+    "resources": [
+      {
+        "audience": "cluster-prod",
+        "effect_class": "net.connect",
+        "resource": "https://kube-api.prod.example.internal/apis/apps/"
+      }
+    ]
+  },
+  "blocked_attempted_authority": {
+    "effect_classes": [],
+    "effects": [],
+    "effects_redacted": false,
+    "observable": false,
+    "total_effects": 0
+  },
+  "call_chain": {
+    "chain_digest": {
       "algorithm": "sha256",
-      "value": "4fc8c4a8a68c54cd6b64fd5170e7ea13b13e6abc3963a43be0e51f51c6526628"
+      "value": "e5027dca116b6cc646644ffdacbf130147fe22dfada9a8cf8d978f075df643c0"
     },
-    "output_hash": {
-      "algorithm": "sha256",
-      "value": "ad5456b5f82901047ee77e5a715d6572340b5db069e78c83e4251a558cd67da0"
+    "chain_id": "urn:guild:request:cluster-rollout:admit:v1:call-chain",
+    "links": [
+      "urn:guild:actor:ops-user",
+      "urn:guild:workflow:cluster-rollout",
+      "urn:guild:token:cluster-rollout:root:v1",
+      "urn:guild:service:kube-api-client"
+    ]
+  },
+  "envelope_comparison": {
+    "plan": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
     },
-    "metadata": {
-      "http_status": 200,
-      "delegated_hops_remaining": 0
+    "proof": null,
+    "token": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
     }
   },
-  "signature": {
-    "mode": "external_signer",
-    "key_id": "kms://guild-prod/witness-signer",
-    "signature_value": "MEUCIGuildWitnessSignaturePlaceholder"
+  "execution_plan": {
+    "execution_plan_digest": {
+      "algorithm": "sha256",
+      "value": "a9b01e1d3f9037b9316f38118fd3504f06e8187b3b2027d23d183dac67148192"
+    },
+    "execution_plan_id": "urn:guild:request:cluster-rollout:admit:v1:execution-plan"
   },
-  "notes": "Example full witness entry for a bounded rollout PATCH."
+  "execution_window": {
+    "finished_at": null,
+    "started_at": null
+  },
+  "granted_but_unused_authority": {
+    "derivation_status": "complete",
+    "fully_unused_grants": [],
+    "fully_unused_grants_redacted": false,
+    "reason_codes": []
+  },
+  "holder_binding": {
+    "holder_id": "urn:guild:service:kube-api-client",
+    "issued_for_delegatee": true
+  },
+  "issued_at": "2026-03-20T13:05:20Z",
+  "issuer": {
+    "issuer_epoch": 3,
+    "issuer_id": "urn:guild:issuer:draft-control-plane:v1",
+    "key_id": "draft-hmac-2026-03"
+  },
+  "kind": "guild.witness_record",
+  "notes": "M7 draft-v1 witness over bounded observation. This does not claim runtime-general completeness.",
+  "observation_coverage": {
+    "families": [
+      {
+        "draft_effect_class": "capability.delegate",
+        "family": "capability.delegate",
+        "mapping_status": "exact",
+        "reason_codes": [],
+        "scope_descriptors": [
+          "delegation-chain"
+        ],
+        "scope_kind": "delegation",
+        "status": "complete",
+        "supports_absence_claims": true,
+        "supports_positive_facts": true
+      },
+      {
+        "draft_effect_class": "net.connect",
+        "family": "net.connect",
+        "mapping_status": "exact",
+        "reason_codes": [],
+        "scope_descriptors": [
+          "PATCH:https://kube-api.prod.example.internal:443/apis/apps/v1/namespaces/prod/deployments/api"
+        ],
+        "scope_kind": "network",
+        "status": "complete",
+        "supports_absence_claims": true,
+        "supports_positive_facts": true
+      }
+    ],
+    "overall_status": "complete"
+  },
+  "observation_source": {
+    "notes": "Bounded fixture for the delegated rollout PATCH call.",
+    "source_id": "urn:guild:observation:fixture:cluster-rollout:v1",
+    "source_kind": "bounded-observation-fixture",
+    "version": "1.0.0"
+  },
+  "proof_basis": null,
+  "protection": {
+    "canonicalization": "guild-json-c14n-v1",
+    "claims_digest": {
+      "algorithm": "sha256",
+      "value": "e7856d9e6b7a7699ce38b4384a79f79ed526ac13275e69a99bec622d90083ecf"
+    },
+    "mac_base64": "prznngs6O8WnJIlujV2yNjoxIzBkb30YVFbt8C/Ge4U=",
+    "mode": "hmac-sha256"
+  },
+  "reason_codes": [],
+  "redaction": {
+    "profile": "none",
+    "raw_trace_digest": {
+      "algorithm": "sha256",
+      "value": "f1a3644ca1f67f40f3359f7e66a7469e7a7cc8856b64326ae0ea986a651ed966"
+    },
+    "raw_trace_included": false,
+    "redacted_content_digest": {
+      "algorithm": "sha256",
+      "value": "b25d0ad1797a0e24b17d9cdbdc78aa577a0ed87e9bd5cb627da3216cf587e2a5"
+    },
+    "redacted_fields": [
+      "raw_trace"
+    ]
+  },
+  "request_id": "urn:guild:request:cluster-rollout:admit:v1",
+  "runtime_binding": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "subject": {
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "bf1dc94321cd91c6428b6c81de14342fff34b1cc5ff1f2591789da15997d4e8c"
+    },
+    "contract_digest": {
+      "algorithm": "sha256",
+      "value": "73158871928cf3261d11f37b97acecaed3796a365b2c4041ceb2639a44e017a4"
+    },
+    "export_name": "apply_rollout",
+    "input_class_fingerprint": {
+      "canonicalization": "rfc8785-jcs",
+      "digest": {
+        "algorithm": "sha256",
+        "value": "92cfe6ab8245cbd80c17ae7a977f93e5ad83b5bb834179ba060e952298721de6"
+      },
+      "kind": "json-schema-hash"
+    },
+    "invocation_input_digest": null,
+    "skill_contract_id": "urn:guild:contract:cluster-rollout:v1"
+  },
+  "token_basis": {
+    "issuance_basis": "m4_upper_bound",
+    "parent_token_digest": {
+      "algorithm": "sha256",
+      "value": "b42f58393d2e3ff013e98d387d7555056fe6bfc33f929c8a78fed4f810c2609d"
+    },
+    "parent_token_id": "urn:guild:token:cluster-rollout:root:v1",
+    "token_digest": {
+      "algorithm": "sha256",
+      "value": "718436128c4a2ba8685d1053a4b2639dbd4896d28263c02390c81292d0c05a21"
+    },
+    "token_id": "urn:guild:token:cluster-rollout:child:v1",
+    "verification_decision": "allow",
+    "verification_reason_codes": [],
+    "verification_result_digest": {
+      "algorithm": "sha256",
+      "value": "4d9b3737f0cb74e02607617d0af65e94d08072e08e117153540838b1f7ca5252"
+    },
+    "verification_verified": true
+  },
+  "unmapped_observations": [],
+  "version": "1.0.0",
+  "witness_id": "urn:guild:request:cluster-rollout:admit:v1:execution-plan:witness",
+  "witness_status": "within_envelope"
 }

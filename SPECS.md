@@ -420,9 +420,9 @@ For `http-request`, the current repository exposes a bounded request/response mo
 
 Shared contracts may mention broader capability families for future phases, but the active inspect slice MUST either prune unsupported families from the executable surface or reject them before execution. The current repository chooses preflight rejection.
 
-### 12.7 M3/M4/M5/M6 schema-bundle mapping and draft status
+### 12.7 M3/M4/M5/M6/M7 schema-bundle mapping and draft status
 
-The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3/M4/M5/M6 contract vocabulary. It is useful for tightening admission, minimization, and token-materialization semantics, but it is not the canonical product vocabulary for the current repository.
+The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3/M4/M5/M6/M7 contract vocabulary. It is useful for tightening admission, minimization, token-materialization, and witness-verification semantics, but it is not the canonical product vocabulary for the current repository.
 
 The stricter interpretation wins:
 
@@ -433,6 +433,7 @@ The stricter interpretation wins:
 - M4 `execution_plan` artifacts MUST be described as safe upper-bound invocation plans, not minimized authority proofs
 - M5 proof outputs MUST preserve their non-binary status vocabulary rather than being collapsed into a fake minimal/non-minimal story
 - M6 token outputs MUST be described as invocation-bound delegated capability tokens, not as runtime-general enforcement receipts or witness records
+- M7 witness outputs MUST be described as bounded observed-authority records rather than runtime-general attestations
 - denied requested authority MAY yield a downgrade rather than a refusal when hard requirements still hold
 
 Current mapping boundaries:
@@ -492,6 +493,24 @@ That M6 path has hard limits:
 - the current draft implementation MUST be described as HMAC MAC protection over canonical JSON claims, not as public-key signatures
 - the current replay and revocation story MUST be described as local verifier-state behavior only, not as distributed replay protection or distributed revocation
 - M6 MUST NOT be presented as the later M7 witness layer
+
+The current draft-bundle M7 surface is also intentionally narrow:
+
+- `witness_record.schema.json` for exercised-authority witness records
+- `witness_verification_result.schema.json` for explicit witness and fixed-claim verification results
+- `witness_engine.py` plus `witness_core.py` for bounded witness generation, verification, and fixed claim checks
+
+That M7 path has hard limits:
+
+- it MUST record exercised authority separately from blocked attempted authority and granted-but-unused authority
+- it MUST NOT widen any M4, M5, or M6 envelope during witness generation
+- it MUST fail closed on invalid or missing MACs, unknown issuer or key id, linkage mismatch, runtime mismatch, audience mismatch, holder mismatch, call-chain mismatch, unsupported observation sources, malformed summaries, or insufficient coverage for the requested claim
+- absence claims MUST require complete relevant coverage
+- partial coverage MAY support positive observed facts, but it MUST NOT be treated as proof that nothing else happened
+- unmapped or lossy runtime-native observations MUST produce `coverage_limited` or `unverifiable` outcomes, not silent success
+- redaction MUST NOT be described as verified when it removes facts required for the requested claim
+- the current draft implementation MUST be described as HMAC MAC protection over canonical JSON claims, not as public-key signatures or public attestation
+- the current witness path MUST NOT be described as runtime-general completeness because the live Rust inspect surface still lacks a durable per-effect exercised-authority stream aligned with this vocabulary
 
 ## 14. Execution Semantics
 

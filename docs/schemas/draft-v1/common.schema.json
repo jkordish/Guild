@@ -308,6 +308,200 @@
         "TOKEN_SCOPE_EXCEEDS_PROOF"
       ]
     },
+    "witness_coverage_status": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "insufficient"
+      ]
+    },
+    "witness_status": {
+      "type": "string",
+      "enum": [
+        "within_envelope",
+        "out_of_envelope",
+        "coverage_limited",
+        "unverifiable"
+      ]
+    },
+    "witness_mapping_status": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "lossy",
+        "unmapped"
+      ]
+    },
+    "witness_derivation_status": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial",
+        "not_derivable"
+      ]
+    },
+    "witness_reason_code": {
+      "type": "string",
+      "enum": [
+        "AUDIENCE_BINDING_MISMATCH",
+        "CALL_CHAIN_MISMATCH",
+        "CLAIM_NOT_PROVABLE_FROM_COVERAGE",
+        "CLAIM_UNSUPPORTED",
+        "HOLDER_BINDING_MISMATCH",
+        "OBSERVATION_COVERAGE_INSUFFICIENT",
+        "OBSERVATION_COVERAGE_PARTIAL",
+        "OBSERVATION_SOURCE_UNAVAILABLE",
+        "OBSERVATION_SOURCE_UNSUPPORTED",
+        "OBSERVED_EFFECT_OUTSIDE_PLAN",
+        "OBSERVED_EFFECT_OUTSIDE_PROOF",
+        "OBSERVED_EFFECT_OUTSIDE_TOKEN",
+        "PLAN_LINKAGE_MISMATCH",
+        "PROOF_LINKAGE_MISMATCH",
+        "REDACTION_PREVENTS_CLAIM_VERIFICATION",
+        "REDACTION_HASH_MISMATCH",
+        "RUNTIME_BINDING_MISMATCH",
+        "TOKEN_LINKAGE_MISMATCH",
+        "TOKEN_VERIFICATION_FAILED",
+        "TRACE_PARSE_FAILED",
+        "VOCABULARY_MAPPING_LOSSY",
+        "VOCABULARY_MAPPING_UNMAPPED",
+        "WITNESS_ISSUER_UNKNOWN",
+        "WITNESS_KEY_ID_UNKNOWN",
+        "WITNESS_MAC_INVALID",
+        "WITNESS_REASON_CODES_INCONSISTENT",
+        "WITNESS_SCHEMA_INVALID",
+        "WITNESS_STATUS_INCONSISTENT"
+      ]
+    },
+    "witness_claim_type": {
+      "type": "string",
+      "enum": [
+        "no_authority_use_outside_plan",
+        "no_authority_use_outside_proof",
+        "no_authority_use_outside_token",
+        "no_filesystem_writes_outside_prefixes",
+        "no_network_egress_except_allowlist",
+        "no_delegation_beyond_hops",
+        "no_blocked_attempts_of_classes"
+      ]
+    },
+    "witness_claim_status": {
+      "type": "string",
+      "enum": [
+        "satisfied",
+        "violated",
+        "not_provable",
+        "unsupported"
+      ]
+    },
+    "witness_claim": {
+      "type": "object",
+      "properties": {
+        "claim_type": {
+          "$ref": "#/$defs/witness_claim_type"
+        },
+        "effect_classes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect_class"
+          },
+          "uniqueItems": true
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonempty_string"
+          },
+          "uniqueItems": true
+        },
+        "network_allowlist": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/network_audience"
+          }
+        },
+        "max_hops": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        }
+      },
+      "required": [
+        "claim_type"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_filesystem_writes_outside_prefixes"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "paths"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_network_egress_except_allowlist"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "network_allowlist"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_delegation_beyond_hops"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "max_hops"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_blocked_attempts_of_classes"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "effect_classes"
+            ]
+          }
+        }
+      ]
+    },
     "trial_result": {
       "type": "string",
       "enum": [
@@ -386,6 +580,22 @@
         "none",
         "runtime_key",
         "external_signer"
+      ]
+    },
+    "observation_source_kind": {
+      "type": "string",
+      "enum": [
+        "draft-example-harness",
+        "bounded-observation-fixture",
+        "live-runtime-hook"
+      ]
+    },
+    "redaction_profile": {
+      "type": "string",
+      "enum": [
+        "none",
+        "summary_only",
+        "counts_only"
       ]
     },
     "effect_class": {
@@ -754,6 +964,19 @@
         }
       ]
     },
+    "effect_scope_kind": {
+      "type": "string",
+      "enum": [
+        "filesystem",
+        "network",
+        "process",
+        "secret",
+        "environment",
+        "system",
+        "component",
+        "delegation"
+      ]
+    },
     "cardinality": {
       "type": "object",
       "properties": {
@@ -799,6 +1022,26 @@
       "required": [
         "effect_class",
         "scope"
+      ],
+      "additionalProperties": false
+    },
+    "resource_binding": {
+      "type": "object",
+      "properties": {
+        "effect_class": {
+          "$ref": "#/$defs/effect_class"
+        },
+        "audience": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "resource": {
+          "$ref": "#/$defs/nonempty_string"
+        }
+      },
+      "required": [
+        "effect_class",
+        "audience",
+        "resource"
       ],
       "additionalProperties": false
     },

@@ -1,13 +1,14 @@
 # Guild Draft Schemas, v1.0.0
 
-This bundle is the current draft schema surface for Guild's M3, M4, one bounded M5 proof path, and one draft-local M6 token path.
+This bundle is the current draft schema surface for Guild's M3, M4, one bounded M5 proof path, one draft-local M6 token path, and one bounded M7 witness path.
 
-It now covers four distinct layers:
+It now covers five distinct layers:
 
 - M3 hard-requirement precheck over `skill_contract` plus `runtime_guarantee`
 - M4 invocation-specific admission over `skill_contract` plus `admission_request` plus one or more `runtime_guarantee` documents, producing an `execution_plan`
 - M5 counterfactual minimization over an admissible `execution_plan` plus deterministic invocation inputs plus one `comparator_profile`, producing a `proof_record`
 - M6 delegated capability-token issuance and verification over an admissible `execution_plan`, optional `proof_record`, explicit audience and resource bindings, and an optional parent token
+- M7 witness generation and verification over an admissible `execution_plan`, optional `proof_record`, optional verified token basis, and bounded execution observations, producing a `witness_record` plus a `witness_verification_result`
 
 This bundle is still draft. It is useful and now executable, but it is not repo-wide canonical truth until the schema vocabulary and the repository's implemented capability-family surface are aligned.
 
@@ -22,6 +23,7 @@ This bundle is still draft. It is useful and now executable, but it is not repo-
 - Keep M4 honest: it derives a safe upper bound for one invocation. It does **not** minimize that bound.
 - Keep M5 honest: it may only preserve or reduce the M4 upper bound, it may never widen authority, and it must not claim exact minimality unless the explored search model actually proves it.
 - Keep M6 honest: it may materialize only the M4 upper bound or a proof-backed M5 subset, it may never widen either one, and it must say plainly whether the draft path is using a MAC or a signature.
+- Keep M7 honest: it records observed exercised authority and verifies narrow fixed claims against that observation. It does **not** infer absence from incomplete coverage, and it does **not** claim runtime-general completeness while the draft effect vocabulary still diverges from the live Rust inspect surface.
 
 ## Core records
 
@@ -34,6 +36,7 @@ This bundle is still draft. It is useful and now executable, but it is not repo-
 - `delegated_capability_token.schema.json`
 - `token_verification_result.schema.json`
 - `witness_record.schema.json`
+- `witness_verification_result.schema.json`
 - shared definitions in `common.schema.json`
 
 ## Why `authority_ceiling` is in `skill_contract`
@@ -174,7 +177,34 @@ The current M6 layer is also deliberately limited:
 - replay protection is local verifier-side state keyed by token id plus chain identity; it is not distributed replay protection
 - revocation is a local verifier denylist and issuer-epoch hook; it is not distributed revocation
 - the token layer is still draft/example-bounded because the runtime vocabulary alignment problem that limits M5 also limits any stronger M6 enforcement claim
-- M6 does not implement the later M7 witness layer; it only leaves room for future witness linkage
+- M6 remains separate from M7; token issuance does not by itself prove exercised authority
+
+### M7 witness model
+
+The current M7 layer is deliberately narrow and explicit:
+
+- it consumes one admissible `execution_plan`
+- it may consume one `proof_record`
+- it may consume one token plus a verified token basis
+- it consumes one bounded observation source
+- it emits one `witness_record`
+- it verifies witnesses and fixed claims through one `witness_verification_result`
+
+Its semantics are intentionally strict:
+
+- it records exercised authority separately from blocked attempted authority
+- it distinguishes granted-but-unused authority only when coverage is sufficient to derive that fact honestly
+- it tracks observation coverage per relevant effect family rather than treating coverage as one vague global bit
+- absence claims require complete relevant coverage
+- redaction may preserve some narrow claim checks, but if redaction removes needed facts then claim verification returns an explicit non-success result
+
+Its current limits are also explicit:
+
+- the bounded draft harnesses are the only complete observation source in this milestone
+- explicit observation fixtures may also be used for checked negative cases, mapping-limit cases, and blocked-attempt cases
+- the live Rust runtime does **not** yet publish a durable per-effect exercised-authority stream that lines up cleanly with the draft-v1 effect vocabulary
+- witness protection in draft-v1 is the same shared-secret HMAC-SHA256 MAC over canonical JSON claims used by M6, not a public signature or attestation mechanism
+- M7 therefore remains useful but not runtime-general
 
 ## Files included
 
@@ -190,6 +220,7 @@ The current M6 layer is also deliberately limited:
 - `delegated_capability_token.schema.json`
 - `token_verification_result.schema.json`
 - `witness_record.schema.json`
+- `witness_verification_result.schema.json`
 
 ### Examples
 
@@ -232,7 +263,15 @@ The current M6 layer is also deliberately limited:
 - `examples/zero-authority.empty-token.json`
 - `examples/cluster-rollout.root-token.json`
 - `examples/cluster-rollout.child-token.json`
+- `examples/local-log-analyzer.within-envelope.witness.json`
+- `examples/local-log-analyzer.out-of-envelope.witness.json`
+- `examples/fetch-transform.coverage-limited.witness.json`
+- `examples/fetch-transform.redacted-claim-blocked.witness.json`
+- `examples/fetch-transform.blocked-attempt.witness.json`
+- `examples/zero-authority.witness.json`
 - `examples/cluster-rollout.witness.json`
+- `examples/runtime-mapping-limited.witness.json`
+- `examples/local-log-analyzer.runtime-mismatch.witness.json`
 
 ### Utilities
 
@@ -243,6 +282,9 @@ The current M6 layer is also deliberately limited:
 - `minimization_core.py`
 - `token_core.py`
 - `token_engine.py`
+- `witness_core.py`
+- `witness_engine.py`
+- `witness_examples.py`
 - `compatibility_matrix.md`
 
 ## Status
@@ -271,6 +313,8 @@ Current mapping boundaries:
 Until those gaps are closed, this directory must stay explicitly labeled as draft.
 
 The M6 token files in this directory are therefore draft control-plane artifacts. They bind authority to the chosen runtime id and guarantee digest already modeled by the draft examples, but they do **not** by themselves justify any runtime-general enforcement claim for the live Rust runtime.
+
+The M7 witness files in this directory are bounded observed-authority artifacts. They can prove narrow facts when the recorded coverage is adequate, but they must not be described as runtime-general witness completeness while the draft vocabulary still diverges from the implemented Rust inspect surface.
 
 ## Cryptographic status
 
@@ -303,6 +347,15 @@ That means:
 - this is **not** a detached signature workflow
 - this is a draft control-plane mechanism for the bundled harness, not final distributed attestation
 
+### M7 witness protection status
+
+The draft-v1 M7 witness path reuses that same narrow protection model:
+
+- `witness_engine.py` MACs canonical JSON witness claims with HMAC-SHA256
+- witness verification requires prior knowledge of the issuer id, key id, and shared secret
+- this is still a shared-secret MAC, not public-key witness attestation
+- redacted witness verification checks MACs, linkage, coverage semantics, and redaction hashes, but it does not claim zero-knowledge proofs or public transparency
+
 ## Validation status
 
 All bundled examples validate cleanly against the bundled schemas when run with the directory-local validation dependencies installed.
@@ -318,6 +371,12 @@ All bundled examples validate cleanly against the bundled schemas when run with 
 - exact checked M6 token output for proof-backed root issuance, explicit upper-bound issuance, delegated child issuance, upper-bound refusal, and zero-authority empty-token issuance
 - verification success and fail-closed denial for replay, wrong audience, wrong holder, passthrough attempts, chain mismatch, runtime mismatch, broadening, and expiry cases
 - deterministic repeated M6 issuance for identical claims and key material
+- exact checked M7 witness output for within-envelope, out-of-envelope, coverage-limited, redacted-claim-blocked, blocked-attempt, delegation-chain, zero-authority, runtime-mapping-limited, and runtime-binding-mismatch cases
+- witness verification success for authentic within-envelope, coverage-limited, zero-authority, and delegation-chain records
+- witness verification fail-closed behavior for runtime-binding mismatch
+- fixed-claim evaluation success for proof-backed token absence and bounded delegation claims
+- explicit non-success for negative claims blocked by incomplete coverage or redaction
+- deterministic repeated M7 witness generation and MAC output for identical inputs
 
 `compatibility_check.py` regenerates the derived hard-requirement compatibility matrix and asserts the fail-closed negative probes for omitted and unsupported `wit_worlds` support.
 
@@ -385,13 +444,16 @@ guild trust sign-plan \
   --output /tmp/zero-authority.admit.signed.plan.json
 guild --registry-root /tmp/guild-plan-registry trust verify-plan \
   --plan /tmp/zero-authority.admit.signed.plan.json
+
+# `validate_examples.py` also covers the checked M7 witness generation,
+# verification, and claim-evaluation cases end to end.
 ```
 
 ## Next build target
 
 The next honest follow-ons are:
 
-1. vocabulary alignment with the repository's canonical capability-family surface
+1. vocabulary alignment with the repository's canonical capability-family surface, especially the currently unmapped live Rust inspect families
 2. replacing the example-bounded M5 harness with a real runtime-general minimization/replay substrate
-3. replacing the draft-local M6 shared-secret token harness with the eventual repo-supported runtime-attestation and revocation story, if and when the runtime surface actually supports those claims
-4. later M7 witness materialization and exercised-authority verification on top of the still-separate M4/M5/M6 outputs
+3. replacing the draft-local M6 and M7 shared-secret MAC harnesses with stronger repo-supported protection only if and when the runtime surface actually supports those claims
+4. wiring any future M7 runtime-general witness flow to a real durable exercised-authority event stream rather than pretending today's bounded observation adapters are broader than they are

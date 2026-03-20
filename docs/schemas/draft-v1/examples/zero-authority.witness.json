@@ -1,0 +1,175 @@
+{
+  "actual_exercised_authority": {
+    "effect_classes": [],
+    "effects": [],
+    "effects_redacted": false,
+    "total_effects": 0
+  },
+  "audience_binding": {
+    "audiences": [],
+    "resources": []
+  },
+  "blocked_attempted_authority": {
+    "effect_classes": [],
+    "effects": [],
+    "effects_redacted": false,
+    "observable": false,
+    "total_effects": 0
+  },
+  "call_chain": {
+    "chain_digest": {
+      "algorithm": "sha256",
+      "value": "638efd028ebcc1da7a579a973d2d42951c470267ebb0a8aecb8682083a6d0859"
+    },
+    "chain_id": "urn:guild:request:zero-authority:admit:v1:call-chain",
+    "links": null
+  },
+  "envelope_comparison": {
+    "plan": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
+    },
+    "proof": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
+    },
+    "token": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
+    }
+  },
+  "execution_plan": {
+    "execution_plan_digest": {
+      "algorithm": "sha256",
+      "value": "5eac69cecce737fdf1c45dcec079e29c5137d543b2bf697b7b101252dee33117"
+    },
+    "execution_plan_id": "urn:guild:request:zero-authority:admit:v1:execution-plan"
+  },
+  "execution_window": {
+    "finished_at": null,
+    "started_at": null
+  },
+  "granted_but_unused_authority": {
+    "derivation_status": "complete",
+    "fully_unused_grants": [],
+    "fully_unused_grants_redacted": false,
+    "reason_codes": []
+  },
+  "holder_binding": {
+    "holder_id": "urn:guild:service:zero-authority",
+    "issued_for_delegatee": false
+  },
+  "issued_at": "2026-03-20T13:16:00Z",
+  "issuer": {
+    "issuer_epoch": 3,
+    "issuer_id": "urn:guild:issuer:draft-control-plane:v1",
+    "key_id": "draft-hmac-2026-03"
+  },
+  "kind": "guild.witness_record",
+  "notes": "M7 draft-v1 witness over bounded observation. This does not claim runtime-general completeness.",
+  "observation_coverage": {
+    "families": [],
+    "overall_status": "complete"
+  },
+  "observation_source": {
+    "notes": "Bounded draft-v1 example harness observation. This does not claim runtime-general completeness.",
+    "source_id": "urn:guild:harness:draft-v1:example-bounded",
+    "source_kind": "draft-example-harness",
+    "version": "1.0.0"
+  },
+  "proof_basis": {
+    "proof_digest": {
+      "algorithm": "sha256",
+      "value": "d44b146b6e0e1d6ffd074aaf60bbb3360954c68097862022878647eaefcc1179"
+    },
+    "proof_id": "urn:guild:request:zero-authority:admit:v1:execution-plan:m5-proof",
+    "proof_status": "exact_minimal"
+  },
+  "protection": {
+    "canonicalization": "guild-json-c14n-v1",
+    "claims_digest": {
+      "algorithm": "sha256",
+      "value": "48ed3a7c466f632f2668ab33bc683721efc409e6c1b38c95f4f2ddac944af733"
+    },
+    "mac_base64": "TzmhZGqV86tESwXkuuzYhSdbBXOA1xSgNxCnLf5lxfg=",
+    "mode": "hmac-sha256"
+  },
+  "reason_codes": [],
+  "redaction": {
+    "profile": "summary_only",
+    "raw_trace_digest": {
+      "algorithm": "sha256",
+      "value": "1cefc645638a31f5e4634dc4033c458d845ec794e1dcb56f9601cc4fb6a8a319"
+    },
+    "raw_trace_included": false,
+    "redacted_content_digest": {
+      "algorithm": "sha256",
+      "value": "8d506bb8c19af74d5ff49f18be46793e54a98831c09a325631c82a4584a9ea7a"
+    },
+    "redacted_fields": [
+      "call_chain.links",
+      "raw_trace"
+    ]
+  },
+  "request_id": "urn:guild:request:zero-authority:admit:v1",
+  "runtime_binding": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "subject": {
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "df78342cd5b5f401a3ab4ee69e5d42d4cbaf0d8f67f1fb8e947c3b9d93d84f8e"
+    },
+    "contract_digest": {
+      "algorithm": "sha256",
+      "value": "90969f04d6a0a5d3990af114ac918e3053bf568444bfce4d5d598d246d8e6770"
+    },
+    "export_name": "summarize",
+    "input_class_fingerprint": {
+      "canonicalization": "rfc8785-jcs",
+      "digest": {
+        "algorithm": "sha256",
+        "value": "26d18e0d615b0955ec36aa4b5b891dcf8865e726bc77f26b8b305fbb7f89fb68"
+      },
+      "kind": "json-schema-hash"
+    },
+    "invocation_input_digest": {
+      "algorithm": "sha256",
+      "value": "477b6a3c89a76b4fb74bf3d6cb4871217a4189812534220ad484fd42dea642b4"
+    },
+    "skill_contract_id": "urn:guild:contract:zero-authority:v1"
+  },
+  "token_basis": {
+    "issuance_basis": "m5_proven_subset",
+    "parent_token_digest": null,
+    "parent_token_id": null,
+    "token_digest": {
+      "algorithm": "sha256",
+      "value": "2fc2406dc3f14b37bbe80b3592e94ec80c4855538bf4a59f5d33007da813c02e"
+    },
+    "token_id": "urn:guild:token:zero-authority:root:v1",
+    "verification_decision": "allow",
+    "verification_reason_codes": [],
+    "verification_result_digest": {
+      "algorithm": "sha256",
+      "value": "ac3b2f42f0d6b38df9f55e316f3c608406df7a954ae0f2dc41b94b24b4b91ae1"
+    },
+    "verification_verified": true
+  },
+  "unmapped_observations": [],
+  "version": "1.0.0",
+  "witness_id": "urn:guild:request:zero-authority:admit:v1:execution-plan:witness",
+  "witness_status": "within_envelope"
+}

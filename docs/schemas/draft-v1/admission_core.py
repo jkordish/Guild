@@ -24,6 +24,7 @@ SCHEMA_FILES = [
     "comparator_profile.schema.json",
     "proof_record.schema.json",
     "witness_record.schema.json",
+    "witness_verification_result.schema.json",
     "admission_request.schema.json",
     "execution_plan.schema.json",
     "delegated_capability_token.schema.json",

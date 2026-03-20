@@ -56,6 +56,20 @@ It now also covers the draft-bundle M6 examples:
 
 The current M6 protection mechanism in this draft harness is a shared-secret HMAC MAC over canonical JSON claims. It is not a public-key signature flow, and the replay/revocation checks are local verifier-state mechanisms only.
 
+It now also covers the draft-bundle M7 witness examples:
+
+- proof-backed within-envelope witnessing over actual exercised authority
+- explicit out-of-envelope witnessing when observed authority escapes the admissible or tokenized envelope
+- coverage-limited witnessing where negative claims fail closed
+- redacted witness claim success and redaction-blocked claim failure
+- blocked-attempt tracking distinct from exercised authority
+- delegation-chain witnessing over checked child-token linkage
+- zero-authority witnessing with explicit negative-claim semantics
+- runtime-binding mismatch verification failure
+- vocabulary-mapping limitation handling that stays coverage-limited rather than pretending the unmapped effect did not happen
+
+The current M7 protection mechanism in this draft harness is also a shared-secret HMAC MAC over canonical JSON claims. It is not public-key attestation, and the bounded harness and fixture paths do not imply runtime-general witness completeness.
+
 If you want one direct M4 admission run:
 
 ```bash
@@ -118,6 +132,8 @@ If you want one direct M6 verification run over the checked delegated-child exam
   --chain-link urn:guild:service:kube-api-client \
   --replay-state-dir /tmp/guild-m6-replay
 ```
+
+`docs/schemas/draft-v1/validate_examples.py` is now the end-to-end proof path for the checked M7 witness bundle. It regenerates the stored witness examples, re-verifies them, re-checks fixed claims, and confirms that negative claims fail closed under partial coverage or redaction.
 
 If you want one explicit sign-and-verify pass for a generated M4 plan:
 

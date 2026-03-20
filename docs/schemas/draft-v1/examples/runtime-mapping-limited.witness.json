@@ -1,0 +1,167 @@
+{
+  "actual_exercised_authority": {
+    "effect_classes": [],
+    "effects": [],
+    "effects_redacted": false,
+    "total_effects": 0
+  },
+  "audience_binding": {
+    "audiences": [],
+    "resources": []
+  },
+  "blocked_attempted_authority": {
+    "effect_classes": [],
+    "effects": [],
+    "effects_redacted": false,
+    "observable": false,
+    "total_effects": 0
+  },
+  "call_chain": null,
+  "envelope_comparison": {
+    "plan": {
+      "outside_effect_classes": [],
+      "outside_effects": [],
+      "status": "within"
+    },
+    "proof": null,
+    "token": null
+  },
+  "execution_plan": {
+    "execution_plan_digest": {
+      "algorithm": "sha256",
+      "value": "e21283c3227399fd2cab2c1ba215c00650f5022a77e12c5dd4948666f0a7bf7a"
+    },
+    "execution_plan_id": "urn:guild:request:fetch-transform:no-reduction:v1:execution-plan"
+  },
+  "execution_window": {
+    "finished_at": null,
+    "started_at": null
+  },
+  "granted_but_unused_authority": {
+    "derivation_status": "not_derivable",
+    "fully_unused_grants": [],
+    "fully_unused_grants_redacted": false,
+    "reason_codes": [
+      "OBSERVATION_COVERAGE_INSUFFICIENT"
+    ]
+  },
+  "holder_binding": null,
+  "issued_at": "2026-03-20T13:04:00Z",
+  "issuer": {
+    "issuer_epoch": 3,
+    "issuer_id": "urn:guild:issuer:draft-control-plane:v1",
+    "key_id": "draft-hmac-2026-03"
+  },
+  "kind": "guild.witness_record",
+  "notes": "M7 draft-v1 witness over bounded observation. This does not claim runtime-general completeness.",
+  "observation_coverage": {
+    "families": [
+      {
+        "draft_effect_class": null,
+        "family": "rust.inspect.http_request",
+        "mapping_status": "unmapped",
+        "reason_codes": [
+          "OBSERVATION_COVERAGE_INSUFFICIENT",
+          "VOCABULARY_MAPPING_UNMAPPED"
+        ],
+        "scope_descriptors": [
+          "runtime-native:http_request"
+        ],
+        "scope_kind": null,
+        "status": "insufficient",
+        "supports_absence_claims": false,
+        "supports_positive_facts": false
+      }
+    ],
+    "overall_status": "insufficient"
+  },
+  "observation_source": {
+    "notes": "Runtime-native inspect metadata could not be mapped safely into the draft-v1 vocabulary.",
+    "source_id": "urn:guild:observation:fixture:runtime-mapping-limited:v1",
+    "source_kind": "live-runtime-hook",
+    "version": "1.0.0"
+  },
+  "proof_basis": null,
+  "protection": {
+    "canonicalization": "guild-json-c14n-v1",
+    "claims_digest": {
+      "algorithm": "sha256",
+      "value": "c6bca8029259de76d9b83568ad9ab42f28557637d34840d5d252be96b8ececcd"
+    },
+    "mac_base64": "1PeTK1PmNcTnej1+h55qyUz9GcowkwUGz6NOeYylJXY=",
+    "mode": "hmac-sha256"
+  },
+  "reason_codes": [
+    "OBSERVATION_COVERAGE_INSUFFICIENT",
+    "VOCABULARY_MAPPING_UNMAPPED"
+  ],
+  "redaction": {
+    "profile": "none",
+    "raw_trace_digest": {
+      "algorithm": "sha256",
+      "value": "1dd51ca8023453d3288f1c44524f09931bfa11b9df31655109645ce42938e317"
+    },
+    "raw_trace_included": false,
+    "redacted_content_digest": {
+      "algorithm": "sha256",
+      "value": "5876b87930bfe09f4a602b1da0e976aed9cc43338849f60584a3d0ba8465cbc4"
+    },
+    "redacted_fields": [
+      "raw_trace"
+    ]
+  },
+  "request_id": "urn:guild:request:fetch-transform:no-reduction:v1",
+  "runtime_binding": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "df1a7666fd3aa3d98229f0edcd3641bd2327178c46442eb9dbf17f508b19c74e"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "subject": {
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "fec4ee0d8541bab9129a83fb530d1fa0378916beabe80c7ccedbfdd0fd8421f8"
+    },
+    "contract_digest": {
+      "algorithm": "sha256",
+      "value": "6f297ea89ccd12696b30db79de1a5ce71223e33c2a0799888fb5bb553af4bff8"
+    },
+    "export_name": "fetch_and_transform",
+    "input_class_fingerprint": {
+      "canonicalization": "rfc8785-jcs",
+      "digest": {
+        "algorithm": "sha256",
+        "value": "c69ff0208dfc627c10beb81d20babffc27585fd741b1f3d8b3beb32f1e0c6f46"
+      },
+      "kind": "json-schema-hash"
+    },
+    "invocation_input_digest": null,
+    "skill_contract_id": "urn:guild:contract:fetch-transform:v1"
+  },
+  "token_basis": null,
+  "unmapped_observations": [
+    {
+      "coverage_status": "insufficient",
+      "details_digest": {
+        "algorithm": "sha256",
+        "value": "0d59490f3ae3a3facfad9b826cdcd4a26d7c0cfb895b57332cff807f2955691c"
+      },
+      "details_summary": "Runtime exposed http_request metadata that draft-v1 cannot map losslessly.",
+      "family": "rust.inspect.http_request",
+      "observed_as": "exercised",
+      "reason_codes": [
+        "OBSERVATION_COVERAGE_INSUFFICIENT",
+        "VOCABULARY_MAPPING_UNMAPPED"
+      ]
+    }
+  ],
+  "version": "1.0.0",
+  "witness_id": "urn:guild:request:fetch-transform:no-reduction:v1:execution-plan:witness",
+  "witness_status": "coverage_limited"
+}

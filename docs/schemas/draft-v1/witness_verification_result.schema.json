@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Guild Witness Verification Result",
+  "type": "object",
+  "$defs": {
+    "digest_or_null": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "identifier_or_null": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/identifier"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "claim_evaluation": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "claim": {
+              "$ref": "common.schema.json#/$defs/witness_claim"
+            },
+            "status": {
+              "$ref": "common.schema.json#/$defs/witness_claim_status"
+            },
+            "reason_codes": {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/witness_reason_code"
+              },
+              "uniqueItems": true
+            },
+            "details": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "claim",
+            "status",
+            "reason_codes",
+            "details"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "properties": {
+    "kind": {
+      "const": "guild.witness_verification_result"
+    },
+    "version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "verification_time": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "witness_id": {
+      "$ref": "#/$defs/identifier_or_null"
+    },
+    "witness_digest": {
+      "$ref": "#/$defs/digest_or_null"
+    },
+    "issuer_id": {
+      "$ref": "#/$defs/identifier_or_null"
+    },
+    "key_id": {
+      "$ref": "#/$defs/identifier_or_null"
+    },
+    "verified": {
+      "type": "boolean"
+    },
+    "witness_status": {
+      "$ref": "common.schema.json#/$defs/witness_status"
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/witness_reason_code"
+      },
+      "uniqueItems": true
+    },
+    "claim_evaluation": {
+      "$ref": "#/$defs/claim_evaluation"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  },
+  "required": [
+    "kind",
+    "version",
+    "verification_time",
+    "witness_id",
+    "witness_digest",
+    "issuer_id",
+    "key_id",
+    "verified",
+    "witness_status",
+    "reason_codes",
+    "claim_evaluation"
+  ],
+  "additionalProperties": false
+}
