@@ -321,6 +321,45 @@ fn run_http_request_bounded() -> serde_json::Value {
     })
 }
 
+fn run_http_request_default_port_bounded() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/inspect-http-json"));
+    let registry = temp.load();
+    let replay_url = "http://127.0.0.1/response.json";
+    let runner = build_replay_runner(vec![http_replay_fixture(
+        replay_url,
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "get",
+                    "json_pointers": ["/message", "/nested/count"],
+                }),
+                CapabilityGrantSet {
+                    grants: vec![http_grant("127.0.0.1", 80, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "http-request-default-port-bounded",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
 fn run_http_request_redirect_unsupported() -> serde_json::Value {
     let temp = TempRegistry::new();
     temp.install(repo_root().join("examples/skills/inspect-http-json"));
@@ -445,6 +484,7 @@ fn main() {
     let output = match scenario.as_str() {
         "read-resource-bounded" => run_read_resource_bounded(),
         "http-request-bounded" => run_http_request_bounded(),
+        "http-request-default-port-bounded" => run_http_request_default_port_bounded(),
         "http-request-redirect-unsupported" => run_http_request_redirect_unsupported(),
         "http-request-no-replay" | "http-request-not-proven" => run_http_request_no_replay(),
         "log-write-reduced" => run_log_write_reduced(),

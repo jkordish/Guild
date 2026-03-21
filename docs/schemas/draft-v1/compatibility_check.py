@@ -11,6 +11,7 @@ SKILLS = [
     "examples/fetch-transform.contract.json",
     "examples/cluster-rollout.contract.json",
     "examples/runtime-http-read.contract.json",
+    "examples/runtime-http-read-default-port.contract.json",
     "examples/runtime-http-redirect.contract.json",
     "examples/runtime-read-resource.contract.json",
     "examples/runtime-invoke-skill.contract.json",

@@ -338,11 +338,13 @@ pub struct HttpReplayFixture {
 #[derive(Debug, Clone, Default)]
 struct HttpReplayCatalog {
     fixtures: HashMap<String, HttpReplayFixture>,
+    digest: String,
 }
 
 impl HttpReplayCatalog {
     fn from_fixtures(fixtures: Vec<HttpReplayFixture>) -> Result<Self, ExecutionError> {
         let mut catalog = HashMap::new();
+        let mut ordered_entries = Vec::new();
 
         for fixture in fixtures {
             let key = http_replay_fixture_key(&fixture.method, &fixture.url);
@@ -357,9 +359,16 @@ impl HttpReplayCatalog {
                 }))
                 .with_phase(ExecutionPhase::Validation));
             }
+            ordered_entries.push((key, fixture));
         }
 
-        Ok(Self { fixtures: catalog })
+        ordered_entries.sort_by(|left, right| left.0.cmp(&right.0));
+        let digest = http_replay_catalog_digest(&ordered_entries);
+
+        Ok(Self {
+            fixtures: catalog,
+            digest,
+        })
     }
 
     fn lookup(&self, request: &HttpRequest) -> Option<&HttpReplayFixture> {
@@ -1472,6 +1481,12 @@ where
 
     pub(crate) fn has_http_replay_fixtures(&self) -> bool {
         self.http_replay_catalog.is_some()
+    }
+
+    pub(crate) fn http_replay_input_digest(&self) -> Option<String> {
+        self.http_replay_catalog
+            .as_ref()
+            .map(|catalog| catalog.digest.clone())
     }
 
     /// Resolve caller intent into a host-owned execution envelope using local policy.
@@ -3404,6 +3419,32 @@ fn execute_http_request_via_replay(
 
 fn http_replay_fixture_key(method: &HttpMethod, url: &str) -> String {
     format!("{} {url}", http_method_fixture_label(method))
+}
+
+fn http_replay_catalog_digest(entries: &[(String, HttpReplayFixture)]) -> String {
+    let digest_input = serde_json::Value::Array(
+        entries
+            .iter()
+            .map(|(request_key, fixture)| {
+                serde_json::json!({
+                    "request_key": request_key,
+                    "method": fixture.method,
+                    "url": fixture.url,
+                    "response_status": fixture.response_status,
+                    "response_content_type": fixture.response_content_type,
+                    "response_body_digest": sha256_bytes(&fixture.response_body),
+                    "redirect_location": fixture.redirect_location,
+                })
+            })
+            .collect(),
+    );
+    let canonical = serde_json::to_vec(&digest_input)
+        .expect("serializing HTTP replay catalog digest input should succeed");
+    sha256_bytes(&canonical)
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 fn http_method_fixture_label(method: &HttpMethod) -> &'static str {

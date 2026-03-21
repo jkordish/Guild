@@ -103,6 +103,8 @@ pub struct LiveProofOutcome {
     pub minimization_reason_codes: Vec<String>,
     pub observed_families: Vec<String>,
     pub baseline_output_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay_input_digest: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -133,6 +135,7 @@ where
     let baseline_projection =
         normalized_execution_projection(&baseline_execution_record, comparator);
     let baseline_output_digest = Some(sha256_json(&baseline_projection));
+    let replay_input_digest = runner.http_replay_input_digest();
 
     let mut proven_authority = CapabilityGrantSet::default();
     let mut residual_authority = CapabilityGrantSet::default();
@@ -244,6 +247,7 @@ where
             minimization_reason_codes: stable_sorted_strings(minimization_reason_codes),
             observed_families: baseline_observed_families,
             baseline_output_digest,
+            replay_input_digest,
         },
     })
 }
@@ -384,7 +388,7 @@ where
                 support: LiveProofSupport::BoundedLiveProof,
                 proof_status: Some("bounded_minimal".into()),
                 reason_codes: stable_sorted_strings(reasons.clone()),
-                notes: "The family was removable for this invocation under the bounded fixture-backed loopback GET replay slice.".into(),
+                notes: "The family was removable for this invocation under the bounded fixture-backed loopback IP GET replay slice, including either an explicit port or the default HTTP port.".into(),
             },
             reasons,
         );
@@ -464,7 +468,7 @@ where
             support: LiveProofSupport::BoundedLiveProof,
             proof_status: Some(proof_status.into()),
             reason_codes: stable_sorted_strings(reasons.clone()),
-            notes: "Bounded live proof for http-request currently covers only one replay-fixtured HTTP GET to a loopback IP-literal host with an explicit port, no query, no redirects, and the normalized inspect-output comparator.".into(),
+            notes: "Bounded live proof for http-request currently covers only one replay-fixtured HTTP GET to a loopback IP-literal host with either an explicit port or the implicit default HTTP port, exact observed path-prefix, no query, no redirects, and the normalized inspect-output comparator.".into(),
         },
         reasons,
     )

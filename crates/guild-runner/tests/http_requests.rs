@@ -556,6 +556,61 @@ fn proof_only_replay_transport_replays_deterministic_loopback_gets() {
 }
 
 #[test]
+fn proof_only_replay_transport_replays_deterministic_loopback_gets_with_default_port() {
+    let registry = load_registry();
+    let replay_url = "http://127.0.0.1/response.json";
+    let runner = build_replay_runner(vec![http_replay_fixture(
+        replay_url,
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+    let grants = CapabilityGrantSet {
+        grants: vec![http_grant(
+            "127.0.0.1",
+            80,
+            "/response.json",
+            &[HttpMethod::Get],
+            &[HttpScheme::Http],
+            2_000,
+            4_096,
+        )],
+    };
+    let input = json!({
+        "url": replay_url,
+        "method": "get",
+        "json_pointers": ["/message", "/nested/count"],
+    });
+
+    let first = run_http_skill(
+        &registry,
+        &runner,
+        input.clone(),
+        grants.clone(),
+        Budget::default(),
+    )
+    .unwrap();
+    let second = run_http_skill(&registry, &runner, input, grants, Budget::default()).unwrap();
+
+    assert_eq!(first.status, ExecutionStatus::Succeeded);
+    assert_eq!(second.status, ExecutionStatus::Succeeded);
+    assert_eq!(first.metrics.network_requests, 1);
+    assert_eq!(second.metrics.network_requests, 1);
+    assert_eq!(
+        first.output.as_ref().unwrap().structured,
+        second.output.as_ref().unwrap().structured
+    );
+    assert_eq!(first.authority_observations, second.authority_observations);
+    match &first.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            assert_eq!(detail.request.method, HttpMethod::Get);
+            assert_eq!(detail.request.url, replay_url);
+            assert_eq!(detail.response_status, Some(200));
+        }
+        other => panic!("expected canonical http-request observation, got {other:?}"),
+    }
+}
+
+#[test]
 fn proof_only_replay_transport_fails_closed_for_query_requests() {
     let registry = load_registry();
     let runner = build_replay_runner(vec![http_replay_fixture(

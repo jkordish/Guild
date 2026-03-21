@@ -94,6 +94,16 @@
     "comparator_digest": {
       "$ref": "common.schema.json#/$defs/digest"
     },
+    "replay_input_digest": {
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "minimization_algorithm": {
       "type": "object",
       "properties": {
@@ -596,6 +606,16 @@
             },
             "comparator_digest": {
               "$ref": "common.schema.json#/$defs/digest"
+            },
+            "replay_input_digest": {
+              "oneOf": [
+                {
+                  "$ref": "common.schema.json#/$defs/digest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "minimization_algorithm_version": {
               "$ref": "common.schema.json#/$defs/semver"
