@@ -325,6 +325,49 @@ pub struct HostHttpResponse {
     redirect_location: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpReplayFixture {
+    pub method: HttpMethod,
+    pub url: String,
+    pub response_status: u16,
+    pub response_content_type: Option<String>,
+    pub response_body: Vec<u8>,
+    pub redirect_location: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct HttpReplayCatalog {
+    fixtures: HashMap<String, HttpReplayFixture>,
+}
+
+impl HttpReplayCatalog {
+    fn from_fixtures(fixtures: Vec<HttpReplayFixture>) -> Result<Self, ExecutionError> {
+        let mut catalog = HashMap::new();
+
+        for fixture in fixtures {
+            let key = http_replay_fixture_key(&fixture.method, &fixture.url);
+            if catalog.insert(key.clone(), fixture.clone()).is_some() {
+                return Err(ExecutionError::new(
+                    "http-replay-fixture-duplicate",
+                    "duplicate proof-only HTTP replay fixture",
+                )
+                .with_detail(serde_json::json!({
+                    "method": fixture.method,
+                    "url": fixture.url,
+                }))
+                .with_phase(ExecutionPhase::Validation));
+            }
+        }
+
+        Ok(Self { fixtures: catalog })
+    }
+
+    fn lookup(&self, request: &HttpRequest) -> Option<&HttpReplayFixture> {
+        self.fixtures
+            .get(&http_replay_fixture_key(&request.method, &request.url))
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PendingRedirect {
     from_url: String,
@@ -1366,6 +1409,7 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
 #[derive(Clone)]
 pub struct Runner<A> {
     runtime: A,
+    http_replay_catalog: Option<Arc<HttpReplayCatalog>>,
 }
 
 struct UnsuccessfulAttemptContext<'a> {
@@ -1382,12 +1426,52 @@ where
 {
     #[must_use]
     pub fn new(runtime: A) -> Self {
-        Self { runtime }
+        Self {
+            runtime,
+            http_replay_catalog: None,
+        }
     }
 
     #[must_use]
     pub fn runtime(&self) -> &A {
         &self.runtime
+    }
+
+    /// Install a proof-only deterministic HTTP replay catalog on this runner.
+    ///
+    /// Normal runners should stay on the live outbound transport. This replay
+    /// catalog exists only for bounded live-proof scenarios and related tests.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the provided fixtures contain duplicate request
+    /// keys.
+    pub fn with_http_replay_fixtures(
+        mut self,
+        fixtures: Vec<HttpReplayFixture>,
+    ) -> Result<Self, ExecutionError> {
+        self.http_replay_catalog = if fixtures.is_empty() {
+            None
+        } else {
+            Some(Arc::new(HttpReplayCatalog::from_fixtures(fixtures)?))
+        };
+        Ok(self)
+    }
+
+    fn dispatch_http_request(
+        &self,
+        request: &HttpRequest,
+        timeout: Duration,
+        max_response_bytes: u64,
+    ) -> Result<HostHttpResponse, SkillError> {
+        match &self.http_replay_catalog {
+            Some(catalog) => execute_http_request_via_replay(catalog, request, max_response_bytes),
+            None => execute_http_request(request, timeout, max_response_bytes),
+        }
+    }
+
+    pub(crate) fn has_http_replay_fixtures(&self) -> bool {
+        self.http_replay_catalog.is_some()
     }
 
     /// Resolve caller intent into a host-owned execution envelope using local policy.
@@ -2177,7 +2261,8 @@ where
         timeout: Duration,
         max_response_bytes: u64,
     ) -> Result<HostHttpResponse, SkillError> {
-        execute_http_request(request, timeout, max_response_bytes)
+        self.runner
+            .dispatch_http_request(request, timeout, max_response_bytes)
     }
 }
 
@@ -3184,6 +3269,148 @@ fn execute_http_request(
         },
         redirect_location,
     })
+}
+
+#[allow(clippy::too_many_lines)]
+fn execute_http_request_via_replay(
+    catalog: &HttpReplayCatalog,
+    request: &HttpRequest,
+    max_response_bytes: u64,
+) -> Result<HostHttpResponse, SkillError> {
+    let parsed_request = parse_http_request(request).map_err(CapabilityDenial::into_skill_error)?;
+    let parsed_url = Url::parse(&request.url).map_err(|error| SkillError {
+        code: "http-replay-request-invalid".into(),
+        message: "proof-only HTTP replay requires a valid absolute URL".into(),
+        retryable: false,
+        detail: Some(serde_json::json!({
+            "url": request.url,
+            "error": error.to_string(),
+        })),
+    })?;
+
+    if request.method != HttpMethod::Get {
+        return Err(SkillError {
+            code: "http-replay-request-unsupported".into(),
+            message: "proof-only HTTP replay currently supports GET requests only".into(),
+            retryable: false,
+            detail: Some(serde_json::json!({
+                "method": request.method,
+                "url": request.url,
+            })),
+        });
+    }
+    if parsed_request.scheme != HttpScheme::Http {
+        return Err(SkillError {
+            code: "http-replay-request-unsupported".into(),
+            message: "proof-only HTTP replay currently supports only http URLs".into(),
+            retryable: false,
+            detail: Some(serde_json::json!({
+                "url": request.url,
+                "scheme": parsed_request.scheme,
+            })),
+        });
+    }
+    if parsed_url.query().is_some() || parsed_url.fragment().is_some() {
+        return Err(SkillError {
+            code: "http-replay-request-unsupported".into(),
+            message: "proof-only HTTP replay does not support query or fragment components".into(),
+            retryable: false,
+            detail: Some(serde_json::json!({
+                "url": request.url,
+            })),
+        });
+    }
+
+    let Some(destination_ip) = parsed_request.ip_literal() else {
+        return Err(SkillError {
+            code: "http-replay-request-unsupported".into(),
+            message: "proof-only HTTP replay requires an explicit loopback IP-literal host".into(),
+            retryable: false,
+            detail: Some(serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            })),
+        });
+    };
+    if !matches!(
+        classify_destination_ip(destination_ip),
+        HttpDestinationClass::Loopback
+    ) {
+        return Err(SkillError {
+            code: "http-replay-request-unsupported".into(),
+            message: "proof-only HTTP replay requires a loopback IP-literal destination".into(),
+            retryable: false,
+            detail: Some(serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            })),
+        });
+    }
+
+    let fixture = catalog.lookup(request).ok_or_else(|| SkillError {
+        code: "http-replay-fixture-missing".into(),
+        message: "proof-only HTTP replay did not find a matching fixture".into(),
+        retryable: false,
+        detail: Some(serde_json::json!({
+            "method": request.method,
+            "url": request.url,
+        })),
+    })?;
+    let is_redirect = is_redirect_status(fixture.response_status);
+    if is_redirect && fixture.redirect_location.is_none() {
+        return Err(SkillError {
+            code: "http-replay-fixture-invalid".into(),
+            message: "redirect replay fixtures must include a redirect_location".into(),
+            retryable: false,
+            detail: Some(serde_json::json!({
+                "method": fixture.method,
+                "url": fixture.url,
+                "status": fixture.response_status,
+            })),
+        });
+    }
+    if !is_redirect
+        && u64::try_from(fixture.response_body.len()).unwrap_or(u64::MAX) > max_response_bytes
+    {
+        return Err(SkillError {
+            code: "http-request-response-too-large".into(),
+            message: "outbound HTTP response exceeded the configured max_response_bytes limit"
+                .into(),
+            retryable: false,
+            detail: Some(serde_json::json!({
+                "url": request.url,
+                "method": request.method,
+                "max_response_bytes": max_response_bytes,
+                "transport": "proof-only-replay",
+                "fixture_response_bytes": fixture.response_body.len(),
+            })),
+        });
+    }
+
+    Ok(HostHttpResponse {
+        response: HttpResponse {
+            url: request.url.clone(),
+            status: fixture.response_status,
+            content_type: fixture.response_content_type.clone(),
+            body: if is_redirect {
+                Vec::new()
+            } else {
+                fixture.response_body.clone()
+            },
+        },
+        redirect_location: fixture.redirect_location.clone(),
+    })
+}
+
+fn http_replay_fixture_key(method: &HttpMethod, url: &str) -> String {
+    format!("{} {url}", http_method_fixture_label(method))
+}
+
+fn http_method_fixture_label(method: &HttpMethod) -> &'static str {
+    match method {
+        HttpMethod::Get => "get",
+        HttpMethod::Head => "head",
+    }
 }
 
 fn empty_http_body() -> HyperOutgoingBody {
@@ -4557,7 +4784,10 @@ fn read_resource_grant_allows_kind(grant: &GrantedCapability, kind: &ResourceKin
     }
 }
 
-fn http_request_covers(grant: &HttpRequestConstraints, required: &HttpRequestConstraints) -> bool {
+pub(crate) fn http_request_covers(
+    grant: &HttpRequestConstraints,
+    required: &HttpRequestConstraints,
+) -> bool {
     enum_scope_covers(
         grant.allowed_schemes.as_ref(),
         required.allowed_schemes.as_ref(),

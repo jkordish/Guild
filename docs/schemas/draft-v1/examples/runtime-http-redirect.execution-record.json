@@ -1,8 +1,8 @@
 {
   "receipt": {
-    "execution_id": "019d0cd9-92d9-72a3-a97d-b1ec51156355",
-    "uri": "guild://executions/019d0cd9-92d9-72a3-a97d-b1ec51156355",
-    "trace_id": "trace-1",
+    "execution_id": "019d0e7b-edd9-7ef0-a2dd-a1d347ed0a00",
+    "uri": "guild://executions/019d0e7b-edd9-7ef0-a2dd-a1d347ed0a00",
+    "trace_id": "trace-redirect-1",
     "status": "succeeded"
   },
   "request": {
@@ -15,11 +15,10 @@
     },
     "input": {
       "json_pointers": [
-        "/message",
-        "/nested/count"
+        "/message"
       ],
       "method": "get",
-      "url": "http://127.0.0.1:18080/response.json"
+      "url": "http://127.0.0.1:18080/redirect.json"
     }
   },
   "resolved_skill": {
@@ -50,10 +49,13 @@
             "get"
           ],
           "allowed_path_prefixes": [
+            "/redirect.json",
             "/response.json"
           ],
           "max_timeout_ms": 2000,
-          "max_response_bytes": 4096,
+          "max_response_bytes": 16384,
+          "follow_redirects": true,
+          "max_redirects": 2,
           "allow_loopback": true,
           "allow_ip_literals": true
         }
@@ -67,18 +69,33 @@
       "detail": {
         "request": {
           "method": "get",
+          "url": "http://127.0.0.1:18080/redirect.json",
+          "timeout_ms": null
+        },
+        "response_status": 302,
+        "response_content_type": "application/json",
+        "response_bytes": 0,
+        "redirects_followed": 0
+      }
+    },
+    {
+      "family": "http-request",
+      "status": "exercised",
+      "detail": {
+        "request": {
+          "method": "get",
           "url": "http://127.0.0.1:18080/response.json",
           "timeout_ms": null
         },
         "response_status": 200,
         "response_content_type": "application/json",
         "response_bytes": 114,
-        "redirects_followed": 0
+        "redirects_followed": 1
       }
     }
   ],
   "provenance": {
-    "started_at_utc": "2026-03-20T20:04:38.745543813Z",
-    "finished_at_utc": "2026-03-20T20:04:42.599024426Z"
+    "started_at_utc": "2026-03-21T03:41:36.089522197Z",
+    "finished_at_utc": "2026-03-21T03:41:45.788245139Z"
   }
 }

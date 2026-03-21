@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use guild_registry::{LocalRegistry, LocalSourceInstaller, SkillRegistry};
-use guild_runner::{ExecutionError, Runner, WasmtimeRuntimeAdapter};
+use guild_runner::{ExecutionError, HttpReplayFixture, Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
     AuthorityObservation, AuthorityObservationStatus, Budget, CallerRequest, CapabilityAccess,
     CapabilityConstraints, CapabilityGrantSet, CapabilityId, ExecutionMode, ExecutionRecord,
@@ -65,6 +65,23 @@ fn load_registry() -> LocalRegistry {
 
 fn build_runner() -> Runner<WasmtimeRuntimeAdapter> {
     Runner::new(WasmtimeRuntimeAdapter::new().unwrap())
+}
+
+fn build_replay_runner(fixtures: Vec<HttpReplayFixture>) -> Runner<WasmtimeRuntimeAdapter> {
+    Runner::new(WasmtimeRuntimeAdapter::new().unwrap())
+        .with_http_replay_fixtures(fixtures)
+        .unwrap()
+}
+
+fn http_replay_fixture(url: &str, body: &str) -> HttpReplayFixture {
+    HttpReplayFixture {
+        method: HttpMethod::Get,
+        url: url.to_owned(),
+        response_status: 200,
+        response_content_type: Some("application/json".into()),
+        response_body: body.as_bytes().to_vec(),
+        redirect_location: None,
+    }
 }
 
 fn execution_request(
@@ -490,6 +507,88 @@ fn http_happy_path_executes_through_real_host_path() {
         }
         other => panic!("expected canonical http-request observation, got {other:?}"),
     }
+}
+
+#[test]
+fn proof_only_replay_transport_replays_deterministic_loopback_gets() {
+    let registry = load_registry();
+    let replay_url = "http://127.0.0.1:18080/response.json";
+    let runner = build_replay_runner(vec![http_replay_fixture(
+        replay_url,
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+    let grants = CapabilityGrantSet {
+        grants: vec![http_grant(
+            "127.0.0.1",
+            18080,
+            "/response.json",
+            &[HttpMethod::Get],
+            &[HttpScheme::Http],
+            2_000,
+            4_096,
+        )],
+    };
+    let input = json!({
+        "url": replay_url,
+        "method": "get",
+        "json_pointers": ["/message", "/nested/count"],
+    });
+
+    let first = run_http_skill(
+        &registry,
+        &runner,
+        input.clone(),
+        grants.clone(),
+        Budget::default(),
+    )
+    .unwrap();
+    let second = run_http_skill(&registry, &runner, input, grants, Budget::default()).unwrap();
+
+    assert_eq!(first.status, ExecutionStatus::Succeeded);
+    assert_eq!(second.status, ExecutionStatus::Succeeded);
+    assert_eq!(first.metrics.network_requests, 1);
+    assert_eq!(second.metrics.network_requests, 1);
+    assert_eq!(
+        first.output.as_ref().unwrap().structured,
+        second.output.as_ref().unwrap().structured
+    );
+    assert_eq!(first.authority_observations, second.authority_observations);
+}
+
+#[test]
+fn proof_only_replay_transport_fails_closed_for_query_requests() {
+    let registry = load_registry();
+    let runner = build_replay_runner(vec![http_replay_fixture(
+        "http://127.0.0.1:18080/response.json",
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+
+    let error = run_http_skill(
+        &registry,
+        &runner,
+        json!({
+            "url": "http://127.0.0.1:18080/response.json?view=full",
+            "method": "get",
+        }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                "127.0.0.1",
+                18080,
+                "/response.json",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap_err();
+
+    let record = persisted_error_record(&registry, &error);
+    assert_eq!(error.code, "http-replay-request-unsupported");
+    assert_eq!(record.status, ExecutionStatus::Failed);
+    assert_eq!(record.metrics.network_requests, 1);
 }
 
 #[test]

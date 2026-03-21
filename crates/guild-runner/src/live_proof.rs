@@ -4,21 +4,23 @@ use guild_registry::{InstalledSkill, SkillRegistry};
 use guild_types::{
     AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityConstraints,
     CapabilityGrantSet, CapabilityId, ExecutionRecord, ExecutionStatus, GrantedCapability,
-    GuildResourceScope, GuildResourceUri, LogConstraints, ReadResourceConstraints, ResourceKind,
-    ResolvedExecutionEnvelope,
+    GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequestConstraints, HttpScheme,
+    LogConstraints, ReadResourceConstraints, ResolvedExecutionEnvelope, ResourceKind,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use url::Url;
 
 use crate::{
-    ExecutionError, Runner, RuntimeAdapter, log_grants_collectively_cover,
-    read_resource_grants_collectively_cover, reduce_grant_to_cap_set,
+    ExecutionError, Runner, RuntimeAdapter, http_request_covers, is_redirect_status,
+    log_grants_collectively_cover, read_resource_grants_collectively_cover,
+    reduce_grant_to_cap_set,
 };
 
 const LIVE_PROOF_VERSION: &str = "1.0.0";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum LiveProofComparatorProfile {
     ExactOutput,
@@ -115,6 +117,7 @@ struct TrialResult {
     matched: bool,
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn prove_live_authority<A, R>(
     runner: &Runner<A>,
     registry: &R,
@@ -128,15 +131,7 @@ where
 {
     let baseline_execution_record = runner.execute(registry, installed, envelope)?;
     let baseline_projection =
-        normalized_execution_projection(&baseline_execution_record, comparator.clone()).map_err(
-            |message| {
-                ExecutionError::new(
-                    "live-proof-comparator-unavailable",
-                    "live proof comparator could not normalize the baseline execution",
-                )
-                .with_detail(json!({ "message": message }))
-            },
-        )?;
+        normalized_execution_projection(&baseline_execution_record, comparator);
     let baseline_output_digest = Some(sha256_json(&baseline_projection));
 
     let mut proven_authority = CapabilityGrantSet::default();
@@ -166,7 +161,7 @@ where
                     envelope,
                     &baseline_execution_record,
                     &baseline_projection,
-                    comparator.clone(),
+                    comparator,
                 ),
                 CapabilityId::LogWrite => prove_log_write_family(
                     runner,
@@ -175,13 +170,16 @@ where
                     envelope,
                     &baseline_execution_record,
                     &baseline_projection,
-                    comparator.clone(),
+                    comparator,
                 ),
-                CapabilityId::HttpRequest => unsupported_family_status(
-                    &family,
-                    &family_grants,
-                    "LIVE_REPLAY_UNAVAILABLE",
-                    "HTTP requests still lack a real runtime replay transport, so live proof stays not_proven.",
+                CapabilityId::HttpRequest => prove_http_request_family(
+                    runner,
+                    registry,
+                    installed,
+                    envelope,
+                    &baseline_execution_record,
+                    &baseline_projection,
+                    comparator,
                 ),
                 CapabilityId::InvokeSkill => unsupported_family_status(
                     &family,
@@ -231,13 +229,14 @@ where
         minimization_reason_codes.push("PROOF_LINKAGE_UNAVAILABLE".into());
     }
 
-    let baseline_observed_families = observed_families(&baseline_execution_record.authority_observations);
+    let baseline_observed_families =
+        observed_families(&baseline_execution_record.authority_observations);
     Ok(LiveProofScenarioResult {
         baseline_execution_record,
         proof: LiveProofOutcome {
             version: LIVE_PROOF_VERSION.into(),
             proof_status: proof_status.into(),
-            comparator: comparator_descriptor(&comparator),
+            comparator: comparator_descriptor(comparator),
             proven_authority,
             residual_authority,
             family_statuses,
@@ -249,7 +248,7 @@ where
     })
 }
 
-fn comparator_descriptor(profile: &LiveProofComparatorProfile) -> LiveProofComparatorDescriptor {
+fn comparator_descriptor(profile: LiveProofComparatorProfile) -> LiveProofComparatorDescriptor {
     match profile {
         LiveProofComparatorProfile::ExactOutput => LiveProofComparatorDescriptor {
             comparator_id: "guild.runner.live-proof.exact-output.v1".into(),
@@ -302,6 +301,369 @@ fn unsupported_family_status(
     )
 }
 
+#[allow(clippy::too_many_lines)]
+fn prove_http_request_family<A, R>(
+    runner: &Runner<A>,
+    registry: &R,
+    installed: &InstalledSkill,
+    envelope: &ResolvedExecutionEnvelope,
+    baseline_record: &ExecutionRecord,
+    baseline_projection: &Value,
+    comparator: LiveProofComparatorProfile,
+) -> (
+    CapabilityGrantSet,
+    CapabilityGrantSet,
+    Vec<LiveProofCandidateTrial>,
+    LiveProofFamilyStatus,
+    Vec<String>,
+)
+where
+    A: RuntimeAdapter + Clone + 'static,
+    R: SkillRegistry + Clone + Send + Sync + 'static,
+{
+    let family = CapabilityId::HttpRequest;
+    let family_grants = family_grants(&envelope.granted_capabilities, &family);
+    let mut trials = Vec::new();
+
+    if comparator != LiveProofComparatorProfile::NormalizedInspectOutputV1 {
+        return http_request_not_proven(
+            family_grants,
+            vec!["HTTP_COMPARATOR_UNSUPPORTED_FOR_LIVE_PROOF".into()],
+            "Bounded http-request live proof currently supports only the normalized inspect-output comparator.",
+            trials,
+        );
+    }
+
+    if !runner.has_http_replay_fixtures() {
+        return http_request_not_proven(
+            family_grants,
+            vec!["HTTP_REPLAY_FIXTURE_REQUIRED".into()],
+            "Bounded http-request live proof currently requires a proof-only deterministic replay fixture catalog on the runner.",
+            trials,
+        );
+    }
+
+    let observed_cap = match observed_http_request_cap(baseline_record) {
+        Ok(cap) => cap,
+        Err((reason_code, notes)) => {
+            return http_request_not_proven(
+                family_grants,
+                vec![reason_code.into()],
+                &notes,
+                trials,
+            );
+        }
+    };
+
+    let removal = run_family_trial(
+        runner,
+        registry,
+        installed,
+        envelope,
+        &family,
+        "remove_grant",
+        remove_family_grants(&envelope.granted_capabilities, &family),
+        baseline_projection,
+        comparator,
+        "trial-http-request-remove-family",
+    );
+    let removal_matched = removal.matched;
+    trials.push(removal.trial);
+    if removal_matched {
+        let reasons = vec![
+            "LIVE_PROOF_BOUNDED".into(),
+            "LIVE_PROOF_SUPPORTED".into(),
+            "HTTP_LIVE_PROOF_BOUNDED".into(),
+        ];
+        return (
+            CapabilityGrantSet::default(),
+            CapabilityGrantSet::default(),
+            trials,
+            LiveProofFamilyStatus {
+                family,
+                support: LiveProofSupport::BoundedLiveProof,
+                proof_status: Some("bounded_minimal".into()),
+                reason_codes: stable_sorted_strings(reasons.clone()),
+                notes: "The family was removable for this invocation under the bounded fixture-backed loopback GET replay slice.".into(),
+            },
+            reasons,
+        );
+    }
+
+    let observed_refs = vec![&observed_cap];
+    let mut reduced_family = Vec::new();
+    for grant in &family_grants {
+        for reduced in reduce_grant_to_cap_set(&observed_refs, grant) {
+            push_unique_grant(&mut reduced_family, reduced);
+        }
+    }
+
+    let CapabilityConstraints::HttpRequest(expected) = &observed_cap.constraints else {
+        unreachable!("observed http-request cap always carries HTTP constraints");
+    };
+    if !reduced_family.iter().any(|grant| match &grant.constraints {
+        CapabilityConstraints::HttpRequest(value) => http_request_covers(value, expected),
+        _ => false,
+    }) {
+        return http_request_not_proven(
+            family_grants,
+            vec!["HTTP_REQUEST_SHAPE_UNSUPPORTED".into()],
+            "The bounded http-request reduction could not preserve the exercised request envelope under the current typed HTTP scope model.",
+            trials,
+        );
+    }
+
+    let reduction = run_family_trial(
+        runner,
+        registry,
+        installed,
+        envelope,
+        &family,
+        "shrink_scope",
+        replace_family_grants(
+            &envelope.granted_capabilities,
+            &family,
+            CapabilityGrantSet {
+                grants: reduced_family.clone(),
+            },
+        ),
+        baseline_projection,
+        comparator,
+        "trial-http-request-shrink-observed-loopback-get",
+    );
+    let reduction_matched = reduction.matched;
+    trials.push(reduction.trial);
+
+    if !reduction_matched {
+        return http_request_not_proven(
+            family_grants,
+            vec!["LIVE_PROOF_PREREQUISITE_FAILED".into()],
+            "The bounded http-request replay shrink changed execution behavior under the live comparator, so proof failed closed.",
+            trials,
+        );
+    }
+
+    let proof_status = if reduced_family == family_grants {
+        "no_reduction"
+    } else {
+        "bounded_minimal"
+    };
+    let reasons = vec![
+        "LIVE_PROOF_BOUNDED".into(),
+        "LIVE_PROOF_SUPPORTED".into(),
+        "HTTP_LIVE_PROOF_BOUNDED".into(),
+    ];
+    (
+        CapabilityGrantSet {
+            grants: reduced_family,
+        },
+        CapabilityGrantSet::default(),
+        trials,
+        LiveProofFamilyStatus {
+            family,
+            support: LiveProofSupport::BoundedLiveProof,
+            proof_status: Some(proof_status.into()),
+            reason_codes: stable_sorted_strings(reasons.clone()),
+            notes: "Bounded live proof for http-request currently covers only one replay-fixtured HTTP GET to a loopback IP-literal host with an explicit port, no query, no redirects, and the normalized inspect-output comparator.".into(),
+        },
+        reasons,
+    )
+}
+
+fn http_request_not_proven(
+    family_grants: Vec<GrantedCapability>,
+    reasons: Vec<String>,
+    notes: &str,
+    trials: Vec<LiveProofCandidateTrial>,
+) -> (
+    CapabilityGrantSet,
+    CapabilityGrantSet,
+    Vec<LiveProofCandidateTrial>,
+    LiveProofFamilyStatus,
+    Vec<String>,
+) {
+    (
+        CapabilityGrantSet::default(),
+        CapabilityGrantSet {
+            grants: family_grants,
+        },
+        trials,
+        LiveProofFamilyStatus {
+            family: CapabilityId::HttpRequest,
+            support: LiveProofSupport::NotProven,
+            proof_status: Some("not_proven".into()),
+            reason_codes: stable_sorted_strings(reasons.clone()),
+            notes: notes.into(),
+        },
+        reasons,
+    )
+}
+
+#[allow(clippy::too_many_lines)]
+fn observed_http_request_cap(
+    record: &ExecutionRecord,
+) -> Result<GrantedCapability, (&'static str, String)> {
+    let mut exercised = Vec::new();
+    let mut blocked = Vec::new();
+
+    for observation in &record.authority_observations {
+        let AuthorityObservation::HttpRequest { status, detail } = observation else {
+            continue;
+        };
+        match status {
+            AuthorityObservationStatus::Exercised => exercised.push(detail),
+            AuthorityObservationStatus::Blocked => blocked.push(detail),
+        }
+    }
+
+    if exercised.len() != 1 {
+        let redirect_like = exercised.iter().any(|detail| {
+            detail.redirects_followed.unwrap_or(0) > 0
+                || detail.response_status.is_some_and(is_redirect_status)
+        });
+        if redirect_like {
+            return Err((
+                "HTTP_REDIRECTS_UNSUPPORTED",
+                "Bounded http-request live proof currently excludes redirect-driven executions, including successful redirect follow chains.".into(),
+            ));
+        }
+        return Err((
+            "HTTP_MULTI_REQUEST_UNSUPPORTED",
+            "Bounded http-request live proof currently requires exactly one exercised HTTP request in the baseline execution.".into(),
+        ));
+    }
+
+    if !blocked.is_empty() {
+        let redirect_blocked = blocked.iter().any(|detail| {
+            detail
+                .denial
+                .as_ref()
+                .is_some_and(|denial| denial.code.starts_with("http-request-redirect"))
+        });
+        let reason_code = if redirect_blocked {
+            "HTTP_REDIRECTS_UNSUPPORTED"
+        } else {
+            "HTTP_REQUEST_SHAPE_UNSUPPORTED"
+        };
+        let notes = if redirect_blocked {
+            "Bounded http-request live proof currently excludes redirect-driven executions and blocked redirect follow-up hops.".into()
+        } else {
+            "Bounded http-request live proof currently requires a baseline execution with no blocked HTTP attempts.".into()
+        };
+        return Err((reason_code, notes));
+    }
+
+    let detail = exercised[0];
+    if detail.result_error.is_some() {
+        return Err((
+            "HTTP_REQUEST_SHAPE_UNSUPPORTED",
+            "Bounded http-request live proof currently requires a successful buffered response with no host result error.".into(),
+        ));
+    }
+    if detail.redirects_followed.unwrap_or(0) > 0
+        || detail.response_status.is_some_and(is_redirect_status)
+    {
+        return Err((
+            "HTTP_REDIRECTS_UNSUPPORTED",
+            "Bounded http-request live proof currently excludes redirect responses and redirect-following executions.".into(),
+        ));
+    }
+
+    let request = &detail.request;
+    if request.method != HttpMethod::Get {
+        return Err((
+            "HTTP_REQUEST_SHAPE_UNSUPPORTED",
+            "Bounded http-request live proof currently supports GET requests only.".into(),
+        ));
+    }
+
+    let parsed_url = Url::parse(&request.url).map_err(|error| {
+        (
+            "HTTP_REQUEST_SHAPE_UNSUPPORTED",
+            format!(
+                "The exercised http-request URL could not be reparsed safely for live proof: {error}"
+            ),
+        )
+    })?;
+    if parsed_url.query().is_some() || parsed_url.fragment().is_some() {
+        return Err((
+            "HTTP_QUERY_UNSUPPORTED",
+            "Bounded http-request live proof currently excludes query and fragment components because the live HTTP scope model does not enforce them directly.".into(),
+        ));
+    }
+
+    let scheme = match parsed_url.scheme() {
+        "http" => HttpScheme::Http,
+        "https" => HttpScheme::Https,
+        _ => {
+            return Err((
+                "HTTP_REQUEST_SHAPE_UNSUPPORTED",
+                "The exercised http-request URL used an unsupported scheme.".into(),
+            ));
+        }
+    };
+    if scheme != HttpScheme::Http {
+        return Err((
+            "HTTP_SCHEME_UNSUPPORTED_FOR_LIVE_PROOF",
+            "Bounded http-request live proof currently supports only HTTP loopback replay fixtures.".into(),
+        ));
+    }
+
+    let Some(host) = parsed_url.host_str() else {
+        return Err((
+            "HTTP_REQUEST_SHAPE_UNSUPPORTED",
+            "The exercised http-request URL did not expose a host for live proof normalization."
+                .into(),
+        ));
+    };
+    let Ok(host_ip) = host.parse::<std::net::IpAddr>() else {
+        return Err((
+            "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
+            "Bounded http-request live proof currently requires an explicit loopback IP-literal host.".into(),
+        ));
+    };
+    if !host_ip.is_loopback() {
+        return Err((
+            "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
+            "Bounded http-request live proof currently requires a loopback IP-literal host.".into(),
+        ));
+    }
+
+    let Some(port) = parsed_url.port_or_known_default() else {
+        return Err((
+            "HTTP_REQUEST_SHAPE_UNSUPPORTED",
+            "The exercised http-request URL did not resolve to an explicit or default port.".into(),
+        ));
+    };
+    let path = if parsed_url.path().is_empty() {
+        "/".to_owned()
+    } else {
+        parsed_url.path().to_owned()
+    };
+
+    Ok(GrantedCapability {
+        id: CapabilityId::HttpRequest,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+            allowed_schemes: Some(vec![HttpScheme::Http]),
+            allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_host_suffixes: None,
+            allowed_ports: Some(vec![port]),
+            allowed_methods: Some(vec![HttpMethod::Get]),
+            allowed_path_prefixes: Some(vec![path]),
+            max_timeout_ms: None,
+            max_response_bytes: None,
+            follow_redirects: Some(false),
+            max_redirects: None,
+            allow_loopback: Some(true),
+            allow_link_local: Some(false),
+            allow_private_networks: Some(false),
+            allow_ip_literals: Some(true),
+        }),
+    })
+}
+
+#[allow(clippy::too_many_lines)]
 fn prove_read_resource_family<A, R>(
     runner: &Runner<A>,
     registry: &R,
@@ -335,7 +697,7 @@ where
         "remove_grant",
         remove_family_grants(&envelope.granted_capabilities, &family),
         baseline_projection,
-        comparator.clone(),
+        comparator,
         "trial-read-resource-remove-family",
     );
     let removal_matched = removal.matched;
@@ -491,6 +853,7 @@ where
     )
 }
 
+#[allow(clippy::too_many_lines)]
 fn prove_log_write_family<A, R>(
     runner: &Runner<A>,
     registry: &R,
@@ -524,7 +887,7 @@ where
         "remove_grant",
         remove_family_grants(&envelope.granted_capabilities, &family),
         baseline_projection,
-        comparator.clone(),
+        comparator,
         "trial-log-write-remove-family",
     );
     let removal_matched = removal.matched;
@@ -597,7 +960,8 @@ where
                 support: LiveProofSupport::NotProven,
                 proof_status: Some("not_proven".into()),
                 reason_codes: stable_sorted_strings(reasons.clone()),
-                notes: "The reduced log-write grants did not preserve the observed log levels.".into(),
+                notes: "The reduced log-write grants did not preserve the observed log levels."
+                    .into(),
             },
             reasons,
         );
@@ -618,7 +982,7 @@ where
             },
         ),
         baseline_projection,
-        comparator.clone(),
+        comparator,
         "trial-log-write-observed-levels",
     );
     let reduced_matched = reduced_trial.matched;
@@ -660,7 +1024,7 @@ where
                 },
             ),
             baseline_projection,
-            comparator.clone(),
+            comparator,
             &format!("trial-log-write-subset-{index}"),
         );
         if subset_trial.matched {
@@ -695,6 +1059,7 @@ where
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_family_trial<A, R>(
     runner: &Runner<A>,
     registry: &R,
@@ -714,71 +1079,39 @@ where
     let candidate_envelope = clone_with_grants(envelope, candidate_grants.clone());
     match runner.execute(registry, installed, &candidate_envelope) {
         Ok(record) => {
-            let comparator_result =
-                normalized_execution_projection(&record, comparator).map(|candidate_projection| {
-                    let output_digest = sha256_json(&candidate_projection);
-                    (
-                        baseline_projection == &candidate_projection,
-                        output_digest,
-                        LiveProofComparatorStatus::Match,
-                    )
-                });
+            let candidate_projection = normalized_execution_projection(&record, comparator);
+            let output_digest = sha256_json(&candidate_projection);
+            let matched = baseline_projection == &candidate_projection;
+            let accepted = matched && matches!(record.status, ExecutionStatus::Succeeded);
 
-            match comparator_result {
-                Ok((matched, output_digest, comparator_status)) => TrialResult {
-                    trial: LiveProofCandidateTrial {
-                        trial_id: trial_id.into(),
-                        family: family.clone(),
-                        change_kind: change_kind.into(),
-                        candidate_envelope: LiveProofEnvelope {
-                            granted_capabilities: candidate_grants,
-                        },
-                        execution_status: match record.status {
-                            ExecutionStatus::Succeeded => LiveProofTrialStatus::Succeeded,
-                            ExecutionStatus::Failed => LiveProofTrialStatus::Failed,
-                            ExecutionStatus::Rejected => LiveProofTrialStatus::Rejected,
-                            ExecutionStatus::Partial => LiveProofTrialStatus::Failed,
-                        },
-                        comparator_status: if matched {
-                            comparator_status
-                        } else {
-                            LiveProofComparatorStatus::Mismatch
-                        },
-                        accepted: matched && matches!(record.status, ExecutionStatus::Succeeded),
-                        reason_codes: if matched {
-                            vec![]
-                        } else {
-                            vec!["AUTHORITY_REQUIRED_BY_COMPARATOR".into()]
-                        },
-                        error_code: record.termination.as_ref().map(|detail| detail.code.clone()),
-                        observed_families: observed_families(&record.authority_observations),
-                        output_digest: Some(output_digest),
+            TrialResult {
+                trial: LiveProofCandidateTrial {
+                    trial_id: trial_id.into(),
+                    family: family.clone(),
+                    change_kind: change_kind.into(),
+                    candidate_envelope: LiveProofEnvelope {
+                        granted_capabilities: candidate_grants,
                     },
-                    matched: matched && matches!(record.status, ExecutionStatus::Succeeded),
-                },
-                Err(message) => TrialResult {
-                    trial: LiveProofCandidateTrial {
-                        trial_id: trial_id.into(),
-                        family: family.clone(),
-                        change_kind: change_kind.into(),
-                        candidate_envelope: LiveProofEnvelope {
-                            granted_capabilities: candidate_grants,
-                        },
-                        execution_status: match record.status {
-                            ExecutionStatus::Succeeded => LiveProofTrialStatus::Succeeded,
-                            ExecutionStatus::Failed => LiveProofTrialStatus::Failed,
-                            ExecutionStatus::Rejected => LiveProofTrialStatus::Rejected,
-                            ExecutionStatus::Partial => LiveProofTrialStatus::Failed,
-                        },
-                        comparator_status: LiveProofComparatorStatus::Unavailable,
-                        accepted: false,
-                        reason_codes: vec!["LIVE_COMPARATOR_UNAVAILABLE".into()],
-                        error_code: Some(message),
-                        observed_families: observed_families(&record.authority_observations),
-                        output_digest: None,
+                    execution_status: live_proof_trial_status(&record.status),
+                    comparator_status: if matched {
+                        LiveProofComparatorStatus::Match
+                    } else {
+                        LiveProofComparatorStatus::Mismatch
                     },
-                    matched: false,
+                    accepted,
+                    reason_codes: if matched {
+                        vec![]
+                    } else {
+                        vec!["AUTHORITY_REQUIRED_BY_COMPARATOR".into()]
+                    },
+                    error_code: record
+                        .termination
+                        .as_ref()
+                        .map(|detail| detail.code.clone()),
+                    observed_families: observed_families(&record.authority_observations),
+                    output_digest: Some(output_digest),
                 },
+                matched: accepted,
             }
         }
         Err(error) => TrialResult {
@@ -809,18 +1142,22 @@ where
 fn normalized_execution_projection(
     record: &ExecutionRecord,
     profile: LiveProofComparatorProfile,
-) -> Result<Value, String> {
+) -> Value {
     let output = record.output.as_ref().map(|output| {
         let mut structured = output.structured.clone();
         let evidence = match profile {
-            LiveProofComparatorProfile::ExactOutput => serde_json::to_value(&output.evidence)
-                .expect("evidence refs serialize"),
+            LiveProofComparatorProfile::ExactOutput => {
+                serde_json::to_value(&output.evidence).expect("evidence refs serialize")
+            }
             LiveProofComparatorProfile::NormalizedInspectOutputV1 => {
                 normalize_evidence_refs(&output.evidence)
             }
         };
 
-        if matches!(profile, LiveProofComparatorProfile::NormalizedInspectOutputV1) {
+        if matches!(
+            profile,
+            LiveProofComparatorProfile::NormalizedInspectOutputV1
+        ) {
             strip_host_owned_projection(&mut structured);
         }
 
@@ -833,7 +1170,7 @@ fn normalized_execution_projection(
         })
     });
 
-    Ok(json!({
+    json!({
         "status": record.status,
         "termination": record.termination,
         "output": output,
@@ -846,7 +1183,15 @@ fn normalized_execution_projection(
                 "termination": child.termination,
             }))
             .collect::<Vec<_>>(),
-    }))
+    })
+}
+
+fn live_proof_trial_status(status: &ExecutionStatus) -> LiveProofTrialStatus {
+    match status {
+        ExecutionStatus::Succeeded => LiveProofTrialStatus::Succeeded,
+        ExecutionStatus::Failed | ExecutionStatus::Partial => LiveProofTrialStatus::Failed,
+        ExecutionStatus::Rejected => LiveProofTrialStatus::Rejected,
+    }
 }
 
 fn strip_host_owned_projection(value: &mut Value) {
@@ -892,7 +1237,11 @@ fn observed_read_resource_caps(record: &ExecutionRecord) -> Option<Vec<GrantedCa
                 push_unique_kind(&mut kinds, ResourceKind::Execution);
             }
             GuildResourceScope::ObjectRecord => {
-                scopes.insert(GuildResourceScope::ObjectRecord.canonical_prefix().to_owned());
+                scopes.insert(
+                    GuildResourceScope::ObjectRecord
+                        .canonical_prefix()
+                        .to_owned(),
+                );
                 push_unique_kind(&mut kinds, ResourceKind::Object);
             }
             GuildResourceScope::ObjectBlob | GuildResourceScope::ExecutionQuery => return None,
@@ -992,7 +1341,7 @@ fn overall_proof_status(
             matches!(status.support, LiveProofSupport::LiveProofSupported)
                 && matches!(
                     status.proof_status.as_deref(),
-                    Some("exact_minimal") | Some("no_reduction")
+                    Some("exact_minimal" | "no_reduction")
                 )
         })
         && residual.grants.is_empty();

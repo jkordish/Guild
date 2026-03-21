@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use guild_registry::{LocalRegistry, LocalSourceInstaller, SkillRegistry, execution_resource_uri};
-use guild_runner::{LiveProofComparatorProfile, Runner, WasmtimeRuntimeAdapter};
+use guild_runner::{HttpReplayFixture, LiveProofComparatorProfile, Runner, WasmtimeRuntimeAdapter};
 use guild_types::{
     Budget, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
     CapabilityId, EmitEvidenceConstraints, EvidenceAudience, ExecutionMode, GrantedCapability,
@@ -44,6 +44,12 @@ fn unique_id(prefix: &str) -> String {
 
 fn build_runner() -> Runner<WasmtimeRuntimeAdapter> {
     Runner::new(WasmtimeRuntimeAdapter::new().unwrap())
+}
+
+fn build_replay_runner(fixtures: Vec<HttpReplayFixture>) -> Runner<WasmtimeRuntimeAdapter> {
+    Runner::new(WasmtimeRuntimeAdapter::new().unwrap())
+        .with_http_replay_fixtures(fixtures)
+        .unwrap()
 }
 
 fn emit_evidence_grant() -> GrantedCapability {
@@ -101,13 +107,63 @@ fn http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
             allowed_path_prefixes: Some(vec![path_prefix.to_owned()]),
             max_timeout_ms: Some(2_000),
             max_response_bytes: Some(16_384),
-            follow_redirects: Some(false),
+            follow_redirects: None,
             max_redirects: None,
             allow_loopback: Some(true),
-            allow_link_local: Some(false),
-            allow_private_networks: Some(false),
+            allow_link_local: None,
+            allow_private_networks: None,
             allow_ip_literals: Some(true),
         }),
+    }
+}
+
+fn redirect_http_grant(host: &str, port: u16, path_prefixes: &[&str]) -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::HttpRequest,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+            allowed_schemes: Some(vec![HttpScheme::Http]),
+            allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_host_suffixes: None,
+            allowed_ports: Some(vec![port]),
+            allowed_methods: Some(vec![HttpMethod::Get]),
+            allowed_path_prefixes: Some(
+                path_prefixes
+                    .iter()
+                    .map(|path_prefix| (*path_prefix).to_owned())
+                    .collect(),
+            ),
+            max_timeout_ms: Some(2_000),
+            max_response_bytes: Some(16_384),
+            follow_redirects: Some(true),
+            max_redirects: Some(2),
+            allow_loopback: Some(true),
+            allow_link_local: None,
+            allow_private_networks: None,
+            allow_ip_literals: Some(true),
+        }),
+    }
+}
+
+fn http_replay_fixture(url: &str, body: &str) -> HttpReplayFixture {
+    HttpReplayFixture {
+        method: HttpMethod::Get,
+        url: url.to_owned(),
+        response_status: 200,
+        response_content_type: Some("application/json".into()),
+        response_body: body.as_bytes().to_vec(),
+        redirect_location: None,
+    }
+}
+
+fn redirect_replay_fixture(url: &str, redirect_location: &str) -> HttpReplayFixture {
+    HttpReplayFixture {
+        method: HttpMethod::Get,
+        url: url.to_owned(),
+        response_status: 302,
+        response_content_type: Some("application/json".into()),
+        response_body: br#"{"redirect":"json"}"#.to_vec(),
+        redirect_location: Some(redirect_location.to_owned()),
     }
 }
 
@@ -195,7 +251,9 @@ fn run_read_resource_bounded() -> serde_json::Value {
         )
         .unwrap();
 
-    let explain = registry.resolve(&requested_skill("explain-execution")).unwrap();
+    let explain = registry
+        .resolve(&requested_skill("explain-execution"))
+        .unwrap();
     let result = runner
         .prove_live_authority(
             &registry,
@@ -224,13 +282,99 @@ fn run_read_resource_bounded() -> serde_json::Value {
     })
 }
 
-fn run_http_request_not_proven() -> serde_json::Value {
+fn run_http_request_bounded() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/inspect-http-json"));
+    let registry = temp.load();
+    let replay_url = "http://127.0.0.1:18080/response.json";
+    let runner = build_replay_runner(vec![http_replay_fixture(
+        replay_url,
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "get",
+                    "json_pointers": ["/message", "/nested/count"],
+                }),
+                CapabilityGrantSet {
+                    grants: vec![http_grant("127.0.0.1", 18080, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "http-request-bounded",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
+fn run_http_request_redirect_unsupported() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/inspect-http-json"));
+    let registry = temp.load();
+    let runner = build_replay_runner(vec![
+        redirect_replay_fixture("http://127.0.0.1:18080/redirect.json", "/response.json"),
+        http_replay_fixture(
+            "http://127.0.0.1:18080/response.json",
+            r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+        ),
+    ]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": "http://127.0.0.1:18080/redirect.json",
+                    "method": "get",
+                    "json_pointers": ["/message"],
+                }),
+                CapabilityGrantSet {
+                    grants: vec![redirect_http_grant(
+                        "127.0.0.1",
+                        18080,
+                        &["/redirect.json", "/response.json"],
+                    )],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "http-request-redirect-unsupported",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
+fn run_http_request_no_replay() -> serde_json::Value {
     let server = http_test_server::HttpTestServer::start();
     let temp = TempRegistry::new();
     temp.install(repo_root().join("examples/skills/inspect-http-json"));
     let registry = temp.load();
     let runner = build_runner();
-    let http_skill = registry.resolve(&requested_skill("inspect-http-json")).unwrap();
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
 
     let result = runner
         .prove_live_authority(
@@ -251,12 +395,12 @@ fn run_http_request_not_proven() -> serde_json::Value {
                     )],
                 },
             ),
-            LiveProofComparatorProfile::ExactOutput,
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
         )
         .unwrap();
 
     json!({
-        "scenario": "http-request-not-proven",
+        "scenario": "http-request-no-replay",
         "baseline_execution_record": result.baseline_execution_record,
         "proof": result.proof,
     })
@@ -300,7 +444,9 @@ fn main() {
         .unwrap_or_else(|| "read-resource-bounded".into());
     let output = match scenario.as_str() {
         "read-resource-bounded" => run_read_resource_bounded(),
-        "http-request-not-proven" => run_http_request_not_proven(),
+        "http-request-bounded" => run_http_request_bounded(),
+        "http-request-redirect-unsupported" => run_http_request_redirect_unsupported(),
+        "http-request-no-replay" | "http-request-not-proven" => run_http_request_no_replay(),
         "log-write-reduced" => run_log_write_reduced(),
         other => {
             eprintln!("unknown live proof scenario: {other}");

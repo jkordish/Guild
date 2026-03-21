@@ -373,6 +373,27 @@ def effect_equal(left: dict[str, Any], right: dict[str, Any]) -> bool:
     return canonical_json(normalize_effect(left)) == canonical_json(normalize_effect(right))
 
 
+def effect_projected_to_required_shape(effect: dict[str, Any], required: dict[str, Any]) -> dict[str, Any]:
+    projected = deepcopy(effect)
+    required_scope = required.get("scope", {})
+    projected_scope = projected.get("scope", {})
+    if required_scope and projected_scope:
+        projected["scope"] = {
+            key: value
+            for key, value in projected_scope.items()
+            if key == "kind" or key in required_scope
+        }
+    required_cardinality = required.get("cardinality", {})
+    projected_cardinality = projected.get("cardinality", {})
+    if required_cardinality and projected_cardinality:
+        projected["cardinality"] = {
+            key: value
+            for key, value in projected_cardinality.items()
+            if key in required_cardinality
+        }
+    return projected
+
+
 def path_pattern_covers(container: str, candidate: str) -> bool:
     if container == "*" or container == "/**":
         return True
@@ -922,7 +943,7 @@ def effect_covers(grant: dict[str, Any], required: dict[str, Any]) -> bool:
     reduced = intersect_effect(grant, required)
     if reduced is None:
         return False
-    if not effect_equal(reduced, required):
+    if not effect_equal(effect_projected_to_required_shape(reduced, required), required):
         return False
     return cardinality_covers(grant.get("cardinality"), required.get("cardinality"))
 

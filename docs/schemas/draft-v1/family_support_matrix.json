@@ -5,9 +5,9 @@
   "notes": [
     "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
     "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
-    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c only proves bounded live read-resource shrinking across immutable Guild execution/object-record roots.",
+    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots and bounded fixture-backed http-request shrinking only for one deterministic loopback GET slice.",
     "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request/invoke-skill/emit-evidence stay unlinked, and log-write linkage support reflects the generic consumer path once a real live proof exists."
+    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback GET slice, invoke-skill and emit-evidence stay unlinked, and log-write linkage support reflects the generic consumer path once a real live proof exists."
   ],
   "layers": [
     "admission_runtime_guarantee_matching",
@@ -55,14 +55,14 @@
           "notes": "M4 plans carry canonical http-request scopes directly."
         },
         "live_minimization_proof": {
-          "status": "not_proven",
-          "reason_codes": ["LIVE_REPLAY_UNAVAILABLE"],
-          "notes": "M8c still lacks a real replay transport for counterfactual http-request proof, so the live proof path stays not_proven."
+          "status": "bounded",
+          "reason_codes": ["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"],
+          "notes": "M8c now has bounded live proof for exactly one deterministic replay-fixtured http-request slice: one exercised GET over http to an explicit loopback IP-literal host plus explicit port plus exact observed path-prefix, with no query, no redirects, and the normalized inspect-output comparator only. Broader http-request shapes stay not_proven."
         },
         "token_issuance_basis": {
           "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "M6 can still issue direct canonical http-request scopes, but proof-backed issuance falls back to upper-bound-only when live proof is unavailable."
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
+          "notes": "M6 still issues direct canonical http-request scopes, and it can now consume the bounded live proof for the replay-fixtured loopback GET slice. Unsupported http-request shapes still fall back to explicit upper-bound issuance or refusal."
         },
         "token_verification": {
           "status": "supported",
@@ -90,14 +90,14 @@
           "notes": "Scope-only absence claims remain supported when observation coverage is complete."
         },
         "plan_proof_token_linkage": {
-          "status": "not_proven",
-          "reason_codes": ["PROOF_LINKAGE_UNAVAILABLE", "LIVE_REPLAY_UNAVAILABLE"],
-          "notes": "M8c keeps http-request token issuance honest by refusing proof-backed linkage and falling back to explicit upper-bound issuance only."
+          "status": "bounded",
+          "reason_codes": ["HTTP_LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"],
+          "notes": "M8c now proves a real bounded plan-to-live-proof-to-proof-backed-token chain for the replay-fixtured loopback GET slice only. Unsupported http-request shapes still fail closed back to upper-bound issuance or refusal."
         },
         "proof_witness_linkage": {
-          "status": "not_proven",
-          "reason_codes": ["WITNESS_PROOF_LINKAGE_UNAVAILABLE", "LIVE_REPLAY_UNAVAILABLE"],
-          "notes": "Witnesses stay unlinked from live proofs for http-request because the proof basis is still not_proven."
+          "status": "bounded",
+          "reason_codes": ["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED"],
+          "notes": "Witnesses now link honestly to bounded live proofs only for the replay-fixtured loopback GET slice. Redirects, queries, multi-request executions, and unsupported comparator or replay conditions stay unlinked and not_proven."
         }
       }
     },

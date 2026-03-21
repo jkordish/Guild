@@ -252,7 +252,7 @@ def canonical_effect_from_runtime_http(observation: dict[str, Any]) -> dict[str,
     if request.get("timeout_ms") is not None:
         effect["scope"]["max_timeout_ms"] = request["timeout_ms"]
     response_bytes = observation["detail"].get("response_bytes")
-    if response_bytes is not None:
+    if response_bytes is not None and response_bytes > 0:
         effect["cardinality"]["max_bytes"] = response_bytes
     return normalize_effect(effect)
 

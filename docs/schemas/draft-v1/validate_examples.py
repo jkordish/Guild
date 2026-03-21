@@ -26,6 +26,7 @@ EXAMPLES = [
     ("skill_contract.schema.json", "examples/fetch-transform.contract.json"),
     ("skill_contract.schema.json", "examples/cluster-rollout.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-read.contract.json"),
+    ("skill_contract.schema.json", "examples/runtime-http-redirect.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-read-resource.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-invoke-skill.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-emit-evidence-zero.contract.json"),
@@ -61,6 +62,7 @@ EXAMPLES = [
     ("admission_request.schema.json", "examples/cluster-rollout.refuse.request.json"),
     ("admission_request.schema.json", "examples/cluster-rollout.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-read.admit.request.json"),
+    ("admission_request.schema.json", "examples/runtime-http-redirect.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-read-resource.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-invoke-skill.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-emit-evidence-zero.admit.request.json"),
@@ -1329,6 +1331,10 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     http_request = load_json("examples/runtime-http-read.admit.request.json")
     http_invocation = load_json("examples/runtime-http-read.invocation.json")
     http_record = load_json("examples/runtime-http-success.execution-record.json")
+    http_redirect_contract = load_json("examples/runtime-http-redirect.contract.json")
+    http_redirect_request = load_json("examples/runtime-http-redirect.admit.request.json")
+    http_redirect_invocation = load_json("examples/runtime-http-redirect.invocation.json")
+    http_redirect_record = load_json("examples/runtime-http-redirect.execution-record.json")
     read_contract = load_json("examples/runtime-read-resource.contract.json")
     read_request = load_json("examples/runtime-read-resource.admit.request.json")
     read_invocation = load_json("examples/runtime-read-resource.invocation.json")
@@ -1337,10 +1343,12 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     log_request = load_json("examples/runtime-log-write.admit.request.json")
 
     http_plan = build_execution_plan(http_contract, http_request, [runtime])
+    http_redirect_plan = build_execution_plan(http_redirect_contract, http_redirect_request, [runtime])
     read_plan = build_execution_plan(read_contract, read_request, [runtime])
     log_plan = build_execution_plan(log_contract, log_request, [runtime])
     for label, plan in (
         ("runtime-http-read", http_plan),
+        ("runtime-http-redirect", http_redirect_plan),
         ("runtime-read-resource", read_plan),
         ("runtime-log-write", log_plan),
     ):
@@ -1488,12 +1496,12 @@ def verify_live_runtime_alignment_cases() -> list[str]:
         failures.append("runtime-read-resource live witness did not satisfy the bounded canonical read-resource claim")
 
     http_proof, _http_scenario = build_live_runtime_proof_record(
-        scenario_name="http-request-not-proven",
+        scenario_name="http-request-bounded",
         plan=http_plan,
         contract=http_contract,
         runtime=runtime,
         invocation_input=http_invocation,
-        created_at="2026-03-20T20:10:00Z",
+        created_at="2026-03-21T03:42:00Z",
     )
     http_proof_errors = validate_instance("proof_record.schema.json", http_proof, registry)
     failures.extend(f"runtime-http-read live proof schema validation failed: {error}" for error in http_proof_errors)
@@ -1501,24 +1509,27 @@ def verify_live_runtime_alignment_cases() -> list[str]:
         (entry for entry in http_proof["family_proof_statuses"] if entry["family"] == "http-request"),
         None,
     )
-    if http_proof["proof_status"] != "not_proven":
-        failures.append("runtime-http-read live proof did not stay honest as not_proven")
+    if http_proof["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-http-read live proof record did not mark proof_source_kind as live-runtime")
+    if http_proof["proof_status"] != "bounded_minimal":
+        failures.append("runtime-http-read live proof did not stay bounded_minimal")
     if (
         http_family_status is None
-        or http_family_status["support"] != "not-proven"
-        or "LIVE_REPLAY_UNAVAILABLE" not in http_family_status["reason_codes"]
+        or http_family_status["support"] != "bounded-live-proof"
+        or "HTTP_LIVE_PROOF_BOUNDED" not in http_family_status["reason_codes"]
     ):
-        failures.append("runtime-http-read live proof did not preserve the replay-unavailable not_proven status")
+        failures.append("runtime-http-read live proof did not carry honest bounded http-request family support metadata")
+    if http_proof["residual_authority_plan"]["grants"]:
+        failures.append("runtime-http-read live proof unexpectedly left residual authority outside the proven envelope")
 
     http_token = create_root_token(
         http_plan,
         http_contract,
         issuer,
         holder_id="urn:guild:service:runtime-http-read",
-        issued_at="2026-03-20T20:10:30Z",
+        issued_at="2026-03-21T03:42:15Z",
         proof=http_proof,
         required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
-        allow_upper_bound=True,
         audiences=["runtime-http-read"],
         resource_bindings=[
             {
@@ -1530,17 +1541,40 @@ def verify_live_runtime_alignment_cases() -> list[str]:
         chain_links=["urn:guild:actor:runtime-alignment-test"],
     )
     if http_token.get("kind") != "guild.delegated_capability_token":
-        failures.append("runtime-http-read upper-bound token issuance did not produce a delegated capability token")
+        failures.append("runtime-http-read live proof-backed token issuance did not produce a delegated capability token")
         return failures
-    if http_token["issuance_basis"] != "m4_upper_bound" or http_token.get("proof_id") is not None:
-        failures.append("runtime-http-read token issuance did not fall back honestly to the upper-bound basis")
+    if http_token["issuance_basis"] != "m5_proven_subset" or http_token.get("proof_source_kind") != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-http-read token did not stay explicitly live proof-backed")
+
+    http_token_verification = verify_token(
+        http_token,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T03:42:20Z",
+        expected_holder_id="urn:guild:service:runtime-http-read",
+        expected_audiences=["runtime-http-read"],
+        expected_resources=[
+            {
+                "family": "http-request",
+                "audience": "runtime-http-read",
+                "resource": "GET:http://127.0.0.1:18080/response.json",
+            }
+        ],
+        expected_runtime_guarantee_id="urn:guild:runtime:wasmtime-strict:v1",
+        expected_call_chain_links=http_token["call_chain"]["links"],
+        plan=http_plan,
+        contract=http_contract,
+        proof=http_proof,
+        check_replay=False,
+    )
+    if not http_token_verification["verified"] or http_token_verification["decision"] != "allow":
+        failures.append("runtime-http-read live proof-backed token did not verify cleanly")
 
     http_witness = generate_witness(
         plan=http_plan,
         contract=http_contract,
         issuer=issuer,
         issuer_keys=issuer_keys,
-        issued_at="2026-03-20T20:11:00Z",
+        issued_at="2026-03-21T03:42:30Z",
         invocation_input=http_invocation,
         proof=http_proof,
         required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
@@ -1551,21 +1585,33 @@ def verify_live_runtime_alignment_cases() -> list[str]:
         },
         redaction_profile="none",
     )
-    if http_witness["proof_basis"] is not None:
-        failures.append("runtime-http-read witness incorrectly linked an unavailable live proof")
-    if "WITNESS_PROOF_LINKAGE_UNAVAILABLE" not in http_witness["reason_codes"]:
-        failures.append("runtime-http-read witness did not preserve the unavailable live proof linkage reason")
+    if http_witness["proof_basis"] is None or http_witness["proof_basis"]["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-http-read witness did not keep an honest live proof linkage")
     http_verification = verify_witness(
         http_witness,
         issuer_keys=issuer_keys,
-        verification_time="2026-03-20T20:12:00Z",
+        verification_time="2026-03-21T03:43:00Z",
         plan=http_plan,
         contract=http_contract,
         proof=http_proof,
         token=http_token,
     )
     if not http_verification["verified"] or http_verification["witness_status"] != "within_envelope":
-        failures.append("runtime-http-read live witness did not verify as within_envelope after proof linkage was withheld")
+        failures.append("runtime-http-read live witness did not verify as within_envelope")
+    http_proof_claim = verify_claim(
+        http_witness,
+        {
+            "claim_type": "no_authority_use_outside_proof",
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T03:43:00Z",
+        plan=http_plan,
+        contract=http_contract,
+        proof=http_proof,
+        token=http_token,
+    )
+    if http_proof_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("runtime-http-read live witness did not satisfy the proof-envelope absence claim")
     http_claim = verify_claim(
         http_witness,
         {
@@ -1577,17 +1623,137 @@ def verify_live_runtime_alignment_cases() -> list[str]:
                 "allowed_ports": [18080],
                 "allowed_methods": ["GET"],
                 "allowed_path_prefixes": ["/response.json"],
+                "follow_redirects": False,
             },
         },
         issuer_keys=issuer_keys,
-        verification_time="2026-03-20T20:12:00Z",
+        verification_time="2026-03-21T03:43:00Z",
         plan=http_plan,
         contract=http_contract,
         proof=http_proof,
         token=http_token,
     )
     if http_claim["claim_evaluation"]["status"] != "satisfied":
-        failures.append("runtime-http-read live witness did not satisfy the covered canonical http-request claim")
+        failures.append("runtime-http-read live witness did not satisfy the bounded canonical http-request claim")
+
+    http_no_replay = load_live_proof_scenario("http-request-no-replay")
+    http_no_replay_family = next(
+        (entry for entry in http_no_replay["proof"]["family_statuses"] if entry["family"] == "http-request"),
+        None,
+    )
+    if (
+        http_no_replay["proof"]["proof_status"] != "not_proven"
+        or http_no_replay_family is None
+        or "HTTP_REPLAY_FIXTURE_REQUIRED" not in http_no_replay_family["reason_codes"]
+    ):
+        failures.append("http-request no-replay scenario did not fail closed with the replay-fixture-required reason")
+
+    http_redirect_proof, _http_redirect_scenario = build_live_runtime_proof_record(
+        scenario_name="http-request-redirect-unsupported",
+        plan=http_redirect_plan,
+        contract=http_redirect_contract,
+        runtime=runtime,
+        invocation_input=http_redirect_invocation,
+        created_at="2026-03-21T03:43:30Z",
+    )
+    http_redirect_proof_errors = validate_instance("proof_record.schema.json", http_redirect_proof, registry)
+    failures.extend(
+        f"runtime-http-redirect live proof schema validation failed: {error}"
+        for error in http_redirect_proof_errors
+    )
+    http_redirect_family_status = next(
+        (entry for entry in http_redirect_proof["family_proof_statuses"] if entry["family"] == "http-request"),
+        None,
+    )
+    if http_redirect_proof["proof_status"] != "not_proven":
+        failures.append("runtime-http-redirect live proof did not stay honest as not_proven")
+    if (
+        http_redirect_family_status is None
+        or http_redirect_family_status["support"] != "not-proven"
+        or "HTTP_REDIRECTS_UNSUPPORTED" not in http_redirect_family_status["reason_codes"]
+    ):
+        failures.append("runtime-http-redirect live proof did not preserve the redirect-unsupported not_proven status")
+
+    http_redirect_token = create_root_token(
+        http_redirect_plan,
+        http_redirect_contract,
+        issuer,
+        holder_id="urn:guild:service:runtime-http-redirect",
+        issued_at="2026-03-21T03:43:45Z",
+        proof=http_redirect_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        allow_upper_bound=True,
+        audiences=["runtime-http-redirect"],
+        resource_bindings=[
+            {
+                "family": "http-request",
+                "audience": "runtime-http-redirect",
+                "resource": "GET:http://127.0.0.1:18080/redirect.json",
+            }
+        ],
+        chain_links=["urn:guild:actor:runtime-alignment-test"],
+    )
+    if http_redirect_token.get("kind") != "guild.delegated_capability_token":
+        failures.append("runtime-http-redirect upper-bound token issuance did not produce a delegated capability token")
+        return failures
+    if http_redirect_token["issuance_basis"] != "m4_upper_bound" or http_redirect_token.get("proof_id") is not None:
+        failures.append("runtime-http-redirect token issuance did not fall back honestly to the upper-bound basis")
+
+    http_redirect_witness = generate_witness(
+        plan=http_redirect_plan,
+        contract=http_redirect_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-21T03:44:00Z",
+        invocation_input=http_redirect_invocation,
+        proof=http_redirect_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        token=http_redirect_token,
+        observation={
+            "source_kind": LIVE_RUNTIME_SOURCE_KIND,
+            "execution_record": http_redirect_record,
+        },
+        redaction_profile="none",
+    )
+    if http_redirect_witness["proof_basis"] is not None:
+        failures.append("runtime-http-redirect witness incorrectly linked an unavailable live proof")
+    if "WITNESS_PROOF_LINKAGE_UNAVAILABLE" not in http_redirect_witness["reason_codes"]:
+        failures.append("runtime-http-redirect witness did not preserve the unavailable live proof linkage reason")
+    http_redirect_verification = verify_witness(
+        http_redirect_witness,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T03:44:30Z",
+        plan=http_redirect_plan,
+        contract=http_redirect_contract,
+        proof=http_redirect_proof,
+        token=http_redirect_token,
+    )
+    if not http_redirect_verification["verified"] or http_redirect_verification["witness_status"] != "within_envelope":
+        failures.append("runtime-http-redirect live witness did not verify as within_envelope after proof linkage was withheld")
+    http_redirect_claim = verify_claim(
+        http_redirect_witness,
+        {
+            "claim_type": "no_http_request_outside_scope",
+            "http_request_scope": {
+                "kind": "network",
+                "allowed_schemes": ["http"],
+                "allowed_hosts": ["127.0.0.1"],
+                "allowed_ports": [18080],
+                "allowed_methods": ["GET"],
+                "allowed_path_prefixes": ["/redirect.json", "/response.json"],
+                "follow_redirects": True,
+                "max_redirects": 2,
+            },
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T03:44:30Z",
+        plan=http_redirect_plan,
+        contract=http_redirect_contract,
+        proof=http_redirect_proof,
+        token=http_redirect_token,
+    )
+    if http_redirect_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("runtime-http-redirect live witness did not satisfy the covered canonical redirect http-request claim")
 
     log_live = load_live_proof_scenario("log-write-reduced")
     log_family_status = next(
@@ -1687,14 +1853,16 @@ def verify_family_support_matrix() -> list[str]:
 
     if families["log-write"]["layers"]["live_minimization_proof"]["status"] != "supported":
         failures.append("family_support_matrix.json did not mark log-write live minimization proof as supported")
-    if families["http-request"]["layers"]["live_minimization_proof"]["status"] != "not_proven":
-        failures.append("family_support_matrix.json did not keep http-request live minimization proof not_proven")
+    if families["http-request"]["layers"]["live_minimization_proof"]["status"] != "bounded":
+        failures.append("family_support_matrix.json did not mark http-request live minimization proof as bounded")
     if families["invoke-skill"]["layers"]["live_minimization_proof"]["status"] != "not_proven":
         failures.append("family_support_matrix.json did not keep invoke-skill live minimization proof not_proven")
     if families["emit-evidence"]["layers"]["live_minimization_proof"]["status"] != "not_proven":
         failures.append("family_support_matrix.json did not keep emit-evidence live minimization proof not_proven")
-    if families["http-request"]["layers"]["proof_witness_linkage"]["status"] != "not_proven":
-        failures.append("family_support_matrix.json did not keep http-request proof->witness linkage unavailable")
+    if families["http-request"]["layers"]["plan_proof_token_linkage"]["status"] != "bounded":
+        failures.append("family_support_matrix.json did not mark http-request plan->proof->token linkage as bounded")
+    if families["http-request"]["layers"]["proof_witness_linkage"]["status"] != "bounded":
+        failures.append("family_support_matrix.json did not mark http-request proof->witness linkage as bounded")
 
     aliases = matrix.get("compatibility_aliases", {})
     if aliases.get("net.connect", {}).get("status") != "partial":
