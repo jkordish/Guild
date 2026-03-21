@@ -1,0 +1,56 @@
+{
+  "receipt": {
+    "execution_id": "019d0cdc-3f77-7f6c-bb24-7c4c6f2f61ab",
+    "uri": "guild://executions/019d0cdc-3f77-7f6c-bb24-7c4c6f2f61ab",
+    "trace_id": "trace-log-write-1",
+    "status": "succeeded"
+  },
+  "request": {
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "hello-inspect"
+      },
+      "version_req": "^0.1"
+    },
+    "input": {
+      "name": "Ada",
+      "emit_log": true
+    }
+  },
+  "resolved_skill": {
+    "key": {
+      "namespace": "example",
+      "name": "hello-inspect"
+    },
+    "version": "0.1.0",
+    "digest": "sha256:9878310506fa7fc567cdb991b838e82b5e5848a2eec6ad8a8012b78f34290f53"
+  },
+  "status": "succeeded",
+  "granted_capabilities": {
+    "grants": [
+      {
+        "id": "log-write",
+        "access": "write",
+        "constraints": {
+          "levels": [
+            "info"
+          ]
+        }
+      }
+    ]
+  },
+  "authority_observations": [
+    {
+      "family": "log-write",
+      "status": "exercised",
+      "detail": {
+        "level": "info"
+      }
+    }
+  ],
+  "provenance": {
+    "started_at_utc": "2026-03-20T20:16:00.000000000Z",
+    "finished_at_utc": "2026-03-20T20:16:01.000000000Z"
+  }
+}

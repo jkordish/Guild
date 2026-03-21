@@ -25,9 +25,45 @@
       "value": "373eaf6dc52e5ff8cf6c7d5f3b4f9c8f4ca9f8c2f4d8f387c79c9f8564e7a8cb"
     }
   },
-  "required_effects": [],
+  "required_effects": [
+    {
+      "family": "emit-evidence",
+      "scope": {
+        "kind": "evidence",
+        "audiences": [
+          "user"
+        ],
+        "redactions": [
+          "none"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 1,
+        "max_bytes": 65536
+      },
+      "justification": "The live inspect path emits one bounded user-visible evidence record."
+    }
+  ],
   "forbidden_effects": [],
-  "authority_ceiling": [],
+  "authority_ceiling": [
+    {
+      "family": "emit-evidence",
+      "scope": {
+        "kind": "evidence",
+        "audiences": [
+          "user"
+        ],
+        "redactions": [
+          "none"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 1,
+        "max_bytes": 65536
+      },
+      "justification": "Canonical control-plane ceiling matches the live emit-evidence family directly."
+    }
+  ],
   "required_runtime_guarantees": {
     "execution_isolation_assurance": {
       "minimum": "strong"
@@ -77,5 +113,5 @@
     "ttl_seconds_max": 300
   },
   "witness_level": "decision",
-  "notes": "Coverage-limited alignment example. The live runtime emits canonical emit-evidence observations, but draft-v1 still cannot represent that family as a legacy effect_class."
+  "notes": "Direct canonical emit-evidence example. Draft-v1 carries the live family directly and keeps the bounded M5 limitation explicit."
 }

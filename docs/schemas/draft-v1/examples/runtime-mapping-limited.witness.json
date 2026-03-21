@@ -86,13 +86,14 @@
     "canonicalization": "guild-json-c14n-v1",
     "claims_digest": {
       "algorithm": "sha256",
-      "value": "9150bf357d64ea581ed0313d6512e18affb6708a5f617f79aab7997d7205043f"
+      "value": "e3f75f0a8e4afe28c283570a6b34508f447febc6b76afd2ff31a9e6834126939"
     },
-    "mac_base64": "dSbQSP5SkIzqGkMkJyMW3xKy4na1vokQ+KioKSz4Z6E=",
+    "mac_base64": "gczZUbLFxJL1vLicjaIdfRLPMM+XnX+aElhBTP8lKRk=",
     "mode": "hmac-sha256"
   },
   "reason_codes": [
     "OBSERVATION_COVERAGE_INSUFFICIENT",
+    "RUNTIME_OBSERVATION_UNMAPPABLE",
     "VOCABULARY_MAPPING_UNSUPPORTED"
   ],
   "redaction": {
@@ -104,7 +105,7 @@
     "raw_trace_included": false,
     "redacted_content_digest": {
       "algorithm": "sha256",
-      "value": "e1b3a7299fa08d46b43cd578eb6806ae6fe9547af59397c2fc4e2e8e77ca1b4d"
+      "value": "8de9d38a15dfb5726e0970e6637862bf35524b644c45b0b3e1c18d75679ddbb0"
     },
     "redacted_fields": [
       "raw_trace"

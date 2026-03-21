@@ -35,13 +35,16 @@ python3 -m venv /tmp/guild-schema-venv
 
 `validate_examples.py` covers schema validation plus the checked-in `admit`, `downgrade`, `migrate`, and `refuse` execution-plan examples. `compatibility_check.py` remains the narrower hard-requirement precheck and regenerates `docs/schemas/draft-v1/compatibility_matrix.md`.
 
-For M8a, that validation path now also checks the live-runtime alignment layer explicitly:
+For M8c, that validation path now also checks the live-runtime alignment layer explicitly:
 
 - bundled contracts and runtimes now align on the real inspect world `guild-skill-inspect-v1`
 - the draft runtime examples publish both `supported_effect_classes` for draft compatibility and `supported_canonical_families` for live-runtime truth
 - live Rust `authority_observations` fixtures are normalized into draft-v1 witnesses without silently widening vocabulary
-- live `http-request` observations prove the conservative `net.connect` compatibility alias and keep blocked attempts distinct
-- live `emit-evidence` observations stay coverage-limited or unverifiable rather than being treated as supported absence-proof coverage
+- direct canonical `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations now stay direct through plan, token, and witness handling
+- a real bounded live `read-resource` proof is generated through the Rust runtime and then consumed by the draft token and witness layers
+- an honest `http-request` live proof failure stays `not_proven` and falls back to explicit upper-bound-only token behavior
+- a real live `log-write` family proof is checked over the observed discrete log-level slice without pretending that `emit-evidence` became proven at the same time
+- legacy `net.connect` and `component.invoke` compatibility paths are still checked explicitly as deprecated narrowing-only aliases rather than being treated as canonical support
 
 It now also covers the draft-bundle M5 examples:
 
@@ -75,16 +78,28 @@ It now also covers the draft-bundle M7 witness examples:
 - zero-authority witnessing with explicit negative-claim semantics
 - runtime-binding mismatch verification failure
 - vocabulary-mapping limitation handling that stays coverage-limited rather than pretending the unmapped effect did not happen
-- live-runtime alignment cases for exercised `http-request`, blocked `http-request`, unsupported live `emit-evidence`, and deterministic normalization of runtime-native observations
+- live-runtime alignment cases for bounded live `read-resource` proof-backed linkage, honest `http-request` proof fallback, and exact live `log-write` family proof support
+- explicit alias deprecation or rejection checks for `net.connect`, `component.invoke`, and `net.resolve`
+- deterministic normalization of identical runtime-native inputs
+- fail-closed live proof prerequisite behavior
 
 The current M7 protection mechanism in this draft harness is also a shared-secret HMAC MAC over canonical JSON claims. It is not public-key attestation, and the bounded harness and fixture paths do not imply runtime-general witness completeness.
 
-Current live-runtime claim status after M8a is narrow and explicit:
+Current live-runtime claim status after M8c is explicit and per family:
 
-- M5 is still not runtime-general for any family
-- M6 is still a draft-local token layer and does not by itself justify runtime-general enforcement claims for any family
-- M7 now has one real live-runtime-backed negative-claim path for `http-request`, using the conservative `net.connect` compatibility alias for explicit HTTP(S) GET or HEAD scopes
-- live `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are observed by the Rust runtime but remain coverage-limited in draft-v1 claim semantics because the draft vocabulary still lacks direct effect-classes for them
+- M5 now has bounded live proof for `read-resource` over immutable Guild execution/object-record roots only
+- M5 now has real live family proof for `log-write` over the observed discrete level slice
+- M5 still remains `not_proven` for `http-request`, `invoke-skill`, and `emit-evidence`
+- M6 now issues and verifies direct canonical scopes for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, but it remains a draft-local token layer
+- M8c now proves one honest live end-to-end chain for `read-resource`: plan -> proof -> token -> witness
+- M7 witness linkage now stays proof-linked only where the supplied proof is a real live-runtime proof and otherwise remains explicitly unlinked
+- per-family, per-layer machine-readable status now lives in `docs/schemas/draft-v1/family_support_matrix.json`
+
+If you touched the live Rust proof path, run the focused integration suite explicitly:
+
+```bash
+cargo test -p guild-runner --test live_proofs -- --nocapture
+```
 
 If you want one direct M4 admission run:
 

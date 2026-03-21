@@ -4,7 +4,7 @@
 
 Guild sits one layer above raw MCP servers. MCP gives agents a way to discover and call tools. Guild is the layer that makes those skills admit, run, delegate, and witness authority under explicit host control instead of ambient guest access.
 
-> Status: pre-alpha. Current milestone status is explicit: M3 and M4 are implemented as the draft-v1 schema and admission bundle under `docs/schemas/draft-v1/`; M5 and M6 are implemented there as bounded draft-v1 proof and token paths; M7 is complete as the bounded draft-v1 witness layer; M8a is complete as the live-runtime vocabulary and observation-alignment bridge; M9 and M10 have not started. The live Rust runtime surface is canonical. The draft bundle remains draft.
+> Status: pre-alpha. The repo is best read milestone-first. `M3` and `M4` are implemented as the draft-v1 contract and admission bundle under `docs/schemas/draft-v1/`. `M5`, `M6`, and `M7` exist there as bounded draft-v1 proof, token, and witness paths. `M8a` made the live Rust runtime vocabulary canonical. `M8b` moved draft-v1 onto the active canonical live families directly. `M8c` added the first honest live-proof slice: `read-resource` now has bounded live proof and checked plan -> proof -> token -> witness linkage over immutable Guild execution or object-record URIs, `log-write` now has real live family proof over observed log-level slices, and `http-request`, `invoke-skill`, and `emit-evidence` remain explicitly `not_proven`. `M9` and `M10` have not started.
 
 ## Why Guild
 
@@ -12,9 +12,9 @@ Guild exists to make the milestone path concrete:
 
 - `M3` and `M4`: declare portable contracts and compute a fail-closed upper-bound execution plan before running
 - `M5`: prove when a specific invocation needs less authority than that upper bound, without widening semantics
-- `M6`: materialize only invocation-bound delegated capability tokens instead of handing guests ambient authority
+- `M6`: issue only invocation-bound delegated capability tokens instead of handing guests ambient authority
 - `M7`: record exercised and blocked authority as durable witnessable facts rather than loose logs
-- `M8a`: align the draft control-plane vocabulary with the live Rust enforcement and observation surface, or fail closed when the mapping is not safe
+- `M8a`, `M8b`, and `M8c`: align that draft control-plane with the live Rust runtime, make the live family vocabulary canonical, and add live proof or linkage only where the runtime can actually support it
 
 That is why Guild is strict about a few things:
 
@@ -178,17 +178,19 @@ cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/
 ## Milestone Status
 
 - `M3 Define the schemas`: implemented as the draft-v1 schema bundle under `docs/schemas/draft-v1/`, with checked examples and deterministic validation.
-- `M4 Build the admission engine`: implemented in that same draft-v1 bundle, producing fail-closed `admit`, `downgrade`, `migrate`, and `refuse` execution plans.
-- `M5 Build the counterfactual authority minimizer`: implemented as a bounded draft-v1 minimization path with explicit statuses such as `exact_minimal`, `bounded_minimal`, `reduced`, `no_reduction`, and `not_proven`.
-- `M6 Build delegation-chain-bound capability tokens`: implemented as a bounded draft-v1 token path with proof-backed issuance by default, explicit `m4_upper_bound` issuance, and fail-closed verification.
+- `M4 Build the admission engine`: implemented in that same bundle, producing fail-closed `admit`, `downgrade`, `migrate`, and `refuse` execution plans.
+- `M5 Build the counterfactual authority minimizer`: implemented as a bounded draft-v1 minimization path with explicit `exact_minimal`, `bounded_minimal`, `reduced`, `no_reduction`, and `not_proven` outcomes. Under `M8c`, live proof now exists only for the families the runtime can honestly support.
+- `M6 Build delegation-chain-bound capability tokens`: implemented as a bounded draft-v1 token path with proof-backed issuance by default, explicit `m4_upper_bound` issuance, and fail-closed verification. Even when the proof basis is live-backed, this remains a draft-local token layer rather than runtime-general enforcement.
 - `M7 Build the bounded draft-v1 witness layer`: complete for the bounded draft-v1 witness path, including exercised authority, blocked attempts, coverage semantics, redaction semantics, and fixed claim checks.
-- `M8a Runtime Alignment and Canonical Effect Vocabulary`: complete as the bridge from draft harness truth to live runtime truth. The live Rust capability-family surface is canonical, the runtime persists durable `authority_observations`, and draft-v1 now maps live runtime data through explicit `exact`, `narrowing`, `partial`, and `unsupported` outcomes.
+- `M8a Runtime Alignment and Canonical Effect Vocabulary`: complete. The live Rust capability-family surface is canonical, the runtime persists durable `authority_observations`, and draft-v1 maps live runtime data through explicit `exact`, `narrowing`, `partial`, and `unsupported` outcomes.
+- `M8b Direct Canonical Family Support in Draft-v1`: complete for the active runtime slice. Draft-v1 now carries direct canonical `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` families for admission, minimization, tokens, and witnesses.
+- `M8c Live Proof Basis and Honest End-to-End Linkage`: partially complete. `read-resource` has bounded live proof and checked plan -> proof -> token -> witness linkage over immutable `guild://executions/...` and `guild://objects/records/...` resources. `log-write` has real live family proof over observed level slices. `http-request`, `invoke-skill`, and `emit-evidence` remain `not_proven`.
 - `M9 Draft the patent packet`: not started.
 - `M10 Filing hygiene`: not started.
 
 ## What Is Real Today
 
-The current runtime and transport slice already has:
+The live runtime and transport slice already has:
 
 - source-to-installed lifecycle with atomic local installs
 - `RequestedSkillRef -> ResolvedSkillRef` execution boundaries
@@ -203,19 +205,22 @@ The current runtime and transport slice already has:
 - OCI image layout and OCI registry transport for that same installed signed bundle contract
 - a real stdio MCP server with one stable public tool, `guild.inspect`
 
-The current draft control-plane slice already has:
+The draft-v1 control-plane slice already has:
 
 - M3 and M4 contract/runtime/request/plan artifacts under `docs/schemas/draft-v1/`
 - M5 bounded minimization proofs
 - M6 bounded delegated capability tokens
 - M7 bounded witness generation and verification
 - M8a live-runtime alignment fixtures and validators
+- M8b direct canonical family support for the five active runtime families
+- M8c live-proof consumption and honest linkage inside the real live-proof envelope
 
-The current boundary is also explicit:
+The current milestone boundary is explicit:
 
 - the live Rust runtime vocabulary is canonical
 - the draft-v1 bundle is still draft and still non-canonical
-- runtime-backed draft-v1 claim support is narrow today: `http-request` is wired through the conservative `net.connect` compatibility alias, while live `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` remain coverage-limited or unsupported in draft-v1 claim semantics
+- live proof support is narrow by design: `read-resource` is bounded live-proof-backed only for immutable `guild://executions/...` and `guild://objects/records/...` reads, `log-write` has real live family proof over observed log-level slices, and `http-request`, `invoke-skill`, and `emit-evidence` remain `not_proven`
+- proof-backed token issuance and proof-linked witnesses are honest only inside that live proof envelope; outside it, the draft-v1 path stays explicit about upper-bound issuance, unlinked witnesses, or `not_proven` status
 
 For the exhaustive proof commands, regression sweeps, and example-by-example smoke flows, see [`docs/testing.md`](docs/testing.md).
 For the draft admission bundle itself, see [`docs/schemas/draft-v1/README.md`](docs/schemas/draft-v1/README.md); the runnable validation path for that bundle also lives in [`docs/testing.md`](docs/testing.md).

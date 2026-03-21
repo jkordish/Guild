@@ -1,20 +1,20 @@
 {
   "kind": "guild.skill_contract",
   "version": "1.0.0",
-  "contract_id": "urn:guild:contract:runtime-http-read:v1",
+  "contract_id": "urn:guild:contract:runtime-log-write:v1",
   "component": {
-    "name": "inspect-http-json",
+    "name": "runtime-log-write-example",
     "digest": {
       "algorithm": "sha256",
-      "value": "695a732b9caf3adca2dcb77d9467976541809255a2b050ec0d030533bf890a88"
+      "value": "9878310506fa7fc567cdb991b838e82b5e5848a2eec6ad8a8012b78f34290f53"
     },
     "component_model": "wasm-component",
     "component_model_version": "0.2.0",
     "wit_world": "guild-skill-inspect-v1"
   },
   "export": {
-    "name": "inspect_http_json",
-    "interface": "example/inspect-http-json",
+    "name": "write_log_line",
+    "interface": "example/runtime-log-write",
     "version": "1.0.0"
   },
   "input_class_fingerprint": {
@@ -22,35 +22,22 @@
     "canonicalization": "rfc8785-jcs",
     "digest": {
       "algorithm": "sha256",
-      "value": "ac8ab4fe8898002fe4c13ef4d5fdbb1ffafd237070966d750474970fe56d9cb7"
+      "value": "f280d6a15c5f96b6d50a34ec5a4d8dd9d2b4bd7f2ccf7c0ce4a14352b57375c7"
     }
   },
   "required_effects": [
     {
-      "family": "http-request",
+      "family": "log-write",
       "scope": {
-        "kind": "network",
-        "allowed_schemes": [
-          "http"
-        ],
-        "allowed_hosts": [
-          "127.0.0.1"
-        ],
-        "allowed_ports": [
-          18080
-        ],
-        "allowed_methods": [
-          "GET"
-        ],
-        "allowed_path_prefixes": [
-          "/response.json"
+        "kind": "log",
+        "levels": [
+          "info"
         ]
       },
       "cardinality": {
-        "max_calls": 1,
-        "max_bytes": 4096
+        "max_calls": 1
       },
-      "justification": "Fetch one bounded JSON document through the live canonical http-request host surface."
+      "justification": "Emit one bounded informational log record through the live canonical log-write host surface."
     }
   ],
   "forbidden_effects": [
@@ -64,30 +51,17 @@
   ],
   "authority_ceiling": [
     {
-      "family": "http-request",
+      "family": "log-write",
       "scope": {
-        "kind": "network",
-        "allowed_schemes": [
-          "http"
-        ],
-        "allowed_hosts": [
-          "127.0.0.1"
-        ],
-        "allowed_ports": [
-          18080
-        ],
-        "allowed_methods": [
-          "GET"
-        ],
-        "allowed_path_prefixes": [
-          "/response.json"
+        "kind": "log",
+        "levels": [
+          "info"
         ]
       },
       "cardinality": {
-        "max_calls": 1,
-        "max_bytes": 4096
+        "max_calls": 1
       },
-      "justification": "Canonical control-plane ceiling matches the live runtime family directly."
+      "justification": "Canonical control-plane ceiling matches the live log-write family directly."
     }
   ],
   "required_runtime_guarantees": {
@@ -98,7 +72,7 @@
       "minimum": "preopen_only"
     },
     "network_policy_granularity": {
-      "minimum": "url"
+      "minimum": "binary"
     },
     "child_process_policy": {
       "required_mode": "forbidden"
@@ -139,5 +113,5 @@
     "ttl_seconds_max": 300
   },
   "witness_level": "hostcall",
-  "notes": "Alignment example for a live inspect-http-json execution. Draft-v1 carries the canonical live http-request family directly with no net.connect compatibility alias."
+  "notes": "Direct canonical log-write example. The current runtime scope is intentionally level-only because that is the real live Rust authority shape today."
 }

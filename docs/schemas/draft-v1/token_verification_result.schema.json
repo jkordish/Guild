@@ -92,24 +92,7 @@
         "resources": {
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "effect_class": {
-                "$ref": "common.schema.json#/$defs/effect_class"
-              },
-              "audience": {
-                "$ref": "common.schema.json#/$defs/nonempty_string"
-              },
-              "resource": {
-                "$ref": "common.schema.json#/$defs/nonempty_string"
-              }
-            },
-            "required": [
-              "effect_class",
-              "audience",
-              "resource"
-            ],
-            "additionalProperties": false
+            "$ref": "common.schema.json#/$defs/resource_binding"
           }
         },
         "runtime_guarantee_id": {

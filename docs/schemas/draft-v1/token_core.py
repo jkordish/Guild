@@ -15,8 +15,12 @@ from admission_core import (
     canonical_json,
     digest_struct,
     effect_covers,
+    effect_is_canonical,
+    effect_selector,
+    host_matches_suffix,
     path_pattern_covers,
     require_valid,
+    same_effect_selector,
     stable_unique_dicts,
     stable_unique_strings,
     validate_instance,
@@ -31,10 +35,18 @@ TOKEN_KIND = "guild.delegated_capability_token"
 VERIFICATION_KIND = "guild.token_verification_result"
 ISSUANCE_RESULT_KIND = "guild.token_issuance_result"
 ACCEPTABLE_PROOF_STATUSES = {"exact_minimal", "bounded_minimal", "reduced", "no_reduction"}
+PROOF_SOURCE_DRAFT_EXAMPLE = "draft-example"
+PROOF_SOURCE_LIVE_RUNTIME = "live-runtime"
 
 
 class TokenInputError(RuntimeError):
     """Raised when token issuance or verification inputs are malformed."""
+
+
+def proof_source_kind(proof: dict[str, Any] | None) -> str:
+    if proof is None:
+        return PROOF_SOURCE_DRAFT_EXAMPLE
+    return proof.get("proof_source_kind", PROOF_SOURCE_DRAFT_EXAMPLE)
 
 
 def parse_timestamp(value: str) -> datetime:
@@ -58,6 +70,65 @@ def coerce_path(value: str | Path | None) -> Path | None:
 
 def stable_unique_resource_bindings(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return stable_unique_dicts([deepcopy(value) for value in values])
+
+
+def resource_binding_selector_field(binding: dict[str, Any]) -> str:
+    if "family" in binding:
+        return "family"
+    return "effect_class"
+
+
+def resource_binding_selector(binding: dict[str, Any]) -> str:
+    return binding[resource_binding_selector_field(binding)]
+
+
+def default_port_for_scheme(scheme: str) -> int | None:
+    if scheme == "https":
+        return 443
+    if scheme == "http":
+        return 80
+    return None
+
+
+def parse_http_request_descriptor(value: str) -> tuple[str, Any] | None:
+    method, sep, raw_url = value.partition(":")
+    if not sep:
+        return None
+    parsed = urlparse(raw_url)
+    if not parsed.scheme or not parsed.hostname:
+        return None
+    port = parsed.port or default_port_for_scheme(parsed.scheme)
+    if port is None:
+        return None
+    path = parsed.path or "/"
+    return method.upper(), {
+        "scheme": parsed.scheme,
+        "hostname": parsed.hostname,
+        "port": port,
+        "path": path,
+    }
+
+
+def resource_kind_for_uri(uri: str) -> str | None:
+    if uri.startswith("guild://executions/"):
+        return "execution"
+    if uri.startswith("guild://objects/sha256/") or uri.startswith("guild://objects/records/"):
+        return "object"
+    if uri.startswith("guild://queries/executions/"):
+        return "query"
+    return None
+
+
+def parse_emit_evidence_descriptor(value: str) -> tuple[str | None, str | None]:
+    audience = None
+    redaction = None
+    for chunk in value.split(";"):
+        key, _, item_value = chunk.partition("=")
+        if key == "audience":
+            audience = item_value or None
+        elif key == "redaction":
+            redaction = item_value or None
+    return audience, redaction
 
 
 def issuance_result(
@@ -214,12 +285,71 @@ def validate_proof_alignment(plan: dict[str, Any], contract: dict[str, Any], pro
 
 
 def effect_within_scope(binding: dict[str, Any], grant: dict[str, Any]) -> bool:
-    if binding["effect_class"] != grant["effect_class"]:
+    if resource_binding_selector_field(binding) != ("family" if effect_is_canonical(grant) else "effect_class"):
+        return False
+    if resource_binding_selector(binding) != effect_selector(grant):
         return False
 
     scope = grant["scope"]
     kind = scope["kind"]
     resource = binding["resource"]
+    selector = effect_selector(grant)
+
+    if effect_is_canonical(grant):
+        if selector == "http-request":
+            parsed = parse_http_request_descriptor(resource)
+            if parsed is None:
+                return False
+            method, request = parsed
+            schemes = scope.get("allowed_schemes")
+            if schemes is not None and request["scheme"] not in schemes:
+                return False
+            hosts = scope.get("allowed_hosts")
+            host_suffixes = scope.get("allowed_host_suffixes")
+            if hosts is not None and request["hostname"] not in hosts:
+                if host_suffixes is None or not any(host_matches_suffix(request["hostname"], suffix) for suffix in host_suffixes):
+                    return False
+            elif hosts is None and host_suffixes is not None and not any(
+                host_matches_suffix(request["hostname"], suffix) for suffix in host_suffixes
+            ):
+                return False
+            ports = scope.get("allowed_ports")
+            if ports is not None and request["port"] not in ports:
+                return False
+            methods = scope.get("allowed_methods")
+            if methods is not None and method not in methods:
+                return False
+            prefixes = scope.get("allowed_path_prefixes")
+            if prefixes is not None and not any(request["path"].startswith(prefix) for prefix in prefixes):
+                return False
+            return True
+
+        if selector == "read-resource":
+            prefixes = scope.get("uri_prefixes")
+            if prefixes is not None and not any(resource.startswith(prefix) for prefix in prefixes):
+                return False
+            resource_kinds = scope.get("resource_kinds")
+            if resource_kinds is not None:
+                resource_kind = resource_kind_for_uri(resource)
+                if resource_kind is None or resource_kind not in resource_kinds:
+                    return False
+            return True
+
+        if selector == "invoke-skill":
+            aliases = scope.get("aliases")
+            return aliases is None or resource in aliases
+
+        if selector == "emit-evidence":
+            audience, redaction = parse_emit_evidence_descriptor(resource)
+            if audience is None or redaction is None:
+                return False
+            audiences = scope.get("audiences")
+            redactions = scope.get("redactions")
+            return (audiences is None or audience in audiences) and (redactions is None or redaction in redactions)
+
+        if selector == "log-write":
+            levels = scope.get("levels")
+            return levels is None or resource in levels
 
     if kind == "filesystem":
         return any(path_pattern_covers(pattern, resource) for pattern in scope["paths"])
@@ -269,12 +399,41 @@ def resource_bindings_within_grants(bindings: list[dict[str, Any]], grants: list
 
 
 def resource_binding_narrower_or_equal(candidate: dict[str, Any], envelope: dict[str, Any]) -> bool:
-    if candidate["effect_class"] != envelope["effect_class"] or candidate["audience"] != envelope["audience"]:
+    if (
+        resource_binding_selector_field(candidate) != resource_binding_selector_field(envelope)
+        or resource_binding_selector(candidate) != resource_binding_selector(envelope)
+        or candidate["audience"] != envelope["audience"]
+    ):
         return False
 
-    effect_class = candidate["effect_class"]
+    effect_class = resource_binding_selector(candidate)
     candidate_resource = candidate["resource"]
     envelope_resource = envelope["resource"]
+
+    if resource_binding_selector_field(candidate) == "family":
+        if effect_class == "http-request":
+            candidate_descriptor = parse_http_request_descriptor(candidate_resource)
+            envelope_descriptor = parse_http_request_descriptor(envelope_resource)
+            if candidate_descriptor is None or envelope_descriptor is None:
+                return False
+            candidate_method, candidate_request = candidate_descriptor
+            envelope_method, envelope_request = envelope_descriptor
+            return (
+                candidate_method == envelope_method
+                and candidate_request["scheme"] == envelope_request["scheme"]
+                and candidate_request["hostname"] == envelope_request["hostname"]
+                and candidate_request["port"] == envelope_request["port"]
+                and candidate_request["path"].startswith(envelope_request["path"])
+            )
+        if effect_class == "read-resource":
+            return candidate_resource.startswith(envelope_resource)
+        if effect_class == "invoke-skill":
+            return candidate_resource == envelope_resource
+        if effect_class == "emit-evidence":
+            return candidate_resource == envelope_resource
+        if effect_class == "log-write":
+            return candidate_resource == envelope_resource
+        return False
 
     if effect_class.startswith("net."):
         candidate_url = urlparse(candidate_resource)
@@ -307,6 +466,16 @@ def audience_subset(candidate: list[str], envelope: list[str]) -> bool:
 
 
 def scope_kind_for_effect(effect_class: str) -> str:
+    if effect_class == "http-request":
+        return "network"
+    if effect_class == "read-resource":
+        return "resource"
+    if effect_class == "invoke-skill":
+        return "skill"
+    if effect_class == "emit-evidence":
+        return "evidence"
+    if effect_class == "log-write":
+        return "log"
     if effect_class.startswith("fs."):
         return "filesystem"
     if effect_class.startswith("net."):
@@ -340,8 +509,8 @@ def delegation_policy_within(candidate: dict[str, Any], envelope: dict[str, Any]
             return False
         if candidate["max_hops"] > envelope["max_hops"]:
             return False
-        candidate_effects = candidate.get("allowed_effect_classes", [])
-        envelope_effects = envelope.get("allowed_effect_classes", [])
+        candidate_effects = candidate.get("allowed_authority_selectors", candidate.get("allowed_effect_classes", []))
+        envelope_effects = envelope.get("allowed_authority_selectors", envelope.get("allowed_effect_classes", []))
         if not set(candidate_effects).issubset(set(envelope_effects)):
             return False
     if envelope.get("audience_binding_required") and not candidate.get("audience_binding_required"):
@@ -455,9 +624,13 @@ def resolve_authority_basis(
     *,
     allow_upper_bound: bool,
     now: str,
-) -> tuple[dict[str, Any] | None, str | None, str | None, str | None, list[str]]:
+    required_proof_source_kind: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None, str | None, str | None, str | None, list[str]]:
     if proof is not None:
         proof_errors = validate_proof_alignment(plan, contract, proof, now)
+        source_kind = proof_source_kind(proof)
+        if required_proof_source_kind is not None and source_kind != required_proof_source_kind:
+            proof_errors.append("PROOF_NOT_ACCEPTABLE")
         if not proof_errors:
             authority_plan = deepcopy(proof["proven_authority_plan"])
             if authority_plan_within(authority_plan, plan["granted_authority"]):
@@ -466,17 +639,20 @@ def resolve_authority_basis(
                     "m5_proven_subset",
                     proof["proof_id"],
                     proof["proof_status"],
+                    source_kind,
                     [],
                 )
-            return None, None, None, None, ["TOKEN_SCOPE_EXCEEDS_PLAN", "TOKEN_SCOPE_EXCEEDS_PROOF"]
+            return None, None, None, None, None, ["TOKEN_SCOPE_EXCEEDS_PLAN", "TOKEN_SCOPE_EXCEEDS_PROOF"]
 
     reason_codes = ["PROOF_NOT_ACCEPTABLE"]
     if proof is not None:
         reason_codes.extend(validate_proof_alignment(plan, contract, proof, now))
+        if required_proof_source_kind is not None and proof_source_kind(proof) != required_proof_source_kind:
+            reason_codes.append("PROOF_NOT_ACCEPTABLE")
     if allow_upper_bound:
-        return deepcopy(plan["granted_authority"]), "m4_upper_bound", None, None, []
+        return deepcopy(plan["granted_authority"]), "m4_upper_bound", None, None, None, []
     reason_codes.append("UPPER_BOUND_ISSUANCE_DISALLOWED")
-    return None, None, None, None, stable_unique_strings(sorted(reason_codes))
+    return None, None, None, None, None, stable_unique_strings(sorted(reason_codes))
 
 
 def chain_context_for_root(plan: dict[str, Any], chain_links: list[str] | None) -> tuple[dict[str, Any] | None, list[str]]:
@@ -506,6 +682,7 @@ def create_root_token(
     issued_at: str,
     proof: dict[str, Any] | None = None,
     allow_upper_bound: bool = False,
+    required_proof_source_kind: str | None = None,
     audiences: list[str] | None = None,
     resource_bindings: list[dict[str, Any]] | None = None,
     token_id: str | None = None,
@@ -528,12 +705,13 @@ def create_root_token(
             message="root token issuance failed because the supplied plan was not an admissible contract-aligned input.",
         )
 
-    authority_plan, issuance_basis, proof_id, proof_status, basis_errors = resolve_authority_basis(
+    authority_plan, issuance_basis, proof_id, proof_status, proof_source, basis_errors = resolve_authority_basis(
         plan,
         contract,
         proof,
         allow_upper_bound=allow_upper_bound,
         now=issued_at,
+        required_proof_source_kind=required_proof_source_kind,
     )
     if authority_plan is None or issuance_basis is None:
         return issuance_result(
@@ -642,11 +820,15 @@ def create_root_token(
             "issuer_epoch": issuer.get("issuer_epoch", 0),
         },
         "notes": (
-            "Issued from the M5 proven authority subset."
+            "Issued from the M5 proven authority subset backed by a live-runtime proof."
+            if issuance_basis == "m5_proven_subset" and proof_source == PROOF_SOURCE_LIVE_RUNTIME
+            else "Issued from the M5 proven authority subset."
             if issuance_basis == "m5_proven_subset"
             else "Issued from the M4 upper-bound grant set because explicit upper-bound issuance was allowed."
         ),
     }
+    if proof_source == PROOF_SOURCE_LIVE_RUNTIME:
+        token["proof_source_kind"] = proof_source
     token = attach_protection(token, issuer["shared_secret"])
     require_valid("delegated_capability_token.schema.json", token, registry, "delegated capability token")
     return token
@@ -662,6 +844,7 @@ def create_child_token(
     holder_id: str,
     issued_at: str,
     proof: dict[str, Any] | None = None,
+    required_proof_source_kind: str | None = None,
     audiences: list[str] | None = None,
     resource_bindings: list[dict[str, Any]] | None = None,
     token_id: str | None = None,
@@ -685,12 +868,13 @@ def create_child_token(
         )
 
     allow_upper_bound = parent_token["issuance_basis"] == "m4_upper_bound"
-    authority_envelope, issuance_basis, proof_id, proof_status, basis_errors = resolve_authority_basis(
+    authority_envelope, issuance_basis, proof_id, proof_status, proof_source, basis_errors = resolve_authority_basis(
         plan,
         contract,
         proof,
         allow_upper_bound=allow_upper_bound,
         now=issued_at,
+        required_proof_source_kind=required_proof_source_kind,
     )
     if authority_envelope is None or issuance_basis is None:
         return issuance_result(
@@ -837,8 +1021,14 @@ def create_child_token(
         "revocation_hooks": {
             "issuer_epoch": issuer.get("issuer_epoch", 0),
         },
-        "notes": "Delegated child token. The parent token remains non-pass-through and cannot be redeemed directly by the child holder.",
+        "notes": (
+            "Delegated child token backed by a live-runtime proof subset. The parent token remains non-pass-through and cannot be redeemed directly by the child holder."
+            if issuance_basis == "m5_proven_subset" and proof_source == PROOF_SOURCE_LIVE_RUNTIME
+            else "Delegated child token. The parent token remains non-pass-through and cannot be redeemed directly by the child holder."
+        ),
     }
+    if proof_source == PROOF_SOURCE_LIVE_RUNTIME:
+        token["proof_source_kind"] = proof_source
     token = attach_protection(token, issuer["shared_secret"])
     require_valid("delegated_capability_token.schema.json", token, registry, "delegated capability token")
     return token
@@ -985,6 +1175,9 @@ def verify_token(
             reason_codes.append("PROOF_NOT_ACCEPTABLE")
         else:
             reason_codes.extend(validate_proof_alignment(plan, contract, proof, verification_time))
+            token_proof_source = token.get("proof_source_kind")
+            if token_proof_source is not None and token_proof_source != proof_source_kind(proof):
+                reason_codes.append("PROOF_NOT_ACCEPTABLE")
             if not authority_plan_within(token["granted_authority"], proof["proven_authority_plan"]):
                 reason_codes.append("TOKEN_SCOPE_EXCEEDS_PROOF")
 

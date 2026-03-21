@@ -9,6 +9,9 @@ from admission_core import (
     canonical_json,
     digest_struct,
     effect_covers,
+    effect_is_canonical,
+    effect_scope_kind,
+    effect_selector,
     load_json,
     normalize_effect,
     path_pattern_covers,
@@ -27,10 +30,12 @@ from runtime_alignment import (
     observation_bundle_from_execution_record,
 )
 from token_core import (
+    PROOF_SOURCE_LIVE_RUNTIME,
     TOKEN_CANONICALIZATION,
     TOKEN_PROTECTION_MODE,
     attach_protection,
     load_issuer_secret,
+    proof_source_kind,
     protection_for_payload,
     scope_kind_for_effect,
     stable_unique_resource_bindings,
@@ -118,6 +123,10 @@ def stable_unique_blocked_effects(values: list[dict[str, Any]]) -> list[dict[str
     return [keyed[key] for key in sorted(keyed)]
 
 
+def coverage_entry_selector(entry: dict[str, Any]) -> str:
+    return entry["family"] if entry.get("draft_effect_class") is None else entry["draft_effect_class"]
+
+
 def sort_coverage_entries(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         values,
@@ -182,6 +191,37 @@ def mapping_reason_codes(mapping_status: str) -> list[str]:
 
 
 def scope_descriptors_for_effect(effect: dict[str, Any]) -> list[str]:
+    if effect_is_canonical(effect):
+        family = effect_selector(effect)
+        scope = effect["scope"]
+        if family == "http-request":
+            descriptors: list[str] = []
+            methods = scope.get("allowed_methods") or ["GET"]
+            schemes = scope.get("allowed_schemes") or ["http"]
+            hosts = scope.get("allowed_hosts") or scope.get("allowed_host_suffixes") or ["*"]
+            ports = scope.get("allowed_ports") or ["*"]
+            prefixes = scope.get("allowed_path_prefixes") or ["/"]
+            for method in methods:
+                for scheme in schemes:
+                    for host in hosts:
+                        for port in ports:
+                            for prefix in prefixes:
+                                descriptors.append(f"{method}:{scheme}://{host}:{port}{prefix}")
+            return stable_unique_strings(sorted(descriptors))
+        if family == "read-resource":
+            return stable_unique_strings(sorted(scope.get("uri_prefixes", []) or ["guild://"]))
+        if family == "invoke-skill":
+            return stable_unique_strings(sorted(scope.get("aliases", []) or ["invoke-skill"]))
+        if family == "emit-evidence":
+            audiences = scope.get("audiences") or ["*"]
+            redactions = scope.get("redactions") or ["*"]
+            return stable_unique_strings(
+                sorted(f"audience={audience};redaction={redaction}" for audience in audiences for redaction in redactions)
+            )
+        if family == "log-write":
+            return stable_unique_strings(sorted(scope.get("levels", []) or ["log-write"]))
+        return [family]
+
     scope = effect["scope"]
     kind = scope["kind"]
     if kind == "filesystem":
@@ -209,7 +249,7 @@ def scope_descriptors_for_effect(effect: dict[str, Any]) -> list[str]:
     if kind == "delegation":
         audiences = scope.get("audiences", [])
         return stable_unique_strings(sorted(audiences or ["delegation"]))
-    return [effect["effect_class"]]
+    return [effect_selector(effect)]
 
 
 def normalize_blocked_effect(value: dict[str, Any]) -> dict[str, Any]:
@@ -347,13 +387,13 @@ def coverage_entries_from_observation(
 
     families: dict[str, dict[str, Any]] = {}
     for effect in authority_plan.get("grants", []) + observed_effects + [item["effect"] for item in blocked_effects]:
-        effect_class = effect["effect_class"]
+        selector = effect_selector(effect)
         families.setdefault(
-            effect_class,
+            selector,
             {
-                "family": effect_class,
-                "draft_effect_class": effect_class,
-                "scope_kind": scope_kind_for_effect(effect_class),
+                "family": selector if effect_is_canonical(effect) else selector,
+                "draft_effect_class": None if effect_is_canonical(effect) else selector,
+                "scope_kind": effect_scope_kind(effect) if effect_is_canonical(effect) else scope_kind_for_effect(selector),
                 "status": "complete",
                 "mapping_status": MAPPING_EXACT,
                 "scope_descriptors": [],
@@ -363,7 +403,7 @@ def coverage_entries_from_observation(
                 "notes": "Explicit bounded observation fixture coverage.",
             },
         )
-        families[effect_class]["scope_descriptors"].extend(scope_descriptors_for_effect(effect))
+        families[selector]["scope_descriptors"].extend(scope_descriptors_for_effect(effect))
     return sort_coverage_entries(
         [
             normalize_coverage_entry(
@@ -385,7 +425,7 @@ def overall_coverage_status(entries: list[dict[str, Any]], unmapped_observations
 def authority_summary(effects: list[dict[str, Any]], *, effects_redacted: bool) -> dict[str, Any]:
     return {
         "effects": [] if effects_redacted else stable_unique_dicts([normalize_effect(effect) for effect in effects]),
-        "effect_classes": stable_unique_strings(sorted({effect["effect_class"] for effect in effects})),
+        "effect_classes": stable_unique_strings(sorted({effect_selector(effect) for effect in effects})),
         "total_effects": len(stable_unique_dicts([normalize_effect(effect) for effect in effects])),
         "effects_redacted": effects_redacted,
     }
@@ -401,7 +441,7 @@ def blocked_authority_summary(
     return {
         "observable": observable,
         "effects": rendered_effects,
-        "effect_classes": stable_unique_strings(sorted({item["effect"]["effect_class"] for item in blocked_effects})),
+        "effect_classes": stable_unique_strings(sorted({effect_selector(item["effect"]) for item in blocked_effects})),
         "total_effects": len(stable_unique_blocked_effects(blocked_effects)),
         "effects_redacted": effects_redacted,
     }
@@ -414,11 +454,11 @@ def granted_but_unused_authority(
     *,
     redacted: bool,
 ) -> dict[str, Any]:
-    grant_families = {grant["effect_class"] for grant in authority_plan.get("grants", [])}
+    grant_families = {effect_selector(grant) for grant in authority_plan.get("grants", [])}
     supports_absence = {
-        entry["draft_effect_class"]
+        coverage_entry_selector(entry)
         for entry in coverage_entries
-        if entry["draft_effect_class"] is not None and entry["supports_absence_claims"]
+        if entry["supports_absence_claims"]
     }
     derivable_families = grant_families.intersection(supports_absence)
 
@@ -432,7 +472,7 @@ def granted_but_unused_authority(
 
     unused: list[dict[str, Any]] = []
     for grant in authority_plan.get("grants", []):
-        if grant["effect_class"] not in derivable_families:
+        if effect_selector(grant) not in derivable_families:
             continue
         if any(effect_covers(grant, effect) for effect in exercised_effects):
             continue
@@ -470,7 +510,7 @@ def compare_to_envelope(
     return {
         "status": "outside" if outside else "within",
         "outside_effects": stable_unique_dicts(outside),
-        "outside_effect_classes": stable_unique_strings(sorted({effect["effect_class"] for effect in outside})),
+        "outside_effect_classes": stable_unique_strings(sorted({effect_selector(effect) for effect in outside})),
     }
 
 
@@ -701,11 +741,14 @@ def derive_call_chain(token: dict[str, Any] | None) -> dict[str, Any] | None:
 def proof_basis_from_proof(proof: dict[str, Any] | None) -> dict[str, Any] | None:
     if proof is None:
         return None
-    return {
+    basis = {
         "proof_id": proof["proof_id"],
         "proof_digest": digest_struct(proof),
         "proof_status": proof["proof_status"],
     }
+    if proof_source_kind(proof) == PROOF_SOURCE_LIVE_RUNTIME:
+        basis["proof_source_kind"] = PROOF_SOURCE_LIVE_RUNTIME
+    return basis
 
 
 def canonical_reason_codes(values: list[str]) -> list[str]:
@@ -780,6 +823,8 @@ def verify_or_bind_token(
         "verification_verified": verification_result["verified"],
         "verification_reason_codes": verification_result["reason_codes"],
     }
+    if token.get("proof_source_kind") is not None:
+        token_basis["proof_source_kind"] = token["proof_source_kind"]
 
     trusted_authority = deepcopy(token["granted_authority"]) if not reason_codes else None
     return token_basis, verification_result, trusted_authority, canonical_reason_codes(reason_codes)
@@ -845,6 +890,7 @@ def generate_witness(
     issued_at: str,
     invocation_input: dict[str, Any] | None = None,
     proof: dict[str, Any] | None = None,
+    required_proof_source_kind: str | None = None,
     token: dict[str, Any] | None = None,
     parent_token: dict[str, Any] | None = None,
     token_verification_result: dict[str, Any] | None = None,
@@ -871,10 +917,19 @@ def generate_witness(
     trusted_proof_authority: dict[str, Any] | None = None
     if proof is not None:
         proof_errors = validate_proof_alignment(plan, contract, proof, issued_at)
+        if required_proof_source_kind is not None and proof_source_kind(proof) != required_proof_source_kind:
+            proof_errors.append("PROOF_LINKAGE_UNAVAILABLE")
         if proof_errors:
+            proof_basis = None
             witness_reason_codes.append("PROOF_LINKAGE_MISMATCH")
+            if required_proof_source_kind is not None:
+                witness_reason_codes.append("WITNESS_PROOF_LINKAGE_UNAVAILABLE")
         else:
             trusted_proof_authority = deepcopy(proof["proven_authority_plan"])
+    elif required_proof_source_kind is not None:
+        proof_basis = None
+        witness_reason_codes.append("PROOF_LINKAGE_UNAVAILABLE")
+        witness_reason_codes.append("WITNESS_PROOF_LINKAGE_UNAVAILABLE")
 
     token_basis, _computed_token_verification_result, trusted_token_authority, token_reason_codes = verify_or_bind_token(
         token=token,
@@ -907,6 +962,10 @@ def generate_witness(
     unmapped_observations = observation_data["unmapped_observations"]
     coverage_families = observation_data["coverage_families"]
     overall_status = observation_data["overall_status"]
+    for entry in coverage_families:
+        witness_reason_codes.extend(entry["reason_codes"])
+    for item in unmapped_observations:
+        witness_reason_codes.extend(item["reason_codes"])
 
     plan_comparison = compare_to_envelope(exercised_effects, plan["granted_authority"])
     proof_comparison = compare_to_envelope(exercised_effects, trusted_proof_authority) if proof_basis is not None else None
@@ -1152,6 +1211,9 @@ def verify_witness(
                 or witness["proof_basis"]["proof_status"] != proof["proof_status"]
             ):
                 reason_codes.append("PROOF_LINKAGE_MISMATCH")
+            proof_basis_source_kind = witness["proof_basis"].get("proof_source_kind")
+            if proof_basis_source_kind is not None and proof_basis_source_kind != proof_source_kind(proof):
+                reason_codes.append("PROOF_LINKAGE_MISMATCH")
 
     if witness["token_basis"] is not None:
         if token is None or plan is None or contract is None:
@@ -1179,6 +1241,7 @@ def verify_witness(
                 token_basis["token_id"] != token["token_id"]
                 or token_basis["token_digest"] != digest_struct(token)
                 or token_basis["issuance_basis"] != token["issuance_basis"]
+                or token_basis.get("proof_source_kind") != token.get("proof_source_kind")
                 or token_basis["parent_token_id"] != (token["parent_token"]["token_id"] if token["parent_token"] is not None else None)
                 or token_basis["parent_token_digest"] != (token["parent_token"]["token_digest"] if token["parent_token"] is not None else None)
                 or token_basis["verification_result_digest"] != digest_struct(verification)
@@ -1222,21 +1285,43 @@ def effect_details_available(summary: dict[str, Any]) -> bool:
     return not summary["effects_redacted"]
 
 
-def coverage_complete_for_claim(witness: dict[str, Any], effect_classes: list[str] | None = None) -> bool:
-    if witness["observation_coverage"]["overall_status"] != "complete":
-        return False
-    if witness["unmapped_observations"]:
-        return False
-    if effect_classes is None:
-        return all(entry["supports_absence_claims"] for entry in witness["observation_coverage"]["families"])
-    matching = [
+def claim_coverage_entries(witness: dict[str, Any], selectors: list[str] | None = None) -> list[dict[str, Any]]:
+    if selectors is None:
+        return witness["observation_coverage"]["families"]
+    selector_set = set(selectors)
+    return [
         entry
         for entry in witness["observation_coverage"]["families"]
-        if entry["draft_effect_class"] in effect_classes
+        if coverage_entry_selector(entry) in selector_set
     ]
+
+
+def claim_coverage_state(witness: dict[str, Any], selectors: list[str] | None = None) -> str:
+    matching = claim_coverage_entries(witness, selectors)
+    if selectors is None:
+        if witness["observation_coverage"]["overall_status"] != "complete" or witness["unmapped_observations"]:
+            return "partial"
+        return "complete" if all(entry["supports_absence_claims"] for entry in matching) else "partial"
+
     if not matching:
-        return witness["observation_coverage"]["overall_status"] == "complete"
-    return all(entry["supports_absence_claims"] for entry in matching)
+        return "unsupported"
+    if any(
+        item["family"] in set(selectors)
+        for item in witness["unmapped_observations"]
+    ):
+        return "unsupported"
+    if any(entry["mapping_status"] == MAPPING_UNSUPPORTED for entry in matching):
+        return "unsupported"
+    if all(
+        entry["status"] == "complete" and entry["supports_absence_claims"]
+        for entry in matching
+    ):
+        return "complete"
+    return "partial"
+
+
+def coverage_complete_for_claim(witness: dict[str, Any], selectors: list[str] | None = None) -> bool:
+    return claim_coverage_state(witness, selectors) == "complete"
 
 
 def network_audience_covers(allow: dict[str, Any], observed: dict[str, Any]) -> bool:
@@ -1270,6 +1355,42 @@ def claim_result(claim: dict[str, Any], status: str, reason_codes: list[str], de
     }
 
 
+def evaluate_family_scope_claim(
+    witness: dict[str, Any],
+    claim: dict[str, Any],
+    *,
+    family: str,
+    scope_key: str,
+) -> dict[str, Any]:
+    if not effect_details_available(witness["actual_exercised_authority"]):
+        return claim_result(claim, "not_provable", ["REDACTION_PREVENTS_CLAIM_VERIFICATION"], {})
+    coverage_state = claim_coverage_state(witness, [family])
+    if coverage_state == "unsupported":
+        return claim_result(
+            claim,
+            "unsupported",
+            ["NEGATIVE_CLAIM_UNSUPPORTED_FOR_FAMILY"],
+            {"family": family},
+        )
+    if coverage_state != "complete":
+        return claim_result(claim, "not_provable", ["CLAIM_NOT_PROVABLE_FROM_COVERAGE"], {"family": family})
+
+    violating: list[dict[str, Any]] = []
+    for effect in witness["actual_exercised_authority"]["effects"]:
+        if effect_selector(effect) != family:
+            continue
+        allowed_effect = {
+            "family": family,
+            "scope": deepcopy(claim[scope_key]),
+            "cardinality": deepcopy(effect.get("cardinality")),
+        }
+        if not effect_covers(allowed_effect, effect):
+            violating.append(effect)
+    if violating:
+        return claim_result(claim, "violated", [], {"violating_effects": stable_unique_dicts(violating)})
+    return claim_result(claim, "satisfied", [], {"family": family})
+
+
 def evaluate_claim(witness: dict[str, Any], claim: dict[str, Any]) -> dict[str, Any]:
     claim_type = claim["claim_type"]
 
@@ -1298,6 +1419,21 @@ def evaluate_claim(witness: dict[str, Any], claim: dict[str, Any]) -> dict[str, 
             return claim_result(claim, "not_provable", ["CLAIM_NOT_PROVABLE_FROM_COVERAGE"], {})
         return claim_result(claim, "satisfied", [], {})
 
+    if claim_type == "no_http_request_outside_scope":
+        return evaluate_family_scope_claim(witness, claim, family="http-request", scope_key="http_request_scope")
+
+    if claim_type == "no_read_resource_outside_scope":
+        return evaluate_family_scope_claim(witness, claim, family="read-resource", scope_key="read_resource_scope")
+
+    if claim_type == "no_invoke_skill_outside_scope":
+        return evaluate_family_scope_claim(witness, claim, family="invoke-skill", scope_key="invoke_skill_scope")
+
+    if claim_type == "no_emit_evidence_outside_scope":
+        return evaluate_family_scope_claim(witness, claim, family="emit-evidence", scope_key="emit_evidence_scope")
+
+    if claim_type == "no_log_write_outside_scope":
+        return evaluate_family_scope_claim(witness, claim, family="log-write", scope_key="log_write_scope")
+
     if claim_type == "no_filesystem_writes_outside_prefixes":
         if not effect_details_available(witness["actual_exercised_authority"]):
             return claim_result(claim, "not_provable", ["REDACTION_PREVENTS_CLAIM_VERIFICATION"], {})
@@ -1305,7 +1441,7 @@ def evaluate_claim(witness: dict[str, Any], claim: dict[str, Any]) -> dict[str, 
             return claim_result(claim, "not_provable", ["CLAIM_NOT_PROVABLE_FROM_COVERAGE"], {})
         violating: list[dict[str, Any]] = []
         for effect in witness["actual_exercised_authority"]["effects"]:
-            if effect["effect_class"] != "fs.write":
+            if effect_selector(effect) != "fs.write":
                 continue
             for path in effect["scope"]["paths"]:
                 if not any(path_pattern_covers(prefix, path) for prefix in claim["paths"]):
@@ -1322,7 +1458,7 @@ def evaluate_claim(witness: dict[str, Any], claim: dict[str, Any]) -> dict[str, 
             return claim_result(claim, "not_provable", ["CLAIM_NOT_PROVABLE_FROM_COVERAGE"], {})
         violating: list[dict[str, Any]] = []
         for effect in witness["actual_exercised_authority"]["effects"]:
-            if effect["effect_class"] != "net.connect":
+            if effect_selector(effect) != "net.connect":
                 continue
             if not all(
                 any(network_audience_covers(allow, audience) for allow in claim["network_allowlist"])
@@ -1357,7 +1493,29 @@ def evaluate_claim(witness: dict[str, Any], claim: dict[str, Any]) -> dict[str, 
                     "blocked_effects": [
                         item
                         for item in witness["blocked_attempted_authority"]["effects"]
-                        if item["effect"]["effect_class"] in requested_classes
+                        if effect_selector(item["effect"]) in requested_classes
+                    ]
+                },
+            )
+        return claim_result(claim, "satisfied", [], {})
+
+    if claim_type == "no_blocked_attempts_of_families":
+        if not witness["blocked_attempted_authority"]["observable"]:
+            return claim_result(claim, "not_provable", ["CLAIM_NOT_PROVABLE_FROM_COVERAGE"], {})
+        if witness["blocked_attempted_authority"]["effects_redacted"]:
+            return claim_result(claim, "not_provable", ["REDACTION_PREVENTS_CLAIM_VERIFICATION"], {})
+        blocked_families = set(witness["blocked_attempted_authority"]["effect_classes"])
+        requested_families = set(claim["families"])
+        if blocked_families.intersection(requested_families):
+            return claim_result(
+                claim,
+                "violated",
+                [],
+                {
+                    "blocked_effects": [
+                        item
+                        for item in witness["blocked_attempted_authority"]["effects"]
+                        if effect_selector(item["effect"]) in requested_families
                     ]
                 },
             )

@@ -1,9 +1,9 @@
 {
   "kind": "guild.admission_request",
   "version": "1.0.0",
-  "request_id": "urn:guild:request:runtime-emit-evidence-zero:admit:v1",
+  "request_id": "urn:guild:request:runtime-log-write:admit:v1",
   "contract": {
-    "contract_id": "urn:guild:contract:runtime-emit-evidence-zero:v1",
+    "contract_id": "urn:guild:contract:runtime-log-write:v1",
     "component_digest": {
       "algorithm": "sha256",
       "value": "9878310506fa7fc567cdb991b838e82b5e5848a2eec6ad8a8012b78f34290f53"
@@ -14,7 +14,7 @@
     "canonicalization": "rfc8785-jcs",
     "digest": {
       "algorithm": "sha256",
-      "value": "373eaf6dc52e5ff8cf6c7d5f3b4f9c8f4ca9f8c2f4d8f387c79c9f8564e7a8cb"
+      "value": "f280d6a15c5f96b6d50a34ec5a4d8dd9d2b4bd7f2ccf7c0ce4a14352b57375c7"
     }
   },
   "runtime_candidates": [
@@ -26,25 +26,21 @@
   "requested_authority": {
     "grants": [
       {
-        "family": "emit-evidence",
+        "family": "log-write",
         "scope": {
-          "kind": "evidence",
-          "audiences": [
-            "user"
-          ],
-          "redactions": [
-            "none"
+          "kind": "log",
+          "levels": [
+            "info"
           ]
         },
         "cardinality": {
-          "max_calls": 1,
-          "max_bytes": 65536
+          "max_calls": 1
         }
       }
     ],
     "ttl_seconds": 120
   },
-  "requested_witness_level": "decision",
+  "requested_witness_level": "hostcall",
   "audience_binding_inputs": [],
   "resource_binding_inputs": [],
   "delegation_chain_input": {

@@ -4,7 +4,15 @@ from copy import deepcopy
 from typing import Any
 from urllib.parse import urlparse
 
-from admission_core import digest_struct, stable_unique_dicts, stable_unique_strings
+from admission_core import (
+    digest_struct,
+    effect_is_canonical,
+    effect_scope_kind,
+    effect_selector,
+    normalize_effect,
+    stable_unique_dicts,
+    stable_unique_strings,
+)
 
 
 LIVE_RUNTIME_SOURCE_KIND = "live-runtime-hook"
@@ -56,14 +64,44 @@ def mapping_reason_codes(mapping_status: str) -> list[str]:
 
 def coverage_reason_codes(status: str) -> list[str]:
     if status == COVERAGE_PARTIAL:
-        return ["OBSERVATION_COVERAGE_PARTIAL"]
+        return ["OBSERVATION_COVERAGE_PARTIAL", "LIVE_WITNESS_COVERAGE_PARTIAL"]
     if status == COVERAGE_UNAVAILABLE:
         return ["OBSERVATION_COVERAGE_INSUFFICIENT"]
     return []
 
 
+def family_support_reason_codes(mapping_status: str, draft_effect_class: str | None) -> list[str]:
+    codes: list[str] = []
+    if mapping_status in {MAPPING_EXACT, MAPPING_NARROWING}:
+        codes.append("CANONICAL_FAMILY_SUPPORTED")
+    elif mapping_status == MAPPING_PARTIAL:
+        codes.append("CANONICAL_FAMILY_PARTIAL")
+    elif mapping_status == MAPPING_UNSUPPORTED:
+        codes.append("CANONICAL_FAMILY_UNSUPPORTED")
+    if draft_effect_class is not None:
+        codes.append("COMPAT_ALIAS_USED")
+        if draft_effect_class in LEGACY_EFFECT_TO_RUNTIME_FAMILY:
+            codes.append("COMPAT_ALIAS_DEPRECATED")
+    return stable_unique_strings(sorted(codes))
+
+
 def runtime_family_for_legacy_effect(effect_class: str) -> str | None:
     return LEGACY_EFFECT_TO_RUNTIME_FAMILY.get(effect_class)
+
+
+def runtime_mapping_for_effect(effect: dict[str, Any]) -> dict[str, Any]:
+    if effect_is_canonical(effect):
+        family = effect_selector(effect)
+        return {
+            "family": family,
+            "draft_effect_class": None,
+            "scope_kind": effect_scope_kind(effect),
+            "mapping_status": MAPPING_EXACT if family in ACTIVE_OBSERVABLE_FAMILIES else MAPPING_UNSUPPORTED,
+            "notes": None
+            if family in ACTIVE_OBSERVABLE_FAMILIES
+            else "The canonical family is not part of the active observable runtime slice in this milestone.",
+        }
+    return runtime_mapping_for_legacy_effect(effect)
 
 
 def runtime_mapping_for_legacy_effect(effect: dict[str, Any]) -> dict[str, Any]:
@@ -181,7 +219,15 @@ def network_descriptor_for_runtime_http(request: dict[str, Any]) -> str:
     return f"{normalized_http_method(request['method'])}:{scheme}://{host}:{port}{path}"
 
 
-def legacy_effect_from_runtime_http(observation: dict[str, Any]) -> dict[str, Any]:
+def emit_evidence_descriptor(detail: dict[str, Any]) -> str:
+    return f"audience={detail['audience']};redaction={detail['redaction']}"
+
+
+def log_write_descriptor(detail: dict[str, Any]) -> str:
+    return detail["level"]
+
+
+def canonical_effect_from_runtime_http(observation: dict[str, Any]) -> dict[str, Any]:
     request = observation["detail"]["request"]
     parsed = urlparse(request["url"])
     scheme = parsed.scheme or "http"
@@ -189,44 +235,161 @@ def legacy_effect_from_runtime_http(observation: dict[str, Any]) -> dict[str, An
     port = parsed.port or (443 if scheme == "https" else 80)
     path = parsed.path or "/"
     method = normalized_http_method(request["method"])
-    effect = {
-        "effect_class": "net.connect",
+    effect: dict[str, Any] = {
+        "family": "http-request",
         "scope": {
             "kind": "network",
-            "audiences": [
-                {
-                    "host": host,
-                    "ports": [port],
-                    "schemes": [scheme],
-                    "path_prefixes": [path],
-                    "methods": [method],
-                }
-            ],
+            "allowed_schemes": [scheme],
+            "allowed_hosts": [host],
+            "allowed_ports": [port],
+            "allowed_methods": [method],
+            "allowed_path_prefixes": [path],
         },
         "cardinality": {
             "max_calls": 1,
         },
     }
+    if request.get("timeout_ms") is not None:
+        effect["scope"]["max_timeout_ms"] = request["timeout_ms"]
     response_bytes = observation["detail"].get("response_bytes")
     if response_bytes is not None:
         effect["cardinality"]["max_bytes"] = response_bytes
-    return effect
+    return normalize_effect(effect)
 
 
-def blocked_effect_from_runtime_http(observation: dict[str, Any]) -> dict[str, Any]:
+def canonical_effect_from_runtime_read_resource(observation: dict[str, Any]) -> dict[str, Any]:
     detail = observation["detail"]
-    denial = detail.get("denial") or {
+    effect: dict[str, Any] = {
+        "family": "read-resource",
+        "scope": {
+            "kind": "resource",
+            "uri_prefixes": [detail["uri"]],
+        },
+        "cardinality": {
+            "max_calls": 1,
+        },
+    }
+    if detail.get("resource_kind") is not None:
+        effect["scope"]["resource_kinds"] = [detail["resource_kind"]]
+    if detail.get("bytes") is not None:
+        effect["cardinality"]["max_bytes"] = detail["bytes"]
+    return normalize_effect(effect)
+
+
+def canonical_effect_from_runtime_invoke_skill(observation: dict[str, Any]) -> dict[str, Any]:
+    return normalize_effect(
+        {
+            "family": "invoke-skill",
+            "scope": {
+                "kind": "skill",
+                "aliases": [observation["detail"]["alias"]],
+            },
+            "cardinality": {
+                "max_calls": 1,
+            },
+        }
+    )
+
+
+def canonical_effect_from_runtime_emit_evidence(observation: dict[str, Any]) -> dict[str, Any]:
+    detail = observation["detail"]
+    return normalize_effect(
+        {
+            "family": "emit-evidence",
+            "scope": {
+                "kind": "evidence",
+                "audiences": [detail["audience"]],
+                "redactions": [detail["redaction"]],
+            },
+            "cardinality": {
+                "max_calls": 1,
+                "max_bytes": detail["size_bytes"],
+            },
+        }
+    )
+
+
+def canonical_effect_from_runtime_log_write(observation: dict[str, Any]) -> dict[str, Any]:
+    return normalize_effect(
+        {
+            "family": "log-write",
+            "scope": {
+                "kind": "log",
+                "levels": [observation["detail"]["level"]],
+            },
+            "cardinality": {
+                "max_calls": 1,
+            },
+        }
+    )
+
+
+def canonical_effect_from_runtime_observation(observation: dict[str, Any]) -> dict[str, Any]:
+    family = observation["family"]
+    if family == HTTP_RUNTIME_FAMILY:
+        return canonical_effect_from_runtime_http(observation)
+    if family == READ_RESOURCE_RUNTIME_FAMILY:
+        return canonical_effect_from_runtime_read_resource(observation)
+    if family == INVOKE_SKILL_RUNTIME_FAMILY:
+        return canonical_effect_from_runtime_invoke_skill(observation)
+    if family == EMIT_EVIDENCE_RUNTIME_FAMILY:
+        return canonical_effect_from_runtime_emit_evidence(observation)
+    if family == LOG_WRITE_RUNTIME_FAMILY:
+        return canonical_effect_from_runtime_log_write(observation)
+    raise ValueError(f"unsupported runtime family {family}")
+
+
+def failure_for_observation(detail: dict[str, Any]) -> dict[str, Any]:
+    denial = detail.get("denial") or detail.get("result_error") or {
         "code": "RUNTIME_OBSERVATION_UNMAPPABLE",
         "message": "runtime blocked attempt was missing denial details",
         "detail": {},
     }
+    return denial
+
+
+def blocked_effect_from_runtime_observation(observation: dict[str, Any]) -> dict[str, Any]:
+    denial = failure_for_observation(observation["detail"])
     denial_detail = denial.get("detail")
     return {
-        "effect": legacy_effect_from_runtime_http(observation),
+        "effect": canonical_effect_from_runtime_observation(observation),
         "reason_code": denial["code"],
         "message": denial["message"],
         "details_digest": digest_struct(denial_detail) if denial_detail is not None else None,
     }
+
+
+def scope_descriptors_for_effect(effect: dict[str, Any]) -> list[str]:
+    if effect_is_canonical(effect):
+        family = effect_selector(effect)
+        scope = effect["scope"]
+        if family == "http-request":
+            descriptors: list[str] = []
+            methods = scope.get("allowed_methods") or ["GET"]
+            schemes = scope.get("allowed_schemes") or ["http"]
+            hosts = scope.get("allowed_hosts") or scope.get("allowed_host_suffixes") or ["*"]
+            ports = scope.get("allowed_ports") or ["*"]
+            prefixes = scope.get("allowed_path_prefixes") or ["/"]
+            for method in methods:
+                for scheme in schemes:
+                    for host in hosts:
+                        for port in ports:
+                            for prefix in prefixes:
+                                descriptors.append(f"{method}:{scheme}://{host}:{port}{prefix}")
+            return stable_unique_strings(sorted(descriptors))
+        if family == "read-resource":
+            return stable_unique_strings(sorted(scope.get("uri_prefixes", []) or ["guild://"]))
+        if family == "invoke-skill":
+            return stable_unique_strings(sorted(scope.get("aliases", []) or ["invoke-skill"]))
+        if family == "emit-evidence":
+            audiences = scope.get("audiences") or ["*"]
+            redactions = scope.get("redactions") or ["*"]
+            return stable_unique_strings(
+                sorted(f"audience={audience};redaction={redaction}" for audience in audiences for redaction in redactions)
+            )
+        if family == "log-write":
+            return stable_unique_strings(sorted(scope.get("levels", []) or ["log-write"]))
+    return [effect_selector(effect)]
 
 
 def unmapped_observation(observation: dict[str, Any], *, coverage_status: str) -> dict[str, Any]:
@@ -236,11 +399,11 @@ def unmapped_observation(observation: dict[str, Any], *, coverage_status: str) -
     return {
         "family": family,
         "observed_as": status,
-        "details_summary": f"Live runtime family `{family}` does not yet have a safe draft-v1 effect-class representation.",
+        "details_summary": f"Live runtime family `{family}` does not yet have a safe direct draft-v1 representation.",
         "details_digest": digest_struct(detail),
         "coverage_status": coverage_status,
         "reason_codes": ["RUNTIME_OBSERVATION_UNMAPPABLE", "LIVE_RUNTIME_ALIGNMENT_INCOMPLETE"],
-        "notes": "The runtime family is canonical; draft-v1 still lacks a direct effect-class alias for this live observation.",
+        "notes": "The runtime family is canonical; draft-v1 still lacks a safe direct family path for this live observation.",
     }
 
 
@@ -258,7 +421,8 @@ def merge_coverage_entry(
     status = runtime_coverage_for_family(family, mapping_status)
     reason_codes = stable_unique_strings(
         sorted(
-            mapping_reason_codes(mapping_status)
+            family_support_reason_codes(mapping_status, draft_effect_class)
+            + ([] if mapping_status == MAPPING_EXACT and draft_effect_class is None else mapping_reason_codes(mapping_status))
             + coverage_reason_codes(status)
             + (["LIVE_RUNTIME_ALIGNMENT_INCOMPLETE"] if mapping_status in {MAPPING_PARTIAL, MAPPING_UNSUPPORTED} else [])
         )
@@ -331,46 +495,34 @@ def observation_bundle_from_execution_record(
     unmapped: list[dict[str, Any]] = []
 
     for grant in authority_plan.get("grants", []):
-        mapping = runtime_mapping_for_legacy_effect(grant)
-        descriptors: list[str] = []
-        if grant["effect_class"] == "net.connect":
-            for audience in grant["scope"]["audiences"]:
-                methods = audience.get("methods") or ["*"]
-                schemes = audience.get("schemes") or ["*"]
-                ports = audience.get("ports") or ["*"]
-                prefixes = audience.get("path_prefixes") or ["/"]
-                for method in methods:
-                    for scheme in schemes:
-                        for port in ports:
-                            for prefix in prefixes:
-                                descriptors.append(f"{method}:{scheme}://{audience['host']}:{port}{prefix}")
+        mapping = runtime_mapping_for_effect(grant)
         merge_coverage_entry(
             coverage_entries,
             family=mapping["family"],
             draft_effect_class=mapping["draft_effect_class"],
             scope_kind=mapping["scope_kind"],
             mapping_status=mapping["mapping_status"],
-            scope_descriptors=stable_unique_strings(sorted(descriptors)),
+            scope_descriptors=scope_descriptors_for_effect(grant),
             notes=mapping["notes"],
         )
 
     for observation in authority_observations:
         family = observation["family"]
-        if family == HTTP_RUNTIME_FAMILY:
-            mapped_effect = legacy_effect_from_runtime_http(observation)
+        if family in ACTIVE_OBSERVABLE_FAMILIES:
+            mapped_effect = canonical_effect_from_runtime_observation(observation)
             merge_coverage_entry(
                 coverage_entries,
                 family=family,
-                draft_effect_class="net.connect",
-                scope_kind="network",
-                mapping_status=MAPPING_NARROWING,
-                scope_descriptors=[network_descriptor_for_runtime_http(observation["detail"]["request"])],
-                notes="Live runtime http-request is canonical. Draft-v1 reuses net.connect only as a conservative compatibility alias.",
+                draft_effect_class=None,
+                scope_kind=effect_scope_kind(mapped_effect),
+                mapping_status=MAPPING_EXACT,
+                scope_descriptors=scope_descriptors_for_effect(mapped_effect),
+                notes="Live runtime authority observations are carried directly as canonical control-plane families.",
             )
             if observation["status"] == "exercised":
                 observed_effects.append(mapped_effect)
             else:
-                blocked_effects.append(blocked_effect_from_runtime_http(observation))
+                blocked_effects.append(blocked_effect_from_runtime_observation(observation))
             continue
 
         merge_coverage_entry(

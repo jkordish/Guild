@@ -54,6 +54,12 @@ mod bindings {
     });
 }
 mod inspect_projection;
+mod live_proof;
+
+pub use live_proof::{
+    LiveProofCandidateTrial, LiveProofComparatorProfile, LiveProofEnvelope, LiveProofFamilyStatus,
+    LiveProofOutcome, LiveProofScenarioResult, LiveProofSupport,
+};
 
 const INSPECT_WORLD_ENTRYPOINT: &str = "guild-skill-inspect-v1";
 const ACTIVE_INSPECT_GUILD_IMPORTS: [&str; 2] = [
@@ -1522,6 +1528,31 @@ where
         Ok(record)
     }
 
+    /// Run live counterfactual proof search over a real Wasm execution path.
+    ///
+    /// The caller is responsible for using a disposable or otherwise acceptable
+    /// registry root for proof search. Candidate trials re-execute through the
+    /// normal runtime boundary and persist their own execution records.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the baseline execution cannot be completed or if the
+    /// proof engine cannot derive a valid baseline outcome for the selected
+    /// comparator profile.
+    pub fn prove_live_authority<R>(
+        &self,
+        registry: &R,
+        installed: &InstalledSkill,
+        envelope: &ResolvedExecutionEnvelope,
+        comparator: LiveProofComparatorProfile,
+    ) -> Result<LiveProofScenarioResult, ExecutionError>
+    where
+        A: Clone + 'static,
+        R: SkillRegistry + Clone + Send + Sync + 'static,
+    {
+        live_proof::prove_live_authority(self, registry, installed, envelope, comparator)
+    }
+
     fn validate_execution(
         &self,
         installed: &InstalledSkill,
@@ -2756,7 +2787,7 @@ fn reduce_grant_to_cap(
     })
 }
 
-fn reduce_grant_to_cap_set(
+pub(crate) fn reduce_grant_to_cap_set(
     caps: &[&GrantedCapability],
     grant: &GrantedCapability,
 ) -> Vec<GrantedCapability> {
@@ -4459,7 +4490,7 @@ fn invoke_dependency_grants_collectively_cover(
     }
 }
 
-fn read_resource_grants_collectively_cover(
+pub(crate) fn read_resource_grants_collectively_cover(
     grants: &[GrantedCapability],
     required: &ReadResourceConstraints,
 ) -> bool {
@@ -4581,7 +4612,10 @@ fn log_covers(grant: &LogConstraints, required: &LogConstraints) -> bool {
     enum_scope_covers(grant.levels.as_ref(), required.levels.as_ref())
 }
 
-fn log_grants_collectively_cover(grants: &[GrantedCapability], required: &LogConstraints) -> bool {
+pub(crate) fn log_grants_collectively_cover(
+    grants: &[GrantedCapability],
+    required: &LogConstraints,
+) -> bool {
     if grants.is_empty() {
         return false;
     }

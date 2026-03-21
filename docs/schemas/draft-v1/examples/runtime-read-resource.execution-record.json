@@ -1,0 +1,64 @@
+{
+  "receipt": {
+    "execution_id": "019d0cdb-1f55-7b31-9a83-6cf3b5ab70f1",
+    "uri": "guild://executions/019d0cdb-1f55-7b31-9a83-6cf3b5ab70f1",
+    "trace_id": "trace-read-resource-1",
+    "status": "succeeded"
+  },
+  "request": {
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "explain-execution"
+      },
+      "version_req": "^0.1"
+    },
+    "input": {
+      "execution_uri": "guild://executions/example-run"
+    }
+  },
+  "resolved_skill": {
+    "key": {
+      "namespace": "example",
+      "name": "explain-execution"
+    },
+    "version": "0.1.0",
+    "digest": "sha256:20cb19c3bbe598472cb6dbe6beee9b03d9e24196511874fb8aa98051354d633c"
+  },
+  "status": "succeeded",
+  "granted_capabilities": {
+    "grants": [
+      {
+        "id": "read-resource",
+        "access": "read",
+        "constraints": {
+          "uri_prefixes": [
+            "guild://executions/",
+            "guild://objects/records/"
+          ],
+          "resource_kinds": [
+            "execution",
+            "object"
+          ]
+        }
+      }
+    ]
+  },
+  "authority_observations": [
+    {
+      "family": "read-resource",
+      "status": "exercised",
+      "detail": {
+        "uri": "guild://executions/example-run",
+        "resource_kind": "execution",
+        "mime_type": "application/json",
+        "bytes": 1536,
+        "sha256": "sha256:9a8f7f47166e1aa0f83b7ea1f5d914c089f5a0f5090e533e4cf5d5082dd2bb83"
+      }
+    }
+  ],
+  "provenance": {
+    "started_at_utc": "2026-03-20T20:15:00.000000000Z",
+    "finished_at_utc": "2026-03-20T20:15:02.000000000Z"
+  }
+}

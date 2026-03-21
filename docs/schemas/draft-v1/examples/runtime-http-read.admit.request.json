@@ -26,25 +26,23 @@
   "requested_authority": {
     "grants": [
       {
-        "effect_class": "net.connect",
+        "family": "http-request",
         "scope": {
           "kind": "network",
-          "audiences": [
-            {
-              "host": "127.0.0.1",
-              "ports": [
-                18080
-              ],
-              "schemes": [
-                "http"
-              ],
-              "path_prefixes": [
-                "/response.json"
-              ],
-              "methods": [
-                "GET"
-              ]
-            }
+          "allowed_schemes": [
+            "http"
+          ],
+          "allowed_hosts": [
+            "127.0.0.1"
+          ],
+          "allowed_ports": [
+            18080
+          ],
+          "allowed_methods": [
+            "GET"
+          ],
+          "allowed_path_prefixes": [
+            "/response.json"
           ]
         },
         "cardinality": {

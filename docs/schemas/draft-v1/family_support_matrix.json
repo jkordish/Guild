@@ -1,0 +1,385 @@
+{
+  "kind": "guild.family_support_matrix",
+  "version": "1.0.0",
+  "canonical_runtime_vocabulary": true,
+  "notes": [
+    "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
+    "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
+    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c only proves bounded live read-resource shrinking across immutable Guild execution/object-record roots.",
+    "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
+    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request/invoke-skill/emit-evidence stay unlinked, and log-write linkage support reflects the generic consumer path once a real live proof exists."
+  ],
+  "layers": [
+    "admission_runtime_guarantee_matching",
+    "execution_plan_representation",
+    "live_minimization_proof",
+    "token_issuance_basis",
+    "token_verification",
+    "witness_generation",
+    "witness_verification",
+    "positive_claim_verification",
+    "negative_claim_verification",
+    "plan_proof_token_linkage",
+    "proof_witness_linkage"
+  ],
+  "families": {
+    "http-request": {
+      "scope_shape": {
+        "kind": "network",
+        "fields": [
+          "allowed_schemes",
+          "allowed_hosts",
+          "allowed_host_suffixes",
+          "allowed_ports",
+          "allowed_methods",
+          "allowed_path_prefixes",
+          "max_timeout_ms",
+          "max_response_bytes",
+          "follow_redirects",
+          "max_redirects",
+          "allow_loopback",
+          "allow_link_local",
+          "allow_private_networks",
+          "allow_ip_literals"
+        ]
+      },
+      "layers": {
+        "admission_runtime_guarantee_matching": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Direct canonical http-request grants match the live runtime vocabulary and URL-granularity runtime guarantee checks."
+        },
+        "execution_plan_representation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "M4 plans carry canonical http-request scopes directly."
+        },
+        "live_minimization_proof": {
+          "status": "not_proven",
+          "reason_codes": ["LIVE_REPLAY_UNAVAILABLE"],
+          "notes": "M8c still lacks a real replay transport for counterfactual http-request proof, so the live proof path stays not_proven."
+        },
+        "token_issuance_basis": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "M6 can still issue direct canonical http-request scopes, but proof-backed issuance falls back to upper-bound-only when live proof is unavailable."
+        },
+        "token_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Canonical METHOD:scheme://host:port/path resource bindings verify directly against http-request scopes."
+        },
+        "witness_generation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Live exercised and blocked http-request observations still normalize directly into canonical witness effects."
+        },
+        "witness_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Canonical http-request witnesses verify directly against plans and tokens."
+        },
+        "positive_claim_verification": {
+          "status": "unsupported",
+          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
+          "notes": "The witness bundle still does not expose fixed positive observed-fact claim types."
+        },
+        "negative_claim_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Scope-only absence claims remain supported when observation coverage is complete."
+        },
+        "plan_proof_token_linkage": {
+          "status": "not_proven",
+          "reason_codes": ["PROOF_LINKAGE_UNAVAILABLE", "LIVE_REPLAY_UNAVAILABLE"],
+          "notes": "M8c keeps http-request token issuance honest by refusing proof-backed linkage and falling back to explicit upper-bound issuance only."
+        },
+        "proof_witness_linkage": {
+          "status": "not_proven",
+          "reason_codes": ["WITNESS_PROOF_LINKAGE_UNAVAILABLE", "LIVE_REPLAY_UNAVAILABLE"],
+          "notes": "Witnesses stay unlinked from live proofs for http-request because the proof basis is still not_proven."
+        }
+      }
+    },
+    "read-resource": {
+      "scope_shape": {
+        "kind": "resource",
+        "fields": [
+          "uri_prefixes",
+          "resource_kinds"
+        ]
+      },
+      "layers": {
+        "admission_runtime_guarantee_matching": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Direct canonical read-resource grants match the live runtime's typed Guild URI authorization model."
+        },
+        "execution_plan_representation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "M4 plans carry canonical read-resource URI prefixes and resource kinds directly."
+        },
+        "live_minimization_proof": {
+          "status": "bounded",
+          "reason_codes": ["LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"],
+          "notes": "M8c now has bounded live proof for read-resource, but only for immutable Guild execution/object-record roots and only under the conservative root-shrink model."
+        },
+        "token_issuance_basis": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
+          "notes": "M6 can now consume bounded live read-resource proofs as an honest proof-backed issuance basis."
+        },
+        "token_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Canonical Guild URI resource bindings verify directly against read-resource scopes."
+        },
+        "witness_generation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Live read-resource observations normalize directly into canonical witness effects."
+        },
+        "witness_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Canonical read-resource witnesses verify directly against plans, tokens, and bounded live proofs."
+        },
+        "positive_claim_verification": {
+          "status": "unsupported",
+          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
+          "notes": "Positive observed-fact claims remain out of scope."
+        },
+        "negative_claim_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Scope-only absence claims remain supported when coverage is complete."
+        },
+        "plan_proof_token_linkage": {
+          "status": "bounded",
+          "reason_codes": ["LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"],
+          "notes": "M8c now proves a real bounded read-resource chain from plan to live proof to proof-backed token."
+        },
+        "proof_witness_linkage": {
+          "status": "bounded",
+          "reason_codes": ["LIVE_PROOF_BOUNDED"],
+          "notes": "M8c now links witnesses honestly to bounded live read-resource proofs without claiming exact minimality."
+        }
+      }
+    },
+    "invoke-skill": {
+      "scope_shape": {
+        "kind": "skill",
+        "fields": [
+          "aliases"
+        ]
+      },
+      "layers": {
+        "admission_runtime_guarantee_matching": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Direct canonical invoke-skill scopes match the live alias-bound runtime family."
+        },
+        "execution_plan_representation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "M4 plans carry the canonical alias-bound invoke-skill scope directly."
+        },
+        "live_minimization_proof": {
+          "status": "not_proven",
+          "reason_codes": ["LIVE_REPLAY_UNAVAILABLE"],
+          "notes": "M8c still lacks an honest child-execution replay and comparator path for invoke-skill proof."
+        },
+        "token_issuance_basis": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "M6 still issues direct canonical invoke-skill scopes, but proof-backed issuance remains unavailable."
+        },
+        "token_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Alias resource bindings verify directly against invoke-skill scopes."
+        },
+        "witness_generation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Live invoke-skill observations normalize directly into canonical witness effects."
+        },
+        "witness_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Canonical invoke-skill witnesses verify directly against plans and tokens."
+        },
+        "positive_claim_verification": {
+          "status": "unsupported",
+          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
+          "notes": "Positive observed-fact claims remain out of scope."
+        },
+        "negative_claim_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Scope-only absence claims remain supported when coverage is complete."
+        },
+        "plan_proof_token_linkage": {
+          "status": "not_proven",
+          "reason_codes": ["PROOF_LINKAGE_UNAVAILABLE", "LIVE_REPLAY_UNAVAILABLE"],
+          "notes": "M8c does not claim plan-to-proof-to-token linkage for invoke-skill."
+        },
+        "proof_witness_linkage": {
+          "status": "not_proven",
+          "reason_codes": ["WITNESS_PROOF_LINKAGE_UNAVAILABLE", "LIVE_REPLAY_UNAVAILABLE"],
+          "notes": "M8c does not link invoke-skill witnesses to live proofs."
+        }
+      }
+    },
+    "emit-evidence": {
+      "scope_shape": {
+        "kind": "evidence",
+        "fields": [
+          "audiences",
+          "redactions",
+          "max_bytes"
+        ]
+      },
+      "layers": {
+        "admission_runtime_guarantee_matching": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Direct canonical emit-evidence scopes match the live runtime vocabulary."
+        },
+        "execution_plan_representation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "M4 plans carry canonical emit-evidence scopes directly."
+        },
+        "live_minimization_proof": {
+          "status": "not_proven",
+          "reason_codes": ["LIVE_COMPARATOR_UNAVAILABLE"],
+          "notes": "M8c still lacks a stable sink comparator for emit-evidence, so live proof stays not_proven."
+        },
+        "token_issuance_basis": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "M6 still issues canonical emit-evidence scopes, but proof-backed issuance remains unavailable."
+        },
+        "token_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Canonical emit-evidence resource bindings verify directly against the current scope model."
+        },
+        "witness_generation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Live emit-evidence observations normalize directly into canonical witness effects."
+        },
+        "witness_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Canonical emit-evidence witnesses verify directly against plans and tokens."
+        },
+        "positive_claim_verification": {
+          "status": "unsupported",
+          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
+          "notes": "Positive observed-fact claims remain out of scope."
+        },
+        "negative_claim_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Scope-only absence claims remain supported when coverage is complete."
+        },
+        "plan_proof_token_linkage": {
+          "status": "not_proven",
+          "reason_codes": ["PROOF_LINKAGE_UNAVAILABLE", "LIVE_COMPARATOR_UNAVAILABLE"],
+          "notes": "M8c does not claim emit-evidence proof-backed token linkage."
+        },
+        "proof_witness_linkage": {
+          "status": "not_proven",
+          "reason_codes": ["WITNESS_PROOF_LINKAGE_UNAVAILABLE", "LIVE_COMPARATOR_UNAVAILABLE"],
+          "notes": "M8c does not link emit-evidence witnesses to live proofs."
+        }
+      }
+    },
+    "log-write": {
+      "scope_shape": {
+        "kind": "log",
+        "fields": [
+          "levels"
+        ]
+      },
+      "layers": {
+        "admission_runtime_guarantee_matching": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Direct canonical log-write scopes match the live runtime's level-only authority shape."
+        },
+        "execution_plan_representation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "M4 plans carry canonical log-write levels directly."
+        },
+        "live_minimization_proof": {
+          "status": "supported",
+          "reason_codes": ["LIVE_PROOF_SUPPORTED"],
+          "notes": "M8c now has exact discrete live proof search for the observed log-write levels."
+        },
+        "token_issuance_basis": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
+          "notes": "M6 can consume real log-write live proofs when a plan and proof record align."
+        },
+        "token_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Canonical log-write bindings verify directly against level-only scopes."
+        },
+        "witness_generation": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Live log-write observations normalize directly into canonical witness effects."
+        },
+        "witness_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Canonical log-write witnesses verify directly against plans, tokens, and live proofs when present."
+        },
+        "positive_claim_verification": {
+          "status": "unsupported",
+          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
+          "notes": "Positive observed-fact claims remain out of scope."
+        },
+        "negative_claim_verification": {
+          "status": "supported",
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
+          "notes": "Scope-only absence claims remain supported when coverage is complete."
+        },
+        "plan_proof_token_linkage": {
+          "status": "supported",
+          "reason_codes": ["LIVE_PROOF_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
+          "notes": "Once a real log-write live proof record exists, M6 consumes it through the same proof-backed issuance path used in M8c's read-resource chain."
+        },
+        "proof_witness_linkage": {
+          "status": "supported",
+          "reason_codes": ["LIVE_PROOF_SUPPORTED"],
+          "notes": "M7 can link witnesses honestly to real log-write live proofs when provided."
+        }
+      }
+    }
+  },
+  "compatibility_aliases": {
+    "net.connect": {
+      "status": "partial",
+      "maps_to_family": "http-request",
+      "notes": "Legacy net.connect remains only a conservative compatibility alias. Direct canonical http-request is the supported runtime vocabulary."
+    },
+    "component.invoke": {
+      "status": "partial",
+      "maps_to_family": "invoke-skill",
+      "notes": "Legacy component.invoke remains only a conservative compatibility alias. Direct canonical invoke-skill is the supported runtime vocabulary."
+    },
+    "net.resolve": {
+      "status": "unsupported",
+      "maps_to_family": null,
+      "notes": "The live runtime does not expose a standalone DNS resolution family."
+    }
+  }
+}

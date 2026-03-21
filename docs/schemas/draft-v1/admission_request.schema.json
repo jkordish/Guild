@@ -115,26 +115,7 @@
       "type": "array",
       "minItems": 0,
       "items": {
-        "type": "object",
-        "properties": {
-          "effect_class": {
-            "$ref": "common.schema.json#/$defs/effect_class"
-          },
-          "resource": {
-            "type": "string",
-            "minLength": 1
-          },
-          "audience": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "effect_class",
-          "resource",
-          "audience"
-        ],
-        "additionalProperties": false
+        "$ref": "common.schema.json#/$defs/resource_binding"
       },
       "default": []
     },

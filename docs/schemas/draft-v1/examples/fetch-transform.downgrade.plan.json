@@ -436,8 +436,8 @@
         "scope": {
           "kind": "secret",
           "secret_ids": [
-            "vault://prod/vendor/source-api-token",
-            "vault://prod/vendor/extra-token"
+            "vault://prod/vendor/extra-token",
+            "vault://prod/vendor/source-api-token"
           ]
         }
       }

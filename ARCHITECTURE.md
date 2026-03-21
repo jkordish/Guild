@@ -293,20 +293,32 @@ The draft M3/M4 schema bundle under `docs/schemas/draft-v1/` is still draft voca
 The live Rust vocabulary now wins explicitly:
 
 - `runtime_guarantee.supported_canonical_families` is the authoritative live-runtime family list for the draft bundle
-- `supported_effect_classes` remains a temporary draft-v1 compatibility list for legacy M4, M5, and M6 examples
+- `supported_effect_classes` remains a temporary draft-v1 compatibility list for legacy bounded examples
 - the current active canonical families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- `docs/schemas/draft-v1/family_support_matrix.json` is the machine-readable per-family or per-layer status source for the draft control-plane surface
+
+M8c closes the biggest remaining lie-shaped gap in that draft bundle: live proof now exists only where the runtime actually supports it.
+
+- `read-resource` now has bounded live proof over immutable execution/object-record scope roots and one honest end-to-end chain from plan to proof to token to witness
+- `log-write` now has real live family proof over the observed discrete level slice
+- `http-request`, `invoke-skill`, and `emit-evidence` still stay explicitly `not_proven` for live proof and therefore stay on upper-bound-only or unlinked downstream behavior
 
 That draft mapping is intentionally explicit:
 
 | `docs/schemas/draft-v1/` term | Current runtime term | Relationship |
 |---|---|---|
 | `component.wit_world` | `guild-skill-inspect-v1` runtime-entrypoint / world checks | bundled contracts now target the live inspect world explicitly |
-| `component.invoke` | `invoke-skill` | narrowing compatibility mapping |
-| `net.connect`, `net.resolve` | `http-request` | draft term is broader; only explicit HTTP(S) GET or HEAD `net.connect` scopes map safely |
+| direct canonical `http-request` | `http-request` | direct canonical support in the draft M4, M6, and M7 layers |
+| direct canonical `read-resource` | `read-resource` | direct canonical support in the draft M4, M6, and M7 layers |
+| direct canonical `invoke-skill` | `invoke-skill` | direct canonical support in the draft M4, M6, and M7 layers at the current alias-only runtime scope |
+| direct canonical `emit-evidence` | `emit-evidence` | direct canonical support in the draft M4, M6, and M7 layers |
+| direct canonical `log-write` | `log-write` | direct canonical support in the draft M4, M6, and M7 layers at the current level-only runtime scope |
+| `component.invoke` | `invoke-skill` | deprecated narrowing compatibility mapping |
+| `net.connect` | `http-request` | deprecated narrowing compatibility mapping; only explicit HTTP(S) GET or HEAD scopes map safely |
+| `net.resolve` | `http-request` | unsupported; the live runtime does not expose a standalone DNS-resolution family |
 | `fs.*` effect classes | `filesystem` family | partial; active inspect still rejects filesystem before guest start |
 | `secret.read` | `get-secret` | partial; no live inspect enforcement or observation path yet |
 | `clock.read` | `wall-clock` | partial; draft term is less precise than the runtime family split |
-| no direct schema effect-class | `read-resource`, `emit-evidence`, `log-write` | live-observed in Rust, but unsupported in draft-v1 claim semantics |
 
 This is why the schema bundle remains marked draft: component portability and effect vocabulary portability are not the same thing as enforcement portability of the current runtime slice.
 
@@ -325,7 +337,7 @@ The same draft bundle now also contains one bounded M5 layer for its own vocabul
 - exact discrete elimination is only exact over the finite grant subsets the engine actually explores
 - scope shrinkers are bounded observed-effect projections and therefore report `bounded_minimal`, not exact minimality
 
-That M5 layer is intentionally not wired into the current runtime-general Rust execution path because the draft effect vocabulary still does not match the live inspect capability surface closely enough to claim a broader proof harness honestly.
+That M5 layer is intentionally split in M8c: the older Python harness remains draft-example-only, while the real live Rust proof path is now consumed only for the families it can honestly support today. The repository still does not have a runtime-general proof substrate across every canonical family.
 
 That draft bundle now also contains one draft-local M6 token layer for its own vocabulary:
 
@@ -357,10 +369,11 @@ That M7 layer is intentionally honest about what it is and what it is not:
 - it reuses the same draft-local HMAC-SHA256 MAC over canonical JSON claims used by M6, so it is not a public attestation mechanism
 - it is currently complete for the bundled draft example harnesses and explicit bounded observation fixtures, and it now also consumes the live Rust `ExecutionRecord.authority_observations` stream for the active runtime families
 - the live runner now persists durable per-effect exercised and blocked observations for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
-- draft-v1 currently maps live `http-request` into its own vocabulary only through a conservative `net.connect` compatibility alias, so runtime-backed negative claims are currently honest only for that family
-- live `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations are carried into draft-v1 witnesses as explicit unmapped or coverage-limited records rather than being silently treated as supported
+- draft-v1 now carries live `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations directly as canonical families
+- scope-only negative claims are now supported for those five families when the relevant live observation coverage is complete
+- the fixed claim vocabulary still has no per-family positive observed-fact claim types, so positive claim verification remains unsupported even though witnesses carry those facts
 
-So the current draft M7 path is useful for bounded exercised-authority verification, and it is now live-runtime-backed for `http-request`, but it still does not justify runtime-general witness completeness claims across the full live Rust capability surface.
+So the current draft M7 path is useful for bounded exercised-authority verification across the five active canonical families, but it still does not justify runtime-general witness completeness claims across the full live Rust capability surface.
 
 The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 

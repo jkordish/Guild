@@ -125,6 +125,9 @@
             },
             "proof_status": {
               "$ref": "common.schema.json#/$defs/proof_status"
+            },
+            "proof_source_kind": {
+              "$ref": "common.schema.json#/$defs/proof_source_kind"
             }
           },
           "required": [
@@ -152,6 +155,16 @@
             },
             "issuance_basis": {
               "$ref": "common.schema.json#/$defs/token_issuance_basis"
+            },
+            "proof_source_kind": {
+              "oneOf": [
+                {
+                  "$ref": "common.schema.json#/$defs/proof_source_kind"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "parent_token_id": {
               "$ref": "#/$defs/identifier_or_null"
@@ -393,7 +406,7 @@
         "effect_classes": {
           "type": "array",
           "items": {
-            "$ref": "common.schema.json#/$defs/effect_class"
+            "$ref": "common.schema.json#/$defs/authority_selector"
           },
           "uniqueItems": true
         },
@@ -452,7 +465,7 @@
         "effect_classes": {
           "type": "array",
           "items": {
-            "$ref": "common.schema.json#/$defs/effect_class"
+            "$ref": "common.schema.json#/$defs/authority_selector"
           },
           "uniqueItems": true
         },
@@ -567,7 +580,7 @@
         "outside_effect_classes": {
           "type": "array",
           "items": {
-            "$ref": "common.schema.json#/$defs/effect_class"
+            "$ref": "common.schema.json#/$defs/authority_selector"
           },
           "uniqueItems": true
         }

@@ -1,12 +1,12 @@
 {
   "kind": "guild.admission_request",
   "version": "1.0.0",
-  "request_id": "urn:guild:request:runtime-emit-evidence-zero:admit:v1",
+  "request_id": "urn:guild:request:runtime-read-resource:admit:v1",
   "contract": {
-    "contract_id": "urn:guild:contract:runtime-emit-evidence-zero:v1",
+    "contract_id": "urn:guild:contract:runtime-read-resource:v1",
     "component_digest": {
       "algorithm": "sha256",
-      "value": "9878310506fa7fc567cdb991b838e82b5e5848a2eec6ad8a8012b78f34290f53"
+      "value": "20cb19c3bbe598472cb6dbe6beee9b03d9e24196511874fb8aa98051354d633c"
     }
   },
   "input_class_fingerprint": {
@@ -14,7 +14,7 @@
     "canonicalization": "rfc8785-jcs",
     "digest": {
       "algorithm": "sha256",
-      "value": "373eaf6dc52e5ff8cf6c7d5f3b4f9c8f4ca9f8c2f4d8f387c79c9f8564e7a8cb"
+      "value": "1632b740d38ce65db5debeae5ec0f5c62c57cf4c6847ee12bf7a5a932845f5d4"
     }
   },
   "runtime_candidates": [
@@ -26,25 +26,27 @@
   "requested_authority": {
     "grants": [
       {
-        "family": "emit-evidence",
+        "family": "read-resource",
         "scope": {
-          "kind": "evidence",
-          "audiences": [
-            "user"
+          "kind": "resource",
+          "uri_prefixes": [
+            "guild://executions/",
+            "guild://objects/records/"
           ],
-          "redactions": [
-            "none"
+          "resource_kinds": [
+            "execution",
+            "object"
           ]
         },
         "cardinality": {
-          "max_calls": 1,
-          "max_bytes": 65536
+          "max_calls": 2,
+          "max_bytes": 16384
         }
       }
     ],
     "ttl_seconds": 120
   },
-  "requested_witness_level": "decision",
+  "requested_witness_level": "hostcall",
   "audience_binding_inputs": [],
   "resource_binding_inputs": [],
   "delegation_chain_input": {

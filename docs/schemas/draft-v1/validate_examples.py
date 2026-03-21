@@ -1,4 +1,7 @@
+import json
+import subprocess
 from copy import deepcopy
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from admission_core import (
@@ -6,11 +9,13 @@ from admission_core import (
     build_execution_plan,
     build_registry,
     canonical_json,
+    digest_struct,
     load_json,
     validate_instance,
 )
 from minimization_core import build_minimization_proof
-from token_core import create_child_token, create_root_token, verify_token
+from runtime_alignment import LIVE_RUNTIME_SOURCE_KIND, observation_bundle_from_execution_record, runtime_mapping_for_effect
+from token_core import PROOF_SOURCE_LIVE_RUNTIME, create_child_token, create_root_token, verify_token
 from witness_core import generate_witness, verify_claim, verify_witness
 from witness_examples import build_witness_fixtures
 
@@ -21,7 +26,10 @@ EXAMPLES = [
     ("skill_contract.schema.json", "examples/fetch-transform.contract.json"),
     ("skill_contract.schema.json", "examples/cluster-rollout.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-read.contract.json"),
+    ("skill_contract.schema.json", "examples/runtime-read-resource.contract.json"),
+    ("skill_contract.schema.json", "examples/runtime-invoke-skill.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-emit-evidence-zero.contract.json"),
+    ("skill_contract.schema.json", "examples/runtime-log-write.contract.json"),
     ("runtime_guarantee.schema.json", "examples/wasmtime-strict.runtime.json"),
     ("runtime_guarantee.schema.json", "examples/node-wasi-basic.runtime.json"),
     ("comparator_profile.schema.json", "examples/local-log-analyzer.canonical-json.comparator.json"),
@@ -53,7 +61,10 @@ EXAMPLES = [
     ("admission_request.schema.json", "examples/cluster-rollout.refuse.request.json"),
     ("admission_request.schema.json", "examples/cluster-rollout.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-read.admit.request.json"),
+    ("admission_request.schema.json", "examples/runtime-read-resource.admit.request.json"),
+    ("admission_request.schema.json", "examples/runtime-invoke-skill.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-emit-evidence-zero.admit.request.json"),
+    ("admission_request.schema.json", "examples/runtime-log-write.admit.request.json"),
     ("execution_plan.schema.json", "examples/zero-authority.admit.plan.json"),
     ("execution_plan.schema.json", "examples/zero-authority.migrate.plan.json"),
     ("execution_plan.schema.json", "examples/fetch-transform.downgrade.plan.json"),
@@ -114,6 +125,357 @@ ADMISSION_CASES = [
         "expected_plan": "examples/cluster-rollout.admit.plan.json",
     },
 ]
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+LIVE_SCOPE_KIND_BY_FAMILY = {
+    "http-request": "network",
+    "read-resource": "resource",
+    "invoke-skill": "skill",
+    "emit-evidence": "evidence",
+    "log-write": "log",
+}
+
+
+def parse_prefixed_digest(value: str | None) -> dict | None:
+    if value is None:
+        return None
+    algorithm, _, digest_value = value.partition(":")
+    if not algorithm or not digest_value:
+        raise ValueError(f"invalid digest string {value!r}")
+    return {
+        "algorithm": algorithm,
+        "value": digest_value,
+    }
+
+
+def authority_plan_with_grants(plan: dict, grants: list[dict], suffix: str) -> dict:
+    authority_plan = deepcopy(plan["granted_authority"])
+    authority_plan["plan_id"] = f"{plan['plan_id']}:{suffix}"
+    authority_plan["grants"] = deepcopy(grants)
+    return authority_plan
+
+
+def family_grants(authority_plan: dict, family: str) -> list[dict]:
+    return [deepcopy(grant) for grant in authority_plan.get("grants", []) if grant.get("family") == family]
+
+
+def baseline_family_template(authority_plan: dict, family: str) -> dict | None:
+    for grant in authority_plan.get("grants", []):
+        if grant.get("family") == family:
+            return deepcopy(grant)
+    return None
+
+
+def live_grant_to_effect_spec(grant: dict, baseline_authority_plan: dict) -> dict:
+    family = grant["id"]
+    template = baseline_family_template(baseline_authority_plan, family) or {"family": family}
+    effect = {
+        "family": family,
+        "scope": deepcopy(template.get("scope", {})),
+    }
+    constraints = deepcopy(grant.get("constraints", {}))
+    if family == "http-request":
+        methods = constraints.get("allowed_methods")
+        if methods is not None:
+            constraints["allowed_methods"] = [method.upper() for method in methods]
+        effect["scope"] = {
+            "kind": "network",
+            **constraints,
+        }
+    elif family == "read-resource":
+        effect["scope"] = {
+            "kind": "resource",
+            "uri_prefixes": constraints.get("uri_prefixes", []),
+            "resource_kinds": constraints.get("resource_kinds", []),
+        }
+    elif family == "invoke-skill":
+        effect["scope"] = {
+            "kind": "skill",
+            "aliases": constraints.get("aliases", []),
+        }
+    elif family == "emit-evidence":
+        effect["scope"] = {
+            "kind": "evidence",
+            "max_bytes": constraints.get("max_bytes"),
+            "audiences": constraints.get("audiences", []),
+            "redactions": constraints.get("redactions", []),
+        }
+    elif family == "log-write":
+        effect["scope"] = {
+            "kind": "log",
+            "levels": constraints.get("levels", []),
+        }
+    if template.get("cardinality") is not None:
+        effect["cardinality"] = deepcopy(template["cardinality"])
+    if template.get("justification") is not None:
+        effect["justification"] = template["justification"]
+    return effect
+
+
+def live_grants_to_effect_specs(live_grants: list[dict], baseline_authority_plan: dict) -> list[dict]:
+    return [live_grant_to_effect_spec(grant, baseline_authority_plan) for grant in live_grants]
+
+
+def live_trial_result(trial: dict) -> str:
+    if trial["accepted"]:
+        return "equivalent"
+    if trial["comparator_status"] == "mismatch":
+        return "non_equivalent"
+    if trial["execution_status"] == "validation_error":
+        return "error"
+    if trial["execution_status"] in {"failed", "rejected"}:
+        return "error"
+    if trial["comparator_status"] in {"error", "unavailable"}:
+        return "error"
+    return "not_proven"
+
+
+def live_shadow_status(trial: dict) -> str:
+    if trial["execution_status"] == "succeeded":
+        return "success"
+    if trial.get("error_code") == "timeout":
+        return "timeout"
+    return "error"
+
+
+def live_comparator_summary_status(trial: dict) -> str:
+    status = trial["comparator_status"]
+    if status in {"match", "mismatch", "error", "unavailable"}:
+        return status
+    return "error"
+
+
+def live_comparator_spec(descriptor: dict) -> dict:
+    return {
+        "comparator_id": descriptor["comparator_id"],
+        "version": descriptor["version"],
+        "comparator_kind": "canonical_structured_output",
+        "reference": descriptor["notes"],
+        "canonicalization": "rfc8785-jcs",
+        "checker_ref": descriptor["comparator_id"],
+        "output_pointer": "/output/structured",
+        "inputs": {
+            "profile": descriptor["comparator_id"],
+        },
+        "assumptions": {
+            "ambient_clock_controlled": True,
+            "ambient_network_controlled": True,
+            "ambient_random_controlled": True,
+        },
+    }
+
+
+def live_candidate_attempt(trial: dict, baseline_authority_plan: dict) -> dict:
+    family = trial["family"]
+    candidate_authority_plan = authority_plan_with_grants(
+        {"granted_authority": baseline_authority_plan, "plan_id": baseline_authority_plan["plan_id"]},
+        live_grants_to_effect_specs(trial["candidate_envelope"]["granted_capabilities"]["grants"], baseline_authority_plan),
+        trial["trial_id"],
+    )
+    baseline_family = family_grants(baseline_authority_plan, family)
+    candidate_family = family_grants(candidate_authority_plan, family)
+    removed_grants = [grant for grant in baseline_family if grant not in candidate_family]
+    shadow_execution = {
+        "status": live_shadow_status(trial),
+        "error_code": trial.get("error_code"),
+        "observed_effects": [],
+        "observed_families": trial.get("observed_families", []),
+        "output_digest": parse_prefixed_digest(trial.get("output_digest")),
+    }
+    comparator_summary = {
+        "status": live_comparator_summary_status(trial),
+        "compared_output_digest": parse_prefixed_digest(trial.get("output_digest")),
+    }
+    if trial.get("error_code") is not None:
+        comparator_summary["details"] = trial["error_code"]
+
+    return {
+        "trial_id": trial["trial_id"],
+        "candidate_authority_plan": candidate_authority_plan,
+        "change_kind": trial["change_kind"],
+        "target_effect_class": family,
+        "target_scope_kind": LIVE_SCOPE_KIND_BY_FAMILY[family],
+        "removed_grants": removed_grants,
+        "shrink_from": baseline_family[0] if baseline_family and candidate_family else None,
+        "shrink_to": candidate_family[0] if candidate_family else None,
+        "trial_result": live_trial_result(trial),
+        "reason_codes": trial["reason_codes"],
+        "shadow_execution": shadow_execution,
+        "comparator_summary": comparator_summary,
+    }
+
+
+def live_retained_authorities(residual_authority_plan: dict, family_statuses: list[dict]) -> list[dict]:
+    by_family = {entry["family"]: entry for entry in family_statuses}
+    retained: list[dict] = []
+    for grant in residual_authority_plan["grants"]:
+        family_status = by_family.get(grant.get("family"))
+        retained.append(
+            {
+                "grant": deepcopy(grant),
+                "reason_codes": [] if family_status is None else family_status["reason_codes"],
+                "details": "Residual authority stayed outside the live proof envelope."
+                if family_status is None
+                else family_status["notes"],
+            }
+        )
+    return retained
+
+
+def load_live_proof_scenario(name: str) -> dict:
+    result = subprocess.run(
+        [
+            "cargo",
+            "run",
+            "-q",
+            "-p",
+            "guild-runner",
+            "--example",
+            "live_proof_scenarios",
+            "--",
+            name,
+        ],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"live proof scenario {name!r} failed")
+    return json.loads(result.stdout)
+
+
+def build_live_runtime_proof_record(
+    *,
+    scenario_name: str,
+    plan: dict,
+    contract: dict,
+    runtime: dict,
+    invocation_input: dict,
+    created_at: str,
+) -> tuple[dict, dict]:
+    scenario = load_live_proof_scenario(scenario_name)
+    live_proof = scenario["proof"]
+    baseline_authority_plan = deepcopy(plan["granted_authority"])
+    proven_authority_plan = authority_plan_with_grants(plan, live_proof["proven_authority"]["grants"], "live-proven")
+    proven_authority_plan["grants"] = live_grants_to_effect_specs(live_proof["proven_authority"]["grants"], baseline_authority_plan)
+    residual_authority_plan = authority_plan_with_grants(plan, live_proof["residual_authority"]["grants"], "live-residual")
+    residual_authority_plan["grants"] = live_grants_to_effect_specs(
+        live_proof["residual_authority"]["grants"], baseline_authority_plan
+    )
+    observation_summary, _ = observation_bundle_from_execution_record(
+        scenario["baseline_execution_record"],
+        baseline_authority_plan,
+    )
+    comparator = live_comparator_spec(live_proof["comparator"])
+    proof_record = {
+        "kind": "guild.proof_record",
+        "version": "1.0.0",
+        "proof_id": f"urn:guild:proof:{scenario_name}:live:v1",
+        "request_id": plan["request_id"],
+        "execution_plan_id": plan["plan_id"],
+        "execution_plan_digest": digest_struct(plan),
+        "skill_contract_id": contract["contract_id"],
+        "contract_digest": digest_struct(contract),
+        "component_digest": deepcopy(contract["component"]["digest"]),
+        "export_name": plan["export_name"],
+        "input_class_fingerprint": deepcopy(plan["input_class_fingerprint"]),
+        "invocation_input_digest": digest_struct(invocation_input),
+        "chosen_runtime": deepcopy(plan["chosen_runtime"]),
+        "proof_source_kind": PROOF_SOURCE_LIVE_RUNTIME,
+        "proof_method": "counterfactual_shadow_execution",
+        "comparator": comparator,
+        "comparator_digest": digest_struct(comparator),
+        "minimization_algorithm": {
+            "id": "urn:guild:algorithm:live-proof:family-conservative:v1",
+            "version": "1.0.0",
+            "shrink_model_version": "1.0.0",
+            "harness_id": "urn:guild:harness:live-runtime-replay:v1",
+            "harness_version": "1.0.0",
+        },
+        "search_model": {
+            "search_domain": "canonical-live-runtime-families",
+            "discrete_grant_search": {
+                "strategy": "family_conservative_search",
+                "exact": live_proof["proof_status"] in {"exact_minimal", "no_reduction"},
+                "candidate_plans_evaluated": len(live_proof["candidate_trials"]),
+            },
+            "scope_shrinkers": [
+                {
+                    "scope_kind": LIVE_SCOPE_KIND_BY_FAMILY[entry["family"]],
+                    "strategy": "family_conservative_search",
+                    "bounded": entry["support"] == "bounded-live-proof",
+                    "attempts": len(
+                        [
+                            trial
+                            for trial in live_proof["candidate_trials"]
+                            if trial["family"] == entry["family"] and trial["change_kind"] == "shrink_scope"
+                        ]
+                    ),
+                    "accepted": len(
+                        [
+                            trial
+                            for trial in live_proof["candidate_trials"]
+                            if trial["family"] == entry["family"]
+                            and trial["change_kind"] == "shrink_scope"
+                            and trial["accepted"]
+                        ]
+                    ),
+                }
+                for entry in live_proof["family_statuses"]
+            ],
+            "search_limits": {
+                "max_candidate_plans": max(1, len(live_proof["candidate_trials"])),
+                "truncated": False,
+            },
+            "assumptions": live_proof["comparator"]["assumptions"],
+        },
+        "baseline_authority_plan": baseline_authority_plan,
+        "proven_authority_plan": proven_authority_plan,
+        "residual_authority_plan": residual_authority_plan,
+        "family_proof_statuses": deepcopy(live_proof["family_statuses"]),
+        "candidate_attempts": [
+            live_candidate_attempt(trial, baseline_authority_plan) for trial in live_proof["candidate_trials"]
+        ],
+        "retained_authorities": live_retained_authorities(residual_authority_plan, live_proof["family_statuses"]),
+        "proof_status": live_proof["proof_status"],
+        "minimization_reason_codes": live_proof["minimization_reason_codes"],
+        "observed_effect_summary": {
+            "effects": observation_summary["observed_effects"],
+            "output_digest": parse_prefixed_digest(live_proof.get("baseline_output_digest")),
+            "trace_digest": digest_struct(observation_summary["raw_trace"]),
+        },
+        "cache": {
+            "status": "bypassed",
+            "cache_key_digest": digest_struct(
+                {
+                    "scenario": scenario_name,
+                    "execution_plan_digest": digest_struct(plan),
+                    "runtime_guarantee_digest": plan["chosen_runtime"]["runtime_guarantee_digest"],
+                }
+            ),
+            "reused_proof_id": None,
+            "bypass_reason_codes": ["PROOF_CACHE_BYPASSED"],
+            "key_material": {
+                "execution_plan_digest": digest_struct(plan),
+                "contract_digest": digest_struct(contract),
+                "component_digest": deepcopy(contract["component"]["digest"]),
+                "export_name": plan["export_name"],
+                "input_class_fingerprint": deepcopy(plan["input_class_fingerprint"]),
+                "invocation_input_digest": digest_struct(invocation_input),
+                "runtime_guarantee_digest": plan["chosen_runtime"]["runtime_guarantee_digest"],
+                "comparator_digest": digest_struct(comparator),
+                "minimization_algorithm_version": "1.0.0",
+                "shrink_model_version": "1.0.0",
+                "harness_id": "urn:guild:harness:live-runtime-replay:v1",
+                "harness_version": "1.0.0",
+            },
+        },
+        "created_at": created_at,
+        "expires_at": None,
+        "notes": "Live-runtime proof record derived from the Rust runner's real counterfactual execution path.",
+    }
+    return proof_record, scenario
 
 
 def m6_issuer() -> dict:
@@ -467,6 +829,21 @@ def verify_token_cases() -> list[str]:
     )
     if canonical_json(local_root_repeat) != canonical_json(local_root):
         failures.append("local-log-analyzer root issuance was non-deterministic for identical claims and key material")
+
+    live_required_refusal = create_root_token(
+        local_plan,
+        local_contract,
+        issuer,
+        holder_id="urn:guild:service:local-log-analyzer",
+        issued_at="2026-03-20T13:00:00Z",
+        proof=local_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        token_id="urn:guild:token:local-log-analyzer:live-required:v1",
+    )
+    if live_required_refusal.get("issued") is not False or "PROOF_NOT_ACCEPTABLE" not in live_required_refusal.get(
+        "reason_codes", []
+    ):
+        failures.append("draft-example proof was incorrectly accepted when live-runtime proof linkage was required")
 
     cluster_root = create_root_token(
         cluster_plan,
@@ -943,6 +1320,7 @@ def verify_witness_cases() -> list[str]:
 
 def verify_live_runtime_alignment_cases() -> list[str]:
     failures: list[str] = []
+    registry = build_registry()
     issuer = m6_issuer()
     issuer_keys = m6_issuer_keys()
     runtime = load_json("examples/wasmtime-strict.runtime.json")
@@ -950,27 +1328,187 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     http_contract = load_json("examples/runtime-http-read.contract.json")
     http_request = load_json("examples/runtime-http-read.admit.request.json")
     http_invocation = load_json("examples/runtime-http-read.invocation.json")
-    http_comparator = load_json("examples/runtime-http-read.unavailable.comparator.json")
     http_record = load_json("examples/runtime-http-success.execution-record.json")
-    http_blocked_record = load_json("examples/runtime-http-blocked.execution-record.json")
+    read_contract = load_json("examples/runtime-read-resource.contract.json")
+    read_request = load_json("examples/runtime-read-resource.admit.request.json")
+    read_invocation = load_json("examples/runtime-read-resource.invocation.json")
+    read_record = load_json("examples/runtime-read-resource.execution-record.json")
+    log_contract = load_json("examples/runtime-log-write.contract.json")
+    log_request = load_json("examples/runtime-log-write.admit.request.json")
 
     http_plan = build_execution_plan(http_contract, http_request, [runtime])
-    if http_plan["decision"] != "admit":
-        failures.append("runtime-http-read admission did not produce an admit plan for the live HTTP case")
-        return failures
+    read_plan = build_execution_plan(read_contract, read_request, [runtime])
+    log_plan = build_execution_plan(log_contract, log_request, [runtime])
+    for label, plan in (
+        ("runtime-http-read", http_plan),
+        ("runtime-read-resource", read_plan),
+        ("runtime-log-write", log_plan),
+    ):
+        if plan["decision"] != "admit":
+            failures.append(f"{label} admission did not produce an admit plan")
+            return failures
 
-    http_proof = build_minimization_proof(
-        http_plan,
-        http_contract,
-        http_request,
-        runtime,
-        http_invocation,
-        http_comparator,
+    read_proof, _read_scenario = build_live_runtime_proof_record(
+        scenario_name="read-resource-bounded",
+        plan=read_plan,
+        contract=read_contract,
+        runtime=runtime,
+        invocation_input=read_invocation,
+        created_at="2026-03-20T20:15:30Z",
+    )
+    read_proof_errors = validate_instance("proof_record.schema.json", read_proof, registry)
+    failures.extend(f"runtime-read-resource live proof schema validation failed: {error}" for error in read_proof_errors)
+    read_family_status = next(
+        (entry for entry in read_proof["family_proof_statuses"] if entry["family"] == "read-resource"),
+        None,
+    )
+    if read_proof["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-read-resource live proof record did not mark proof_source_kind as live-runtime")
+    if read_proof["proof_status"] != "bounded_minimal":
+        failures.append("runtime-read-resource live proof did not stay bounded_minimal")
+    if (
+        read_family_status is None
+        or read_family_status["support"] != "bounded-live-proof"
+        or "LIVE_PROOF_BOUNDED" not in read_family_status["reason_codes"]
+    ):
+        failures.append("runtime-read-resource live proof did not carry honest bounded family support metadata")
+    if read_proof["residual_authority_plan"]["grants"]:
+        failures.append("runtime-read-resource live proof unexpectedly left residual authority outside the proven envelope")
+
+    read_token = create_root_token(
+        read_plan,
+        read_contract,
+        issuer,
+        holder_id="urn:guild:service:runtime-read-resource",
+        issued_at="2026-03-20T20:15:45Z",
+        proof=read_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        audiences=["runtime-read-resource"],
+        resource_bindings=[
+            {
+                "family": "read-resource",
+                "audience": "runtime-read-resource",
+                "resource": "guild://executions/example-run",
+            }
+        ],
+        chain_links=["urn:guild:actor:runtime-alignment-test"],
+    )
+    if read_token.get("kind") != "guild.delegated_capability_token":
+        failures.append("runtime-read-resource live proof-backed token issuance did not produce a delegated capability token")
+        return failures
+    if read_token["issuance_basis"] != "m5_proven_subset" or read_token.get("proof_source_kind") != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-read-resource token did not stay explicitly live proof-backed")
+
+    read_token_verification = verify_token(
+        read_token,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T20:15:50Z",
+        expected_holder_id="urn:guild:service:runtime-read-resource",
+        expected_audiences=["runtime-read-resource"],
+        expected_resources=[
+            {
+                "family": "read-resource",
+                "audience": "runtime-read-resource",
+                "resource": "guild://executions/example-run",
+            }
+        ],
+        expected_runtime_guarantee_id="urn:guild:runtime:wasmtime-strict:v1",
+        expected_call_chain_links=read_token["call_chain"]["links"],
+        plan=read_plan,
+        contract=read_contract,
+        proof=read_proof,
+        check_replay=False,
+    )
+    if not read_token_verification["verified"] or read_token_verification["decision"] != "allow":
+        failures.append("runtime-read-resource live proof-backed token did not verify cleanly")
+
+    read_witness = generate_witness(
+        plan=read_plan,
+        contract=read_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-20T20:16:00Z",
+        invocation_input=read_invocation,
+        proof=read_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        token=read_token,
+        observation={
+            "source_kind": LIVE_RUNTIME_SOURCE_KIND,
+            "execution_record": read_record,
+        },
+        redaction_profile="none",
+    )
+    if read_witness["proof_basis"] is None or read_witness["proof_basis"]["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-read-resource witness did not keep an honest live proof linkage")
+    read_verification = verify_witness(
+        read_witness,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T20:16:30Z",
+        plan=read_plan,
+        contract=read_contract,
+        proof=read_proof,
+        token=read_token,
+    )
+    if not read_verification["verified"] or read_verification["witness_status"] != "within_envelope":
+        failures.append("runtime-read-resource live witness did not verify as within_envelope")
+    read_claim = verify_claim(
+        read_witness,
+        {
+            "claim_type": "no_authority_use_outside_proof",
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T20:16:30Z",
+        plan=read_plan,
+        contract=read_contract,
+        proof=read_proof,
+        token=read_token,
+    )
+    if read_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("runtime-read-resource live witness did not satisfy the proof-envelope absence claim")
+    read_scope_claim = verify_claim(
+        read_witness,
+        {
+            "claim_type": "no_read_resource_outside_scope",
+            "read_resource_scope": {
+                "kind": "resource",
+                "uri_prefixes": [
+                    "guild://executions/",
+                ],
+                "resource_kinds": ["execution"],
+            },
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-20T20:16:30Z",
+        plan=read_plan,
+        contract=read_contract,
+        proof=read_proof,
+        token=read_token,
+    )
+    if read_scope_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("runtime-read-resource live witness did not satisfy the bounded canonical read-resource claim")
+
+    http_proof, _http_scenario = build_live_runtime_proof_record(
+        scenario_name="http-request-not-proven",
+        plan=http_plan,
+        contract=http_contract,
+        runtime=runtime,
+        invocation_input=http_invocation,
         created_at="2026-03-20T20:10:00Z",
     )
+    http_proof_errors = validate_instance("proof_record.schema.json", http_proof, registry)
+    failures.extend(f"runtime-http-read live proof schema validation failed: {error}" for error in http_proof_errors)
+    http_family_status = next(
+        (entry for entry in http_proof["family_proof_statuses"] if entry["family"] == "http-request"),
+        None,
+    )
     if http_proof["proof_status"] != "not_proven":
-        failures.append("runtime-http-read proof did not stay honest about the missing live minimization harness")
-    http_witness_proof = None
+        failures.append("runtime-http-read live proof did not stay honest as not_proven")
+    if (
+        http_family_status is None
+        or http_family_status["support"] != "not-proven"
+        or "LIVE_REPLAY_UNAVAILABLE" not in http_family_status["reason_codes"]
+    ):
+        failures.append("runtime-http-read live proof did not preserve the replay-unavailable not_proven status")
 
     http_token = create_root_token(
         http_plan,
@@ -979,20 +1517,23 @@ def verify_live_runtime_alignment_cases() -> list[str]:
         holder_id="urn:guild:service:runtime-http-read",
         issued_at="2026-03-20T20:10:30Z",
         proof=http_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
         allow_upper_bound=True,
         audiences=["runtime-http-read"],
         resource_bindings=[
             {
-                "effect_class": "net.connect",
+                "family": "http-request",
                 "audience": "runtime-http-read",
-                "resource": "http://127.0.0.1:18080/response.json",
+                "resource": "GET:http://127.0.0.1:18080/response.json",
             }
         ],
         chain_links=["urn:guild:actor:runtime-alignment-test"],
     )
     if http_token.get("kind") != "guild.delegated_capability_token":
-        failures.append("runtime-http-read token issuance did not produce a delegated capability token")
+        failures.append("runtime-http-read upper-bound token issuance did not produce a delegated capability token")
         return failures
+    if http_token["issuance_basis"] != "m4_upper_bound" or http_token.get("proof_id") is not None:
+        failures.append("runtime-http-read token issuance did not fall back honestly to the upper-bound basis")
 
     http_witness = generate_witness(
         plan=http_plan,
@@ -1001,175 +1542,167 @@ def verify_live_runtime_alignment_cases() -> list[str]:
         issuer_keys=issuer_keys,
         issued_at="2026-03-20T20:11:00Z",
         invocation_input=http_invocation,
-        proof=http_witness_proof,
+        proof=http_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
         token=http_token,
         observation={
-            "source_kind": "live-runtime-hook",
+            "source_kind": LIVE_RUNTIME_SOURCE_KIND,
             "execution_record": http_record,
         },
         redaction_profile="none",
     )
-    http_witness_repeat = generate_witness(
-        plan=http_plan,
-        contract=http_contract,
-        issuer=issuer,
-        issuer_keys=issuer_keys,
-        issued_at="2026-03-20T20:11:00Z",
-        invocation_input=http_invocation,
-        proof=http_witness_proof,
-        token=http_token,
-        observation={
-            "source_kind": "live-runtime-hook",
-            "execution_record": http_record,
-        },
-        redaction_profile="none",
-    )
-    if canonical_json(http_witness) != canonical_json(http_witness_repeat):
-        failures.append("runtime-http-read live witness generation was not deterministic for identical runtime-native input")
-
+    if http_witness["proof_basis"] is not None:
+        failures.append("runtime-http-read witness incorrectly linked an unavailable live proof")
+    if "WITNESS_PROOF_LINKAGE_UNAVAILABLE" not in http_witness["reason_codes"]:
+        failures.append("runtime-http-read witness did not preserve the unavailable live proof linkage reason")
     http_verification = verify_witness(
         http_witness,
         issuer_keys=issuer_keys,
         verification_time="2026-03-20T20:12:00Z",
         plan=http_plan,
         contract=http_contract,
-        proof=http_witness_proof,
+        proof=http_proof,
         token=http_token,
     )
     if not http_verification["verified"] or http_verification["witness_status"] != "within_envelope":
-        failures.append("runtime-http-read live witness did not verify as within_envelope")
-
+        failures.append("runtime-http-read live witness did not verify as within_envelope after proof linkage was withheld")
     http_claim = verify_claim(
         http_witness,
         {
-            "claim_type": "no_network_egress_except_allowlist",
-            "network_allowlist": [
-                {
-                    "host": "127.0.0.1",
-                    "ports": [18080],
-                    "schemes": ["http"],
-                    "path_prefixes": ["/response.json"],
-                    "methods": ["GET"],
-                }
-            ],
+            "claim_type": "no_http_request_outside_scope",
+            "http_request_scope": {
+                "kind": "network",
+                "allowed_schemes": ["http"],
+                "allowed_hosts": ["127.0.0.1"],
+                "allowed_ports": [18080],
+                "allowed_methods": ["GET"],
+                "allowed_path_prefixes": ["/response.json"],
+            },
         },
         issuer_keys=issuer_keys,
         verification_time="2026-03-20T20:12:00Z",
         plan=http_plan,
         contract=http_contract,
-        proof=http_witness_proof,
+        proof=http_proof,
         token=http_token,
     )
     if http_claim["claim_evaluation"]["status"] != "satisfied":
-        failures.append("runtime-http-read live witness did not satisfy the covered network allowlist claim")
+        failures.append("runtime-http-read live witness did not satisfy the covered canonical http-request claim")
 
-    coverage_entry = http_witness["observation_coverage"]["families"][0]
-    if coverage_entry["family"] != "http-request" or coverage_entry["mapping_status"] != "narrowing":
-        failures.append("runtime-http-read live witness did not classify the net.connect -> http-request bridge as a narrowing mapping")
+    log_live = load_live_proof_scenario("log-write-reduced")
+    log_family_status = next(
+        (entry for entry in log_live["proof"]["family_statuses"] if entry["family"] == "log-write"),
+        None,
+    )
+    emit_family_status = next(
+        (entry for entry in log_live["proof"]["family_statuses"] if entry["family"] == "emit-evidence"),
+        None,
+    )
+    if (
+        log_family_status is None
+        or log_family_status["support"] != "live-proof-supported"
+        or log_family_status["proof_status"] != "exact_minimal"
+    ):
+        failures.append("runtime-log-write live proof did not prove exact family support over the observed log slice")
+    if emit_family_status is None or emit_family_status["support"] != "not-proven":
+        failures.append("runtime-log-write live proof did not keep emit-evidence explicitly outside the proven slice")
 
-    blocked_witness = generate_witness(
-        plan=http_plan,
-        contract=http_contract,
-        issuer=issuer,
-        issuer_keys=issuer_keys,
-        issued_at="2026-03-20T20:11:30Z",
-        invocation_input=http_invocation,
-        proof=http_witness_proof,
-        token=http_token,
-        observation={
-            "source_kind": "live-runtime-hook",
-            "execution_record": http_blocked_record,
-        },
-        redaction_profile="none",
-    )
-    if "net.connect" in blocked_witness["actual_exercised_authority"]["effect_classes"]:
-        failures.append("runtime-http-read blocked live witness conflated blocked authority with exercised authority")
-    if "net.connect" not in blocked_witness["blocked_attempted_authority"]["effect_classes"]:
-        failures.append("runtime-http-read blocked live witness did not preserve the blocked HTTP attempt distinctly")
-    blocked_claim = verify_claim(
-        blocked_witness,
-        {
-            "claim_type": "no_blocked_attempts_of_classes",
-            "effect_classes": ["net.connect"],
-        },
-        issuer_keys=issuer_keys,
-        verification_time="2026-03-20T20:12:00Z",
-        plan=http_plan,
-        contract=http_contract,
-        proof=http_witness_proof,
-        token=http_token,
-    )
-    if blocked_claim["claim_evaluation"]["status"] != "violated":
-        failures.append("runtime-http-read blocked live witness did not fail the blocked-attempt claim")
+    legacy_http_mapping = runtime_mapping_for_effect(load_json("examples/fetch-transform.contract.json")["required_effects"][2])
+    if legacy_http_mapping["mapping_status"] != "narrowing" or legacy_http_mapping["family"] != "http-request":
+        failures.append("legacy net.connect compatibility mapping did not stay an explicit narrowing to http-request")
+    legacy_invoke_mapping = runtime_mapping_for_effect(load_json("examples/cluster-rollout.contract.json")["required_effects"][3])
+    if legacy_invoke_mapping["mapping_status"] != "narrowing" or legacy_invoke_mapping["family"] != "invoke-skill":
+        failures.append("legacy component.invoke compatibility mapping did not stay an explicit narrowing to invoke-skill")
+    rejected_legacy_http_mapping = runtime_mapping_for_effect(load_json("examples/cluster-rollout.contract.json")["required_effects"][1])
+    if rejected_legacy_http_mapping["mapping_status"] != "unsupported":
+        failures.append("broad legacy net.connect scopes were not rejected when direct canonical http-request support was narrower")
 
-    emit_contract = load_json("examples/runtime-emit-evidence-zero.contract.json")
-    emit_request = load_json("examples/runtime-emit-evidence-zero.admit.request.json")
-    emit_invocation = load_json("examples/runtime-emit-evidence.invocation.json")
-    emit_record = load_json("examples/runtime-emit-evidence.execution-record.json")
+    return failures
 
-    emit_plan = build_execution_plan(emit_contract, emit_request, [runtime])
-    if emit_plan["decision"] != "admit":
-        failures.append("runtime-emit-evidence-zero admission did not produce an admit plan")
-        return failures
 
-    emit_proof = build_minimization_proof(
-        emit_plan,
-        emit_contract,
-        emit_request,
-        runtime,
-        emit_invocation,
-        http_comparator,
-        created_at="2026-03-20T20:13:00Z",
-    )
-    emit_witness_proof = None
-    emit_token = create_root_token(
-        emit_plan,
-        emit_contract,
-        issuer,
-        holder_id="urn:guild:service:runtime-emit-evidence-zero",
-        issued_at="2026-03-20T20:13:30Z",
-        proof=emit_proof,
-        allow_upper_bound=True,
-        chain_links=["urn:guild:actor:runtime-alignment-test"],
-    )
-    emit_witness = generate_witness(
-        plan=emit_plan,
-        contract=emit_contract,
-        issuer=issuer,
-        issuer_keys=issuer_keys,
-        issued_at="2026-03-20T20:14:00Z",
-        invocation_input=emit_invocation,
-        proof=emit_witness_proof,
-        token=emit_token if emit_token.get("kind") == "guild.delegated_capability_token" else None,
-        observation={
-            "source_kind": "live-runtime-hook",
-            "execution_record": emit_record,
-        },
-        redaction_profile="none",
-    )
-    emit_verification = verify_witness(
-        emit_witness,
-        issuer_keys=issuer_keys,
-        verification_time="2026-03-20T20:14:30Z",
-        plan=emit_plan,
-        contract=emit_contract,
-        proof=emit_witness_proof,
-        token=emit_token if emit_token.get("kind") == "guild.delegated_capability_token" else None,
-    )
-    if not emit_verification["verified"] or emit_verification["witness_status"] != "coverage_limited":
-        failures.append("runtime-emit-evidence live witness did not verify as coverage_limited")
-    emit_claim = verify_claim(
-        emit_witness,
-        {"claim_type": "no_authority_use_outside_plan"},
-        issuer_keys=issuer_keys,
-        verification_time="2026-03-20T20:14:30Z",
-        plan=emit_plan,
-        contract=emit_contract,
-        proof=emit_witness_proof,
-        token=emit_token if emit_token.get("kind") == "guild.delegated_capability_token" else None,
-    )
-    if emit_claim["claim_evaluation"]["status"] != "not_provable":
-        failures.append("runtime-emit-evidence live witness did not fail closed for an unsupported-family absence claim")
+def verify_family_support_matrix() -> list[str]:
+    failures: list[str] = []
+    matrix = load_json("family_support_matrix.json")
+
+    expected_layers = {
+        "admission_runtime_guarantee_matching",
+        "execution_plan_representation",
+        "live_minimization_proof",
+        "token_issuance_basis",
+        "token_verification",
+        "witness_generation",
+        "witness_verification",
+        "positive_claim_verification",
+        "negative_claim_verification",
+        "plan_proof_token_linkage",
+        "proof_witness_linkage",
+    }
+    expected_families = {
+        "http-request",
+        "read-resource",
+        "invoke-skill",
+        "emit-evidence",
+        "log-write",
+    }
+
+    if matrix.get("kind") != "guild.family_support_matrix":
+        failures.append("family_support_matrix.json kind did not stay guild.family_support_matrix")
+    if matrix.get("canonical_runtime_vocabulary") is not True:
+        failures.append("family_support_matrix.json did not keep the live runtime vocabulary canonical")
+    if set(matrix.get("layers", [])) != expected_layers:
+        failures.append("family_support_matrix.json layers did not match the expected M8c support matrix shape")
+
+    families = matrix.get("families", {})
+    if set(families.keys()) != expected_families:
+        failures.append("family_support_matrix.json families did not match the active canonical runtime set")
+
+    for family in sorted(expected_families):
+        layer_map = families.get(family, {}).get("layers", {})
+        if set(layer_map.keys()) != expected_layers:
+            failures.append(f"family_support_matrix.json layer set for {family} did not match the expected shape")
+            continue
+        if layer_map["admission_runtime_guarantee_matching"]["status"] != "supported":
+            failures.append(f"family_support_matrix.json did not mark {family} admission matching as supported")
+        if layer_map["execution_plan_representation"]["status"] != "supported":
+            failures.append(f"family_support_matrix.json did not mark {family} execution-plan representation as supported")
+        if layer_map["token_issuance_basis"]["status"] != "supported":
+            failures.append(f"family_support_matrix.json did not mark {family} token issuance basis as supported")
+        if layer_map["token_verification"]["status"] != "supported":
+            failures.append(f"family_support_matrix.json did not mark {family} token verification as supported")
+        if layer_map["witness_generation"]["status"] != "supported":
+            failures.append(f"family_support_matrix.json did not mark {family} witness generation as supported")
+        if layer_map["witness_verification"]["status"] != "supported":
+            failures.append(f"family_support_matrix.json did not mark {family} witness verification as supported")
+        if layer_map["positive_claim_verification"]["status"] != "unsupported":
+            failures.append(f"family_support_matrix.json did not keep {family} positive-claim verification unsupported")
+        if layer_map["negative_claim_verification"]["status"] != "supported":
+            failures.append(f"family_support_matrix.json did not mark {family} negative-claim verification as supported")
+
+    if families["read-resource"]["layers"]["live_minimization_proof"]["status"] != "bounded":
+        failures.append("family_support_matrix.json did not mark read-resource live minimization proof as bounded")
+    if families["read-resource"]["layers"]["plan_proof_token_linkage"]["status"] != "bounded":
+        failures.append("family_support_matrix.json did not mark read-resource plan->proof->token linkage as bounded")
+    if families["read-resource"]["layers"]["proof_witness_linkage"]["status"] != "bounded":
+        failures.append("family_support_matrix.json did not mark read-resource proof->witness linkage as bounded")
+
+    if families["log-write"]["layers"]["live_minimization_proof"]["status"] != "supported":
+        failures.append("family_support_matrix.json did not mark log-write live minimization proof as supported")
+    if families["http-request"]["layers"]["live_minimization_proof"]["status"] != "not_proven":
+        failures.append("family_support_matrix.json did not keep http-request live minimization proof not_proven")
+    if families["invoke-skill"]["layers"]["live_minimization_proof"]["status"] != "not_proven":
+        failures.append("family_support_matrix.json did not keep invoke-skill live minimization proof not_proven")
+    if families["emit-evidence"]["layers"]["live_minimization_proof"]["status"] != "not_proven":
+        failures.append("family_support_matrix.json did not keep emit-evidence live minimization proof not_proven")
+    if families["http-request"]["layers"]["proof_witness_linkage"]["status"] != "not_proven":
+        failures.append("family_support_matrix.json did not keep http-request proof->witness linkage unavailable")
+
+    aliases = matrix.get("compatibility_aliases", {})
+    if aliases.get("net.connect", {}).get("status") != "partial":
+        failures.append("family_support_matrix.json did not keep net.connect as an explicit partial compatibility alias")
+    if aliases.get("component.invoke", {}).get("status") != "partial":
+        failures.append("family_support_matrix.json did not keep component.invoke as an explicit partial compatibility alias")
+    if aliases.get("net.resolve", {}).get("status") != "unsupported":
+        failures.append("family_support_matrix.json did not keep net.resolve rejected for M8c")
 
     return failures
 
@@ -1184,6 +1717,7 @@ def main() -> int:
     failures.extend(verify_token_cases())
     failures.extend(verify_witness_cases())
     failures.extend(verify_live_runtime_alignment_cases())
+    failures.extend(verify_family_support_matrix())
 
     if failures:
         print("Validation failed:")

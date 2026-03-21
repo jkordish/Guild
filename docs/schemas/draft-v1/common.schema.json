@@ -171,8 +171,17 @@
         "COMPARATOR_NONDETERMINISTIC",
         "COMPARATOR_PROFILE_INVALID",
         "COMPARATOR_UNAVAILABLE",
+        "LIVE_COMPARATOR_NONDETERMINISTIC",
+        "LIVE_COMPARATOR_UNAVAILABLE",
+        "LIVE_PROOF_BOUNDED",
+        "LIVE_PROOF_PREREQUISITE_FAILED",
+        "LIVE_PROOF_SUPPORTED",
+        "LIVE_PROOF_UNSUPPORTED",
+        "LIVE_REPLAY_UNAVAILABLE",
+        "LIVE_SCOPE_SHRINK_UNSUPPORTED",
         "PLAN_NOT_ADMISSIBLE",
         "PLAN_RUNTIME_MISMATCH",
+        "PROOF_LINKAGE_UNAVAILABLE",
         "PROOF_CACHE_BYPASSED",
         "PROOF_CACHE_HIT",
         "PROOF_CACHE_MISS",
@@ -181,7 +190,9 @@
         "SEARCH_BUDGET_EXCEEDED",
         "SEARCH_MODEL_UNSUPPORTED",
         "SHADOW_EXECUTION_FAILED",
-        "SHADOW_HARNESS_UNAVAILABLE"
+        "SHADOW_HARNESS_UNAVAILABLE",
+        "TOKEN_PROOF_BASIS_DRAFT",
+        "TOKEN_PROOF_BASIS_LIVE"
       ]
     },
     "proof_status": {
@@ -346,10 +357,17 @@
       "type": "string",
       "enum": [
         "AUDIENCE_BINDING_MISMATCH",
+        "CANONICAL_FAMILY_PARTIAL",
+        "CANONICAL_FAMILY_SUPPORTED",
+        "CANONICAL_FAMILY_UNSUPPORTED",
         "CALL_CHAIN_MISMATCH",
         "CLAIM_NOT_PROVABLE_FROM_COVERAGE",
         "CLAIM_UNSUPPORTED",
+        "COMPAT_ALIAS_DEPRECATED",
+        "COMPAT_ALIAS_USED",
+        "DIRECT_FAMILY_REQUIRED",
         "HOLDER_BINDING_MISMATCH",
+        "LIVE_MINIMIZATION_UNAVAILABLE",
         "OBSERVATION_COVERAGE_INSUFFICIENT",
         "OBSERVATION_COVERAGE_PARTIAL",
         "OBSERVATION_SOURCE_UNAVAILABLE",
@@ -357,9 +375,12 @@
         "OBSERVED_EFFECT_OUTSIDE_PLAN",
         "OBSERVED_EFFECT_OUTSIDE_PROOF",
         "OBSERVED_EFFECT_OUTSIDE_TOKEN",
+        "NEGATIVE_CLAIM_UNSUPPORTED_FOR_FAMILY",
         "PLAN_LINKAGE_MISMATCH",
+        "PROOF_LINKAGE_UNAVAILABLE",
         "PROOF_LINKAGE_MISMATCH",
         "LIVE_RUNTIME_ALIGNMENT_INCOMPLETE",
+        "LIVE_WITNESS_COVERAGE_PARTIAL",
         "RUNTIME_OBSERVATION_UNMAPPABLE",
         "REDACTION_PREVENTS_CLAIM_VERIFICATION",
         "REDACTION_HASH_MISMATCH",
@@ -373,6 +394,7 @@
         "WITNESS_ISSUER_UNKNOWN",
         "WITNESS_KEY_ID_UNKNOWN",
         "WITNESS_MAC_INVALID",
+        "WITNESS_PROOF_LINKAGE_UNAVAILABLE",
         "WITNESS_REASON_CODES_INCONSISTENT",
         "WITNESS_SCHEMA_INVALID",
         "WITNESS_STATUS_INCONSISTENT"
@@ -384,10 +406,16 @@
         "no_authority_use_outside_plan",
         "no_authority_use_outside_proof",
         "no_authority_use_outside_token",
+        "no_http_request_outside_scope",
+        "no_read_resource_outside_scope",
+        "no_invoke_skill_outside_scope",
+        "no_emit_evidence_outside_scope",
+        "no_log_write_outside_scope",
         "no_filesystem_writes_outside_prefixes",
         "no_network_egress_except_allowlist",
         "no_delegation_beyond_hops",
-        "no_blocked_attempts_of_classes"
+        "no_blocked_attempts_of_classes",
+        "no_blocked_attempts_of_families"
       ]
     },
     "witness_claim_status": {
@@ -412,6 +440,13 @@
           },
           "uniqueItems": true
         },
+        "families": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/canonical_effect_family"
+          },
+          "uniqueItems": true
+        },
         "paths": {
           "type": "array",
           "items": {
@@ -429,6 +464,21 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 8
+        },
+        "http_request_scope": {
+          "$ref": "#/$defs/http_request_scope"
+        },
+        "read_resource_scope": {
+          "$ref": "#/$defs/read_resource_scope"
+        },
+        "invoke_skill_scope": {
+          "$ref": "#/$defs/invoke_skill_scope"
+        },
+        "emit_evidence_scope": {
+          "$ref": "#/$defs/emit_evidence_scope"
+        },
+        "log_write_scope": {
+          "$ref": "#/$defs/log_write_scope"
         }
       },
       "required": [
@@ -436,6 +486,91 @@
       ],
       "additionalProperties": false,
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_http_request_outside_scope"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "http_request_scope"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_read_resource_outside_scope"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "read_resource_scope"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_invoke_skill_outside_scope"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "invoke_skill_scope"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_emit_evidence_outside_scope"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "emit_evidence_scope"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_log_write_outside_scope"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "log_write_scope"
+            ]
+          }
+        },
         {
           "if": {
             "properties": {
@@ -484,6 +619,23 @@
           "then": {
             "required": [
               "max_hops"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "claim_type": {
+                "const": "no_blocked_attempts_of_families"
+              }
+            },
+            "required": [
+              "claim_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "families"
             ]
           }
         },
@@ -670,6 +822,89 @@
         "OPTIONS"
       ]
     },
+    "http_request_method": {
+      "type": "string",
+      "enum": [
+        "GET",
+        "HEAD"
+      ]
+    },
+    "http_scheme": {
+      "type": "string",
+      "enum": [
+        "http",
+        "https"
+      ]
+    },
+    "resource_kind": {
+      "type": "string",
+      "enum": [
+        "execution",
+        "object",
+        "query"
+      ]
+    },
+    "log_level": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warn",
+        "error"
+      ]
+    },
+    "evidence_audience": {
+      "type": "string",
+      "enum": [
+        "user",
+        "assistant",
+        "internal"
+      ]
+    },
+    "redaction_class": {
+      "type": "string",
+      "enum": [
+        "none",
+        "secrets-removed",
+        "pii-removed",
+        "tenant-sensitive"
+      ]
+    },
+    "family_support_status": {
+      "type": "string",
+      "enum": [
+        "bounded",
+        "not_proven",
+        "supported",
+        "partial",
+        "unsupported"
+      ]
+    },
+    "proof_source_kind": {
+      "type": "string",
+      "enum": [
+        "draft-example",
+        "live-runtime"
+      ]
+    },
+    "live_proof_support": {
+      "type": "string",
+      "enum": [
+        "live-proof-supported",
+        "bounded-live-proof",
+        "not-proven",
+        "unsupported"
+      ]
+    },
+    "authority_selector": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/effect_class"
+        },
+        {
+          "$ref": "#/$defs/canonical_effect_family"
+        }
+      ]
+    },
     "scope_binding": {
       "type": "object",
       "properties": {
@@ -828,6 +1063,184 @@
       ],
       "additionalProperties": false
     },
+    "http_request_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "network"
+        },
+        "allowed_schemes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/http_scheme"
+          },
+          "uniqueItems": true
+        },
+        "allowed_hosts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hostname_pattern"
+          },
+          "uniqueItems": true
+        },
+        "allowed_host_suffixes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonempty_string"
+          },
+          "uniqueItems": true
+        },
+        "allowed_ports": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "uniqueItems": true
+        },
+        "allowed_methods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/http_request_method"
+          },
+          "uniqueItems": true
+        },
+        "allowed_path_prefixes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonempty_string"
+          },
+          "uniqueItems": true
+        },
+        "max_timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_response_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "follow_redirects": {
+          "type": "boolean"
+        },
+        "max_redirects": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "allow_loopback": {
+          "type": "boolean"
+        },
+        "allow_link_local": {
+          "type": "boolean"
+        },
+        "allow_private_networks": {
+          "type": "boolean"
+        },
+        "allow_ip_literals": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "read_resource_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "resource"
+        },
+        "uri_prefixes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonempty_string"
+          },
+          "uniqueItems": true
+        },
+        "resource_kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resource_kind"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "invoke_skill_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "skill"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonempty_string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "emit_evidence_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "evidence"
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "audiences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence_audience"
+          },
+          "uniqueItems": true
+        },
+        "redactions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/redaction_class"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "log_write_scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "log"
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/log_level"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
     "process_scope": {
       "type": "object",
       "properties": {
@@ -979,6 +1392,21 @@
           "$ref": "#/$defs/network_scope"
         },
         {
+          "$ref": "#/$defs/http_request_scope"
+        },
+        {
+          "$ref": "#/$defs/read_resource_scope"
+        },
+        {
+          "$ref": "#/$defs/invoke_skill_scope"
+        },
+        {
+          "$ref": "#/$defs/emit_evidence_scope"
+        },
+        {
+          "$ref": "#/$defs/log_write_scope"
+        },
+        {
           "$ref": "#/$defs/process_scope"
         },
         {
@@ -1003,6 +1431,10 @@
       "enum": [
         "filesystem",
         "network",
+        "resource",
+        "skill",
+        "evidence",
+        "log",
         "process",
         "secret",
         "environment",
@@ -1030,7 +1462,7 @@
       "minProperties": 1,
       "additionalProperties": false
     },
-    "effect_spec": {
+    "legacy_effect_spec": {
       "type": "object",
       "properties": {
         "effect_class": {
@@ -1059,7 +1491,181 @@
       ],
       "additionalProperties": false
     },
-    "resource_binding": {
+    "http_request_effect_spec": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "const": "http-request"
+        },
+        "scope": {
+          "$ref": "#/$defs/http_request_scope"
+        },
+        "cardinality": {
+          "$ref": "#/$defs/cardinality"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scope_binding"
+          }
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "family",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "read_resource_effect_spec": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "const": "read-resource"
+        },
+        "scope": {
+          "$ref": "#/$defs/read_resource_scope"
+        },
+        "cardinality": {
+          "$ref": "#/$defs/cardinality"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scope_binding"
+          }
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "family",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "invoke_skill_effect_spec": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "const": "invoke-skill"
+        },
+        "scope": {
+          "$ref": "#/$defs/invoke_skill_scope"
+        },
+        "cardinality": {
+          "$ref": "#/$defs/cardinality"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scope_binding"
+          }
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "family",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "emit_evidence_effect_spec": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "const": "emit-evidence"
+        },
+        "scope": {
+          "$ref": "#/$defs/emit_evidence_scope"
+        },
+        "cardinality": {
+          "$ref": "#/$defs/cardinality"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scope_binding"
+          }
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "family",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "log_write_effect_spec": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "const": "log-write"
+        },
+        "scope": {
+          "$ref": "#/$defs/log_write_scope"
+        },
+        "cardinality": {
+          "$ref": "#/$defs/cardinality"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scope_binding"
+          }
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "family",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "canonical_effect_spec": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/http_request_effect_spec"
+        },
+        {
+          "$ref": "#/$defs/read_resource_effect_spec"
+        },
+        {
+          "$ref": "#/$defs/invoke_skill_effect_spec"
+        },
+        {
+          "$ref": "#/$defs/emit_evidence_effect_spec"
+        },
+        {
+          "$ref": "#/$defs/log_write_effect_spec"
+        }
+      ]
+    },
+    "effect_spec": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/legacy_effect_spec"
+        },
+        {
+          "$ref": "#/$defs/canonical_effect_spec"
+        }
+      ]
+    },
+    "legacy_resource_binding": {
       "type": "object",
       "properties": {
         "effect_class": {
@@ -1078,6 +1684,36 @@
         "resource"
       ],
       "additionalProperties": false
+    },
+    "canonical_resource_binding": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "$ref": "#/$defs/canonical_effect_family"
+        },
+        "audience": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "resource": {
+          "$ref": "#/$defs/nonempty_string"
+        }
+      },
+      "required": [
+        "family",
+        "audience",
+        "resource"
+      ],
+      "additionalProperties": false
+    },
+    "resource_binding": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/legacy_resource_binding"
+        },
+        {
+          "$ref": "#/$defs/canonical_resource_binding"
+        }
+      ]
     },
     "input_class_fingerprint": {
       "type": "object",
@@ -1135,6 +1771,14 @@
           "items": {
             "$ref": "#/$defs/effect_class"
           }
+        },
+        "allowed_authority_selectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/authority_selector"
+          },
+          "uniqueItems": true
         },
         "audience_binding_required": {
           "type": "boolean"
@@ -1202,8 +1846,19 @@
           },
           "then": {
             "required": [
-              "max_hops",
-              "allowed_effect_classes"
+              "max_hops"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "allowed_effect_classes"
+                ]
+              },
+              {
+                "required": [
+                  "allowed_authority_selectors"
+                ]
+              }
             ],
             "properties": {
               "max_hops": {

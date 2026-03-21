@@ -79,6 +79,9 @@
       ],
       "additionalProperties": false
     },
+    "proof_source_kind": {
+      "$ref": "common.schema.json#/$defs/proof_source_kind"
+    },
     "proof_method": {
       "type": "string",
       "enum": [
@@ -132,7 +135,8 @@
             "strategy": {
               "type": "string",
               "enum": [
-                "exhaustive_powerset"
+                "exhaustive_powerset",
+                "family_conservative_search"
               ]
             },
             "exact": {
@@ -160,6 +164,10 @@
                 "enum": [
                   "filesystem",
                   "network",
+                  "resource",
+                  "skill",
+                  "evidence",
+                  "log",
                   "delegation"
                 ]
               },
@@ -229,6 +237,44 @@
     "proven_authority_plan": {
       "$ref": "common.schema.json#/$defs/authority_plan"
     },
+    "residual_authority_plan": {
+      "$ref": "common.schema.json#/$defs/authority_plan"
+    },
+    "family_proof_statuses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "family": {
+            "$ref": "common.schema.json#/$defs/canonical_effect_family"
+          },
+          "support": {
+            "$ref": "common.schema.json#/$defs/live_proof_support"
+          },
+          "proof_status": {
+            "$ref": "common.schema.json#/$defs/proof_status"
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/minimization_reason_code"
+            },
+            "uniqueItems": true
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family",
+          "support",
+          "proof_status",
+          "reason_codes",
+          "notes"
+        ],
+        "additionalProperties": false
+      }
+    },
     "candidate_attempts": {
       "type": "array",
       "items": {
@@ -251,7 +297,7 @@
           "target_effect_class": {
             "oneOf": [
               {
-                "$ref": "common.schema.json#/$defs/effect_class"
+                "$ref": "common.schema.json#/$defs/authority_selector"
               },
               {
                 "type": "null"
@@ -265,6 +311,10 @@
                 "enum": [
                   "filesystem",
                   "network",
+                  "resource",
+                  "skill",
+                  "evidence",
+                  "log",
                   "process",
                   "secret",
                   "environment",
@@ -341,6 +391,13 @@
                 "items": {
                   "$ref": "common.schema.json#/$defs/effect_spec"
                 }
+              },
+              "observed_families": {
+                "type": "array",
+                "items": {
+                  "$ref": "common.schema.json#/$defs/canonical_effect_family"
+                },
+                "uniqueItems": true
               },
               "output_digest": {
                 "oneOf": [
@@ -599,10 +656,10 @@
       "$ref": "common.schema.json#/$defs/extensions"
     }
   },
-  "required": [
-    "kind",
-    "version",
-    "proof_id",
+    "required": [
+      "kind",
+      "version",
+      "proof_id",
     "request_id",
     "execution_plan_id",
     "execution_plan_digest",
@@ -610,19 +667,19 @@
     "contract_digest",
     "component_digest",
     "export_name",
-    "input_class_fingerprint",
-    "invocation_input_digest",
-    "chosen_runtime",
-    "proof_method",
-    "comparator",
-    "comparator_digest",
-    "minimization_algorithm",
-    "search_model",
-    "baseline_authority_plan",
-    "proven_authority_plan",
-    "candidate_attempts",
-    "retained_authorities",
-    "proof_status",
+      "input_class_fingerprint",
+      "invocation_input_digest",
+      "chosen_runtime",
+      "proof_method",
+      "comparator",
+      "comparator_digest",
+      "minimization_algorithm",
+      "search_model",
+      "baseline_authority_plan",
+      "proven_authority_plan",
+      "candidate_attempts",
+      "retained_authorities",
+      "proof_status",
     "minimization_reason_codes",
     "observed_effect_summary",
     "cache",

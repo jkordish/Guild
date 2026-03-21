@@ -1,4 +1,115 @@
 {
+  "kind": "guild.proof_record",
+  "version": "1.0.0",
+  "proof_id": "urn:guild:request:fetch-transform:downgrade:v1:execution-plan:m5-proof",
+  "request_id": "urn:guild:request:fetch-transform:downgrade:v1",
+  "execution_plan_id": "urn:guild:request:fetch-transform:downgrade:v1:execution-plan",
+  "execution_plan_digest": {
+    "algorithm": "sha256",
+    "value": "38eaa96a3bd446c9f2f68de13250900237f1e00593c16853087baca0a708ed32"
+  },
+  "skill_contract_id": "urn:guild:contract:fetch-transform:v1",
+  "contract_digest": {
+    "algorithm": "sha256",
+    "value": "1ff026ac8874caa2fc6c8a5ce72283b6336bcd5cab58cb008de0e9cd6ac95dfe"
+  },
+  "component_digest": {
+    "algorithm": "sha256",
+    "value": "fec4ee0d8541bab9129a83fb530d1fa0378916beabe80c7ccedbfdd0fd8421f8"
+  },
+  "export_name": "fetch_and_transform",
+  "input_class_fingerprint": {
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "c69ff0208dfc627c10beb81d20babffc27585fd741b1f3d8b3beb32f1e0c6f46"
+    },
+    "kind": "json-schema-hash"
+  },
+  "invocation_input_digest": {
+    "algorithm": "sha256",
+    "value": "31d24a11ca6a1321856999839edee0390dad6d435c54c66a3a115ac75dfe05a4"
+  },
+  "chosen_runtime": {
+    "runtime": {
+      "id": "wasmtime",
+      "vendor": "Bytecode Alliance",
+      "version": "strict-profile-2026-03"
+    },
+    "runtime_guarantee_digest": {
+      "algorithm": "sha256",
+      "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
+    },
+    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+  },
+  "proof_method": "counterfactual_shadow_execution",
+  "comparator": {
+    "comparator_id": "urn:guild:comparator:fetch-transform:bounded-postconditions:v1",
+    "version": "1.0.0",
+    "comparator_kind": "declared_postconditions",
+    "reference": "fetch-transform.bounded-postconditions.v1",
+    "checker_ref": "urn:guild:checker:fetch-transform-postconditions:v1",
+    "inputs": {
+      "expected_output_path": "/workspace/output/daily-result.json",
+      "allow_scope_shrinkers": true
+    },
+    "assumptions": {
+      "ambient_clock_controlled": true,
+      "ambient_network_controlled": true,
+      "ambient_random_controlled": true
+    }
+  },
+  "comparator_digest": {
+    "algorithm": "sha256",
+    "value": "c0f1a6c118911dff5b21ab41beb7127a646e75d7e7214311db1fd760b3b02afc"
+  },
+  "minimization_algorithm": {
+    "id": "urn:guild:minimizer:draft-v1:example-bounded",
+    "version": "1.0.0",
+    "shrink_model_version": "1.0.0",
+    "harness_id": "urn:guild:harness:draft-v1:example-bounded",
+    "harness_version": "1.0.0"
+  },
+  "search_model": {
+    "search_domain": "draft-v1 example-bounded minimization harness",
+    "discrete_grant_search": {
+      "strategy": "exhaustive_powerset",
+      "exact": true,
+      "candidate_plans_evaluated": 31
+    },
+    "scope_shrinkers": [
+      {
+        "scope_kind": "filesystem",
+        "strategy": "observed_effect_projection",
+        "bounded": true,
+        "attempts": 3,
+        "accepted": 2
+      },
+      {
+        "scope_kind": "network",
+        "strategy": "observed_effect_projection",
+        "bounded": true,
+        "attempts": 1,
+        "accepted": 1
+      },
+      {
+        "scope_kind": "delegation",
+        "strategy": "observed_effect_projection",
+        "bounded": true,
+        "attempts": 0,
+        "accepted": 0
+      }
+    ],
+    "search_limits": {
+      "max_candidate_plans": 128,
+      "truncated": false
+    },
+    "assumptions": [
+      "Only bundled draft-v1 examples have a real M5 harness in this milestone.",
+      "Comparator and invocation fixtures must remain deterministic and controlled.",
+      "Scope shrinkers are bounded by observed-effect projections, not a runtime-general search space."
+    ]
+  },
   "baseline_authority_plan": {
     "delegation_policy": {
       "anti_replay_required": true,
@@ -91,58 +202,101 @@
     "plan_id": "urn:guild:request:fetch-transform:downgrade:v1:granted",
     "ttl_seconds": 200
   },
-  "cache": {
-    "bypass_reason_codes": [
-      "PROOF_CACHE_BYPASSED"
-    ],
-    "cache_key_digest": {
-      "algorithm": "sha256",
-      "value": "c215cce5272db9d2e9e21c00457d35894e25120fd981c49e5cd64ba19e6b0c75"
+  "proven_authority_plan": {
+    "delegation_policy": {
+      "anti_replay_required": true,
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "max_hops": 0,
+      "mode": "forbidden",
+      "ttl_seconds_max": 300
     },
-    "key_material": {
-      "comparator_digest": {
-        "algorithm": "sha256",
-        "value": "c0f1a6c118911dff5b21ab41beb7127a646e75d7e7214311db1fd760b3b02afc"
-      },
-      "component_digest": {
-        "algorithm": "sha256",
-        "value": "fec4ee0d8541bab9129a83fb530d1fa0378916beabe80c7ccedbfdd0fd8421f8"
-      },
-      "contract_digest": {
-        "algorithm": "sha256",
-        "value": "1ff026ac8874caa2fc6c8a5ce72283b6336bcd5cab58cb008de0e9cd6ac95dfe"
-      },
-      "execution_plan_digest": {
-        "algorithm": "sha256",
-        "value": "0499f82b11a5171e91b047f5b301992e82e5e5575053371e2a7cc3f986ed2d41"
-      },
-      "export_name": "fetch_and_transform",
-      "harness_id": "urn:guild:harness:draft-v1:example-bounded",
-      "harness_version": "1.0.0",
-      "input_class_fingerprint": {
-        "canonicalization": "rfc8785-jcs",
-        "digest": {
-          "algorithm": "sha256",
-          "value": "c69ff0208dfc627c10beb81d20babffc27585fd741b1f3d8b3beb32f1e0c6f46"
+    "grants": [
+      {
+        "effect_class": "net.connect",
+        "scope": {
+          "kind": "network",
+          "audiences": [
+            {
+              "host": "api.vendor.example.com",
+              "ports": [
+                443
+              ],
+              "schemes": [
+                "https"
+              ],
+              "path_prefixes": [
+                "/v1/source/daily.json"
+              ],
+              "methods": [
+                "GET"
+              ]
+            }
+          ]
         },
-        "kind": "json-schema-hash"
+        "cardinality": {
+          "max_bytes": 1048576,
+          "max_calls": 1
+        }
       },
-      "invocation_input_digest": {
-        "algorithm": "sha256",
-        "value": "31d24a11ca6a1321856999839edee0390dad6d435c54c66a3a115ac75dfe05a4"
+      {
+        "effect_class": "fs.read",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/transform-config.json"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_bytes": 18,
+          "max_calls": 1
+        }
       },
-      "minimization_algorithm_version": "1.0.0",
-      "runtime_guarantee_digest": {
-        "algorithm": "sha256",
-        "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
+      {
+        "effect_class": "fs.write",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/output/daily-result.json"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_bytes": 72,
+          "max_calls": 1
+        }
       },
-      "shrink_model_version": "1.0.0"
-    },
-    "reused_proof_id": null,
-    "status": "bypassed"
+      {
+        "cardinality": {
+          "max_calls": 10
+        },
+        "effect_class": "clock.read",
+        "scope": {
+          "kind": "system"
+        }
+      },
+      {
+        "cardinality": {
+          "max_calls": 2
+        },
+        "effect_class": "secret.read",
+        "scope": {
+          "kind": "secret",
+          "secret_ids": [
+            "vault://prod/vendor/source-api-token"
+          ]
+        }
+      }
+    ],
+    "plan_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35",
+    "ttl_seconds": 200
   },
   "candidate_attempts": [
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:1",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -221,15 +375,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "fs.read",
+      "target_scope_kind": "filesystem",
       "removed_grants": [
         {
           "cardinality": {
@@ -247,20 +394,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "fs.read",
-      "target_scope_kind": "filesystem",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:1",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:2",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -339,15 +493,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.write",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "fs.write",
+      "target_scope_kind": "filesystem",
       "removed_grants": [
         {
           "cardinality": {
@@ -365,20 +512,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.write",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "fs.write",
-      "target_scope_kind": "filesystem",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:2",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.write",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.write",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:3",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -445,15 +599,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:net.connect",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "net.connect",
+      "target_scope_kind": "network",
       "removed_grants": [
         {
           "cardinality": {
@@ -483,20 +630,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:net.connect",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "net.connect",
-      "target_scope_kind": "network",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:3",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:net.connect",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:net.connect",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:4",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -581,15 +735,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:clock.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "clock.read",
+      "target_scope_kind": "system",
       "removed_grants": [
         {
           "cardinality": {
@@ -601,20 +748,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:clock.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "clock.read",
-      "target_scope_kind": "system",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:4",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:clock.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:clock.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:5",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -696,15 +850,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:secret.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "secret.read",
+      "target_scope_kind": "secret",
       "removed_grants": [
         {
           "cardinality": {
@@ -719,20 +866,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:secret.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "secret.read",
-      "target_scope_kind": "secret",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:5",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:secret.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:secret.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:6",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -796,15 +950,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -837,20 +984,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:6",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:7",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -902,15 +1056,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -955,20 +1102,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:7",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:8",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -1038,15 +1192,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -1073,20 +1220,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:8",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:9",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -1153,15 +1307,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -1191,20 +1338,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:9",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:10",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -1256,15 +1410,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.write",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -1309,20 +1456,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.write",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:10",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.write",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.write",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:11",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -1392,15 +1546,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.write",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -1427,20 +1574,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.write",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:11",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.write",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.write",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:12",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -1507,15 +1661,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.write",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -1545,20 +1692,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.write",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:12",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.write",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.write",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:13",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -1616,15 +1770,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:net.connect",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -1663,20 +1810,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:net.connect",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:13",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:net.connect",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:net.connect",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:14",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -1731,15 +1885,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:secret.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -1781,20 +1928,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:secret.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:14",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:secret.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:secret.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:15",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -1867,15 +2021,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:secret.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -1899,20 +2046,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:secret.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:15",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:secret.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:secret.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:16",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -1949,15 +2103,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -2017,20 +2164,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:16",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:17",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -2085,15 +2239,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -2135,20 +2282,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:17",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:18",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -2200,15 +2354,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -2253,20 +2400,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:18",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:19",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -2309,15 +2463,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -2371,20 +2518,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:19",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:20",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -2424,15 +2578,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -2489,20 +2636,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:20",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:21",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -2560,15 +2714,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -2607,20 +2754,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:21",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:22",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -2663,15 +2817,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.write",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -2725,20 +2872,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.write",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:22",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.write",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.write",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:23",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -2778,15 +2932,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.write",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -2843,20 +2990,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.write",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:23",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.write",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.write",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:24",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -2914,15 +3068,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.write",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -2961,20 +3108,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.write",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:24",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.write",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.write",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:25",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -3020,15 +3174,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:secret.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -3079,20 +3226,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:secret.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:25",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:secret.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:secret.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:26",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -3120,15 +3274,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -3197,20 +3344,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:26",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:27",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -3235,15 +3389,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -3315,20 +3462,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:27",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:28",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -3371,15 +3525,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -3433,20 +3580,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:28",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:29",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -3477,15 +3631,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -3551,20 +3698,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:29",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:30",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -3595,15 +3749,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.write",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -3669,20 +3816,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.write",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:30",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.write",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.write",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:31",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -3697,15 +3851,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant_set",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": null,
+      "target_scope_kind": null,
       "removed_grants": [
         {
           "cardinality": {
@@ -3786,20 +3933,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": null,
-      "target_scope_kind": null,
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:trial:remove:31",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:trial:shrink:32",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -3826,18 +3980,18 @@
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
             "effect_class": "fs.read",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/input/transform-config.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
             }
           },
           {
@@ -3893,104 +4047,9 @@
         "ttl_seconds": 200
       },
       "change_kind": "shrink_scope",
-      "comparator_summary": {
-        "compared_output_digest": {
-          "algorithm": "sha256",
-          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
-        },
-        "details": "declared postconditions matched exactly",
-        "status": "match"
-      },
-      "reason_codes": [],
+      "target_effect_class": "fs.read",
+      "target_scope_kind": "filesystem",
       "removed_grants": [],
-      "shadow_execution": {
-        "error_code": null,
-        "observed_effects": [
-          {
-            "cardinality": {
-              "max_bytes": 1048576,
-              "max_calls": 1
-            },
-            "effect_class": "net.connect",
-            "scope": {
-              "audiences": [
-                {
-                  "host": "api.vendor.example.com",
-                  "methods": [
-                    "GET"
-                  ],
-                  "path_prefixes": [
-                    "/v1/source/daily.json"
-                  ],
-                  "ports": [
-                    443
-                  ],
-                  "schemes": [
-                    "https"
-                  ]
-                }
-              ],
-              "kind": "network"
-            }
-          },
-          {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
-            "effect_class": "fs.read",
-            "scope": {
-              "follow_mounts": false,
-              "kind": "filesystem",
-              "paths": [
-                "/workspace/input/transform-config.json"
-              ],
-              "symlink_policy": "deny"
-            }
-          },
-          {
-            "cardinality": {
-              "max_bytes": 72,
-              "max_calls": 1
-            },
-            "effect_class": "fs.write",
-            "scope": {
-              "follow_mounts": false,
-              "kind": "filesystem",
-              "paths": [
-                "/workspace/output/daily-result.json"
-              ],
-              "symlink_policy": "deny"
-            }
-          },
-          {
-            "cardinality": {
-              "max_calls": 1
-            },
-            "effect_class": "clock.read",
-            "scope": {
-              "kind": "system"
-            }
-          },
-          {
-            "cardinality": {
-              "max_calls": 1
-            },
-            "effect_class": "secret.read",
-            "scope": {
-              "kind": "secret",
-              "secret_ids": [
-                "vault://prod/vendor/source-api-token"
-              ]
-            }
-          }
-        ],
-        "output_digest": {
-          "algorithm": "sha256",
-          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
-        },
-        "status": "success"
-      },
       "shrink_from": {
         "cardinality": {
           "max_bytes": 10485760,
@@ -4007,26 +4066,121 @@
         }
       },
       "shrink_to": {
-        "cardinality": {
-          "max_bytes": 18,
-          "max_calls": 1
-        },
         "effect_class": "fs.read",
         "scope": {
-          "follow_mounts": false,
           "kind": "filesystem",
           "paths": [
             "/workspace/input/transform-config.json"
           ],
-          "symlink_policy": "deny"
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_bytes": 18,
+          "max_calls": 1
         }
       },
-      "target_effect_class": "fs.read",
-      "target_scope_kind": "filesystem",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:trial:shrink:32",
-      "trial_result": "equivalent"
+      "trial_result": "equivalent",
+      "reason_codes": [],
+      "shadow_execution": {
+        "status": "success",
+        "error_code": null,
+        "observed_effects": [
+          {
+            "effect_class": "net.connect",
+            "scope": {
+              "kind": "network",
+              "audiences": [
+                {
+                  "host": "api.vendor.example.com",
+                  "ports": [
+                    443
+                  ],
+                  "schemes": [
+                    "https"
+                  ],
+                  "path_prefixes": [
+                    "/v1/source/daily.json"
+                  ],
+                  "methods": [
+                    "GET"
+                  ]
+                }
+              ]
+            },
+            "cardinality": {
+              "max_bytes": 1048576,
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "fs.read",
+            "scope": {
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/input/transform-config.json"
+              ],
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "fs.write",
+            "scope": {
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/output/daily-result.json"
+              ],
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 72,
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "clock.read",
+            "scope": {
+              "kind": "system"
+            },
+            "cardinality": {
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "secret.read",
+            "scope": {
+              "kind": "secret",
+              "secret_ids": [
+                "vault://prod/vendor/source-api-token"
+              ]
+            },
+            "cardinality": {
+              "max_calls": 1
+            }
+          }
+        ],
+        "output_digest": {
+          "algorithm": "sha256",
+          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
+        }
+      },
+      "comparator_summary": {
+        "status": "match",
+        "details": "declared postconditions matched exactly",
+        "compared_output_digest": {
+          "algorithm": "sha256",
+          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
+        }
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:trial:shrink:33",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -4080,18 +4234,18 @@
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 72,
-              "max_calls": 1
-            },
             "effect_class": "fs.write",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/output/daily-result.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 72,
+              "max_calls": 1
             }
           },
           {
@@ -4120,22 +4274,9 @@
         "ttl_seconds": 200
       },
       "change_kind": "shrink_scope",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "fs.write",
+      "target_scope_kind": "filesystem",
       "removed_grants": [],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": {
         "cardinality": {
           "max_bytes": 10485760,
@@ -4152,26 +4293,39 @@
         }
       },
       "shrink_to": {
-        "cardinality": {
-          "max_bytes": 72,
-          "max_calls": 1
-        },
         "effect_class": "fs.write",
         "scope": {
-          "follow_mounts": false,
           "kind": "filesystem",
           "paths": [
             "/workspace/output/daily-result.json"
           ],
-          "symlink_policy": "deny"
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_bytes": 72,
+          "max_calls": 1
         }
       },
-      "target_effect_class": "fs.write",
-      "target_scope_kind": "filesystem",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:trial:shrink:33",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:trial:shrink:34",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -4183,30 +4337,30 @@
         },
         "grants": [
           {
-            "cardinality": {
-              "max_bytes": 1048576,
-              "max_calls": 1
-            },
             "effect_class": "net.connect",
             "scope": {
+              "kind": "network",
               "audiences": [
                 {
                   "host": "api.vendor.example.com",
-                  "methods": [
-                    "GET"
-                  ],
-                  "path_prefixes": [
-                    "/v1/source/daily.json"
-                  ],
                   "ports": [
                     443
                   ],
                   "schemes": [
                     "https"
+                  ],
+                  "path_prefixes": [
+                    "/v1/source/daily.json"
+                  ],
+                  "methods": [
+                    "GET"
                   ]
                 }
-              ],
-              "kind": "network"
+              ]
+            },
+            "cardinality": {
+              "max_bytes": 1048576,
+              "max_calls": 1
             }
           },
           {
@@ -4225,18 +4379,18 @@
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
             "effect_class": "fs.read",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/input/transform-config.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
             }
           },
           {
@@ -4265,104 +4419,9 @@
         "ttl_seconds": 200
       },
       "change_kind": "shrink_scope",
-      "comparator_summary": {
-        "compared_output_digest": {
-          "algorithm": "sha256",
-          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
-        },
-        "details": "declared postconditions matched exactly",
-        "status": "match"
-      },
-      "reason_codes": [],
+      "target_effect_class": "net.connect",
+      "target_scope_kind": "network",
       "removed_grants": [],
-      "shadow_execution": {
-        "error_code": null,
-        "observed_effects": [
-          {
-            "cardinality": {
-              "max_bytes": 1048576,
-              "max_calls": 1
-            },
-            "effect_class": "net.connect",
-            "scope": {
-              "audiences": [
-                {
-                  "host": "api.vendor.example.com",
-                  "methods": [
-                    "GET"
-                  ],
-                  "path_prefixes": [
-                    "/v1/source/daily.json"
-                  ],
-                  "ports": [
-                    443
-                  ],
-                  "schemes": [
-                    "https"
-                  ]
-                }
-              ],
-              "kind": "network"
-            }
-          },
-          {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
-            "effect_class": "fs.read",
-            "scope": {
-              "follow_mounts": false,
-              "kind": "filesystem",
-              "paths": [
-                "/workspace/input/transform-config.json"
-              ],
-              "symlink_policy": "deny"
-            }
-          },
-          {
-            "cardinality": {
-              "max_bytes": 72,
-              "max_calls": 1
-            },
-            "effect_class": "fs.write",
-            "scope": {
-              "follow_mounts": false,
-              "kind": "filesystem",
-              "paths": [
-                "/workspace/output/daily-result.json"
-              ],
-              "symlink_policy": "deny"
-            }
-          },
-          {
-            "cardinality": {
-              "max_calls": 1
-            },
-            "effect_class": "clock.read",
-            "scope": {
-              "kind": "system"
-            }
-          },
-          {
-            "cardinality": {
-              "max_calls": 1
-            },
-            "effect_class": "secret.read",
-            "scope": {
-              "kind": "secret",
-              "secret_ids": [
-                "vault://prod/vendor/source-api-token"
-              ]
-            }
-          }
-        ],
-        "output_digest": {
-          "algorithm": "sha256",
-          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
-        },
-        "status": "success"
-      },
       "shrink_from": {
         "cardinality": {
           "max_bytes": 5242880,
@@ -4391,38 +4450,133 @@
         }
       },
       "shrink_to": {
-        "cardinality": {
-          "max_bytes": 1048576,
-          "max_calls": 1
-        },
         "effect_class": "net.connect",
         "scope": {
+          "kind": "network",
           "audiences": [
             {
               "host": "api.vendor.example.com",
-              "methods": [
-                "GET"
-              ],
-              "path_prefixes": [
-                "/v1/source/daily.json"
-              ],
               "ports": [
                 443
               ],
               "schemes": [
                 "https"
+              ],
+              "path_prefixes": [
+                "/v1/source/daily.json"
+              ],
+              "methods": [
+                "GET"
               ]
             }
-          ],
-          "kind": "network"
+          ]
+        },
+        "cardinality": {
+          "max_bytes": 1048576,
+          "max_calls": 1
         }
       },
-      "target_effect_class": "net.connect",
-      "target_scope_kind": "network",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:trial:shrink:34",
-      "trial_result": "equivalent"
+      "trial_result": "equivalent",
+      "reason_codes": [],
+      "shadow_execution": {
+        "status": "success",
+        "error_code": null,
+        "observed_effects": [
+          {
+            "effect_class": "net.connect",
+            "scope": {
+              "kind": "network",
+              "audiences": [
+                {
+                  "host": "api.vendor.example.com",
+                  "ports": [
+                    443
+                  ],
+                  "schemes": [
+                    "https"
+                  ],
+                  "path_prefixes": [
+                    "/v1/source/daily.json"
+                  ],
+                  "methods": [
+                    "GET"
+                  ]
+                }
+              ]
+            },
+            "cardinality": {
+              "max_bytes": 1048576,
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "fs.read",
+            "scope": {
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/input/transform-config.json"
+              ],
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "fs.write",
+            "scope": {
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/output/daily-result.json"
+              ],
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 72,
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "clock.read",
+            "scope": {
+              "kind": "system"
+            },
+            "cardinality": {
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "secret.read",
+            "scope": {
+              "kind": "secret",
+              "secret_ids": [
+                "vault://prod/vendor/source-api-token"
+              ]
+            },
+            "cardinality": {
+              "max_calls": 1
+            }
+          }
+        ],
+        "output_digest": {
+          "algorithm": "sha256",
+          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
+        }
+      },
+      "comparator_summary": {
+        "status": "match",
+        "details": "declared postconditions matched exactly",
+        "compared_output_digest": {
+          "algorithm": "sha256",
+          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
+        }
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:shrink:35",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -4434,60 +4588,60 @@
         },
         "grants": [
           {
-            "cardinality": {
-              "max_bytes": 1048576,
-              "max_calls": 1
-            },
             "effect_class": "net.connect",
             "scope": {
+              "kind": "network",
               "audiences": [
                 {
                   "host": "api.vendor.example.com",
-                  "methods": [
-                    "GET"
-                  ],
-                  "path_prefixes": [
-                    "/v1/source/daily.json"
-                  ],
                   "ports": [
                     443
                   ],
                   "schemes": [
                     "https"
+                  ],
+                  "path_prefixes": [
+                    "/v1/source/daily.json"
+                  ],
+                  "methods": [
+                    "GET"
                   ]
                 }
-              ],
-              "kind": "network"
+              ]
+            },
+            "cardinality": {
+              "max_bytes": 1048576,
+              "max_calls": 1
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
             "effect_class": "fs.read",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/input/transform-config.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 72,
-              "max_calls": 1
-            },
             "effect_class": "fs.write",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/output/daily-result.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 72,
+              "max_calls": 1
             }
           },
           {
@@ -4516,104 +4670,9 @@
         "ttl_seconds": 200
       },
       "change_kind": "shrink_scope",
-      "comparator_summary": {
-        "compared_output_digest": {
-          "algorithm": "sha256",
-          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
-        },
-        "details": "declared postconditions matched exactly",
-        "status": "match"
-      },
-      "reason_codes": [],
+      "target_effect_class": "fs.write",
+      "target_scope_kind": "filesystem",
       "removed_grants": [],
-      "shadow_execution": {
-        "error_code": null,
-        "observed_effects": [
-          {
-            "cardinality": {
-              "max_bytes": 1048576,
-              "max_calls": 1
-            },
-            "effect_class": "net.connect",
-            "scope": {
-              "audiences": [
-                {
-                  "host": "api.vendor.example.com",
-                  "methods": [
-                    "GET"
-                  ],
-                  "path_prefixes": [
-                    "/v1/source/daily.json"
-                  ],
-                  "ports": [
-                    443
-                  ],
-                  "schemes": [
-                    "https"
-                  ]
-                }
-              ],
-              "kind": "network"
-            }
-          },
-          {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
-            "effect_class": "fs.read",
-            "scope": {
-              "follow_mounts": false,
-              "kind": "filesystem",
-              "paths": [
-                "/workspace/input/transform-config.json"
-              ],
-              "symlink_policy": "deny"
-            }
-          },
-          {
-            "cardinality": {
-              "max_bytes": 72,
-              "max_calls": 1
-            },
-            "effect_class": "fs.write",
-            "scope": {
-              "follow_mounts": false,
-              "kind": "filesystem",
-              "paths": [
-                "/workspace/output/daily-result.json"
-              ],
-              "symlink_policy": "deny"
-            }
-          },
-          {
-            "cardinality": {
-              "max_calls": 1
-            },
-            "effect_class": "clock.read",
-            "scope": {
-              "kind": "system"
-            }
-          },
-          {
-            "cardinality": {
-              "max_calls": 1
-            },
-            "effect_class": "secret.read",
-            "scope": {
-              "kind": "secret",
-              "secret_ids": [
-                "vault://prod/vendor/source-api-token"
-              ]
-            }
-          }
-        ],
-        "output_digest": {
-          "algorithm": "sha256",
-          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
-        },
-        "status": "success"
-      },
       "shrink_from": {
         "cardinality": {
           "max_bytes": 10485760,
@@ -4630,26 +4689,121 @@
         }
       },
       "shrink_to": {
-        "cardinality": {
-          "max_bytes": 72,
-          "max_calls": 1
-        },
         "effect_class": "fs.write",
         "scope": {
-          "follow_mounts": false,
           "kind": "filesystem",
           "paths": [
             "/workspace/output/daily-result.json"
           ],
-          "symlink_policy": "deny"
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_bytes": 72,
+          "max_calls": 1
         }
       },
-      "target_effect_class": "fs.write",
-      "target_scope_kind": "filesystem",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:shrink:35",
-      "trial_result": "equivalent"
+      "trial_result": "equivalent",
+      "reason_codes": [],
+      "shadow_execution": {
+        "status": "success",
+        "error_code": null,
+        "observed_effects": [
+          {
+            "effect_class": "net.connect",
+            "scope": {
+              "kind": "network",
+              "audiences": [
+                {
+                  "host": "api.vendor.example.com",
+                  "ports": [
+                    443
+                  ],
+                  "schemes": [
+                    "https"
+                  ],
+                  "path_prefixes": [
+                    "/v1/source/daily.json"
+                  ],
+                  "methods": [
+                    "GET"
+                  ]
+                }
+              ]
+            },
+            "cardinality": {
+              "max_bytes": 1048576,
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "fs.read",
+            "scope": {
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/input/transform-config.json"
+              ],
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "fs.write",
+            "scope": {
+              "kind": "filesystem",
+              "paths": [
+                "/workspace/output/daily-result.json"
+              ],
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 72,
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "clock.read",
+            "scope": {
+              "kind": "system"
+            },
+            "cardinality": {
+              "max_calls": 1
+            }
+          },
+          {
+            "effect_class": "secret.read",
+            "scope": {
+              "kind": "secret",
+              "secret_ids": [
+                "vault://prod/vendor/source-api-token"
+              ]
+            },
+            "cardinality": {
+              "max_calls": 1
+            }
+          }
+        ],
+        "output_digest": {
+          "algorithm": "sha256",
+          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
+        }
+      },
+      "comparator_summary": {
+        "status": "match",
+        "details": "declared postconditions matched exactly",
+        "compared_output_digest": {
+          "algorithm": "sha256",
+          "value": "251765eecc4f69f0603f4e6640d54155a4a5beef30d81ae532e76bba5369b8ff"
+        }
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:36",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -4661,33 +4815,33 @@
         },
         "grants": [
           {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
             "effect_class": "fs.read",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/input/transform-config.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 72,
-              "max_calls": 1
-            },
             "effect_class": "fs.write",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/output/daily-result.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 72,
+              "max_calls": 1
             }
           },
           {
@@ -4716,58 +4870,58 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:net.connect",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "net.connect",
+      "target_scope_kind": "network",
       "removed_grants": [
         {
-          "cardinality": {
-            "max_bytes": 1048576,
-            "max_calls": 1
-          },
           "effect_class": "net.connect",
           "scope": {
+            "kind": "network",
             "audiences": [
               {
                 "host": "api.vendor.example.com",
-                "methods": [
-                  "GET"
-                ],
-                "path_prefixes": [
-                  "/v1/source/daily.json"
-                ],
                 "ports": [
                   443
                 ],
                 "schemes": [
                   "https"
+                ],
+                "path_prefixes": [
+                  "/v1/source/daily.json"
+                ],
+                "methods": [
+                  "GET"
                 ]
               }
-            ],
-            "kind": "network"
+            ]
+          },
+          "cardinality": {
+            "max_bytes": 1048576,
+            "max_calls": 1
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:net.connect",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "net.connect",
-      "target_scope_kind": "network",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:36",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:net.connect",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:net.connect",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:37",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -4779,45 +4933,45 @@
         },
         "grants": [
           {
-            "cardinality": {
-              "max_bytes": 1048576,
-              "max_calls": 1
-            },
             "effect_class": "net.connect",
             "scope": {
+              "kind": "network",
               "audiences": [
                 {
                   "host": "api.vendor.example.com",
-                  "methods": [
-                    "GET"
-                  ],
-                  "path_prefixes": [
-                    "/v1/source/daily.json"
-                  ],
                   "ports": [
                     443
                   ],
                   "schemes": [
                     "https"
+                  ],
+                  "path_prefixes": [
+                    "/v1/source/daily.json"
+                  ],
+                  "methods": [
+                    "GET"
                   ]
                 }
-              ],
-              "kind": "network"
+              ]
+            },
+            "cardinality": {
+              "max_bytes": 1048576,
+              "max_calls": 1
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 72,
-              "max_calls": 1
-            },
             "effect_class": "fs.write",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/output/daily-result.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 72,
+              "max_calls": 1
             }
           },
           {
@@ -4846,46 +5000,46 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "fs.read",
+      "target_scope_kind": "filesystem",
       "removed_grants": [
         {
-          "cardinality": {
-            "max_bytes": 18,
-            "max_calls": 1
-          },
           "effect_class": "fs.read",
           "scope": {
-            "follow_mounts": false,
             "kind": "filesystem",
             "paths": [
               "/workspace/input/transform-config.json"
             ],
-            "symlink_policy": "deny"
+            "symlink_policy": "deny",
+            "follow_mounts": false
+          },
+          "cardinality": {
+            "max_bytes": 18,
+            "max_calls": 1
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "fs.read",
-      "target_scope_kind": "filesystem",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:37",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:38",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -4897,45 +5051,45 @@
         },
         "grants": [
           {
-            "cardinality": {
-              "max_bytes": 1048576,
-              "max_calls": 1
-            },
             "effect_class": "net.connect",
             "scope": {
+              "kind": "network",
               "audiences": [
                 {
                   "host": "api.vendor.example.com",
-                  "methods": [
-                    "GET"
-                  ],
-                  "path_prefixes": [
-                    "/v1/source/daily.json"
-                  ],
                   "ports": [
                     443
                   ],
                   "schemes": [
                     "https"
+                  ],
+                  "path_prefixes": [
+                    "/v1/source/daily.json"
+                  ],
+                  "methods": [
+                    "GET"
                   ]
                 }
-              ],
-              "kind": "network"
+              ]
+            },
+            "cardinality": {
+              "max_bytes": 1048576,
+              "max_calls": 1
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
             "effect_class": "fs.read",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/input/transform-config.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
             }
           },
           {
@@ -4964,46 +5118,46 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:fs.write",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "fs.write",
+      "target_scope_kind": "filesystem",
       "removed_grants": [
         {
-          "cardinality": {
-            "max_bytes": 72,
-            "max_calls": 1
-          },
           "effect_class": "fs.write",
           "scope": {
-            "follow_mounts": false,
             "kind": "filesystem",
             "paths": [
               "/workspace/output/daily-result.json"
             ],
-            "symlink_policy": "deny"
+            "symlink_policy": "deny",
+            "follow_mounts": false
+          },
+          "cardinality": {
+            "max_bytes": 72,
+            "max_calls": 1
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:fs.write",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "fs.write",
-      "target_scope_kind": "filesystem",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:38",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:fs.write",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:fs.write",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:39",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -5015,60 +5169,60 @@
         },
         "grants": [
           {
-            "cardinality": {
-              "max_bytes": 1048576,
-              "max_calls": 1
-            },
             "effect_class": "net.connect",
             "scope": {
+              "kind": "network",
               "audiences": [
                 {
                   "host": "api.vendor.example.com",
-                  "methods": [
-                    "GET"
-                  ],
-                  "path_prefixes": [
-                    "/v1/source/daily.json"
-                  ],
                   "ports": [
                     443
                   ],
                   "schemes": [
                     "https"
+                  ],
+                  "path_prefixes": [
+                    "/v1/source/daily.json"
+                  ],
+                  "methods": [
+                    "GET"
                   ]
                 }
-              ],
-              "kind": "network"
+              ]
+            },
+            "cardinality": {
+              "max_bytes": 1048576,
+              "max_calls": 1
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
             "effect_class": "fs.read",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/input/transform-config.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 72,
-              "max_calls": 1
-            },
             "effect_class": "fs.write",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/output/daily-result.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 72,
+              "max_calls": 1
             }
           },
           {
@@ -5088,15 +5242,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:clock.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "clock.read",
+      "target_scope_kind": "system",
       "removed_grants": [
         {
           "cardinality": {
@@ -5108,20 +5255,27 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:clock.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "clock.read",
-      "target_scope_kind": "system",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:39",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:clock.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:clock.read",
+        "compared_output_digest": null
+      }
     },
     {
+      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:40",
       "candidate_authority_plan": {
         "delegation_policy": {
           "anti_replay_required": true,
@@ -5133,60 +5287,60 @@
         },
         "grants": [
           {
-            "cardinality": {
-              "max_bytes": 1048576,
-              "max_calls": 1
-            },
             "effect_class": "net.connect",
             "scope": {
+              "kind": "network",
               "audiences": [
                 {
                   "host": "api.vendor.example.com",
-                  "methods": [
-                    "GET"
-                  ],
-                  "path_prefixes": [
-                    "/v1/source/daily.json"
-                  ],
                   "ports": [
                     443
                   ],
                   "schemes": [
                     "https"
+                  ],
+                  "path_prefixes": [
+                    "/v1/source/daily.json"
+                  ],
+                  "methods": [
+                    "GET"
                   ]
                 }
-              ],
-              "kind": "network"
+              ]
+            },
+            "cardinality": {
+              "max_bytes": 1048576,
+              "max_calls": 1
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 18,
-              "max_calls": 1
-            },
             "effect_class": "fs.read",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/input/transform-config.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 18,
+              "max_calls": 1
             }
           },
           {
-            "cardinality": {
-              "max_bytes": 72,
-              "max_calls": 1
-            },
             "effect_class": "fs.write",
             "scope": {
-              "follow_mounts": false,
               "kind": "filesystem",
               "paths": [
                 "/workspace/output/daily-result.json"
               ],
-              "symlink_policy": "deny"
+              "symlink_policy": "deny",
+              "follow_mounts": false
+            },
+            "cardinality": {
+              "max_bytes": 72,
+              "max_calls": 1
             }
           },
           {
@@ -5203,15 +5357,8 @@
         "ttl_seconds": 200
       },
       "change_kind": "remove_grant",
-      "comparator_summary": {
-        "compared_output_digest": null,
-        "details": "shadow execution failed with missing-required-authority:secret.read",
-        "status": "mismatch"
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ],
+      "target_effect_class": "secret.read",
+      "target_scope_kind": "secret",
       "removed_grants": [
         {
           "cardinality": {
@@ -5226,165 +5373,125 @@
           }
         }
       ],
-      "shadow_execution": {
-        "error_code": "missing-required-authority:secret.read",
-        "observed_effects": [],
-        "output_digest": null,
-        "status": "error"
-      },
       "shrink_from": null,
       "shrink_to": null,
-      "target_effect_class": "secret.read",
-      "target_scope_kind": "secret",
-      "trial_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35:trial:retained:40",
-      "trial_result": "non_equivalent"
+      "trial_result": "non_equivalent",
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "shadow_execution": {
+        "status": "error",
+        "error_code": "missing-required-authority:secret.read",
+        "observed_effects": [],
+        "output_digest": null
+      },
+      "comparator_summary": {
+        "status": "mismatch",
+        "details": "shadow execution failed with missing-required-authority:secret.read",
+        "compared_output_digest": null
+      }
     }
   ],
-  "chosen_runtime": {
-    "runtime": {
-      "id": "wasmtime",
-      "vendor": "Bytecode Alliance",
-      "version": "strict-profile-2026-03"
-    },
-    "runtime_guarantee_digest": {
-      "algorithm": "sha256",
-      "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
-    },
-    "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
-  },
-  "comparator": {
-    "assumptions": {
-      "ambient_clock_controlled": true,
-      "ambient_network_controlled": true,
-      "ambient_random_controlled": true
-    },
-    "checker_ref": "urn:guild:checker:fetch-transform-postconditions:v1",
-    "comparator_id": "urn:guild:comparator:fetch-transform:bounded-postconditions:v1",
-    "comparator_kind": "declared_postconditions",
-    "inputs": {
-      "allow_scope_shrinkers": true,
-      "expected_output_path": "/workspace/output/daily-result.json"
-    },
-    "reference": "fetch-transform.bounded-postconditions.v1",
-    "version": "1.0.0"
-  },
-  "comparator_digest": {
-    "algorithm": "sha256",
-    "value": "c0f1a6c118911dff5b21ab41beb7127a646e75d7e7214311db1fd760b3b02afc"
-  },
-  "component_digest": {
-    "algorithm": "sha256",
-    "value": "fec4ee0d8541bab9129a83fb530d1fa0378916beabe80c7ccedbfdd0fd8421f8"
-  },
-  "contract_digest": {
-    "algorithm": "sha256",
-    "value": "1ff026ac8874caa2fc6c8a5ce72283b6336bcd5cab58cb008de0e9cd6ac95dfe"
-  },
-  "created_at": "2026-03-20T12:25:00Z",
-  "execution_plan_digest": {
-    "algorithm": "sha256",
-    "value": "0499f82b11a5171e91b047f5b301992e82e5e5575053371e2a7cc3f986ed2d41"
-  },
-  "execution_plan_id": "urn:guild:request:fetch-transform:downgrade:v1:execution-plan",
-  "expires_at": null,
-  "export_name": "fetch_and_transform",
-  "input_class_fingerprint": {
-    "canonicalization": "rfc8785-jcs",
-    "digest": {
-      "algorithm": "sha256",
-      "value": "c69ff0208dfc627c10beb81d20babffc27585fd741b1f3d8b3beb32f1e0c6f46"
-    },
-    "kind": "json-schema-hash"
-  },
-  "invocation_input_digest": {
-    "algorithm": "sha256",
-    "value": "31d24a11ca6a1321856999839edee0390dad6d435c54c66a3a115ac75dfe05a4"
-  },
-  "kind": "guild.proof_record",
-  "minimization_algorithm": {
-    "harness_id": "urn:guild:harness:draft-v1:example-bounded",
-    "harness_version": "1.0.0",
-    "id": "urn:guild:minimizer:draft-v1:example-bounded",
-    "shrink_model_version": "1.0.0",
-    "version": "1.0.0"
-  },
-  "minimization_reason_codes": [
-    "AUTHORITY_REQUIRED_BY_COMPARATOR",
-    "AUTHORITY_REQUIRED_BY_TRACE",
-    "PROOF_CACHE_BYPASSED"
-  ],
-  "notes": "M5 draft proof record. This harness is intentionally example-bounded and does not claim runtime-general minimization.",
-  "observed_effect_summary": {
-    "effects": [
-      {
-        "cardinality": {
-          "max_bytes": 1048576,
-          "max_calls": 1
-        },
+  "retained_authorities": [
+    {
+      "grant": {
         "effect_class": "net.connect",
         "scope": {
+          "kind": "network",
           "audiences": [
             {
               "host": "api.vendor.example.com",
-              "methods": [
-                "GET"
-              ],
-              "path_prefixes": [
-                "/v1/source/daily.json"
-              ],
               "ports": [
                 443
               ],
               "schemes": [
                 "https"
+              ],
+              "path_prefixes": [
+                "/v1/source/daily.json"
+              ],
+              "methods": [
+                "GET"
               ]
             }
-          ],
-          "kind": "network"
+          ]
+        },
+        "cardinality": {
+          "max_bytes": 1048576,
+          "max_calls": 1
         }
       },
-      {
-        "cardinality": {
-          "max_bytes": 18,
-          "max_calls": 1
-        },
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "details": "shadow execution failed with missing-required-authority:net.connect"
+    },
+    {
+      "grant": {
         "effect_class": "fs.read",
         "scope": {
-          "follow_mounts": false,
           "kind": "filesystem",
           "paths": [
             "/workspace/input/transform-config.json"
           ],
-          "symlink_policy": "deny"
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_bytes": 18,
+          "max_calls": 1
         }
       },
-      {
-        "cardinality": {
-          "max_bytes": 72,
-          "max_calls": 1
-        },
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "details": "shadow execution failed with missing-required-authority:fs.read"
+    },
+    {
+      "grant": {
         "effect_class": "fs.write",
         "scope": {
-          "follow_mounts": false,
           "kind": "filesystem",
           "paths": [
             "/workspace/output/daily-result.json"
           ],
-          "symlink_policy": "deny"
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_bytes": 72,
+          "max_calls": 1
         }
       },
-      {
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "details": "shadow execution failed with missing-required-authority:fs.write"
+    },
+    {
+      "grant": {
         "cardinality": {
-          "max_calls": 1
+          "max_calls": 10
         },
         "effect_class": "clock.read",
         "scope": {
           "kind": "system"
         }
       },
-      {
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "details": "shadow execution failed with missing-required-authority:clock.read"
+    },
+    {
+      "grant": {
         "cardinality": {
-          "max_calls": 1
+          "max_calls": 2
         },
         "effect_class": "secret.read",
         "scope": {
@@ -5392,6 +5499,99 @@
           "secret_ids": [
             "vault://prod/vendor/source-api-token"
           ]
+        }
+      },
+      "reason_codes": [
+        "AUTHORITY_REQUIRED_BY_COMPARATOR",
+        "AUTHORITY_REQUIRED_BY_TRACE"
+      ],
+      "details": "shadow execution failed with missing-required-authority:secret.read"
+    }
+  ],
+  "proof_status": "bounded_minimal",
+  "minimization_reason_codes": [
+    "AUTHORITY_REQUIRED_BY_COMPARATOR",
+    "AUTHORITY_REQUIRED_BY_TRACE",
+    "PROOF_CACHE_BYPASSED"
+  ],
+  "observed_effect_summary": {
+    "effects": [
+      {
+        "effect_class": "net.connect",
+        "scope": {
+          "kind": "network",
+          "audiences": [
+            {
+              "host": "api.vendor.example.com",
+              "ports": [
+                443
+              ],
+              "schemes": [
+                "https"
+              ],
+              "path_prefixes": [
+                "/v1/source/daily.json"
+              ],
+              "methods": [
+                "GET"
+              ]
+            }
+          ]
+        },
+        "cardinality": {
+          "max_bytes": 1048576,
+          "max_calls": 1
+        }
+      },
+      {
+        "effect_class": "fs.read",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/input/transform-config.json"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_bytes": 18,
+          "max_calls": 1
+        }
+      },
+      {
+        "effect_class": "fs.write",
+        "scope": {
+          "kind": "filesystem",
+          "paths": [
+            "/workspace/output/daily-result.json"
+          ],
+          "symlink_policy": "deny",
+          "follow_mounts": false
+        },
+        "cardinality": {
+          "max_bytes": 72,
+          "max_calls": 1
+        }
+      },
+      {
+        "effect_class": "clock.read",
+        "scope": {
+          "kind": "system"
+        },
+        "cardinality": {
+          "max_calls": 1
+        }
+      },
+      {
+        "effect_class": "secret.read",
+        "scope": {
+          "kind": "secret",
+          "secret_ids": [
+            "vault://prod/vendor/source-api-token"
+          ]
+        },
+        "cardinality": {
+          "max_calls": 1
         }
       }
     ],
@@ -5404,257 +5604,57 @@
       "value": "9a8dfcec20e4e152d4fe57b3e5977cbe4ae6e1c88f688824e7e0b56a88108eef"
     }
   },
-  "proof_id": "urn:guild:request:fetch-transform:downgrade:v1:execution-plan:m5-proof",
-  "proof_method": "counterfactual_shadow_execution",
-  "proof_status": "bounded_minimal",
-  "proven_authority_plan": {
-    "delegation_policy": {
-      "anti_replay_required": true,
-      "audience_binding_required": true,
-      "call_chain_binding_required": true,
-      "max_hops": 0,
-      "mode": "forbidden",
-      "ttl_seconds_max": 300
+  "cache": {
+    "status": "bypassed",
+    "cache_key_digest": {
+      "algorithm": "sha256",
+      "value": "27cad9c27fcf859e79daa048fd9bd7866384159bf27b8c51b05657b1170d2f4d"
     },
-    "grants": [
-      {
-        "cardinality": {
-          "max_bytes": 1048576,
-          "max_calls": 1
-        },
-        "effect_class": "net.connect",
-        "scope": {
-          "audiences": [
-            {
-              "host": "api.vendor.example.com",
-              "methods": [
-                "GET"
-              ],
-              "path_prefixes": [
-                "/v1/source/daily.json"
-              ],
-              "ports": [
-                443
-              ],
-              "schemes": [
-                "https"
-              ]
-            }
-          ],
-          "kind": "network"
-        }
-      },
-      {
-        "cardinality": {
-          "max_bytes": 18,
-          "max_calls": 1
-        },
-        "effect_class": "fs.read",
-        "scope": {
-          "follow_mounts": false,
-          "kind": "filesystem",
-          "paths": [
-            "/workspace/input/transform-config.json"
-          ],
-          "symlink_policy": "deny"
-        }
-      },
-      {
-        "cardinality": {
-          "max_bytes": 72,
-          "max_calls": 1
-        },
-        "effect_class": "fs.write",
-        "scope": {
-          "follow_mounts": false,
-          "kind": "filesystem",
-          "paths": [
-            "/workspace/output/daily-result.json"
-          ],
-          "symlink_policy": "deny"
-        }
-      },
-      {
-        "cardinality": {
-          "max_calls": 10
-        },
-        "effect_class": "clock.read",
-        "scope": {
-          "kind": "system"
-        }
-      },
-      {
-        "cardinality": {
-          "max_calls": 2
-        },
-        "effect_class": "secret.read",
-        "scope": {
-          "kind": "secret",
-          "secret_ids": [
-            "vault://prod/vendor/source-api-token"
-          ]
-        }
-      }
+    "reused_proof_id": null,
+    "bypass_reason_codes": [
+      "PROOF_CACHE_BYPASSED"
     ],
-    "plan_id": "urn:guild:request:fetch-transform:downgrade:v1:granted:candidate:shrink:32:candidate:shrink:34:candidate:shrink:35",
-    "ttl_seconds": 200
-  },
-  "request_id": "urn:guild:request:fetch-transform:downgrade:v1",
-  "retained_authorities": [
-    {
-      "details": "shadow execution failed with missing-required-authority:net.connect",
-      "grant": {
-        "cardinality": {
-          "max_bytes": 1048576,
-          "max_calls": 1
+    "key_material": {
+      "execution_plan_digest": {
+        "algorithm": "sha256",
+        "value": "38eaa96a3bd446c9f2f68de13250900237f1e00593c16853087baca0a708ed32"
+      },
+      "contract_digest": {
+        "algorithm": "sha256",
+        "value": "1ff026ac8874caa2fc6c8a5ce72283b6336bcd5cab58cb008de0e9cd6ac95dfe"
+      },
+      "component_digest": {
+        "algorithm": "sha256",
+        "value": "fec4ee0d8541bab9129a83fb530d1fa0378916beabe80c7ccedbfdd0fd8421f8"
+      },
+      "export_name": "fetch_and_transform",
+      "input_class_fingerprint": {
+        "canonicalization": "rfc8785-jcs",
+        "digest": {
+          "algorithm": "sha256",
+          "value": "c69ff0208dfc627c10beb81d20babffc27585fd741b1f3d8b3beb32f1e0c6f46"
         },
-        "effect_class": "net.connect",
-        "scope": {
-          "audiences": [
-            {
-              "host": "api.vendor.example.com",
-              "methods": [
-                "GET"
-              ],
-              "path_prefixes": [
-                "/v1/source/daily.json"
-              ],
-              "ports": [
-                443
-              ],
-              "schemes": [
-                "https"
-              ]
-            }
-          ],
-          "kind": "network"
-        }
+        "kind": "json-schema-hash"
       },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ]
-    },
-    {
-      "details": "shadow execution failed with missing-required-authority:fs.read",
-      "grant": {
-        "cardinality": {
-          "max_bytes": 18,
-          "max_calls": 1
-        },
-        "effect_class": "fs.read",
-        "scope": {
-          "follow_mounts": false,
-          "kind": "filesystem",
-          "paths": [
-            "/workspace/input/transform-config.json"
-          ],
-          "symlink_policy": "deny"
-        }
+      "invocation_input_digest": {
+        "algorithm": "sha256",
+        "value": "31d24a11ca6a1321856999839edee0390dad6d435c54c66a3a115ac75dfe05a4"
       },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ]
-    },
-    {
-      "details": "shadow execution failed with missing-required-authority:fs.write",
-      "grant": {
-        "cardinality": {
-          "max_bytes": 72,
-          "max_calls": 1
-        },
-        "effect_class": "fs.write",
-        "scope": {
-          "follow_mounts": false,
-          "kind": "filesystem",
-          "paths": [
-            "/workspace/output/daily-result.json"
-          ],
-          "symlink_policy": "deny"
-        }
+      "runtime_guarantee_digest": {
+        "algorithm": "sha256",
+        "value": "6a163afd329286e3e06f0f0f1200770c86fef6cd051c41882d5b0ea402224a22"
       },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ]
-    },
-    {
-      "details": "shadow execution failed with missing-required-authority:clock.read",
-      "grant": {
-        "cardinality": {
-          "max_calls": 10
-        },
-        "effect_class": "clock.read",
-        "scope": {
-          "kind": "system"
-        }
+      "comparator_digest": {
+        "algorithm": "sha256",
+        "value": "c0f1a6c118911dff5b21ab41beb7127a646e75d7e7214311db1fd760b3b02afc"
       },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ]
-    },
-    {
-      "details": "shadow execution failed with missing-required-authority:secret.read",
-      "grant": {
-        "cardinality": {
-          "max_calls": 2
-        },
-        "effect_class": "secret.read",
-        "scope": {
-          "kind": "secret",
-          "secret_ids": [
-            "vault://prod/vendor/source-api-token"
-          ]
-        }
-      },
-      "reason_codes": [
-        "AUTHORITY_REQUIRED_BY_COMPARATOR",
-        "AUTHORITY_REQUIRED_BY_TRACE"
-      ]
-    }
-  ],
-  "search_model": {
-    "assumptions": [
-      "Only bundled draft-v1 examples have a real M5 harness in this milestone.",
-      "Comparator and invocation fixtures must remain deterministic and controlled.",
-      "Scope shrinkers are bounded by observed-effect projections, not a runtime-general search space."
-    ],
-    "discrete_grant_search": {
-      "candidate_plans_evaluated": 31,
-      "exact": true,
-      "strategy": "exhaustive_powerset"
-    },
-    "scope_shrinkers": [
-      {
-        "accepted": 2,
-        "attempts": 3,
-        "bounded": true,
-        "scope_kind": "filesystem",
-        "strategy": "observed_effect_projection"
-      },
-      {
-        "accepted": 1,
-        "attempts": 1,
-        "bounded": true,
-        "scope_kind": "network",
-        "strategy": "observed_effect_projection"
-      },
-      {
-        "accepted": 0,
-        "attempts": 0,
-        "bounded": true,
-        "scope_kind": "delegation",
-        "strategy": "observed_effect_projection"
-      }
-    ],
-    "search_domain": "draft-v1 example-bounded minimization harness",
-    "search_limits": {
-      "max_candidate_plans": 128,
-      "truncated": false
+      "minimization_algorithm_version": "1.0.0",
+      "shrink_model_version": "1.0.0",
+      "harness_id": "urn:guild:harness:draft-v1:example-bounded",
+      "harness_version": "1.0.0"
     }
   },
-  "skill_contract_id": "urn:guild:contract:fetch-transform:v1",
-  "version": "1.0.0"
+  "created_at": "2026-03-20T12:25:00Z",
+  "expires_at": null,
+  "notes": "M5 draft proof record. This harness is intentionally example-bounded and does not claim runtime-general minimization."
 }

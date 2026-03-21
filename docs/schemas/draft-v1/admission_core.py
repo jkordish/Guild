@@ -40,6 +40,17 @@ ORDER = {
 
 SYMLINK_POLICY_ORDER = ["deny", "readonly", "follow"]
 DECISION_PRECEDENCE = {"admit": 0, "downgrade": 1, "migrate": 2, "refuse": 3}
+DIRECT_CANONICAL_FAMILIES = {
+    "http-request",
+    "read-resource",
+    "invoke-skill",
+    "emit-evidence",
+    "log-write",
+}
+LEGACY_COMPATIBILITY_FAMILIES = {
+    "net.connect": "http-request",
+    "component.invoke": "invoke-skill",
+}
 
 
 class AdmissionInputError(RuntimeError):
@@ -179,9 +190,35 @@ def plan_id_for_request(request_id: str) -> str:
     return f"{request_id}:execution-plan"
 
 
+def effect_selector_field(effect: dict[str, Any]) -> str:
+    if "family" in effect:
+        return "family"
+    return "effect_class"
+
+
+def effect_selector(effect: dict[str, Any]) -> str:
+    return effect[effect_selector_field(effect)]
+
+
+def effect_is_canonical(effect: dict[str, Any]) -> bool:
+    return effect_selector_field(effect) == "family"
+
+
+def same_effect_selector(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    return effect_selector_field(left) == effect_selector_field(right) and effect_selector(left) == effect_selector(right)
+
+
+def effect_scope_kind(effect: dict[str, Any]) -> str:
+    return effect["scope"]["kind"]
+
+
+def legacy_family_for_selector(selector: str) -> str | None:
+    return LEGACY_COMPATIBILITY_FAMILIES.get(selector)
+
+
 def required_effect_classes(contract: dict[str, Any]) -> list[str]:
     classes = {
-        effect["effect_class"]
+        effect_selector(effect)
         for collection in (contract.get("required_effects", []), contract.get("authority_ceiling", []))
         for effect in collection
     }
@@ -196,6 +233,125 @@ def runtime_overview(runtime: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_list(values: list[Any] | None) -> list[Any] | None:
+    if values is None:
+        return None
+    if all(isinstance(item, str) for item in values):
+        return stable_unique_strings(sorted(values))
+    return sorted(set(values))
+
+
+def normalize_scope(scope: dict[str, Any], *, family: str | None = None) -> dict[str, Any]:
+    normalized = deepcopy(scope)
+    kind = normalized["kind"]
+
+    if family == "http-request":
+        for key in (
+            "allowed_schemes",
+            "allowed_hosts",
+            "allowed_host_suffixes",
+            "allowed_ports",
+            "allowed_methods",
+            "allowed_path_prefixes",
+        ):
+            values = normalize_list(normalized.get(key))
+            if values:
+                normalized[key] = values
+            else:
+                normalized.pop(key, None)
+        return normalized
+
+    if family == "read-resource":
+        for key in ("uri_prefixes", "resource_kinds"):
+            values = normalize_list(normalized.get(key))
+            if values:
+                normalized[key] = values
+            else:
+                normalized.pop(key, None)
+        return normalized
+
+    if family == "invoke-skill":
+        aliases = normalize_list(normalized.get("aliases"))
+        if aliases:
+            normalized["aliases"] = aliases
+        else:
+            normalized.pop("aliases", None)
+        return normalized
+
+    if family == "emit-evidence":
+        for key in ("audiences", "redactions"):
+            values = normalize_list(normalized.get(key))
+            if values:
+                normalized[key] = values
+            else:
+                normalized.pop(key, None)
+        return normalized
+
+    if family == "log-write":
+        levels = normalize_list(normalized.get("levels"))
+        if levels:
+            normalized["levels"] = levels
+        else:
+            normalized.pop("levels", None)
+        return normalized
+
+    if kind == "filesystem":
+        normalized["paths"] = stable_unique_strings(sorted(normalized["paths"]))
+        return normalized
+    if kind == "network":
+        audiences = []
+        for audience in normalized["audiences"]:
+            item = deepcopy(audience)
+            for key in ("ports", "schemes", "path_prefixes", "methods"):
+                values = normalize_list(item.get(key))
+                if values:
+                    item[key] = values
+                else:
+                    item.pop(key, None)
+            audiences.append(item)
+        normalized["audiences"] = stable_unique_dicts(audiences)
+        return normalized
+    if kind == "process":
+        for key in ("commands", "argv_patterns"):
+            values = normalize_list(normalized.get(key))
+            if values:
+                normalized[key] = values
+            else:
+                normalized.pop(key, None)
+        return normalized
+    if kind == "secret":
+        secret_ids = normalize_list(normalized.get("secret_ids"))
+        if secret_ids:
+            normalized["secret_ids"] = secret_ids
+        return normalized
+    if kind == "environment":
+        names = normalize_list(normalized.get("names"))
+        if names:
+            normalized["names"] = names
+        return normalized
+    if kind == "component":
+        component_digests = normalized.get("component_digests")
+        if component_digests:
+            normalized["component_digests"] = stable_unique_dicts(component_digests)
+        else:
+            normalized.pop("component_digests", None)
+        exports = normalize_list(normalized.get("exports"))
+        if exports:
+            normalized["exports"] = exports
+        else:
+            normalized.pop("exports", None)
+        return normalized
+    if kind == "delegation":
+        for key in ("effect_classes", "audiences"):
+            values = normalize_list(normalized.get(key))
+            if values:
+                normalized[key] = values
+            else:
+                normalized.pop(key, None)
+        return normalized
+    return normalized
+
+
 def normalize_effect(effect: dict[str, Any]) -> dict[str, Any]:
     normalized = deepcopy(effect)
     normalized.pop("justification", None)
@@ -206,6 +362,10 @@ def normalize_effect(effect: dict[str, Any]) -> dict[str, Any]:
             key: normalized["cardinality"][key]
             for key in sorted(normalized["cardinality"])
         }
+    normalized["scope"] = normalize_scope(
+        normalized["scope"],
+        family=effect_selector(normalized) if effect_is_canonical(normalized) else None,
+    )
     return normalized
 
 
@@ -387,6 +547,236 @@ def intersect_component_digests(
     return stable_unique_dicts(reduced)
 
 
+def prefix_covers(container: str, candidate: str) -> bool:
+    return candidate.startswith(container)
+
+
+def narrower_prefix(left: str, right: str) -> str | None:
+    if prefix_covers(left, right):
+        return right
+    if prefix_covers(right, left):
+        return left
+    return None
+
+
+def intersect_prefix_strings(left: list[str] | None, right: list[str] | None) -> list[str] | None:
+    if left is None and right is None:
+        return None
+    if left is None:
+        return stable_unique_strings(sorted(right))
+    if right is None:
+        return stable_unique_strings(sorted(left))
+    reduced: list[str] = []
+    for left_item in left:
+        for right_item in right:
+            narrower = narrower_prefix(left_item, right_item)
+            if narrower is not None:
+                reduced.append(narrower)
+    if not reduced:
+        return []
+    return stable_unique_strings(sorted(reduced))
+
+
+def normalized_host_suffix(value: str) -> str:
+    return value.lstrip(".")
+
+
+def host_matches_suffix(host: str, suffix: str) -> bool:
+    normalized_suffix = normalized_host_suffix(suffix)
+    return host == normalized_suffix or host.endswith(f".{normalized_suffix}")
+
+
+def narrower_host_suffix(left: str, right: str) -> str | None:
+    left_suffix = normalized_host_suffix(left)
+    right_suffix = normalized_host_suffix(right)
+    if left_suffix == right_suffix:
+        return left if left <= right else right
+    if host_matches_suffix(left_suffix, right_suffix):
+        return left
+    if host_matches_suffix(right_suffix, left_suffix):
+        return right
+    return None
+
+
+def intersect_http_host_constraints(
+    requested: dict[str, Any],
+    ceiling: dict[str, Any],
+) -> tuple[list[str] | None, list[str] | None] | None:
+    requested_hosts = requested.get("allowed_hosts")
+    requested_suffixes = requested.get("allowed_host_suffixes")
+    ceiling_hosts = ceiling.get("allowed_hosts")
+    ceiling_suffixes = ceiling.get("allowed_host_suffixes")
+    requested_constrained = bool(requested_hosts or requested_suffixes)
+    ceiling_constrained = bool(ceiling_hosts or ceiling_suffixes)
+
+    if not requested_constrained and not ceiling_constrained:
+        return None
+    if not requested_constrained:
+        return (
+            stable_unique_strings(sorted(ceiling_hosts)) if ceiling_hosts else None,
+            stable_unique_strings(sorted(ceiling_suffixes)) if ceiling_suffixes else None,
+        )
+    if not ceiling_constrained:
+        return (
+            stable_unique_strings(sorted(requested_hosts)) if requested_hosts else None,
+            stable_unique_strings(sorted(requested_suffixes)) if requested_suffixes else None,
+        )
+
+    reduced_hosts: list[str] = []
+    reduced_suffixes: list[str] = []
+
+    for host in requested_hosts or []:
+        if ceiling_hosts and host in ceiling_hosts:
+            reduced_hosts.append(host)
+        if ceiling_suffixes and any(host_matches_suffix(host, suffix) for suffix in ceiling_suffixes):
+            reduced_hosts.append(host)
+    for host in ceiling_hosts or []:
+        if requested_suffixes and any(host_matches_suffix(host, suffix) for suffix in requested_suffixes):
+            reduced_hosts.append(host)
+    for requested_suffix in requested_suffixes or []:
+        for ceiling_suffix in ceiling_suffixes or []:
+            narrower = narrower_host_suffix(requested_suffix, ceiling_suffix)
+            if narrower is not None:
+                reduced_suffixes.append(narrower)
+
+    reduced_hosts = stable_unique_strings(sorted(reduced_hosts))
+    reduced_suffixes = stable_unique_strings(sorted(reduced_suffixes))
+    if not reduced_hosts and not reduced_suffixes:
+        return None
+    return (
+        reduced_hosts or None,
+        reduced_suffixes or None,
+    )
+
+
+def intersect_http_request_scope(requested: dict[str, Any], ceiling: dict[str, Any]) -> dict[str, Any] | None:
+    if requested["kind"] != "network" or ceiling["kind"] != "network":
+        return None
+
+    output: dict[str, Any] = {"kind": "network"}
+
+    for key in ("allowed_schemes", "allowed_ports", "allowed_methods"):
+        reduced = intersect_scalar_scope(requested.get(key), ceiling.get(key))
+        if reduced == []:
+            return None
+        if reduced is not None:
+            output[key] = reduced
+
+    path_prefixes = intersect_prefix_strings(
+        requested.get("allowed_path_prefixes"),
+        ceiling.get("allowed_path_prefixes"),
+    )
+    if path_prefixes == []:
+        return None
+    if path_prefixes is not None:
+        output["allowed_path_prefixes"] = path_prefixes
+
+    host_constraints = intersect_http_host_constraints(requested, ceiling)
+    requested_host_constrained = bool(requested.get("allowed_hosts") or requested.get("allowed_host_suffixes"))
+    ceiling_host_constrained = bool(ceiling.get("allowed_hosts") or ceiling.get("allowed_host_suffixes"))
+    if requested_host_constrained or ceiling_host_constrained:
+        if host_constraints is None:
+            return None
+        allowed_hosts, allowed_host_suffixes = host_constraints
+        if allowed_hosts is not None:
+            output["allowed_hosts"] = allowed_hosts
+        if allowed_host_suffixes is not None:
+            output["allowed_host_suffixes"] = allowed_host_suffixes
+
+    for key in ("max_timeout_ms", "max_response_bytes", "max_redirects"):
+        values = [value for value in (requested.get(key), ceiling.get(key)) if value is not None]
+        if values:
+            output[key] = min(values)
+
+    for key in (
+        "follow_redirects",
+        "allow_loopback",
+        "allow_link_local",
+        "allow_private_networks",
+        "allow_ip_literals",
+    ):
+        value = narrower_bool(requested.get(key), ceiling.get(key))
+        if value is not None:
+            output[key] = value
+
+    return output
+
+
+def intersect_read_resource_scope(requested: dict[str, Any], ceiling: dict[str, Any]) -> dict[str, Any] | None:
+    if requested["kind"] != "resource" or ceiling["kind"] != "resource":
+        return None
+    uri_prefixes = intersect_prefix_strings(requested.get("uri_prefixes"), ceiling.get("uri_prefixes"))
+    if uri_prefixes == []:
+        return None
+    resource_kinds = intersect_scalar_scope(requested.get("resource_kinds"), ceiling.get("resource_kinds"))
+    if resource_kinds == []:
+        return None
+    output: dict[str, Any] = {"kind": "resource"}
+    if uri_prefixes is not None:
+        output["uri_prefixes"] = uri_prefixes
+    if resource_kinds is not None:
+        output["resource_kinds"] = resource_kinds
+    return output
+
+
+def intersect_invoke_skill_scope(requested: dict[str, Any], ceiling: dict[str, Any]) -> dict[str, Any] | None:
+    if requested["kind"] != "skill" or ceiling["kind"] != "skill":
+        return None
+    aliases = intersect_exact_strings(requested.get("aliases"), ceiling.get("aliases"))
+    if aliases == []:
+        return None
+    output: dict[str, Any] = {"kind": "skill"}
+    if aliases is not None:
+        output["aliases"] = aliases
+    return output
+
+
+def intersect_emit_evidence_scope(requested: dict[str, Any], ceiling: dict[str, Any]) -> dict[str, Any] | None:
+    if requested["kind"] != "evidence" or ceiling["kind"] != "evidence":
+        return None
+    audiences = intersect_exact_strings(requested.get("audiences"), ceiling.get("audiences"))
+    if audiences == []:
+        return None
+    redactions = intersect_exact_strings(requested.get("redactions"), ceiling.get("redactions"))
+    if redactions == []:
+        return None
+    output: dict[str, Any] = {"kind": "evidence"}
+    if audiences is not None:
+        output["audiences"] = audiences
+    if redactions is not None:
+        output["redactions"] = redactions
+    values = [value for value in (requested.get("max_bytes"), ceiling.get("max_bytes")) if value is not None]
+    if values:
+        output["max_bytes"] = min(values)
+    return output
+
+
+def intersect_log_write_scope(requested: dict[str, Any], ceiling: dict[str, Any]) -> dict[str, Any] | None:
+    if requested["kind"] != "log" or ceiling["kind"] != "log":
+        return None
+    levels = intersect_exact_strings(requested.get("levels"), ceiling.get("levels"))
+    if levels == []:
+        return None
+    output: dict[str, Any] = {"kind": "log"}
+    if levels is not None:
+        output["levels"] = levels
+    return output
+
+
+def intersect_canonical_scope(family: str, requested: dict[str, Any], ceiling: dict[str, Any]) -> dict[str, Any] | None:
+    if family == "http-request":
+        return intersect_http_request_scope(requested, ceiling)
+    if family == "read-resource":
+        return intersect_read_resource_scope(requested, ceiling)
+    if family == "invoke-skill":
+        return intersect_invoke_skill_scope(requested, ceiling)
+    if family == "emit-evidence":
+        return intersect_emit_evidence_scope(requested, ceiling)
+    if family == "log-write":
+        return intersect_log_write_scope(requested, ceiling)
+    return None
+
+
 def intersect_scope(requested: dict[str, Any], ceiling: dict[str, Any]) -> dict[str, Any] | None:
     if requested["kind"] != ceiling["kind"]:
         return None
@@ -494,15 +884,17 @@ def intersect_cardinality(
 
 
 def intersect_effect(requested: dict[str, Any], ceiling: dict[str, Any]) -> dict[str, Any] | None:
-    if requested["effect_class"] != ceiling["effect_class"]:
+    if not same_effect_selector(requested, ceiling):
         return None
-    scope = intersect_scope(requested["scope"], ceiling["scope"])
+    if effect_is_canonical(requested) or effect_is_canonical(ceiling):
+        if not effect_is_canonical(requested) or not effect_is_canonical(ceiling):
+            return None
+        scope = intersect_canonical_scope(effect_selector(requested), requested["scope"], ceiling["scope"])
+    else:
+        scope = intersect_scope(requested["scope"], ceiling["scope"])
     if scope is None:
         return None
-    output: dict[str, Any] = {
-        "effect_class": requested["effect_class"],
-        "scope": scope,
-    }
+    output: dict[str, Any] = {effect_selector_field(requested): effect_selector(requested), "scope": scope}
     cardinality = intersect_cardinality(requested.get("cardinality"), ceiling.get("cardinality"))
     if cardinality is not None:
         output["cardinality"] = cardinality
@@ -525,7 +917,7 @@ def cardinality_covers(grant: dict[str, Any] | None, required: dict[str, Any] | 
 
 
 def effect_covers(grant: dict[str, Any], required: dict[str, Any]) -> bool:
-    if grant["effect_class"] != required["effect_class"]:
+    if not same_effect_selector(grant, required):
         return False
     reduced = intersect_effect(grant, required)
     if reduced is None:
@@ -574,23 +966,32 @@ def runtime_can_enforce_network_scope(scope: dict[str, Any], granularity: str) -
     return False
 
 
+def runtime_supports_effect(effect: dict[str, Any], runtime: dict[str, Any]) -> bool:
+    if effect_is_canonical(effect):
+        return effect_selector(effect) in runtime.get("supported_canonical_families", [])
+    return effect_selector(effect) in runtime.get("supported_effect_classes", [])
+
+
 def runtime_can_enforce_effect(effect: dict[str, Any], runtime: dict[str, Any]) -> bool:
-    effect_class = effect["effect_class"]
-    if effect_class not in runtime.get("supported_effect_classes", []):
+    selector = effect_selector(effect)
+    if not runtime_supports_effect(effect, runtime):
         return False
 
-    if effect_class in {"net.connect", "net.resolve"}:
+    if selector in {"net.connect", "net.resolve"}:
         return runtime_can_enforce_network_scope(effect["scope"], runtime["network_policy_granularity"])
 
-    if effect_class in {"fs.read", "fs.write", "fs.list"}:
+    if selector in {"fs.read", "fs.write", "fs.list"}:
         return runtime["filesystem_isolation_class"] != "none"
+
+    if selector == "http-request":
+        return runtime["network_policy_granularity"] == "url"
 
     return True
 
 
 def contract_forbids_effect(contract: dict[str, Any], effect: dict[str, Any]) -> bool:
     for forbidden in contract.get("forbidden_effects", []):
-        if forbidden["effect_class"] != effect["effect_class"]:
+        if not same_effect_selector(forbidden, effect):
             continue
         if intersect_effect(effect, forbidden) is not None:
             return True
@@ -664,11 +1065,12 @@ def requirement_messages(contract: dict[str, Any], runtime: dict[str, Any]) -> l
             )
 
     unsupported_effects = [
-        effect_class
-        for effect_class in required_effect_classes(contract)
-        if effect_class not in runtime.get("supported_effect_classes", [])
+        selector
+        for effect in contract.get("required_effects", [])
+        if not runtime_supports_effect(effect, runtime)
+        for selector in [effect_selector(effect)]
     ]
-    for effect_class in unsupported_effects:
+    for effect_class in stable_unique_strings(sorted(unsupported_effects)):
         reasons.append(
             unsatisfied_requirement(
                 "effect_class",
@@ -679,13 +1081,13 @@ def requirement_messages(contract: dict[str, Any], runtime: dict[str, Any]) -> l
         )
 
     for required_effect in contract.get("required_effects", []):
-        if required_effect["effect_class"] not in runtime.get("supported_effect_classes", []):
+        if not runtime_supports_effect(required_effect, runtime):
             continue
         if not runtime_can_enforce_effect(required_effect, runtime):
             reasons.append(
                 unsatisfied_requirement(
                     "required_effect_scope",
-                    required_effect["effect_class"],
+                    effect_selector(required_effect),
                     "REQUIRED_SCOPE_NOT_ENFORCEABLE",
                     "runtime cannot enforce the scope constraints on a required effect",
                     {"required_effect": normalize_effect(required_effect)},
@@ -875,7 +1277,7 @@ def reduce_requested_grant(
     ceilings = [
         ceiling
         for ceiling in contract.get("authority_ceiling", [])
-        if ceiling["effect_class"] == requested["effect_class"]
+        if same_effect_selector(ceiling, requested)
     ]
     if not ceilings:
         return [], [
@@ -937,7 +1339,7 @@ def required_effects_satisfied(contract: dict[str, Any], grants: list[dict[str, 
         unsatisfied.append(
             unsatisfied_requirement(
                 "required_effect",
-                required_effect["effect_class"],
+                effect_selector(required_effect),
                 "REQUESTED_AUTHORITY_OMITS_REQUIRED_EFFECT",
                 "granted authority did not cover a contract-required effect",
                 {"required_effect": normalize_effect(required_effect)},

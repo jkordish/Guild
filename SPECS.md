@@ -436,26 +436,37 @@ The stricter interpretation wins:
 - M7 witness outputs MUST be described as bounded observed-authority records rather than runtime-general attestations
 - denied requested authority MAY yield a downgrade rather than a refusal when hard requirements still hold
 
-For M8a, the live Rust vocabulary is now the canonical runtime vocabulary for this repository:
+For M8c, the live Rust vocabulary is the canonical runtime vocabulary for this repository:
 
 - `runtime_guarantee.supported_canonical_families` MUST be treated as the authoritative live-runtime family list
-- `supported_effect_classes` MAY remain as a draft-v1 compatibility surface, but it MUST NOT be described as the canonical live-runtime truth surface
+- `supported_effect_classes` MAY remain as a legacy draft-v1 compatibility surface, but it MUST NOT be described as the canonical live-runtime truth surface
 - the currently active canonical runtime families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- draft-v1 direct canonical family support status MUST be described per family and per layer rather than as one undifferentiated runtime-general claim blob
+- `docs/schemas/draft-v1/family_support_matrix.json` is the machine-readable status source for that per-family or per-layer draft-bundle view
+
+Current live proof scope in M8c is intentionally narrow:
+
+- `read-resource` MUST be described only as bounded live-proof-backed, and only for the immutable `guild://executions/` and `guild://objects/records/` scope roots the live Rust path actually explores today
+- `log-write` MAY be described as live-proof-supported only for the observed discrete log-level slice the live Rust search actually proves
+- `http-request`, `invoke-skill`, and `emit-evidence` MUST remain explicitly `not_proven` for live proof, proof-backed token linkage, and proof-linked witness linkage
 
 Current mapping boundaries:
 
 | `docs/schemas/draft-v1/` term | Current repository term | Contract status |
 |---|---|---|
 | `component.wit_world` | active inspect world `guild-skill-inspect-v1` plus host-owned runtime-entrypoint checks | bundled contracts now target the live inspect world explicitly |
-| `component.invoke` | `invoke-skill` | narrowing compatibility mapping |
-| `net.connect`, `net.resolve` | `http-request` | broader draft term vs narrower implemented runtime family; only explicit HTTP(S) GET or HEAD `net.connect` scopes map safely |
+| direct canonical `http-request` | `http-request` | direct canonical support in the draft M4, M6, and M7 layers |
+| direct canonical `read-resource` | `read-resource` | direct canonical support in the draft M4, M6, and M7 layers |
+| direct canonical `invoke-skill` | `invoke-skill` | direct canonical support in the draft M4, M6, and M7 layers at the current alias-only runtime scope |
+| direct canonical `emit-evidence` | `emit-evidence` | direct canonical support in the draft M4, M6, and M7 layers |
+| direct canonical `log-write` | `log-write` | direct canonical support in the draft M4, M6, and M7 layers at the current level-only runtime scope |
+| `component.invoke` | `invoke-skill` | deprecated narrowing compatibility mapping |
+| `net.connect` | `http-request` | deprecated narrowing compatibility mapping; only explicit HTTP(S) GET or HEAD scopes map safely |
+| `net.resolve` | `http-request` | unsupported; the live runtime does not expose a standalone DNS-resolution family |
 | `fs.read`, `fs.write`, `fs.list` | `filesystem` | partial; still rejected before guest execution in the active inspect slice |
 | `secret.read` | `get-secret` | partial; no live inspect enforcement or observation path yet |
 | `clock.read` | `wall-clock` | partial; draft term is less precise than the runtime family split |
 | `capability.delegate` | host-owned child-grant reduction and delegation enforcement | related but split across policy and runtime semantics |
-| no direct schema effect-class for `read-resource` | `read-resource` | live-observed in Rust, but unsupported in draft-v1 claim semantics |
-| no direct schema effect-class for `emit-evidence` | `emit-evidence` | live-observed in Rust, but unsupported in draft-v1 claim semantics |
-| no direct schema effect-class for `log-write` | `log-write` | live-observed in Rust, but unsupported in draft-v1 claim semantics |
 
 Until those vocabulary gaps are closed across the repository, `docs/schemas/draft-v1/` MUST stay explicitly labeled as draft/proposal surface rather than being described as normative repo truth.
 
@@ -477,7 +488,7 @@ That M5 path has hard limits:
 
 - it MUST only preserve or reduce the M4 upper bound
 - it MUST fail closed on comparator failure, comparator unavailability, runtime mismatch, or replay-harness gaps
-- it MUST NOT claim runtime-general minimization because the current proof harness is only real for the bundled draft examples
+- it MUST NOT claim runtime-general minimization because live proof is now real only for the narrow M8c families the Rust runtime actually supports today, while the older draft harness remains example-only for everything else
 - it MUST distinguish `exact_minimal`, `bounded_minimal`, `reduced`, `no_reduction`, and `not_proven`
 
 The current draft-bundle M6 surface is narrower than a full attestation system:
@@ -520,8 +531,11 @@ That M7 path has hard limits:
 - the current draft implementation MUST be described as HMAC MAC protection over canonical JSON claims, not as public-key signatures or public attestation
 - the current live Rust runtime now persists durable per-effect `authority_observations` for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
 - the current witness path MAY describe runtime-backed exercised-authority and absence claims only where that live stream maps safely into the draft-v1 vocabulary
-- today that safe runtime-backed draft-v1 claim path exists only for `http-request`, and only through the conservative `net.connect` compatibility alias for explicit HTTP(S) GET or HEAD scopes
-- live `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations MUST remain `coverage_limited`, `unsupported`, or `unverifiable` in draft-v1 claim results until the draft vocabulary gains direct canonical representation for them
+- for M8c, draft-v1 now carries the live canonical `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` families directly in witness generation and verification
+- scope-only negative claims MAY now be supported for those five families when the relevant live observation coverage is complete
+- proof-linked witnesses MUST remain limited to real live-runtime proofs. In this milestone that means bounded live `read-resource` linkage is real, while `http-request`, `invoke-skill`, and `emit-evidence` stay explicitly unlinked and `log-write` linkage is honest only when a real live proof record is supplied
+- positive observed facts MAY be carried in witness records under partial or complete coverage, but the current fixed claim vocabulary still does not expose per-family positive observed-fact claim types
+- unmappable runtime-native families or semantics MUST still fail closed as `coverage_limited`, `unverifiable`, or explicit verification failure rather than being silently accepted
 
 ## 14. Execution Semantics
 
