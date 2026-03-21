@@ -106,9 +106,14 @@ fn localhost_resolution_binding(port: u16) -> HttpResolutionBinding {
     }
 }
 
-fn localhost_http_replay_fixture(url: &str, port: u16, body: &str) -> HttpReplayFixture {
+fn localhost_http_replay_fixture_for_method(
+    method: HttpMethod,
+    url: &str,
+    port: u16,
+    body: &str,
+) -> HttpReplayFixture {
     HttpReplayFixture {
-        method: HttpMethod::Get,
+        method,
         url: url.to_owned(),
         response_status: 200,
         response_content_type: Some("application/json".into()),
@@ -116,6 +121,14 @@ fn localhost_http_replay_fixture(url: &str, port: u16, body: &str) -> HttpReplay
         redirect_location: None,
         resolution_binding: Some(localhost_resolution_binding(port)),
     }
+}
+
+fn localhost_http_replay_fixture(url: &str, port: u16, body: &str) -> HttpReplayFixture {
+    localhost_http_replay_fixture_for_method(HttpMethod::Get, url, port, body)
+}
+
+fn localhost_head_http_replay_fixture(url: &str, port: u16) -> HttpReplayFixture {
+    localhost_http_replay_fixture_for_method(HttpMethod::Head, url, port, "")
 }
 
 fn execution_request(
@@ -602,6 +615,75 @@ fn localhost_happy_path_records_resolution_binding() {
 }
 
 #[test]
+fn localhost_head_happy_path_records_resolution_binding() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let record = run_http_skill(
+        &registry,
+        &runner,
+        json!({
+            "url": server.localhost_json_url(),
+            "method": "head",
+        }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                "localhost",
+                server.port(),
+                "/json",
+                &[HttpMethod::Head],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap();
+
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.metrics.network_requests, 1);
+    let output = record.output.as_ref().unwrap();
+    assert_eq!(output.structured["status"], 200);
+    assert_eq!(output.structured["method"], "head");
+    assert_eq!(output.structured["response_bytes"], 0);
+    assert_eq!(output.structured["json_summary"]["root_kind"], "none");
+    assert_eq!(
+        output.structured["json_summary"]["reason"],
+        "HEAD responses do not include a JSON body"
+    );
+    match &record.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            assert_eq!(detail.request.method, HttpMethod::Head);
+            assert_eq!(detail.request.url, server.localhost_json_url());
+            assert_eq!(detail.response_status, Some(200));
+            assert_eq!(detail.response_bytes, Some(0));
+            let resolution = detail
+                .resolution
+                .as_ref()
+                .expect("localhost HEAD executions persist a resolution binding");
+            assert_eq!(resolution.requested_host, "localhost");
+            assert_eq!(resolution.port, server.port());
+            assert!(resolution.loopback_only);
+            assert!(!resolution.addresses.is_empty());
+            for address in &resolution.addresses {
+                let parsed = address.address.parse::<std::net::IpAddr>().unwrap();
+                assert!(parsed.is_loopback());
+                let expected_family = if parsed.is_ipv4() {
+                    HttpAddressFamily::Ipv4
+                } else {
+                    HttpAddressFamily::Ipv6
+                };
+                assert_eq!(address.family, expected_family);
+            }
+        }
+        other => panic!("expected canonical http-request observation, got {other:?}"),
+    }
+}
+
+#[test]
 fn http_head_happy_path_executes_through_real_host_path() {
     let server = http_test_server::HttpTestServer::start();
     let registry = load_registry();
@@ -814,6 +896,63 @@ fn proof_only_replay_transport_replays_deterministic_localhost_gets_with_explici
 }
 
 #[test]
+fn proof_only_replay_transport_replays_deterministic_localhost_heads_with_explicit_port_binding() {
+    let registry = load_registry();
+    let replay_url = "http://localhost:18080/response.json";
+    let expected_binding = localhost_resolution_binding(18080);
+    let runner = build_replay_runner(vec![localhost_head_http_replay_fixture(replay_url, 18080)]);
+    let grants = CapabilityGrantSet {
+        grants: vec![http_grant(
+            "localhost",
+            18080,
+            "/response.json",
+            &[HttpMethod::Head],
+            &[HttpScheme::Http],
+            2_000,
+            4_096,
+        )],
+    };
+    let input = json!({
+        "url": replay_url,
+        "method": "head",
+    });
+
+    let first = run_http_skill(
+        &registry,
+        &runner,
+        input.clone(),
+        grants.clone(),
+        Budget::default(),
+    )
+    .unwrap();
+    let second = run_http_skill(&registry, &runner, input, grants, Budget::default()).unwrap();
+
+    assert_eq!(first.status, ExecutionStatus::Succeeded);
+    assert_eq!(second.status, ExecutionStatus::Succeeded);
+    assert_eq!(
+        first.output.as_ref().unwrap().structured,
+        second.output.as_ref().unwrap().structured
+    );
+    assert_eq!(first.authority_observations, second.authority_observations);
+    assert_eq!(first.output.as_ref().unwrap().structured["method"], "head");
+    assert_eq!(
+        first.output.as_ref().unwrap().structured["response_bytes"],
+        0
+    );
+    match &first.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            assert_eq!(detail.request.method, HttpMethod::Head);
+            assert_eq!(detail.request.url, replay_url);
+            assert_eq!(detail.response_status, Some(200));
+            assert_eq!(detail.response_bytes, Some(0));
+            assert_eq!(detail.resolution.as_ref(), Some(&expected_binding));
+        }
+        other => panic!("expected canonical http-request observation, got {other:?}"),
+    }
+}
+
+#[test]
 fn proof_only_replay_transport_replays_deterministic_loopback_gets_with_default_port() {
     let registry = load_registry();
     let replay_url = "http://127.0.0.1/response.json";
@@ -960,20 +1099,20 @@ fn proof_only_replay_catalog_rejects_localhost_fixtures_without_resolution_bindi
 }
 
 #[test]
-fn proof_only_replay_catalog_rejects_localhost_head_fixtures() {
+fn proof_only_replay_catalog_rejects_localhost_head_fixtures_without_explicit_port() {
     let error =
         match Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(vec![
             HttpReplayFixture {
                 method: HttpMethod::Head,
-                url: "http://localhost:18080/response.json".into(),
+                url: "http://localhost/response.json".into(),
                 response_status: 200,
                 response_content_type: Some("application/json".into()),
                 response_body: Vec::new(),
                 redirect_location: None,
-                resolution_binding: Some(localhost_resolution_binding(18080)),
+                resolution_binding: Some(localhost_resolution_binding(80)),
             },
         ]) {
-            Ok(_) => panic!("localhost HEAD replay fixtures should stay out of scope"),
+            Ok(_) => panic!("default-port localhost HEAD replay fixtures should stay out of scope"),
             Err(error) => error,
         };
 

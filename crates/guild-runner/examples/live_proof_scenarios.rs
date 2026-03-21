@@ -191,9 +191,14 @@ fn localhost_resolution_binding(port: u16) -> HttpResolutionBinding {
     }
 }
 
-fn localhost_http_replay_fixture(url: &str, port: u16, body: &str) -> HttpReplayFixture {
+fn localhost_http_replay_fixture_for_method(
+    method: HttpMethod,
+    url: &str,
+    port: u16,
+    body: &str,
+) -> HttpReplayFixture {
     HttpReplayFixture {
-        method: HttpMethod::Get,
+        method,
         url: url.to_owned(),
         response_status: 200,
         response_content_type: Some("application/json".into()),
@@ -201,6 +206,14 @@ fn localhost_http_replay_fixture(url: &str, port: u16, body: &str) -> HttpReplay
         redirect_location: None,
         resolution_binding: Some(localhost_resolution_binding(port)),
     }
+}
+
+fn localhost_http_replay_fixture(url: &str, port: u16, body: &str) -> HttpReplayFixture {
+    localhost_http_replay_fixture_for_method(HttpMethod::Get, url, port, body)
+}
+
+fn localhost_head_http_replay_fixture(url: &str, port: u16) -> HttpReplayFixture {
+    localhost_http_replay_fixture_for_method(HttpMethod::Head, url, port, "")
 }
 
 fn redirect_replay_fixture(url: &str, redirect_location: &str) -> HttpReplayFixture {
@@ -518,6 +531,41 @@ fn run_http_request_head_default_port_bounded() -> serde_json::Value {
     })
 }
 
+fn run_http_request_localhost_head_bounded() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/inspect-http-json"));
+    let registry = temp.load();
+    let replay_url = "http://localhost:18080/response.json";
+    let runner = build_replay_runner(vec![localhost_head_http_replay_fixture(replay_url, 18080)]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "head",
+                }),
+                CapabilityGrantSet {
+                    grants: vec![head_http_grant("localhost", 18080, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "http-request-localhost-head-bounded",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
 fn run_http_request_redirect_unsupported() -> serde_json::Value {
     let temp = TempRegistry::new();
     temp.install(repo_root().join("examples/skills/inspect-http-json"));
@@ -644,6 +692,7 @@ fn main() {
         "http-request-bounded" => run_http_request_bounded(),
         "http-request-default-port-bounded" => run_http_request_default_port_bounded(),
         "http-request-localhost-bounded" => run_http_request_localhost_bounded(),
+        "http-request-localhost-head-bounded" => run_http_request_localhost_head_bounded(),
         "http-request-head-bounded" => run_http_request_head_bounded(),
         "http-request-head-default-port-bounded" => run_http_request_head_default_port_bounded(),
         "http-request-redirect-unsupported" => run_http_request_redirect_unsupported(),

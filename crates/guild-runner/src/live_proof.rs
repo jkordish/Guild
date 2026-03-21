@@ -388,7 +388,7 @@ where
                 support: LiveProofSupport::BoundedLiveProof,
                 proof_status: Some("bounded_minimal".into()),
                 reason_codes: stable_sorted_strings(reasons.clone()),
-                notes: "The family was removable for this invocation under the bounded fixture-backed HTTP replay slice: one loopback IP GET or HEAD request with either an explicit port or the default HTTP port, or one explicit-port localhost GET request with a deterministic loopback-only resolution binding.".into(),
+                notes: "The family was removable for this invocation under the bounded fixture-backed HTTP replay slice: one loopback IP GET or HEAD request with either an explicit port or the default HTTP port, or one explicit-port localhost GET or HEAD request with a deterministic loopback-only resolution binding.".into(),
             },
             reasons,
         );
@@ -433,7 +433,7 @@ where
         ),
         baseline_projection,
         comparator,
-        "trial-http-request-shrink-observed-loopback-get",
+        "trial-http-request-shrink-observed-request",
     );
     let reduction_matched = reduction.matched;
     trials.push(reduction.trial);
@@ -468,7 +468,7 @@ where
             support: LiveProofSupport::BoundedLiveProof,
             proof_status: Some(proof_status.into()),
             reason_codes: stable_sorted_strings(reasons.clone()),
-            notes: "Bounded live proof for http-request currently covers only one replay-fixtured request under the normalized inspect-output comparator: a loopback IP-literal GET or HEAD with either an explicit port or the implicit default HTTP port, or an explicit-port localhost GET with a deterministic loopback-only resolution binding. All slices remain exact-path, query-free, redirect-free, and single-request only.".into(),
+            notes: "Bounded live proof for http-request currently covers only one replay-fixtured request under the normalized inspect-output comparator: a loopback IP-literal GET or HEAD with either an explicit port or the implicit default HTTP port, or an explicit-port localhost GET or HEAD with a deterministic loopback-only resolution binding. All slices remain exact-path, query-free, redirect-free, and single-request only.".into(),
         },
         reasons,
     )
@@ -642,10 +642,10 @@ fn observed_http_request_cap(
                 "Bounded http-request live proof currently supports hostname replay only for exact localhost.".into(),
             ));
         }
-        if request.method != HttpMethod::Get {
+        if !matches!(request.method, HttpMethod::Get | HttpMethod::Head) {
             return Err((
                 "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
-                "Bounded http-request hostname live proof currently supports only explicit-port localhost GET requests.".into(),
+                "Bounded http-request hostname live proof currently supports only explicit-port localhost GET and HEAD requests.".into(),
             ));
         }
         if parsed_url.port().is_none() {

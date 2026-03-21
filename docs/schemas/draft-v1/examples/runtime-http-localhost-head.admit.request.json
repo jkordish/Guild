@@ -1,0 +1,68 @@
+{
+  "kind": "guild.admission_request",
+  "version": "1.0.0",
+  "request_id": "urn:guild:request:runtime-http-localhost-head:admit:v1",
+  "contract": {
+    "contract_id": "urn:guild:contract:runtime-http-localhost-head:v1",
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "695a732b9caf3adca2dcb77d9467976541809255a2b050ec0d030533bf890a88"
+    }
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "ac8ab4fe8898002fe4c13ef4d5fdbb1ffafd237070966d750474970fe56d9cb7"
+    }
+  },
+  "runtime_candidates": [
+    {
+      "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+    }
+  ],
+  "preferred_runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+  "requested_authority": {
+    "grants": [
+      {
+        "family": "http-request",
+        "scope": {
+          "kind": "network",
+          "allowed_schemes": [
+            "http"
+          ],
+          "allowed_hosts": [
+            "localhost"
+          ],
+          "allowed_ports": [
+            18080
+          ],
+          "allowed_methods": [
+            "HEAD"
+          ],
+          "allowed_path_prefixes": [
+            "/response.json"
+          ]
+        },
+        "cardinality": {
+          "max_calls": 1,
+          "max_bytes": 4096
+        }
+      }
+    ],
+    "ttl_seconds": 120
+  },
+  "requested_witness_level": "hostcall",
+  "audience_binding_inputs": [],
+  "resource_binding_inputs": [],
+  "delegation_chain_input": {
+    "caller_chain": [
+      "urn:guild:actor:runtime-alignment-test"
+    ],
+    "requested_max_hops": 0
+  },
+  "invocation_constraints": {
+    "valid_for_seconds": 120
+  }
+}

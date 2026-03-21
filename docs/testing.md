@@ -42,7 +42,7 @@ For M8c, that validation path now also checks the live-runtime alignment layer e
 - live Rust `authority_observations` fixtures are normalized into draft-v1 witnesses without silently widening vocabulary
 - direct canonical `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations now stay direct through plan, token, and witness handling
 - a real bounded live `read-resource` proof is generated through the Rust runtime and then consumed by the draft token and witness layers
-- a real bounded `http-request` live proof is generated for five deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` with a deterministic loopback-only resolution binding, and unsupported redirect or no-replay cases stay fail-closed
+- a real bounded `http-request` live proof is generated for six deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` and `HEAD` with deterministic loopback-only resolution bindings, and unsupported redirect or no-replay cases stay fail-closed
 - a real live `log-write` family proof is checked over the observed discrete log-level slice without pretending that `emit-evidence` became proven at the same time
 - legacy `net.connect` and `component.invoke` compatibility paths are still checked explicitly as deprecated narrowing-only aliases rather than being treated as canonical support
 
@@ -89,8 +89,8 @@ Current live-runtime claim status after M8c is explicit and per family:
 
 - M5 now has bounded live proof for `read-resource` over immutable Guild execution/object-record roots only
 - M5 now has real live family proof for `log-write` over the observed discrete level slice
-- M5 now has bounded live proof for `http-request` only over five deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` with a deterministic loopback-only resolution binding, all with no query and no redirects
-- M5 still remains `not_proven` for `localhost` default-port `GET`, `localhost` `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised `http-request` calls, `https`, `invoke-skill`, and `emit-evidence`
+- M5 now has bounded live proof for `http-request` only over six deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` and `HEAD` with deterministic loopback-only resolution bindings, all with no query and no redirects
+- M5 still remains `not_proven` for `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised `http-request` calls, `https`, `invoke-skill`, and `emit-evidence`
 - M6 now issues and verifies direct canonical scopes for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, but it remains a draft-local token layer
 - M8c now proves honest live end-to-end chains for `read-resource` and for the narrow bounded `http-request` replay slices: plan -> proof -> token -> witness
 - M7 witness linkage now stays proof-linked only where the supplied proof is a real live-runtime proof and otherwise remains explicitly unlinked

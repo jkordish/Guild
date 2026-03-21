@@ -52,12 +52,12 @@ Current live-alignment status is explicit:
 - M5 is now live-backed only where the Rust runtime actually proves it:
   - `read-resource`: bounded live proof over immutable `guild://executions/` and `guild://objects/records/` roots only
   - `log-write`: live proof over the observed discrete log-level slice
-  - `http-request`: bounded live proof only for five deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` with a deterministic loopback-only resolution binding, all with no query and no redirects, under the normalized inspect-output comparator
+  - `http-request`: bounded live proof only for six deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` and `HEAD` with deterministic loopback-only resolution bindings, all with no query and no redirects, under the normalized inspect-output comparator
   - `invoke-skill`: `not_proven`
   - `emit-evidence`: `not_proven`
 - M6 now issues and verifies direct canonical family scopes, and it can consume live proofs where they exist, but it remains a draft-local HMAC token layer and does not justify runtime-general enforcement claims
 - M8c now proves honest live end-to-end chains for `read-resource` and for the bounded `http-request` replay slices: plan -> bounded live proof -> proof-backed token -> proof-linked witness
-- broader `http-request` shapes, including `localhost` default-port `GET`, `localhost` `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, plus `invoke-skill` and `emit-evidence`, still stay on explicit upper-bound-only token behavior and unlinked witness behavior because live proof is not yet honest for them
+- broader `http-request` shapes, including `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, plus `invoke-skill` and `emit-evidence`, still stay on explicit upper-bound-only token behavior and unlinked witness behavior because live proof is not yet honest for them
 
 ## Design stance
 

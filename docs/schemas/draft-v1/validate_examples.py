@@ -28,6 +28,7 @@ EXAMPLES = [
     ("skill_contract.schema.json", "examples/runtime-http-read.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-read-default-port.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-localhost.contract.json"),
+    ("skill_contract.schema.json", "examples/runtime-http-localhost-head.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-head.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-head-default-port.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-redirect.contract.json"),
@@ -68,6 +69,7 @@ EXAMPLES = [
     ("admission_request.schema.json", "examples/runtime-http-read.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-read-default-port.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-localhost.admit.request.json"),
+    ("admission_request.schema.json", "examples/runtime-http-localhost-head.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-head.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-head-default-port.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-redirect.admit.request.json"),
@@ -1349,6 +1351,10 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     http_localhost_request = load_json("examples/runtime-http-localhost.admit.request.json")
     http_localhost_invocation = load_json("examples/runtime-http-localhost.invocation.json")
     http_localhost_record = load_json("examples/runtime-http-localhost.execution-record.json")
+    http_localhost_head_contract = load_json("examples/runtime-http-localhost-head.contract.json")
+    http_localhost_head_request = load_json("examples/runtime-http-localhost-head.admit.request.json")
+    http_localhost_head_invocation = load_json("examples/runtime-http-localhost-head.invocation.json")
+    http_localhost_head_record = load_json("examples/runtime-http-localhost-head.execution-record.json")
     http_head_contract = load_json("examples/runtime-http-head.contract.json")
     http_head_request = load_json("examples/runtime-http-head.admit.request.json")
     http_head_invocation = load_json("examples/runtime-http-head.invocation.json")
@@ -1371,6 +1377,9 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     http_plan = build_execution_plan(http_contract, http_request, [runtime])
     http_default_port_plan = build_execution_plan(http_default_port_contract, http_default_port_request, [runtime])
     http_localhost_plan = build_execution_plan(http_localhost_contract, http_localhost_request, [runtime])
+    http_localhost_head_plan = build_execution_plan(
+        http_localhost_head_contract, http_localhost_head_request, [runtime]
+    )
     http_head_plan = build_execution_plan(http_head_contract, http_head_request, [runtime])
     http_head_default_port_plan = build_execution_plan(
         http_head_default_port_contract, http_head_default_port_request, [runtime]
@@ -1382,6 +1391,7 @@ def verify_live_runtime_alignment_cases() -> list[str]:
         ("runtime-http-read", http_plan),
         ("runtime-http-read-default-port", http_default_port_plan),
         ("runtime-http-localhost", http_localhost_plan),
+        ("runtime-http-localhost-head", http_localhost_head_plan),
         ("runtime-http-head", http_head_plan),
         ("runtime-http-head-default-port", http_head_default_port_plan),
         ("runtime-http-redirect", http_redirect_plan),
@@ -2056,6 +2066,211 @@ def verify_live_runtime_alignment_cases() -> list[str]:
             "runtime-http-localhost live witness did not satisfy the bounded canonical localhost http-request claim"
         )
 
+    http_localhost_head_proof, http_localhost_head_scenario = build_live_runtime_proof_record(
+        scenario_name="http-request-localhost-head-bounded",
+        plan=http_localhost_head_plan,
+        contract=http_localhost_head_contract,
+        runtime=runtime,
+        invocation_input=http_localhost_head_invocation,
+        created_at="2026-03-21T05:20:00Z",
+    )
+    http_localhost_head_proof_errors = validate_instance(
+        "proof_record.schema.json", http_localhost_head_proof, registry
+    )
+    failures.extend(
+        f"runtime-http-localhost-head live proof schema validation failed: {error}"
+        for error in http_localhost_head_proof_errors
+    )
+    http_localhost_head_family_status = next(
+        (
+            entry
+            for entry in http_localhost_head_proof["family_proof_statuses"]
+            if entry["family"] == "http-request"
+        ),
+        None,
+    )
+    if http_localhost_head_proof["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append(
+            "runtime-http-localhost-head live proof record did not mark proof_source_kind as live-runtime"
+        )
+    if http_localhost_head_proof["proof_status"] != "bounded_minimal":
+        failures.append("runtime-http-localhost-head live proof did not stay bounded_minimal")
+    if http_localhost_head_proof.get("replay_input_digest") is None:
+        failures.append("runtime-http-localhost-head live proof record did not retain the replay input digest")
+    if (
+        http_localhost_head_proof["cache"]["key_material"].get("replay_input_digest")
+        != http_localhost_head_proof.get("replay_input_digest")
+    ):
+        failures.append(
+            "runtime-http-localhost-head live proof cache key material did not retain the replay input digest"
+        )
+    if (
+        http_localhost_head_family_status is None
+        or http_localhost_head_family_status["support"] != "bounded-live-proof"
+        or "HTTP_LIVE_PROOF_BOUNDED" not in http_localhost_head_family_status["reason_codes"]
+    ):
+        failures.append(
+            "runtime-http-localhost-head live proof did not carry honest bounded http-request family support metadata"
+        )
+    if http_localhost_head_proof["residual_authority_plan"]["grants"]:
+        failures.append(
+            "runtime-http-localhost-head live proof unexpectedly left residual authority outside the proven envelope"
+        )
+    localhost_head_observation = http_localhost_head_scenario["baseline_execution_record"]["authority_observations"][0][
+        "detail"
+    ].get("resolution")
+    if localhost_head_observation is None:
+        failures.append("runtime-http-localhost-head live proof baseline did not retain a resolution binding")
+    else:
+        if localhost_head_observation.get("requested_host") != "localhost":
+            failures.append(
+                "runtime-http-localhost-head live proof baseline did not bind the literal localhost host"
+            )
+        if localhost_head_observation.get("port") != 18080:
+            failures.append(
+                "runtime-http-localhost-head live proof baseline did not bind the explicit localhost port"
+            )
+        if localhost_head_observation.get("loopback_only") is not True:
+            failures.append(
+                "runtime-http-localhost-head live proof baseline did not keep loopback-only resolution semantics"
+            )
+        if localhost_head_observation.get("addresses") != [{"address": "127.0.0.1", "family": "ipv4"}]:
+            failures.append(
+                "runtime-http-localhost-head live proof baseline did not retain the deterministic resolved address and family binding"
+            )
+
+    http_localhost_head_token = create_root_token(
+        http_localhost_head_plan,
+        http_localhost_head_contract,
+        issuer,
+        holder_id="urn:guild:service:runtime-http-localhost-head",
+        issued_at="2026-03-21T05:20:15Z",
+        proof=http_localhost_head_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        audiences=["runtime-http-localhost-head"],
+        resource_bindings=[
+            {
+                "family": "http-request",
+                "audience": "runtime-http-localhost-head",
+                "resource": "HEAD:http://localhost:18080/response.json",
+            }
+        ],
+        chain_links=["urn:guild:actor:runtime-alignment-test"],
+    )
+    if http_localhost_head_token.get("kind") != "guild.delegated_capability_token":
+        failures.append(
+            "runtime-http-localhost-head live proof-backed token issuance did not produce a delegated capability token"
+        )
+        return failures
+    if (
+        http_localhost_head_token["issuance_basis"] != "m5_proven_subset"
+        or http_localhost_head_token.get("proof_source_kind") != PROOF_SOURCE_LIVE_RUNTIME
+    ):
+        failures.append("runtime-http-localhost-head token did not stay explicitly live proof-backed")
+
+    http_localhost_head_token_verification = verify_token(
+        http_localhost_head_token,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:20:20Z",
+        expected_holder_id="urn:guild:service:runtime-http-localhost-head",
+        expected_audiences=["runtime-http-localhost-head"],
+        expected_resources=[
+            {
+                "family": "http-request",
+                "audience": "runtime-http-localhost-head",
+                "resource": "HEAD:http://localhost:18080/response.json",
+            }
+        ],
+        expected_runtime_guarantee_id="urn:guild:runtime:wasmtime-strict:v1",
+        expected_call_chain_links=http_localhost_head_token["call_chain"]["links"],
+        plan=http_localhost_head_plan,
+        contract=http_localhost_head_contract,
+        proof=http_localhost_head_proof,
+        check_replay=False,
+    )
+    if (
+        not http_localhost_head_token_verification["verified"]
+        or http_localhost_head_token_verification["decision"] != "allow"
+    ):
+        failures.append("runtime-http-localhost-head live proof-backed token did not verify cleanly")
+
+    http_localhost_head_witness = generate_witness(
+        plan=http_localhost_head_plan,
+        contract=http_localhost_head_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-21T05:20:30Z",
+        invocation_input=http_localhost_head_invocation,
+        proof=http_localhost_head_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        token=http_localhost_head_token,
+        observation={
+            "source_kind": LIVE_RUNTIME_SOURCE_KIND,
+            "execution_record": http_localhost_head_record,
+        },
+        redaction_profile="none",
+    )
+    if (
+        http_localhost_head_witness["proof_basis"] is None
+        or http_localhost_head_witness["proof_basis"]["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME
+    ):
+        failures.append("runtime-http-localhost-head witness did not keep an honest live proof linkage")
+    http_localhost_head_verification = verify_witness(
+        http_localhost_head_witness,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:21:00Z",
+        plan=http_localhost_head_plan,
+        contract=http_localhost_head_contract,
+        proof=http_localhost_head_proof,
+        token=http_localhost_head_token,
+    )
+    if (
+        not http_localhost_head_verification["verified"]
+        or http_localhost_head_verification["witness_status"] != "within_envelope"
+    ):
+        failures.append("runtime-http-localhost-head live witness did not verify as within_envelope")
+    http_localhost_head_proof_claim = verify_claim(
+        http_localhost_head_witness,
+        {
+            "claim_type": "no_authority_use_outside_proof",
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:21:00Z",
+        plan=http_localhost_head_plan,
+        contract=http_localhost_head_contract,
+        proof=http_localhost_head_proof,
+        token=http_localhost_head_token,
+    )
+    if http_localhost_head_proof_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append(
+            "runtime-http-localhost-head live witness did not satisfy the proof-envelope absence claim"
+        )
+    http_localhost_head_claim = verify_claim(
+        http_localhost_head_witness,
+        {
+            "claim_type": "no_http_request_outside_scope",
+            "http_request_scope": {
+                "kind": "network",
+                "allowed_schemes": ["http"],
+                "allowed_hosts": ["localhost"],
+                "allowed_ports": [18080],
+                "allowed_methods": ["HEAD"],
+                "allowed_path_prefixes": ["/response.json"],
+                "follow_redirects": False,
+            },
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:21:00Z",
+        plan=http_localhost_head_plan,
+        contract=http_localhost_head_contract,
+        proof=http_localhost_head_proof,
+        token=http_localhost_head_token,
+    )
+    if http_localhost_head_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append(
+            "runtime-http-localhost-head live witness did not satisfy the bounded canonical localhost HEAD http-request claim"
+        )
+
     http_head_proof, _http_head_scenario = build_live_runtime_proof_record(
         scenario_name="http-request-head-bounded",
         plan=http_head_plan,
@@ -2629,6 +2844,7 @@ def verify_family_support_matrix() -> list[str]:
         "localhost-get-explicit-port",
         "loopback-ip-head-explicit-port",
         "loopback-ip-head-default-port",
+        "localhost-head-explicit-port",
     }:
         failures.append("family_support_matrix.json did not retain the exact proven http-request slice inventory")
     default_port_slice = next(
@@ -2669,10 +2885,24 @@ def verify_family_support_matrix() -> list[str]:
         failures.append(
             "family_support_matrix.json did not describe the explicit-port localhost GET resolver-bound slice honestly"
         )
+    localhost_head_slice = next(
+        (entry for entry in http_slices if entry.get("slice_id") == "localhost-head-explicit-port"),
+        None,
+    )
+    if (
+        localhost_head_slice is None
+        or localhost_head_slice.get("request_shape", {}).get("host_form") != "loopback-hostname-localhost"
+        or localhost_head_slice.get("request_shape", {}).get("method") != "HEAD"
+        or localhost_head_slice.get("request_shape", {}).get("port_form") != "explicit"
+        or localhost_head_slice.get("request_shape", {}).get("resolution_binding") != "required"
+    ):
+        failures.append(
+            "family_support_matrix.json did not describe the explicit-port localhost HEAD resolver-bound slice honestly"
+        )
     not_proven_http_shapes = {
         entry.get("shape_id") for entry in families["http-request"].get("not_proven_shapes", [])
     }
-    if "hostname-forms-beyond-explicit-port-localhost-get" not in not_proven_http_shapes:
+    if "hostname-forms-beyond-explicit-port-localhost-get-or-head" not in not_proven_http_shapes:
         failures.append("family_support_matrix.json did not keep unsupported hostname-form http-request shapes explicit")
     if "query-or-fragment" not in not_proven_http_shapes:
         failures.append("family_support_matrix.json did not keep query-bearing http-request shapes not_proven")

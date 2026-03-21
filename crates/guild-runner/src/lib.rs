@@ -465,10 +465,10 @@ fn validate_http_replay_fixture(fixture: &HttpReplayFixture) -> Result<(), Execu
         }))
         .with_phase(ExecutionPhase::Validation));
     }
-    if fixture.method != HttpMethod::Get {
+    if !matches!(fixture.method, HttpMethod::Get | HttpMethod::Head) {
         return Err(ExecutionError::new(
             "http-replay-fixture-invalid",
-            "proof-only HTTP hostname replay fixtures currently support only GET requests",
+            "proof-only HTTP hostname replay fixtures currently support only GET and HEAD requests",
         )
         .with_detail(serde_json::json!({
             "method": fixture.method,
@@ -3599,12 +3599,12 @@ fn execute_http_request_via_replay(
     };
     if !is_ip_literal_loopback
         && (parsed_request.host != "localhost"
-            || request.method != HttpMethod::Get
+            || !matches!(request.method, HttpMethod::Get | HttpMethod::Head)
             || parsed_url.port().is_none())
     {
         return Err(SkillError {
             code: "http-replay-request-unsupported".into(),
-            message: "proof-only HTTP replay hostname support is limited to explicit-port localhost GET requests with deterministic resolution bindings".into(),
+            message: "proof-only HTTP replay hostname support is limited to explicit-port localhost GET and HEAD requests with deterministic resolution bindings".into(),
             retryable: false,
             detail: Some(serde_json::json!({
                 "url": request.url,
