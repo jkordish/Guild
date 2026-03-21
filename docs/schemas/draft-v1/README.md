@@ -53,11 +53,11 @@ Current live-alignment status is explicit:
   - `read-resource`: bounded live proof over immutable `guild://executions/` and `guild://objects/records/` roots only
   - `log-write`: live proof over the observed discrete log-level slice
   - `http-request`: bounded live proof only for six deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` and `HEAD` with deterministic loopback-only resolution bindings, all with no query and no redirects, under the normalized inspect-output comparator
-  - `invoke-skill`: `not_proven`
+  - `invoke-skill`: bounded live proof only for one exact single-child slice where one declared alias resolves through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, the child-aware normalized inspect comparator, and zero nested child executions
   - `emit-evidence`: `not_proven`
 - M6 now issues and verifies direct canonical family scopes, and it can consume live proofs where they exist, but it remains a draft-local HMAC token layer and does not justify runtime-general enforcement claims
-- M8c now proves honest live end-to-end chains for `read-resource` and for the bounded `http-request` replay slices: plan -> bounded live proof -> proof-backed token -> proof-linked witness
-- broader `http-request` shapes, including `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, plus `invoke-skill` and `emit-evidence`, still stay on explicit upper-bound-only token behavior and unlinked witness behavior because live proof is not yet honest for them
+- M8c now proves honest live end-to-end chains for `read-resource`, for the bounded `http-request` replay slices, and for the exact bounded single-child `invoke-skill` slice: plan -> bounded live proof -> proof-backed token -> proof-linked witness
+- broader `http-request` shapes, including `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, broader `invoke-skill` shapes including dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, and non-inspect child targets, plus `emit-evidence`, still stay on explicit upper-bound-only token behavior and unlinked witness behavior because live proof is not yet honest for them
 
 ## Design stance
 
@@ -472,7 +472,7 @@ All bundled examples validate cleanly against the bundled schemas when run with 
 - fixed-claim evaluation success for proof-backed token absence and bounded delegation claims
 - explicit non-success for negative claims blocked by incomplete coverage or redaction
 - deterministic repeated M7 witness generation and MAC output for identical inputs
-- live-runtime alignment cases covering bounded live `read-resource` proof with proof-backed token and proof-linked witness, bounded live `http-request` proof with proof-backed token and proof-linked witness for the replay-fixtured loopback IP `GET` and `HEAD` slices with either an explicit port or the implicit default HTTP port plus the explicit-port `localhost` `GET` slice with a deterministic loopback-only resolution binding, unsupported redirect and no-replay `http-request` fail-closed behavior, exact live `log-write` family proof over the observed level slice, deterministic canonicalization, and explicit alias deprecation or rejection
+- live-runtime alignment cases covering bounded live `read-resource` proof with proof-backed token and proof-linked witness, bounded live `http-request` proof with proof-backed token and proof-linked witness for the replay-fixtured loopback IP `GET` and `HEAD` slices with either an explicit port or the implicit default HTTP port plus the explicit-port `localhost` `GET` and `HEAD` slices with deterministic loopback-only resolution bindings, bounded live `invoke-skill` proof with proof-backed token and proof-linked witness for the exact single-child zero-authority inspect slice, unsupported multi-child `invoke-skill` fail-closed behavior, unsupported redirect and no-replay `http-request` fail-closed behavior, exact live `log-write` family proof over the observed level slice, deterministic canonicalization, and explicit alias deprecation or rejection
 
 `compatibility_check.py` regenerates the derived hard-requirement compatibility matrix and asserts the fail-closed negative probes for omitted and unsupported `wit_worlds` support.
 

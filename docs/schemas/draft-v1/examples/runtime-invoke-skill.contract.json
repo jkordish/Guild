@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "contract_id": "urn:guild:contract:runtime-invoke-skill:v1",
   "component": {
-    "name": "runtime-invoke-skill-example",
+    "name": "invoke-parent-single-child",
     "digest": {
       "algorithm": "sha256",
       "value": "a41daeeed2e0f92873c8766a300ab831e6462e0bfd32d7c4f2879fe8b5ea6ae2"
@@ -13,8 +13,8 @@
     "wit_world": "guild-skill-inspect-v1"
   },
   "export": {
-    "name": "invoke_dependency",
-    "interface": "example/runtime-invoke-skill",
+    "name": "run",
+    "interface": "example/invoke-parent-single-child",
     "version": "1.0.0"
   },
   "input_class_fingerprint": {
@@ -31,7 +31,7 @@
       "scope": {
         "kind": "skill",
         "aliases": [
-          "hello"
+          "child"
         ]
       },
       "cardinality": {
@@ -55,7 +55,7 @@
       "scope": {
         "kind": "skill",
         "aliases": [
-          "hello"
+          "child"
         ]
       },
       "cardinality": {
@@ -113,5 +113,5 @@
     "ttl_seconds_max": 300
   },
   "witness_level": "hostcall",
-  "notes": "Direct canonical invoke-skill example. The current runtime scope is intentionally alias-only because that is the real live Rust authority shape today."
+  "notes": "Direct canonical invoke-skill example for the one bounded live-proof-backed slice only: one declared dependency alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1."
 }

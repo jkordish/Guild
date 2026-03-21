@@ -9,9 +9,9 @@ use guild_types::{
     Budget, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
     CapabilityId, EmitEvidenceConstraints, EvidenceAudience, ExecutionMode, GrantedCapability,
     HttpAddressFamily, HttpMethod, HttpRequestConstraints, HttpResolutionBinding,
-    HttpResolvedAddress, HttpScheme, PolicyDecision, PolicyDecisionOutcome,
-    ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope,
-    ResourceKind, Severity, SkillKey, VersionRequirement,
+    HttpResolvedAddress, HttpScheme, InvokeDependencyConstraints, PolicyDecision,
+    PolicyDecisionOutcome, ReadResourceConstraints, RedactionClass, RequestedSkillRef,
+    ResolvedExecutionEnvelope, ResourceKind, Severity, SkillKey, VersionRequirement,
 };
 use serde_json::json;
 
@@ -61,6 +61,16 @@ fn emit_evidence_grant() -> GrantedCapability {
             max_bytes: Some(65_536),
             audiences: Some(vec![EvidenceAudience::User]),
             redactions: Some(vec![RedactionClass::None]),
+        }),
+    }
+}
+
+fn invoke_skill_grant(aliases: &[&str]) -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::InvokeSkill,
+        access: CapabilityAccess::Invoke,
+        constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+            aliases: Some(aliases.iter().map(|alias| (*alias).to_owned()).collect()),
         }),
     }
 }
@@ -683,6 +693,70 @@ fn run_log_write_reduced() -> serde_json::Value {
     })
 }
 
+fn run_invoke_skill_single_child_bounded() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/invoke-child-zero"));
+    temp.install(repo_root().join("examples/skills/invoke-parent-single-child"));
+    let registry = temp.load();
+    let runner = build_runner();
+    let parent = registry
+        .resolve(&requested_skill("invoke-parent-single-child"))
+        .unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &parent,
+            &envelope_for(
+                &parent,
+                json!({ "name": "Ada" }),
+                CapabilityGrantSet {
+                    grants: vec![invoke_skill_grant(&["child"])],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "invoke-skill-single-child-bounded",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
+fn run_invoke_skill_multi_child_unsupported() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/invoke-child-zero"));
+    temp.install(repo_root().join("examples/skills/invoke-parent-single-child"));
+    let registry = temp.load();
+    let runner = build_runner();
+    let parent = registry
+        .resolve(&requested_skill("invoke-parent-single-child"))
+        .unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &parent,
+            &envelope_for(
+                &parent,
+                json!({ "name": "Ada", "invoke_twice": true }),
+                CapabilityGrantSet {
+                    grants: vec![invoke_skill_grant(&["child"])],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "invoke-skill-multi-child-unsupported",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
 fn main() {
     let scenario = env::args()
         .nth(1)
@@ -698,6 +772,8 @@ fn main() {
         "http-request-redirect-unsupported" => run_http_request_redirect_unsupported(),
         "http-request-no-replay" | "http-request-not-proven" => run_http_request_no_replay(),
         "log-write-reduced" => run_log_write_reduced(),
+        "invoke-skill-single-child-bounded" => run_invoke_skill_single_child_bounded(),
+        "invoke-skill-multi-child-unsupported" => run_invoke_skill_multi_child_unsupported(),
         other => {
             eprintln!("unknown live proof scenario: {other}");
             std::process::exit(2);

@@ -78,7 +78,7 @@ It now also covers the draft-bundle M7 witness examples:
 - zero-authority witnessing with explicit negative-claim semantics
 - runtime-binding mismatch verification failure
 - vocabulary-mapping limitation handling that stays coverage-limited rather than pretending the unmapped effect did not happen
-- live-runtime alignment cases for bounded live `read-resource` proof-backed linkage, bounded live `http-request` proof-backed linkage over the replay-fixtured loopback IP `GET` and `HEAD` slices with either an explicit port or the implicit default HTTP port plus the explicit-port `localhost` `GET` slice with a deterministic loopback-only resolution binding, unsupported redirect and no-replay `http-request` fail-closed behavior, and exact live `log-write` family proof support
+- live-runtime alignment cases for bounded live `read-resource` proof-backed linkage, bounded live `http-request` proof-backed linkage over the replay-fixtured loopback IP `GET` and `HEAD` slices with either an explicit port or the implicit default HTTP port plus the explicit-port `localhost` `GET` and `HEAD` slices with deterministic loopback-only resolution bindings, bounded live `invoke-skill` proof-backed linkage for the exact single-child zero-authority inspect slice, unsupported multi-child `invoke-skill` fail-closed behavior, unsupported redirect and no-replay `http-request` fail-closed behavior, and exact live `log-write` family proof support
 - explicit alias deprecation or rejection checks for `net.connect`, `component.invoke`, and `net.resolve`
 - deterministic normalization of identical runtime-native inputs
 - fail-closed live proof prerequisite behavior
@@ -90,9 +90,10 @@ Current live-runtime claim status after M8c is explicit and per family:
 - M5 now has bounded live proof for `read-resource` over immutable Guild execution/object-record roots only
 - M5 now has real live family proof for `log-write` over the observed discrete level slice
 - M5 now has bounded live proof for `http-request` only over six deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` and `HEAD` with deterministic loopback-only resolution bindings, all with no query and no redirects
-- M5 still remains `not_proven` for `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised `http-request` calls, `https`, `invoke-skill`, and `emit-evidence`
+- M5 now has one bounded live-proof-backed `invoke-skill` slice only for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, the child-aware normalized inspect comparator, and zero nested child executions
+- M5 still remains `not_proven` for `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised `http-request` calls, `https`, broader `invoke-skill` shapes, and `emit-evidence`
 - M6 now issues and verifies direct canonical scopes for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`, but it remains a draft-local token layer
-- M8c now proves honest live end-to-end chains for `read-resource` and for the narrow bounded `http-request` replay slices: plan -> proof -> token -> witness
+- M8c now proves honest live end-to-end chains for `read-resource`, for the narrow bounded `http-request` replay slices, and for the exact bounded single-child `invoke-skill` slice: plan -> proof -> token -> witness
 - M7 witness linkage now stays proof-linked only where the supplied proof is a real live-runtime proof and otherwise remains explicitly unlinked
 - per-family, per-layer machine-readable status now lives in `docs/schemas/draft-v1/family_support_matrix.json`
 

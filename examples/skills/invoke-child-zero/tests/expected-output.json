@@ -1,0 +1,21 @@
+{
+  "summary": "Child hello for Ada.",
+  "structured": {
+    "echoed_input": {
+      "name": "Ada"
+    },
+    "mode": "inspect",
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "invoke-child-zero"
+      },
+      "version": "0.1.0",
+      "digest": "sha256:INSTALL_TIME_DIGEST"
+    },
+    "message": "child says hello to Ada"
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

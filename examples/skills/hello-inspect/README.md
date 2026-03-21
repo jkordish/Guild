@@ -3,6 +3,8 @@
 This example is intentionally small, but it now really runs through Guild's local inspect-only slice with a Wasmtime-backed Wasm component.
 
 It is the primitive skill used both on its own and as the child dependency for `hello-composite`.
+It is not the M8c proof-backed `invoke-skill` child fixture; that narrower slice
+uses `invoke-child-zero` because `hello-inspect` exercises `emit-evidence`.
 
 It proves:
 

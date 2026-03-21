@@ -9,19 +9,18 @@
     "skill": {
       "key": {
         "namespace": "example",
-        "name": "hello-composite"
+        "name": "invoke-parent-single-child"
       },
       "version_req": "^0.1"
     },
     "input": {
-      "name": "Ada",
-      "child_emit_log": false
+      "name": "Ada"
     }
   },
   "resolved_skill": {
     "key": {
       "namespace": "example",
-      "name": "hello-composite"
+      "name": "invoke-parent-single-child"
     },
     "version": "0.1.0",
     "digest": "sha256:a41daeeed2e0f92873c8766a300ab831e6462e0bfd32d7c4f2879fe8b5ea6ae2"
@@ -34,7 +33,7 @@
         "access": "invoke",
         "constraints": {
           "aliases": [
-            "hello"
+            "child"
           ]
         }
       }
@@ -45,7 +44,7 @@
       "family": "invoke-skill",
       "status": "exercised",
       "detail": {
-        "alias": "hello",
+        "alias": "child",
         "child_execution_id": "019d0cf7-6d12-7c21-81f7-7d1ff9d75a62",
         "child_status": "succeeded"
       }

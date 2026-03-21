@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InvokeParentSingleChildInput",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "invoke_twice": {
+      "type": "boolean"
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}

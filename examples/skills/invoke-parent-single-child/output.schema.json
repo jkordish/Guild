@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InvokeParentSingleChildOutput",
+  "type": "object",
+  "properties": {
+    "echoed_input": {
+      "type": "object"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "object"
+    },
+    "granted_capabilities": {
+      "type": "object"
+    },
+    "invocation_count": {
+      "type": "integer"
+    },
+    "invoked_aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "message": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "echoed_input",
+    "mode",
+    "skill",
+    "granted_capabilities",
+    "invocation_count",
+    "invoked_aliases",
+    "children",
+    "message"
+  ],
+  "additionalProperties": false
+}

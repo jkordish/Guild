@@ -2,10 +2,11 @@ use std::collections::BTreeSet;
 
 use guild_registry::{InstalledSkill, SkillRegistry};
 use guild_types::{
-    AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityConstraints,
-    CapabilityGrantSet, CapabilityId, ExecutionRecord, ExecutionStatus, GrantedCapability,
-    GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequestConstraints, HttpScheme,
-    LogConstraints, ReadResourceConstraints, ResolvedExecutionEnvelope, ResourceKind,
+    AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess,
+    CapabilityConstraints, CapabilityGrantSet, CapabilityId, ExecutionRecord, ExecutionStatus,
+    GrantedCapability, GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequestConstraints,
+    HttpScheme, InvokeDependencyConstraints, LogConstraints, ReadResourceConstraints,
+    ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -13,7 +14,8 @@ use sha2::{Digest, Sha256};
 use url::Url;
 
 use crate::{
-    ExecutionError, Runner, RuntimeAdapter, http_request_covers, is_redirect_status,
+    ExecutionError, INSPECT_WORLD_ENTRYPOINT, Runner, RuntimeAdapter, exact_requested_skill_ref,
+    http_request_covers, invoke_dependency_grants_collectively_cover, is_redirect_status,
     log_grants_collectively_cover, read_resource_grants_collectively_cover,
     reduce_grant_to_cap_set,
 };
@@ -25,6 +27,7 @@ const LIVE_PROOF_VERSION: &str = "1.0.0";
 pub enum LiveProofComparatorProfile {
     ExactOutput,
     NormalizedInspectOutputV1,
+    NormalizedInspectSingleChildInvokeV1,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -119,6 +122,14 @@ struct TrialResult {
     matched: bool,
 }
 
+#[derive(Debug, Clone)]
+struct ObservedInvokeSkillSlice {
+    alias: String,
+    expected_child: ResolvedSkillRef,
+    child_input_digest: String,
+    narrowed_capability: GrantedCapability,
+}
+
 #[allow(clippy::too_many_lines)]
 pub(crate) fn prove_live_authority<A, R>(
     runner: &Runner<A>,
@@ -133,9 +144,8 @@ where
 {
     let baseline_execution_record = runner.execute(registry, installed, envelope)?;
     let baseline_projection =
-        normalized_execution_projection(&baseline_execution_record, comparator);
+        normalized_execution_projection(registry, &baseline_execution_record, comparator);
     let baseline_output_digest = Some(sha256_json(&baseline_projection));
-    let replay_input_digest = runner.http_replay_input_digest();
 
     let mut proven_authority = CapabilityGrantSet::default();
     let mut residual_authority = CapabilityGrantSet::default();
@@ -184,11 +194,14 @@ where
                     &baseline_projection,
                     comparator,
                 ),
-                CapabilityId::InvokeSkill => unsupported_family_status(
-                    &family,
-                    &family_grants,
-                    "LIVE_REPLAY_UNAVAILABLE",
-                    "Invoke-skill still lacks an honest child-execution replay proof path, so live proof stays not_proven.",
+                CapabilityId::InvokeSkill => prove_invoke_skill_family(
+                    runner,
+                    registry,
+                    installed,
+                    envelope,
+                    &baseline_execution_record,
+                    &baseline_projection,
+                    comparator,
                 ),
                 CapabilityId::EmitEvidence => unsupported_family_status(
                     &family,
@@ -224,6 +237,14 @@ where
         &envelope.granted_capabilities,
         &proven_authority,
         &residual_authority,
+        &family_statuses,
+    );
+    let replay_input_digest = build_replay_input_digest(
+        runner,
+        registry,
+        installed,
+        &baseline_execution_record,
+        comparator,
         &family_statuses,
     );
     if residual_authority.grants.is_empty() {
@@ -273,6 +294,20 @@ fn comparator_descriptor(profile: LiveProofComparatorProfile) -> LiveProofCompar
             ],
             notes: "Normalized inspect comparator for deterministic bounded proof over host-owned metadata echoes.".into(),
         },
+        LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 => {
+            LiveProofComparatorDescriptor {
+                comparator_id:
+                    "guild.runner.live-proof.normalized-inspect-single-child-invoke.v1".into(),
+                version: LIVE_PROOF_VERSION.into(),
+                assumptions: vec![
+                    "Execution status must remain identical.".into(),
+                    "The comparator strips host-owned granted_capabilities echoes from inspect structured output.".into(),
+                    "The comparator strips host-minted evidence URIs while preserving evidence metadata and digests.".into(),
+                    "The comparator loads the persisted child execution record and compares the exact child digest binding, inspect ABI, canonical child input digest, normalized child output, and child execution count.".into(),
+                ],
+                notes: "Normalized inspect comparator for the bounded single-child invoke-skill slice. It compares the parent execution plus the persisted child execution record while ignoring host-minted execution and evidence record URIs.".into(),
+            }
+        }
     }
 }
 
@@ -501,6 +536,360 @@ fn http_request_not_proven(
         },
         reasons,
     )
+}
+
+fn invoke_skill_not_proven(
+    family_grants: Vec<GrantedCapability>,
+    reasons: Vec<String>,
+    notes: &str,
+    trials: Vec<LiveProofCandidateTrial>,
+) -> (
+    CapabilityGrantSet,
+    CapabilityGrantSet,
+    Vec<LiveProofCandidateTrial>,
+    LiveProofFamilyStatus,
+    Vec<String>,
+) {
+    (
+        CapabilityGrantSet::default(),
+        CapabilityGrantSet {
+            grants: family_grants,
+        },
+        trials,
+        LiveProofFamilyStatus {
+            family: CapabilityId::InvokeSkill,
+            support: LiveProofSupport::NotProven,
+            proof_status: Some("not_proven".into()),
+            reason_codes: stable_sorted_strings(reasons.clone()),
+            notes: notes.into(),
+        },
+        reasons,
+    )
+}
+
+#[allow(clippy::too_many_lines)]
+fn prove_invoke_skill_family<A, R>(
+    runner: &Runner<A>,
+    registry: &R,
+    installed: &InstalledSkill,
+    envelope: &ResolvedExecutionEnvelope,
+    baseline_record: &ExecutionRecord,
+    baseline_projection: &Value,
+    comparator: LiveProofComparatorProfile,
+) -> (
+    CapabilityGrantSet,
+    CapabilityGrantSet,
+    Vec<LiveProofCandidateTrial>,
+    LiveProofFamilyStatus,
+    Vec<String>,
+)
+where
+    A: RuntimeAdapter + Clone + 'static,
+    R: SkillRegistry + Clone + Send + Sync + 'static,
+{
+    let family = CapabilityId::InvokeSkill;
+    let family_grants = family_grants(&envelope.granted_capabilities, &family);
+    let mut trials = Vec::new();
+
+    if comparator != LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 {
+        return invoke_skill_not_proven(
+            family_grants,
+            vec!["INVOKE_SKILL_COMPARATOR_UNAVAILABLE".into()],
+            "Bounded invoke-skill live proof currently supports only the normalized inspect single-child comparator.",
+            trials,
+        );
+    }
+
+    let observed = match observed_invoke_skill_slice(registry, installed, baseline_record) {
+        Ok(observed) => observed,
+        Err((reason_code, notes)) => {
+            return invoke_skill_not_proven(
+                family_grants,
+                vec![reason_code.into()],
+                &notes,
+                trials,
+            );
+        }
+    };
+
+    let removal = run_family_trial(
+        runner,
+        registry,
+        installed,
+        envelope,
+        &family,
+        "remove_grant",
+        remove_family_grants(&envelope.granted_capabilities, &family),
+        baseline_projection,
+        comparator,
+        "trial-invoke-skill-remove-family",
+    );
+    let removal_matched = removal.matched;
+    trials.push(removal.trial);
+    if removal_matched {
+        let reasons = vec![
+            "INVOKE_SKILL_LIVE_PROOF_BOUNDED".into(),
+            "LIVE_PROOF_BOUNDED".into(),
+            "LIVE_PROOF_SUPPORTED".into(),
+        ];
+        return (
+            CapabilityGrantSet::default(),
+            CapabilityGrantSet::default(),
+            trials,
+            LiveProofFamilyStatus {
+                family,
+                support: LiveProofSupport::BoundedLiveProof,
+                proof_status: Some("bounded_minimal".into()),
+                reason_codes: stable_sorted_strings(reasons.clone()),
+                notes: "The family was removable for this invocation under the bounded single-child invoke comparator, which compares the parent output together with the persisted child execution record.".into(),
+            },
+            reasons,
+        );
+    }
+
+    let observed_refs = vec![&observed.narrowed_capability];
+    let mut reduced_family = Vec::new();
+    for grant in &family_grants {
+        for reduced in reduce_grant_to_cap_set(&observed_refs, grant) {
+            push_unique_grant(&mut reduced_family, reduced);
+        }
+    }
+
+    let CapabilityConstraints::InvokeDependency(expected) =
+        &observed.narrowed_capability.constraints
+    else {
+        unreachable!("observed invoke-skill cap always carries invoke constraints");
+    };
+    if !invoke_dependency_grants_collectively_cover(&reduced_family, expected) {
+        return invoke_skill_not_proven(
+            family_grants,
+            vec!["LIVE_SCOPE_SHRINK_UNSUPPORTED".into()],
+            "The bounded invoke-skill reduction could not preserve the exact exercised dependency alias.",
+            trials,
+        );
+    }
+
+    let reduction = run_family_trial(
+        runner,
+        registry,
+        installed,
+        envelope,
+        &family,
+        "shrink_scope",
+        replace_family_grants(
+            &envelope.granted_capabilities,
+            &family,
+            CapabilityGrantSet {
+                grants: reduced_family.clone(),
+            },
+        ),
+        baseline_projection,
+        comparator,
+        "trial-invoke-skill-shrink-observed-alias",
+    );
+    let reduction_matched = reduction.matched;
+    trials.push(reduction.trial);
+
+    if !reduction_matched {
+        return invoke_skill_not_proven(
+            family_grants,
+            vec!["LIVE_PROOF_PREREQUISITE_FAILED".into()],
+            "The bounded invoke-skill shrink changed parent or child execution behavior under the live comparator, so proof failed closed.",
+            trials,
+        );
+    }
+
+    let proof_status = if reduced_family == family_grants {
+        "no_reduction"
+    } else {
+        "bounded_minimal"
+    };
+    let reasons = vec![
+        "INVOKE_SKILL_LIVE_PROOF_BOUNDED".into(),
+        "LIVE_PROOF_BOUNDED".into(),
+        "LIVE_PROOF_SUPPORTED".into(),
+    ];
+    (
+        CapabilityGrantSet {
+            grants: reduced_family,
+        },
+        CapabilityGrantSet::default(),
+        trials,
+        LiveProofFamilyStatus {
+            family,
+            support: LiveProofSupport::BoundedLiveProof,
+            proof_status: Some(proof_status.into()),
+            reason_codes: stable_sorted_strings(reasons.clone()),
+            notes: "Bounded live proof for invoke-skill currently covers only one exercised declared dependency alias resolved through the installed dependency snapshot to one exact child digest, fixed guild-skill-inspect-v1 ABI, deterministic child input, zero child-side authority use, and zero nested child executions.".into(),
+        },
+        reasons,
+    )
+}
+
+#[allow(clippy::too_many_lines)]
+fn observed_invoke_skill_slice<R>(
+    registry: &R,
+    installed: &InstalledSkill,
+    record: &ExecutionRecord,
+) -> Result<ObservedInvokeSkillSlice, (&'static str, String)>
+where
+    R: SkillRegistry + ?Sized,
+{
+    let mut exercised = Vec::new();
+    let mut blocked = Vec::new();
+
+    for observation in &record.authority_observations {
+        let AuthorityObservation::InvokeSkill { status, detail } = observation else {
+            continue;
+        };
+        match status {
+            AuthorityObservationStatus::Exercised => exercised.push(detail),
+            AuthorityObservationStatus::Blocked => blocked.push(detail),
+        }
+    }
+
+    if exercised.len() != 1 || record.child_executions.len() != 1 {
+        let reason_code = if exercised.len() > 1 || record.child_executions.len() > 1 {
+            "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
+        } else {
+            "INVOKE_SKILL_REPLAY_UNAVAILABLE"
+        };
+        let notes = if reason_code == "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED" {
+            "Bounded invoke-skill live proof currently requires exactly one exercised child invocation and exactly one persisted child execution record.".into()
+        } else {
+            "Bounded invoke-skill live proof requires exactly one exercised child invocation together with one persisted child execution record.".into()
+        };
+        return Err((reason_code, notes));
+    }
+
+    let exercised = exercised[0];
+    if exercised.result_error.is_some() {
+        return Err((
+            "INVOKE_SKILL_REPLAY_UNAVAILABLE",
+            "Bounded invoke-skill live proof currently requires a child invocation with a persisted child execution record and no host-side invoke result error.".into(),
+        ));
+    }
+
+    if !blocked.is_empty() {
+        let reason_code = if blocked.iter().any(|detail| detail.alias != exercised.alias) {
+            "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED"
+        } else {
+            "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
+        };
+        let notes = if reason_code == "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED" {
+            "Bounded invoke-skill live proof excludes executions that mixed the exercised child with other blocked alias targets or broader invoke dispatch behavior.".into()
+        } else {
+            "Bounded invoke-skill live proof requires a baseline execution with no blocked invoke attempts.".into()
+        };
+        return Err((reason_code, notes));
+    }
+
+    let child_summary = &record.child_executions[0];
+    if child_summary.alias != exercised.alias
+        || exercised.child_execution_id.as_deref() != Some(&child_summary.execution_id)
+        || exercised.child_status.as_ref() != Some(&child_summary.status)
+    {
+        return Err((
+            "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+            "The baseline invoke-skill observation did not bind cleanly to one persisted child execution record.".into(),
+        ));
+    }
+
+    let Some(dependency) = installed
+        .manifest
+        .dependencies
+        .iter()
+        .find(|dependency| dependency.alias == exercised.alias)
+    else {
+        return Err((
+            "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED",
+            "The exercised invoke-skill alias was not bound through the parent's declared installed dependency snapshot.".into(),
+        ));
+    };
+
+    let expected_child = dependency.skill.clone();
+    let child_record = registry
+        .load_execution_record(&child_summary.execution_id)
+        .map_err(|error| {
+            (
+                "INVOKE_SKILL_REPLAY_UNAVAILABLE",
+                format!(
+                    "The exercised invoke-skill child execution record could not be reloaded for comparison: {}",
+                    error.message
+                ),
+            )
+        })?;
+
+    if child_record.parent_execution_id.as_deref() != Some(&record.receipt.execution_id)
+        || child_record.resolved_skill != expected_child
+        || child_record.provenance.resolved_skill != expected_child
+        || child_summary.provenance.resolved_skill != expected_child
+        || child_summary.parent_execution_id != record.receipt.execution_id
+        || child_summary.status != child_record.status
+        || child_summary.termination != child_record.termination
+    {
+        return Err((
+            "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+            "The exercised invoke-skill child did not stay bound to the exact dependency digest across the parent summary and the persisted child execution record.".into(),
+        ));
+    }
+
+    if child_record.request.skill != exact_requested_skill_ref(&expected_child) {
+        return Err((
+            "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+            "The persisted child execution request did not stay exact digest-pinned to the declared installed dependency snapshot.".into(),
+        ));
+    }
+
+    let child_installed = registry.resolve_exact(&expected_child).map_err(|error| {
+        (
+            "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+            format!(
+                "The declared installed dependency snapshot could not be reloaded as an exact child executable: {}",
+                error.message
+            ),
+        )
+    })?;
+
+    if child_installed.manifest.runtime.entrypoint != INSPECT_WORLD_ENTRYPOINT
+        || child_installed.manifest.runtime.guest_abi_version != AbiVersion::GuildSkillInspectV1
+        || child_record.provenance.abi != AbiVersion::GuildSkillInspectV1
+    {
+        return Err((
+            "INVOKE_SKILL_EXPORT_WORLD_UNSUPPORTED",
+            "Bounded invoke-skill live proof currently supports only child executions that stay on the fixed guild-skill-inspect-v1 world and ABI.".into(),
+        ));
+    }
+
+    if !child_summary.granted_capabilities.grants.is_empty()
+        || !child_record.granted_capabilities.grants.is_empty()
+        || !child_record.authority_observations.is_empty()
+    {
+        return Err((
+            "INVOKE_SKILL_CHILD_AUTHORITY_UNSUPPORTED",
+            "Bounded invoke-skill live proof currently supports only zero-authority children with no exercised child-side capability families.".into(),
+        ));
+    }
+
+    if !child_record.child_executions.is_empty() || child_record.metrics.child_executions > 0 {
+        return Err((
+            "INVOKE_SKILL_RECURSION_UNSUPPORTED",
+            "Bounded invoke-skill live proof currently excludes nested child executions and deeper call graphs.".into(),
+        ));
+    }
+
+    Ok(ObservedInvokeSkillSlice {
+        alias: exercised.alias.clone(),
+        child_input_digest: sha256_json(&child_record.request.input),
+        expected_child,
+        narrowed_capability: GrantedCapability {
+            id: CapabilityId::InvokeSkill,
+            access: CapabilityAccess::Invoke,
+            constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                aliases: Some(vec![exercised.alias.clone()]),
+            }),
+        },
+    })
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1150,7 +1539,8 @@ where
     let candidate_envelope = clone_with_grants(envelope, candidate_grants.clone());
     match runner.execute(registry, installed, &candidate_envelope) {
         Ok(record) => {
-            let candidate_projection = normalized_execution_projection(&record, comparator);
+            let candidate_projection =
+                normalized_execution_projection(registry, &record, comparator);
             let output_digest = sha256_json(&candidate_projection);
             let matched = baseline_projection == &candidate_projection;
             let accepted = matched && matches!(record.status, ExecutionStatus::Succeeded);
@@ -1211,50 +1601,65 @@ where
 }
 
 fn normalized_execution_projection(
+    registry: &impl SkillRegistry,
     record: &ExecutionRecord,
     profile: LiveProofComparatorProfile,
 ) -> Value {
-    let output = record.output.as_ref().map(|output| {
-        let mut structured = output.structured.clone();
-        let evidence = match profile {
-            LiveProofComparatorProfile::ExactOutput => {
-                serde_json::to_value(&output.evidence).expect("evidence refs serialize")
-            }
-            LiveProofComparatorProfile::NormalizedInspectOutputV1 => {
-                normalize_evidence_refs(&output.evidence)
-            }
-        };
+    let output = normalized_skill_output(record, profile);
 
-        if matches!(
-            profile,
-            LiveProofComparatorProfile::NormalizedInspectOutputV1
-        ) {
-            strip_host_owned_projection(&mut structured);
-        }
-
-        json!({
-            "summary": output.summary,
-            "structured": structured,
-            "diagnostics": output.diagnostics,
-            "effects": output.effects,
-            "evidence": evidence,
-        })
-    });
-
-    json!({
-        "status": record.status,
-        "termination": record.termination,
-        "output": output,
-        "child_execution_statuses": record
-            .child_executions
-            .iter()
-            .map(|child| json!({
-                "uri": child.uri,
-                "status": child.status,
-                "termination": child.termination,
-            }))
-            .collect::<Vec<_>>(),
-    })
+    match profile {
+        LiveProofComparatorProfile::ExactOutput => json!({
+            "status": record.status,
+            "termination": record.termination,
+            "output": output,
+            "child_execution_statuses": record
+                .child_executions
+                .iter()
+                .map(|child| json!({
+                    "uri": child.uri,
+                    "status": child.status,
+                    "termination": child.termination,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        LiveProofComparatorProfile::NormalizedInspectOutputV1 => json!({
+            "status": record.status,
+            "termination": record.termination,
+            "output": output,
+            "child_execution_statuses": record
+                .child_executions
+                .iter()
+                .map(|child| json!({
+                    "uri": child.uri,
+                    "status": child.status,
+                    "termination": child.termination,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 => json!({
+            "status": record.status,
+            "termination": record.termination,
+            "output": output,
+            "child_execution_count": record.child_executions.len(),
+            "child_execution_statuses": record
+                .child_executions
+                .iter()
+                .map(|child| json!({
+                    "alias": child.alias,
+                    "status": child.status,
+                    "termination": child.termination,
+                    "resolved_skill": child.provenance.resolved_skill,
+                    "abi": child.provenance.abi,
+                    "granted_capabilities": child.granted_capabilities,
+                }))
+                .collect::<Vec<_>>(),
+            "loaded_child_records": record
+                .child_executions
+                .iter()
+                .map(|child| normalized_loaded_child_execution_projection(registry, child.execution_id.as_str()))
+                .collect::<Vec<_>>(),
+        }),
+    }
 }
 
 fn live_proof_trial_status(status: &ExecutionStatus) -> LiveProofTrialStatus {
@@ -1268,6 +1673,69 @@ fn live_proof_trial_status(status: &ExecutionStatus) -> LiveProofTrialStatus {
 fn strip_host_owned_projection(value: &mut Value) {
     if let Some(object) = value.as_object_mut() {
         object.remove("granted_capabilities");
+    }
+}
+
+fn normalized_skill_output(
+    record: &ExecutionRecord,
+    profile: LiveProofComparatorProfile,
+) -> Option<Value> {
+    record.output.as_ref().map(|output| {
+        let mut structured = output.structured.clone();
+        let evidence = match profile {
+            LiveProofComparatorProfile::ExactOutput => {
+                serde_json::to_value(&output.evidence).expect("evidence refs serialize")
+            }
+            LiveProofComparatorProfile::NormalizedInspectOutputV1
+            | LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 => {
+                normalize_evidence_refs(&output.evidence)
+            }
+        };
+
+        if matches!(
+            profile,
+            LiveProofComparatorProfile::NormalizedInspectOutputV1
+                | LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1
+        ) {
+            strip_host_owned_projection(&mut structured);
+        }
+
+        json!({
+            "summary": output.summary,
+            "structured": structured,
+            "diagnostics": output.diagnostics,
+            "effects": output.effects,
+            "evidence": evidence,
+        })
+    })
+}
+
+fn normalized_loaded_child_execution_projection(
+    registry: &impl SkillRegistry,
+    execution_id: &str,
+) -> Value {
+    match registry.load_execution_record(execution_id) {
+        Ok(record) => json!({
+            "resolved_skill": record.resolved_skill,
+            "request_skill": record.request.skill,
+            "request_input_digest": sha256_json(&record.request.input),
+            "status": record.status,
+            "termination": record.termination,
+            "granted_capabilities": record.granted_capabilities,
+            "authority_observations": record.authority_observations,
+            "child_execution_count": record.child_executions.len(),
+            "abi": record.provenance.abi,
+            "output": normalized_skill_output(
+                &record,
+                LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1,
+            ),
+        }),
+        Err(error) => json!({
+            "load_error": {
+                "code": error.code,
+                "message": error.message,
+            }
+        }),
     }
 }
 
@@ -1426,7 +1894,7 @@ fn overall_proof_status(
     if all_exact {
         return "no_reduction";
     }
-    if any_bounded && any_reduced {
+    if any_bounded {
         return "bounded_minimal";
     }
     if any_reduced {
@@ -1496,4 +1964,82 @@ fn stable_sorted_strings(values: Vec<String>) -> Vec<String> {
 fn sha256_json(value: &Value) -> String {
     let bytes = serde_json::to_vec(value).expect("JSON projection serializes");
     format!("sha256:{:x}", Sha256::digest(bytes))
+}
+
+fn build_replay_input_digest<A, R>(
+    runner: &Runner<A>,
+    registry: &R,
+    installed: &InstalledSkill,
+    baseline_record: &ExecutionRecord,
+    comparator: LiveProofComparatorProfile,
+    family_statuses: &[LiveProofFamilyStatus],
+) -> Option<String>
+where
+    A: RuntimeAdapter + Clone + 'static,
+    R: SkillRegistry + ?Sized,
+{
+    let mut entries = Vec::new();
+
+    if let Some(digest) = runner.http_replay_input_digest() {
+        entries.push(json!({
+            "family": "http-request",
+            "replay_input_digest": digest,
+        }));
+    }
+
+    let invoke_supported = family_statuses.iter().any(|status| {
+        status.family == CapabilityId::InvokeSkill
+            && !matches!(
+                status.support,
+                LiveProofSupport::NotProven | LiveProofSupport::Unsupported
+            )
+            && status.proof_status.as_deref() != Some("not_proven")
+    });
+    if invoke_supported {
+        if let Some(digest) =
+            invoke_replay_input_digest(registry, installed, baseline_record, comparator)
+        {
+            entries.push(json!({
+                "family": "invoke-skill",
+                "replay_input_digest": digest,
+            }));
+        }
+    }
+
+    match entries.as_slice() {
+        [] => None,
+        [entry] => entry
+            .get("replay_input_digest")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        _ => Some(sha256_json(&json!(entries))),
+    }
+}
+
+fn invoke_replay_input_digest<R>(
+    registry: &R,
+    installed: &InstalledSkill,
+    baseline_record: &ExecutionRecord,
+    comparator: LiveProofComparatorProfile,
+) -> Option<String>
+where
+    R: SkillRegistry + ?Sized,
+{
+    let observed = observed_invoke_skill_slice(registry, installed, baseline_record).ok()?;
+    let comparator_descriptor = comparator_descriptor(comparator);
+    Some(sha256_json(&json!({
+        "family": "invoke-skill",
+        "parent_resolved_digest": installed.resolved_ref.digest,
+        "alias": observed.alias,
+        "expected_child_resolved_digest": observed.expected_child.digest,
+        "fixed_world": INSPECT_WORLD_ENTRYPOINT,
+        "child_input_digest": observed.child_input_digest,
+        "comparator_id": comparator_descriptor.comparator_id,
+        "comparator_version": comparator_descriptor.version,
+        "slice": {
+            "single_child": true,
+            "child_authority": "none",
+            "nested_child_executions": 0,
+        },
+    })))
 }

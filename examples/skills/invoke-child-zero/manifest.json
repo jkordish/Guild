@@ -1,0 +1,59 @@
+{
+  "manifest_schema_version": "guild-manifest-v1",
+  "skill_api_version": "guild-skill-v1",
+  "key": {
+    "namespace": "example",
+    "name": "invoke-child-zero"
+  },
+  "version": "0.1.0",
+  "display_name": "Invoke Child Zero",
+  "description": "A deterministic inspect-only child skill with no declared capabilities.",
+  "runtime": {
+    "kind": "wasm-component",
+    "entrypoint": "guild-skill-inspect-v1",
+    "guest_abi_version": "guild-skill-inspect-v1"
+  },
+  "interface": {
+    "input_schema_uri": "./input.schema.json",
+    "output_schema_uri": "./output.schema.json",
+    "examples_uri": "./examples.json"
+  },
+  "behavior": {
+    "category": "explain",
+    "mutability": "read-only",
+    "idempotent": true,
+    "open_world": false,
+    "freshness": "deterministic",
+    "modes": {
+      "supported": ["inspect"],
+      "apply_requires_approval": false,
+      "apply_requires_idempotency_key": false
+    }
+  },
+  "capabilities": [],
+  "dependencies": [],
+  "publisher": {
+    "id": "local.example",
+    "display_name": "Local Example",
+    "homepage": null
+  },
+  "package": {
+    "visibility": "private",
+    "trust_tier": "local",
+    "sbom_uri": null,
+    "signature_uri": null
+  },
+  "build": {
+    "kind": "cargo-wasm-component",
+    "cargo_manifest_path": "./skill-rust/Cargo.toml",
+    "target": "wasm32-wasip2",
+    "profile": "release"
+  },
+  "tests": [
+    {
+      "name": "deterministic-child-output",
+      "fixtures_uri": "./tests/inspect-input.json",
+      "expected_output_uri": "./tests/expected-output.json"
+    }
+  ]
+}

@@ -29,6 +29,24 @@ fn composite_source_dir() -> PathBuf {
     repo_root().join("examples/skills/hello-composite")
 }
 
+fn invoke_child_zero_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/invoke-child-zero")
+}
+
+fn invoke_parent_single_child_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/invoke-parent-single-child")
+}
+
+fn requested_skill(name: &str) -> RequestedSkillRef {
+    RequestedSkillRef {
+        key: SkillKey {
+            namespace: "example".into(),
+            name: name.into(),
+        },
+        version_req: VersionRequirement::parse("^0.1").unwrap(),
+    }
+}
+
 fn prepared_registry_root() -> &'static PathBuf {
     static ROOT: OnceLock<PathBuf> = OnceLock::new();
 
@@ -46,13 +64,7 @@ fn prepared_registry_root() -> &'static PathBuf {
 }
 
 fn requested_composite() -> RequestedSkillRef {
-    RequestedSkillRef {
-        key: SkillKey {
-            namespace: "example".into(),
-            name: "hello-composite".into(),
-        },
-        version_req: VersionRequirement::parse("^0.1").unwrap(),
-    }
+    requested_skill("hello-composite")
 }
 
 fn load_registry() -> LocalRegistry {
@@ -501,4 +513,90 @@ fn child_execution_budget_is_decremented_and_exhaustion_fails_closed() {
 
     let error = runner.execute(&registry, &installed, &request).unwrap_err();
     assert_eq!(error.code, "child-budget-exhausted");
+}
+
+#[test]
+fn single_child_invoke_fixture_persists_exact_child_digest_binding() {
+    let temp = TempFixtureDir::new();
+    let source_installer = LocalSourceInstaller::new(temp.path()).unwrap();
+    source_installer
+        .install(invoke_child_zero_source_dir())
+        .unwrap();
+    source_installer
+        .install(invoke_parent_single_child_source_dir())
+        .unwrap();
+
+    let registry = LocalRegistry::load(temp.path()).unwrap();
+    let parent = registry
+        .resolve(&requested_skill("invoke-parent-single-child"))
+        .unwrap();
+    let runner = build_runner();
+    let record = runner
+        .execute(
+            &registry,
+            &parent,
+            &ResolvedExecutionEnvelope {
+                request: CallerRequest {
+                    request_id: "request-invoke-parent-1".into(),
+                    skill: requested_skill("invoke-parent-single-child"),
+                    tenant_id: "tenant-1".into(),
+                    actor_id: "actor-1".into(),
+                    mode: ExecutionMode::Inspect,
+                    input: serde_json::json!({ "name": "Ada" }),
+                    budget: Budget::default(),
+                    requested_capabilities: CapabilityGrantSet {
+                        grants: vec![invoke_hello_grant(&["child"])],
+                    },
+                    idempotency_key: None,
+                    trace_id: "trace-invoke-parent-1".into(),
+                },
+                resolved_skill: parent.resolved_ref.clone(),
+                granted_capabilities: CapabilityGrantSet {
+                    grants: vec![invoke_hello_grant(&["child"])],
+                },
+                policy_decision: PolicyDecision {
+                    outcome: PolicyDecisionOutcome::Allowed,
+                    summary: "local policy granted requested capabilities".into(),
+                    profile_name: "default".into(),
+                    trust_tier: guild_types::LocalTrustTier::LocalDev,
+                    verification_state: guild_types::InstalledVerificationState::LocalSource,
+                    reasons: Vec::new(),
+                    detail: None,
+                },
+                parent_execution_id: None,
+            },
+        )
+        .unwrap();
+
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.child_executions.len(), 1);
+    assert_eq!(record.child_executions[0].alias, "child");
+    assert_eq!(
+        record.child_executions[0].parent_execution_id,
+        record.receipt.execution_id
+    );
+    assert_eq!(
+        record.child_executions[0].provenance.resolved_skill,
+        parent.manifest.dependencies[0].skill
+    );
+
+    let child = registry
+        .load_execution_record(&record.child_executions[0].execution_id)
+        .unwrap();
+    assert_eq!(
+        child.parent_execution_id.as_deref(),
+        Some(record.receipt.execution_id.as_str())
+    );
+    assert_eq!(child.resolved_skill, parent.manifest.dependencies[0].skill);
+    assert_eq!(
+        child.provenance.resolved_skill,
+        parent.manifest.dependencies[0].skill
+    );
+    assert_eq!(
+        child.provenance.abi,
+        guild_types::AbiVersion::GuildSkillInspectV1
+    );
+    assert!(child.granted_capabilities.grants.is_empty());
+    assert!(child.authority_observations.is_empty());
+    assert!(child.child_executions.is_empty());
 }

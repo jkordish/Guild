@@ -1371,6 +1371,10 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     read_request = load_json("examples/runtime-read-resource.admit.request.json")
     read_invocation = load_json("examples/runtime-read-resource.invocation.json")
     read_record = load_json("examples/runtime-read-resource.execution-record.json")
+    invoke_contract = load_json("examples/runtime-invoke-skill.contract.json")
+    invoke_request = load_json("examples/runtime-invoke-skill.admit.request.json")
+    invoke_invocation = load_json("examples/runtime-invoke-skill.invocation.json")
+    invoke_record = load_json("examples/runtime-invoke-skill.execution-record.json")
     log_contract = load_json("examples/runtime-log-write.contract.json")
     log_request = load_json("examples/runtime-log-write.admit.request.json")
 
@@ -1386,6 +1390,7 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     )
     http_redirect_plan = build_execution_plan(http_redirect_contract, http_redirect_request, [runtime])
     read_plan = build_execution_plan(read_contract, read_request, [runtime])
+    invoke_plan = build_execution_plan(invoke_contract, invoke_request, [runtime])
     log_plan = build_execution_plan(log_contract, log_request, [runtime])
     for label, plan in (
         ("runtime-http-read", http_plan),
@@ -1396,6 +1401,7 @@ def verify_live_runtime_alignment_cases() -> list[str]:
         ("runtime-http-head-default-port", http_head_default_port_plan),
         ("runtime-http-redirect", http_redirect_plan),
         ("runtime-read-resource", read_plan),
+        ("runtime-invoke-skill", invoke_plan),
         ("runtime-log-write", log_plan),
     ):
         if plan["decision"] != "admit":
@@ -1540,6 +1546,231 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     )
     if read_scope_claim["claim_evaluation"]["status"] != "satisfied":
         failures.append("runtime-read-resource live witness did not satisfy the bounded canonical read-resource claim")
+
+    invoke_proof, invoke_scenario = build_live_runtime_proof_record(
+        scenario_name="invoke-skill-single-child-bounded",
+        plan=invoke_plan,
+        contract=invoke_contract,
+        runtime=runtime,
+        invocation_input=invoke_invocation,
+        created_at="2026-03-21T21:40:00Z",
+    )
+    invoke_proof_errors = validate_instance("proof_record.schema.json", invoke_proof, registry)
+    failures.extend(f"runtime-invoke-skill live proof schema validation failed: {error}" for error in invoke_proof_errors)
+    invoke_family_status = next(
+        (entry for entry in invoke_proof["family_proof_statuses"] if entry["family"] == "invoke-skill"),
+        None,
+    )
+    if invoke_proof["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-invoke-skill live proof record did not mark proof_source_kind as live-runtime")
+    if invoke_proof["proof_status"] != "bounded_minimal":
+        failures.append("runtime-invoke-skill live proof did not stay bounded_minimal")
+    if invoke_proof.get("replay_input_digest") is None:
+        failures.append("runtime-invoke-skill live proof record did not retain the replay input digest")
+    if invoke_proof["cache"]["key_material"].get("replay_input_digest") != invoke_proof.get("replay_input_digest"):
+        failures.append("runtime-invoke-skill live proof cache key material did not retain the replay input digest")
+    if (
+        invoke_family_status is None
+        or invoke_family_status["support"] != "bounded-live-proof"
+        or "INVOKE_SKILL_LIVE_PROOF_BOUNDED" not in invoke_family_status["reason_codes"]
+    ):
+        failures.append("runtime-invoke-skill live proof did not carry honest bounded invoke-skill family support metadata")
+    if invoke_proof["residual_authority_plan"]["grants"]:
+        failures.append("runtime-invoke-skill live proof unexpectedly left residual authority outside the proven envelope")
+
+    invoke_token = create_root_token(
+        invoke_plan,
+        invoke_contract,
+        issuer,
+        holder_id="urn:guild:service:runtime-invoke-skill",
+        issued_at="2026-03-21T21:40:15Z",
+        proof=invoke_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        audiences=["runtime-invoke-skill"],
+        resource_bindings=[
+            {
+                "family": "invoke-skill",
+                "audience": "runtime-invoke-skill",
+                "resource": "child",
+            }
+        ],
+        chain_links=["urn:guild:actor:runtime-alignment-test"],
+    )
+    if invoke_token.get("kind") != "guild.delegated_capability_token":
+        failures.append("runtime-invoke-skill live proof-backed token issuance did not produce a delegated capability token")
+        return failures
+    if invoke_token["issuance_basis"] != "m5_proven_subset" or invoke_token.get("proof_source_kind") != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-invoke-skill token did not stay explicitly live proof-backed")
+
+    invoke_token_verification = verify_token(
+        invoke_token,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T21:40:20Z",
+        expected_holder_id="urn:guild:service:runtime-invoke-skill",
+        expected_audiences=["runtime-invoke-skill"],
+        expected_resources=[
+            {
+                "family": "invoke-skill",
+                "audience": "runtime-invoke-skill",
+                "resource": "child",
+            }
+        ],
+        expected_runtime_guarantee_id="urn:guild:runtime:wasmtime-strict:v1",
+        expected_call_chain_links=invoke_token["call_chain"]["links"],
+        plan=invoke_plan,
+        contract=invoke_contract,
+        proof=invoke_proof,
+        check_replay=False,
+    )
+    if not invoke_token_verification["verified"] or invoke_token_verification["decision"] != "allow":
+        failures.append("runtime-invoke-skill live proof-backed token did not verify cleanly")
+
+    invoke_witness = generate_witness(
+        plan=invoke_plan,
+        contract=invoke_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-21T21:40:30Z",
+        invocation_input=invoke_invocation,
+        proof=invoke_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        token=invoke_token,
+        observation={
+            "source_kind": LIVE_RUNTIME_SOURCE_KIND,
+            "execution_record": invoke_record,
+        },
+        redaction_profile="none",
+    )
+    if invoke_witness["proof_basis"] is None or invoke_witness["proof_basis"]["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-invoke-skill witness did not keep an honest live proof linkage")
+    invoke_verification = verify_witness(
+        invoke_witness,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T21:41:00Z",
+        plan=invoke_plan,
+        contract=invoke_contract,
+        proof=invoke_proof,
+        token=invoke_token,
+    )
+    if not invoke_verification["verified"] or invoke_verification["witness_status"] != "within_envelope":
+        failures.append("runtime-invoke-skill live witness did not verify as within_envelope")
+    invoke_proof_claim = verify_claim(
+        invoke_witness,
+        {
+            "claim_type": "no_authority_use_outside_proof",
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T21:41:00Z",
+        plan=invoke_plan,
+        contract=invoke_contract,
+        proof=invoke_proof,
+        token=invoke_token,
+    )
+    if invoke_proof_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("runtime-invoke-skill live witness did not satisfy the proof-envelope absence claim")
+    invoke_scope_claim = verify_claim(
+        invoke_witness,
+        {
+            "claim_type": "no_invoke_skill_outside_scope",
+            "invoke_skill_scope": {
+                "kind": "skill",
+                "aliases": ["child"],
+            },
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T21:41:00Z",
+        plan=invoke_plan,
+        contract=invoke_contract,
+        proof=invoke_proof,
+        token=invoke_token,
+    )
+    if invoke_scope_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("runtime-invoke-skill live witness did not satisfy the bounded canonical invoke-skill claim")
+
+    invoke_multi_invocation = deepcopy(invoke_invocation)
+    invoke_multi_invocation["invoke_twice"] = True
+    invoke_multi_proof, invoke_multi_scenario = build_live_runtime_proof_record(
+        scenario_name="invoke-skill-multi-child-unsupported",
+        plan=invoke_plan,
+        contract=invoke_contract,
+        runtime=runtime,
+        invocation_input=invoke_multi_invocation,
+        created_at="2026-03-21T21:41:15Z",
+    )
+    invoke_multi_proof_errors = validate_instance("proof_record.schema.json", invoke_multi_proof, registry)
+    failures.extend(
+        f"runtime-invoke-skill multi-child live proof schema validation failed: {error}"
+        for error in invoke_multi_proof_errors
+    )
+    invoke_multi_family_status = next(
+        (entry for entry in invoke_multi_proof["family_proof_statuses"] if entry["family"] == "invoke-skill"),
+        None,
+    )
+    if invoke_multi_proof["proof_status"] != "not_proven":
+        failures.append("runtime-invoke-skill multi-child live proof did not stay honest as not_proven")
+    if (
+        invoke_multi_family_status is None
+        or invoke_multi_family_status["support"] != "not-proven"
+        or "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED" not in invoke_multi_family_status["reason_codes"]
+    ):
+        failures.append("runtime-invoke-skill multi-child live proof did not preserve the multi-child not_proven status")
+
+    invoke_multi_token = create_root_token(
+        invoke_plan,
+        invoke_contract,
+        issuer,
+        holder_id="urn:guild:service:runtime-invoke-skill-multi-child",
+        issued_at="2026-03-21T21:41:30Z",
+        proof=invoke_multi_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        allow_upper_bound=True,
+        audiences=["runtime-invoke-skill-multi-child"],
+        resource_bindings=[
+            {
+                "family": "invoke-skill",
+                "audience": "runtime-invoke-skill-multi-child",
+                "resource": "child",
+            }
+        ],
+        chain_links=["urn:guild:actor:runtime-alignment-test"],
+    )
+    if invoke_multi_token.get("kind") != "guild.delegated_capability_token":
+        failures.append("runtime-invoke-skill multi-child upper-bound token issuance did not produce a delegated capability token")
+        return failures
+    if invoke_multi_token["issuance_basis"] != "m4_upper_bound" or invoke_multi_token.get("proof_id") is not None:
+        failures.append("runtime-invoke-skill multi-child token issuance did not fall back honestly to the upper-bound basis")
+
+    invoke_multi_witness = generate_witness(
+        plan=invoke_plan,
+        contract=invoke_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-21T21:42:00Z",
+        invocation_input=invoke_multi_invocation,
+        proof=invoke_multi_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        token=invoke_multi_token,
+        observation={
+            "source_kind": LIVE_RUNTIME_SOURCE_KIND,
+            "execution_record": invoke_multi_scenario["baseline_execution_record"],
+        },
+        redaction_profile="none",
+    )
+    if invoke_multi_witness["proof_basis"] is not None:
+        failures.append("runtime-invoke-skill multi-child witness incorrectly linked an unavailable live proof")
+    if "WITNESS_PROOF_LINKAGE_UNAVAILABLE" not in invoke_multi_witness["reason_codes"]:
+        failures.append("runtime-invoke-skill multi-child witness did not preserve the unavailable live proof linkage reason")
+    invoke_multi_verification = verify_witness(
+        invoke_multi_witness,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T21:42:30Z",
+        plan=invoke_plan,
+        contract=invoke_contract,
+        proof=invoke_multi_proof,
+        token=invoke_multi_token,
+    )
+    if not invoke_multi_verification["verified"] or invoke_multi_verification["witness_status"] != "within_envelope":
+        failures.append("runtime-invoke-skill multi-child witness did not verify as within_envelope after proof linkage was withheld")
 
     http_proof, _http_scenario = build_live_runtime_proof_record(
         scenario_name="http-request-bounded",
@@ -2828,14 +3059,18 @@ def verify_family_support_matrix() -> list[str]:
         failures.append("family_support_matrix.json did not mark log-write live minimization proof as supported")
     if families["http-request"]["layers"]["live_minimization_proof"]["status"] != "bounded":
         failures.append("family_support_matrix.json did not mark http-request live minimization proof as bounded")
-    if families["invoke-skill"]["layers"]["live_minimization_proof"]["status"] != "not_proven":
-        failures.append("family_support_matrix.json did not keep invoke-skill live minimization proof not_proven")
+    if families["invoke-skill"]["layers"]["live_minimization_proof"]["status"] != "bounded":
+        failures.append("family_support_matrix.json did not mark invoke-skill live minimization proof as bounded")
     if families["emit-evidence"]["layers"]["live_minimization_proof"]["status"] != "not_proven":
         failures.append("family_support_matrix.json did not keep emit-evidence live minimization proof not_proven")
     if families["http-request"]["layers"]["plan_proof_token_linkage"]["status"] != "bounded":
         failures.append("family_support_matrix.json did not mark http-request plan->proof->token linkage as bounded")
     if families["http-request"]["layers"]["proof_witness_linkage"]["status"] != "bounded":
         failures.append("family_support_matrix.json did not mark http-request proof->witness linkage as bounded")
+    if families["invoke-skill"]["layers"]["plan_proof_token_linkage"]["status"] != "bounded":
+        failures.append("family_support_matrix.json did not mark invoke-skill plan->proof->token linkage as bounded")
+    if families["invoke-skill"]["layers"]["proof_witness_linkage"]["status"] != "bounded":
+        failures.append("family_support_matrix.json did not mark invoke-skill proof->witness linkage as bounded")
     http_slices = families["http-request"].get("proven_slices", [])
     http_slice_ids = {entry.get("slice_id") for entry in http_slices}
     if http_slice_ids != {
@@ -2908,6 +3143,40 @@ def verify_family_support_matrix() -> list[str]:
         failures.append("family_support_matrix.json did not keep query-bearing http-request shapes not_proven")
     if "redirect-driven-execution" not in not_proven_http_shapes:
         failures.append("family_support_matrix.json did not keep redirect-driven http-request shapes not_proven")
+
+    invoke_slices = families["invoke-skill"].get("proven_slices", [])
+    invoke_slice_ids = {entry.get("slice_id") for entry in invoke_slices}
+    if invoke_slice_ids != {"single-child-zero-authority-inspect-child"}:
+        failures.append("family_support_matrix.json did not retain the exact proven invoke-skill slice inventory")
+    invoke_slice = next(
+        (entry for entry in invoke_slices if entry.get("slice_id") == "single-child-zero-authority-inspect-child"),
+        None,
+    )
+    if (
+        invoke_slice is None
+        or invoke_slice.get("invoke_shape", {}).get("max_exercised_children") != 1
+        or invoke_slice.get("invoke_shape", {}).get("alias_binding") != "exact_declared_dependency_alias"
+        or invoke_slice.get("invoke_shape", {}).get("child_identity") != "installed_dependency_snapshot_exact_digest"
+        or invoke_slice.get("invoke_shape", {}).get("child_target_world") != "guild-skill-inspect-v1"
+        or invoke_slice.get("invoke_shape", {}).get("child_result_comparator")
+        != "guild.runner.live-proof.normalized-inspect-single-child-invoke.v1"
+        or invoke_slice.get("invoke_shape", {}).get("child_authority") != "forbidden"
+        or invoke_slice.get("invoke_shape", {}).get("nested_child_executions") != "forbidden"
+    ):
+        failures.append("family_support_matrix.json did not describe the exact bounded invoke-skill slice honestly")
+    not_proven_invoke_shapes = {
+        entry.get("shape_id") for entry in families["invoke-skill"].get("not_proven_shapes", [])
+    }
+    if "dynamic-or-broader-resolution" not in not_proven_invoke_shapes:
+        failures.append("family_support_matrix.json did not keep broader or dynamic invoke resolution not_proven")
+    if "multi-child-fan-out" not in not_proven_invoke_shapes:
+        failures.append("family_support_matrix.json did not keep multi-child invoke fan-out not_proven")
+    if "recursive-or-deeper-call-graph" not in not_proven_invoke_shapes:
+        failures.append("family_support_matrix.json did not keep recursive invoke shapes not_proven")
+    if "child-authority-use" not in not_proven_invoke_shapes:
+        failures.append("family_support_matrix.json did not keep child-side authority use not_proven")
+    if "non-inspect-child-world" not in not_proven_invoke_shapes:
+        failures.append("family_support_matrix.json did not keep non-inspect child worlds not_proven")
 
     aliases = matrix.get("compatibility_aliases", {})
     if aliases.get("net.connect", {}).get("status") != "partial":

@@ -1,0 +1,54 @@
+{
+  "summary": "Single-child invoke completed for Ada with 1 child run(s).",
+  "structured": {
+    "echoed_input": {
+      "name": "Ada"
+    },
+    "mode": "inspect",
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "invoke-parent-single-child"
+      },
+      "version": "0.1.0",
+      "digest": "sha256:INSTALL_TIME_PARENT_DIGEST"
+    },
+    "granted_capabilities": {
+      "grants": [
+        {
+          "id": "invoke-skill",
+          "access": "invoke",
+          "constraints": {
+            "aliases": ["child"]
+          }
+        }
+      ]
+    },
+    "invocation_count": 1,
+    "invoked_aliases": ["child"],
+    "children": [
+      {
+        "summary": "Child hello for Ada.",
+        "structured": {
+          "echoed_input": {
+            "name": "Ada"
+          },
+          "mode": "inspect",
+          "skill": {
+            "key": {
+              "namespace": "example",
+              "name": "invoke-child-zero"
+            },
+            "version": "0.1.0",
+            "digest": "sha256:INSTALL_TIME_CHILD_DIGEST"
+          },
+          "message": "child says hello to Ada"
+        }
+      }
+    ],
+    "message": "parent invoked 1 child run(s) for Ada"
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

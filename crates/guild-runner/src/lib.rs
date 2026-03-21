@@ -5002,7 +5002,7 @@ fn invoke_dependency_covers(
     string_scope_covers_exact(grant.aliases.as_ref(), required.aliases.as_ref())
 }
 
-fn invoke_dependency_grants_collectively_cover(
+pub(crate) fn invoke_dependency_grants_collectively_cover(
     grants: &[GrantedCapability],
     required: &InvokeDependencyConstraints,
 ) -> bool {

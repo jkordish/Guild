@@ -30,7 +30,7 @@
         "scope": {
           "kind": "skill",
           "aliases": [
-            "hello"
+            "child"
           ]
         },
         "cardinality": {

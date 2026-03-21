@@ -5,9 +5,9 @@
   "notes": [
     "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
     "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
-    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots and bounded fixture-backed http-request shrinking only for six deterministic slices: four loopback IP slices, GET with an explicit port, GET with the implicit default HTTP port, HEAD with an explicit port, and HEAD with the implicit default HTTP port, plus explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings.",
+    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for six deterministic slices, and one bounded invoke-skill slice for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions.",
     "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings, invoke-skill and emit-evidence stay unlinked, and log-write linkage support reflects the generic consumer path once a real live proof exists."
+    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked, and log-write linkage support reflects the generic consumer path once a real live proof exists."
   ],
   "layers": [
     "admission_runtime_guarantee_matching",
@@ -351,6 +351,67 @@
           "aliases"
         ]
       },
+      "proven_slices": [
+        {
+          "slice_id": "single-child-zero-authority-inspect-child",
+          "proof_status": "bounded_minimal",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "invoke_shape": {
+            "max_exercised_children": 1,
+            "alias_binding": "exact_declared_dependency_alias",
+            "child_identity": "installed_dependency_snapshot_exact_digest",
+            "child_target_world": "guild-skill-inspect-v1",
+            "child_input": "exact_canonical_json",
+            "child_result_comparator": "guild.runner.live-proof.normalized-inspect-single-child-invoke.v1",
+            "child_authority": "forbidden",
+            "nested_child_executions": "forbidden"
+          },
+          "notes": "Bounded live proof is real only for one exercised child invocation where the parent alias is declared, the alias resolves through the installed dependency snapshot to one exact child digest, the child stays on guild-skill-inspect-v1, child input is deterministic, the comparator reloads the persisted child execution record, and the child uses no capability families of its own."
+        }
+      ],
+      "not_proven_shapes": [
+        {
+          "shape_id": "multi-child-fan-out",
+          "reason_codes": [
+            "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
+          ],
+          "notes": "Any baseline execution with more than one exercised or persisted child invocation remains not_proven."
+        },
+        {
+          "shape_id": "recursive-or-deeper-call-graph",
+          "reason_codes": [
+            "INVOKE_SKILL_RECURSION_UNSUPPORTED"
+          ],
+          "notes": "Nested child executions and deeper call graphs remain outside the honest live proof slice."
+        },
+        {
+          "shape_id": "child-authority-use",
+          "reason_codes": [
+            "INVOKE_SKILL_CHILD_AUTHORITY_UNSUPPORTED"
+          ],
+          "notes": "If the child itself exercises any capability family or receives non-empty grants, invoke-skill stays not_proven."
+        },
+        {
+          "shape_id": "dynamic-or-broader-resolution",
+          "reason_codes": [
+            "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED",
+            "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+            "INVOKE_SKILL_REPLAY_UNAVAILABLE"
+          ],
+          "notes": "Broader dispatch behavior, missing child record linkage, or any path that fails to bind the exercised alias to one exact persisted child execution and one exact installed dependency digest remains not_proven."
+        },
+        {
+          "shape_id": "non-inspect-child-world",
+          "reason_codes": [
+            "INVOKE_SKILL_EXPORT_WORLD_UNSUPPORTED"
+          ],
+          "notes": "Child targets outside the fixed guild-skill-inspect-v1 runtime world remain not_proven."
+        }
+      ],
       "layers": {
         "admission_runtime_guarantee_matching": {
           "status": "supported",
@@ -363,14 +424,14 @@
           "notes": "M4 plans carry the canonical alias-bound invoke-skill scope directly."
         },
         "live_minimization_proof": {
-          "status": "not_proven",
-          "reason_codes": ["LIVE_REPLAY_UNAVAILABLE"],
-          "notes": "M8c still lacks an honest child-execution replay and comparator path for invoke-skill proof."
+          "status": "bounded",
+          "reason_codes": ["INVOKE_SKILL_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"],
+          "notes": "M8c now has one bounded invoke-skill live proof slice only: exactly one exercised declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1, with deterministic child input, the child-aware normalized inspect comparator, and zero nested child executions. Dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, and non-inspect child targets remain not_proven."
         },
         "token_issuance_basis": {
           "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "M6 still issues direct canonical invoke-skill scopes, but proof-backed issuance remains unavailable."
+          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
+          "notes": "M6 still issues direct canonical invoke-skill scopes. It can now consume the bounded live proof only for the exact single-child zero-authority inspect slice; unsupported invoke-skill shapes still fall back to explicit upper-bound issuance or refusal."
         },
         "token_verification": {
           "status": "supported",
@@ -398,14 +459,14 @@
           "notes": "Scope-only absence claims remain supported when coverage is complete."
         },
         "plan_proof_token_linkage": {
-          "status": "not_proven",
-          "reason_codes": ["PROOF_LINKAGE_UNAVAILABLE", "LIVE_REPLAY_UNAVAILABLE"],
-          "notes": "M8c does not claim plan-to-proof-to-token linkage for invoke-skill."
+          "status": "bounded",
+          "reason_codes": ["INVOKE_SKILL_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"],
+          "notes": "Plan-to-proof-to-token linkage is honest only for the exact single-child zero-authority inspect slice. Unsupported invoke-skill shapes do not receive proof-backed token linkage."
         },
         "proof_witness_linkage": {
-          "status": "not_proven",
-          "reason_codes": ["WITNESS_PROOF_LINKAGE_UNAVAILABLE", "LIVE_REPLAY_UNAVAILABLE"],
-          "notes": "M8c does not link invoke-skill witnesses to live proofs."
+          "status": "bounded",
+          "reason_codes": ["INVOKE_SKILL_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED"],
+          "notes": "Witnesses link to live invoke-skill proofs only for the exact single-child zero-authority inspect slice. Unsupported invoke-skill shapes keep witness proof linkage unavailable."
         }
       }
     },

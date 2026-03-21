@@ -2,6 +2,11 @@
 
 This example is the first real composite skill in Guild's inspect-only slice.
 
+It is a real composition and portability example, but it is not the bounded M8c
+`invoke-skill` live-proof fixture. Its child, `hello-inspect`, uses
+`emit-evidence`, so this path stays outside the current proof-backed
+`invoke-skill` envelope on purpose.
+
 It proves:
 
 - composite source manifests declare dependencies by alias
