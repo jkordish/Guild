@@ -3,9 +3,10 @@ use std::collections::BTreeSet;
 use guild_registry::{InstalledSkill, SkillRegistry};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess,
-    CapabilityConstraints, CapabilityGrantSet, CapabilityId, ExecutionRecord, ExecutionStatus,
-    GrantedCapability, GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequestConstraints,
-    HttpScheme, InvokeDependencyConstraints, LogConstraints, ReadResourceConstraints,
+    CapabilityConstraints, CapabilityGrantSet, CapabilityId, EmitEvidenceConstraints,
+    EvidenceRecord, EvidenceSinkDescriptor, ExecutionRecord, ExecutionStatus, GrantedCapability,
+    GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequestConstraints, HttpScheme,
+    InvokeDependencyConstraints, LogConstraints, ReadResourceConstraints,
     ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind,
 };
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,7 @@ pub enum LiveProofComparatorProfile {
     ExactOutput,
     NormalizedInspectOutputV1,
     NormalizedInspectSingleChildInvokeV1,
+    NormalizedInspectSingleSinkEmitEvidenceV1,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -130,6 +132,13 @@ struct ObservedInvokeSkillSlice {
     narrowed_capability: GrantedCapability,
 }
 
+#[derive(Debug, Clone)]
+struct ObservedEmitEvidenceSlice {
+    narrowed_capability: GrantedCapability,
+    payload_sha256: String,
+    sink: EvidenceSinkDescriptor,
+}
+
 #[allow(clippy::too_many_lines)]
 pub(crate) fn prove_live_authority<A, R>(
     runner: &Runner<A>,
@@ -203,11 +212,14 @@ where
                     &baseline_projection,
                     comparator,
                 ),
-                CapabilityId::EmitEvidence => unsupported_family_status(
-                    &family,
-                    &family_grants,
-                    "LIVE_COMPARATOR_UNAVAILABLE",
-                    "Emit-evidence still lacks a stable sink comparator, so live proof stays not_proven.",
+                CapabilityId::EmitEvidence => prove_emit_evidence_family(
+                    runner,
+                    registry,
+                    installed,
+                    envelope,
+                    &baseline_execution_record,
+                    &baseline_projection,
+                    comparator,
                 ),
                 CapabilityId::GetSecret
                 | CapabilityId::CacheRead
@@ -306,6 +318,21 @@ fn comparator_descriptor(profile: LiveProofComparatorProfile) -> LiveProofCompar
                     "The comparator loads the persisted child execution record and compares the exact child digest binding, inspect ABI, canonical child input digest, normalized child output, and child execution count.".into(),
                 ],
                 notes: "Normalized inspect comparator for the bounded single-child invoke-skill slice. It compares the parent execution plus the persisted child execution record while ignoring host-minted execution and evidence record URIs.".into(),
+            }
+        }
+        LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 => {
+            LiveProofComparatorDescriptor {
+                comparator_id:
+                    "guild.runner.live-proof.normalized-inspect-single-sink-emit-evidence.v1"
+                        .into(),
+                version: LIVE_PROOF_VERSION.into(),
+                assumptions: vec![
+                    "Execution status must remain identical.".into(),
+                    "The comparator strips host-owned granted_capabilities echoes from inspect structured output.".into(),
+                    "The comparator strips host-minted evidence record identifiers, record URIs, blob URIs, timestamps, and producing execution identifiers while preserving semantic parent linkage.".into(),
+                    "The comparator preserves exact sink identity, emission count, emitted metadata, and payload digest for one fixed local object-store sink emission.".into(),
+                ],
+                notes: "Normalized inspect comparator for one exact single-sink emit-evidence slice. It compares normalized skill output, normalized emitted evidence records, and normalized emit-evidence observations while ignoring only truly host-minted identifiers.".into(),
             }
         }
     }
@@ -565,6 +592,168 @@ fn invoke_skill_not_proven(
         },
         reasons,
     )
+}
+
+fn emit_evidence_not_proven(
+    family_grants: Vec<GrantedCapability>,
+    reasons: Vec<String>,
+    notes: &str,
+    trials: Vec<LiveProofCandidateTrial>,
+) -> (
+    CapabilityGrantSet,
+    CapabilityGrantSet,
+    Vec<LiveProofCandidateTrial>,
+    LiveProofFamilyStatus,
+    Vec<String>,
+) {
+    (
+        CapabilityGrantSet::default(),
+        CapabilityGrantSet {
+            grants: family_grants,
+        },
+        trials,
+        LiveProofFamilyStatus {
+            family: CapabilityId::EmitEvidence,
+            support: LiveProofSupport::NotProven,
+            proof_status: Some("not_proven".into()),
+            reason_codes: stable_sorted_strings(reasons.clone()),
+            notes: notes.into(),
+        },
+        reasons,
+    )
+}
+
+#[allow(clippy::too_many_lines)]
+fn prove_emit_evidence_family<A, R>(
+    runner: &Runner<A>,
+    registry: &R,
+    installed: &InstalledSkill,
+    envelope: &ResolvedExecutionEnvelope,
+    baseline_record: &ExecutionRecord,
+    baseline_projection: &Value,
+    comparator: LiveProofComparatorProfile,
+) -> (
+    CapabilityGrantSet,
+    CapabilityGrantSet,
+    Vec<LiveProofCandidateTrial>,
+    LiveProofFamilyStatus,
+    Vec<String>,
+)
+where
+    A: RuntimeAdapter + Clone + 'static,
+    R: SkillRegistry + Clone + Send + Sync + 'static,
+{
+    let family = CapabilityId::EmitEvidence;
+    let family_grants = family_grants(&envelope.granted_capabilities, &family);
+    let mut trials = Vec::new();
+
+    if comparator != LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 {
+        return emit_evidence_not_proven(
+            family_grants,
+            vec!["EMIT_EVIDENCE_COMPARATOR_UNAVAILABLE".into()],
+            "Bounded emit-evidence feasibility checking currently requires the dedicated single-sink emit comparator.",
+            trials,
+        );
+    }
+
+    let observed = match observed_emit_evidence_slice(baseline_record) {
+        Ok(observed) => observed,
+        Err((reason_code, notes)) => {
+            return emit_evidence_not_proven(
+                family_grants,
+                vec![reason_code.into()],
+                &notes,
+                trials,
+            );
+        }
+    };
+
+    let removal = run_family_trial(
+        runner,
+        registry,
+        installed,
+        envelope,
+        &family,
+        "remove_grant",
+        remove_family_grants(&envelope.granted_capabilities, &family),
+        baseline_projection,
+        comparator,
+        "trial-emit-evidence-remove-family",
+    );
+    trials.push(removal.trial);
+
+    let mut reduced_family = Vec::new();
+    for grant in &family_grants {
+        let CapabilityConstraints::EmitEvidence(grant_constraints) = &grant.constraints else {
+            continue;
+        };
+        let CapabilityConstraints::EmitEvidence(expected) =
+            &observed.narrowed_capability.constraints
+        else {
+            unreachable!("observed emit-evidence cap always carries emit constraints");
+        };
+        if emit_evidence_constraints_cover(grant_constraints, expected) {
+            push_unique_grant(
+                &mut reduced_family,
+                GrantedCapability {
+                    id: grant.id.clone(),
+                    access: grant.access.clone(),
+                    constraints: observed.narrowed_capability.constraints.clone(),
+                },
+            );
+        }
+    }
+
+    if reduced_family.is_empty() {
+        return emit_evidence_not_proven(
+            family_grants,
+            vec!["LIVE_SCOPE_SHRINK_UNSUPPORTED".into()],
+            "The bounded emit-evidence reduction could not preserve the exact exercised payload size, audience, and redaction envelope.",
+            trials,
+        );
+    }
+
+    let reduction = run_family_trial(
+        runner,
+        registry,
+        installed,
+        envelope,
+        &family,
+        "shrink_scope",
+        replace_family_grants(
+            &envelope.granted_capabilities,
+            &family,
+            CapabilityGrantSet {
+                grants: reduced_family,
+            },
+        ),
+        baseline_projection,
+        comparator,
+        "trial-emit-evidence-shrink-observed-slice",
+    );
+    let reduction_matched = reduction.matched;
+    trials.push(reduction.trial);
+
+    if !reduction_matched {
+        return emit_evidence_not_proven(
+            family_grants,
+            vec!["EMIT_EVIDENCE_REPLAY_UNAVAILABLE".into()],
+            "The exact single-sink emit-evidence slice did not re-execute equivalently under the dedicated comparator, so proof failed closed.",
+            trials,
+        );
+    }
+
+    let reasons = vec!["EMIT_EVIDENCE_LINKAGE_MODEL_UNAVAILABLE".into()];
+    let notes = format!(
+        "Guild can re-execute and compare one exact single-emission local object-store sink slice conservatively, but the current live emit-evidence grant shape and draft-v1 control-plane do not model exact sink identity and payload digest as first-class authority. The family remains not_proven rather than issuing a broader proof envelope. The checked slice bound sink kind `{}`, record namespace `{}`, blob namespace `{}`, routing mode `{:?}`, storage class `{:?}`, and payload digest `{}`.",
+        serde_json::to_string(&observed.sink.kind).expect("sink kind serializes"),
+        observed.sink.record_uri_prefix,
+        observed.sink.blob_uri_prefix,
+        observed.sink.routing_mode,
+        observed.sink.storage_class,
+        observed.payload_sha256,
+    );
+    emit_evidence_not_proven(family_grants, reasons, &notes, trials)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1659,6 +1848,34 @@ fn normalized_execution_projection(
                 .map(|child| normalized_loaded_child_execution_projection(registry, child.execution_id.as_str()))
                 .collect::<Vec<_>>(),
         }),
+        LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 => json!({
+            "status": record.status,
+            "termination": record.termination,
+            "output": output,
+            "emitted_evidence_count": record.emitted_evidence.len(),
+            "emitted_evidence": record
+                .emitted_evidence
+                .iter()
+                .map(|evidence| normalized_emitted_evidence_record(
+                    evidence,
+                    record.receipt.execution_id.as_str(),
+                ))
+                .collect::<Vec<_>>(),
+            "emit_observations": record
+                .authority_observations
+                .iter()
+                .filter_map(|observation| match observation {
+                    AuthorityObservation::EmitEvidence { status, detail } => Some(json!({
+                        "status": status,
+                        "detail": normalized_emit_evidence_observation(
+                            detail,
+                            record.receipt.execution_id.as_str(),
+                        ),
+                    })),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
+        }),
     }
 }
 
@@ -1687,7 +1904,8 @@ fn normalized_skill_output(
                 serde_json::to_value(&output.evidence).expect("evidence refs serialize")
             }
             LiveProofComparatorProfile::NormalizedInspectOutputV1
-            | LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 => {
+            | LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1
+            | LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 => {
                 normalize_evidence_refs(&output.evidence)
             }
         };
@@ -1696,6 +1914,7 @@ fn normalized_skill_output(
             profile,
             LiveProofComparatorProfile::NormalizedInspectOutputV1
                 | LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1
+                | LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1
         ) {
             strip_host_owned_projection(&mut structured);
         }
@@ -1755,6 +1974,38 @@ fn normalize_evidence_refs(values: &[guild_types::EvidenceRef]) -> Value {
             })
             .collect::<Vec<_>>()
     )
+}
+
+fn normalized_emitted_evidence_record(record: &EvidenceRecord, parent_execution_id: &str) -> Value {
+    json!({
+        "mime_type": record.mime_type,
+        "sha256": record.sha256,
+        "size_bytes": record.size_bytes,
+        "sink": record.sink,
+        "title": record.title,
+        "audience": record.audience,
+        "redaction": record.redaction,
+        "freshness": record.freshness,
+        "produced_by_parent_execution": record.produced_by_execution.as_deref() == Some(parent_execution_id),
+    })
+}
+
+fn normalized_emit_evidence_observation(
+    detail: &guild_types::EmitEvidenceAuthorityObservation,
+    _parent_execution_id: &str,
+) -> Value {
+    json!({
+        "mime_type": detail.mime_type,
+        "audience": detail.audience,
+        "redaction": detail.redaction,
+        "size_bytes": detail.size_bytes,
+        "sink": detail.sink,
+        "title": detail.title,
+        "sha256": detail.sha256,
+        "denial": detail.denial,
+        "result_error": detail.result_error,
+        "emitted_to_parent_execution": detail.evidence_uri.is_some() && detail.result_error.is_none() && detail.denial.is_none() && detail.sha256.is_some() && detail.sink.is_some(),
+    })
 }
 
 fn observed_read_resource_caps(record: &ExecutionRecord) -> Option<Vec<GrantedCapability>> {
@@ -1822,6 +2073,160 @@ fn observed_log_caps(record: &ExecutionRecord) -> Vec<GrantedCapability> {
             }),
         })
         .collect()
+}
+
+fn observed_emit_evidence_slice(
+    record: &ExecutionRecord,
+) -> Result<ObservedEmitEvidenceSlice, (&'static str, String)> {
+    let mut exercised = Vec::new();
+    let mut blocked = Vec::new();
+
+    for observation in &record.authority_observations {
+        let AuthorityObservation::EmitEvidence { status, detail } = observation else {
+            continue;
+        };
+        match status {
+            AuthorityObservationStatus::Exercised => exercised.push(detail),
+            AuthorityObservationStatus::Blocked => blocked.push(detail),
+        }
+    }
+
+    if exercised.len() != 1 || record.emitted_evidence.len() != 1 {
+        let reason_code = if exercised.len() > 1 || record.emitted_evidence.len() > 1 {
+            "EMIT_EVIDENCE_MULTI_EMIT_UNSUPPORTED"
+        } else {
+            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"
+        };
+        let notes = if reason_code == "EMIT_EVIDENCE_MULTI_EMIT_UNSUPPORTED" {
+            "Bounded emit-evidence feasibility checking currently requires exactly one exercised emission and exactly one persisted evidence record.".into()
+        } else {
+            "Bounded emit-evidence feasibility checking requires one exercised emission together with one persisted evidence record.".into()
+        };
+        return Err((reason_code, notes));
+    }
+
+    if !blocked.is_empty() {
+        return Err((
+            "EMIT_EVIDENCE_MULTI_EMIT_UNSUPPORTED",
+            "Bounded emit-evidence feasibility checking currently excludes executions with blocked emit-evidence attempts because that would exceed the one-emission slice.".into(),
+        ));
+    }
+
+    let detail = exercised[0];
+    if detail.result_error.is_some() {
+        return Err((
+            "EMIT_EVIDENCE_RESULT_ERROR_UNSUPPORTED",
+            "Bounded emit-evidence feasibility checking currently requires an exercised emission with no host-side result error.".into(),
+        ));
+    }
+
+    let Some(observed_sink) = detail.sink.as_ref() else {
+        return Err((
+            "EMIT_EVIDENCE_SINK_MODEL_UNAVAILABLE",
+            "The exercised emit-evidence observation did not carry an explicit host-owned sink descriptor.".into(),
+        ));
+    };
+    if !supported_emit_evidence_sink(observed_sink) {
+        return Err((
+            "EMIT_EVIDENCE_SINK_MODEL_UNAVAILABLE",
+            "Bounded emit-evidence feasibility checking currently supports only the fixed local object-store sink model.".into(),
+        ));
+    }
+
+    let emitted = &record.emitted_evidence[0];
+    let Some(persisted_sink) = emitted.sink.as_ref() else {
+        return Err((
+            "EMIT_EVIDENCE_SINK_MODEL_UNAVAILABLE",
+            "The persisted evidence record did not retain the host-owned sink descriptor needed for comparison.".into(),
+        ));
+    };
+    if persisted_sink != observed_sink || !supported_emit_evidence_sink(persisted_sink) {
+        return Err((
+            "EMIT_EVIDENCE_SINK_MODEL_UNAVAILABLE",
+            "The exercised emit-evidence observation and persisted evidence record did not stay bound to the same supported sink model.".into(),
+        ));
+    }
+
+    if detail.evidence_uri.as_deref() != Some(emitted.uri.as_str())
+        || detail.sha256.as_deref() != Some(emitted.sha256.as_str())
+        || detail.mime_type != emitted.mime_type
+        || detail.audience != emitted.audience
+        || detail.redaction != emitted.redaction
+        || detail.size_bytes != emitted.size_bytes
+        || detail.title != emitted.title
+    {
+        return Err((
+            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE",
+            "The exercised emit-evidence observation did not stay aligned with the persisted evidence record metadata.".into(),
+        ));
+    }
+
+    if emitted.produced_by_execution.as_deref() != Some(record.receipt.execution_id.as_str()) {
+        return Err((
+            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE",
+            "The persisted evidence record did not stay semantically linked to the producing parent execution.".into(),
+        ));
+    }
+
+    if emitted.sha256.trim().is_empty() {
+        return Err((
+            "EMIT_EVIDENCE_PAYLOAD_NONDETERMINISTIC",
+            "The persisted evidence record did not retain a stable payload digest for deterministic comparison.".into(),
+        ));
+    }
+
+    Ok(ObservedEmitEvidenceSlice {
+        narrowed_capability: GrantedCapability {
+            id: CapabilityId::EmitEvidence,
+            access: CapabilityAccess::Write,
+            constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
+                max_bytes: Some(emitted.size_bytes),
+                audiences: Some(vec![emitted.audience.clone()]),
+                redactions: Some(vec![emitted.redaction.clone()]),
+            }),
+        },
+        payload_sha256: emitted.sha256.clone(),
+        sink: observed_sink.clone(),
+    })
+}
+
+fn supported_emit_evidence_sink(sink: &EvidenceSinkDescriptor) -> bool {
+    sink.kind == guild_types::EvidenceSinkKind::LocalObjectStore
+        && sink.record_uri_prefix == guild_types::GUILD_OBJECT_RECORD_URI_PREFIX
+        && sink.blob_uri_prefix == guild_types::GUILD_OBJECT_BLOB_URI_PREFIX
+        && sink.routing_mode == guild_types::EvidenceRoutingMode::Direct
+        && sink.storage_class == guild_types::EvidenceStorageClass::LocalPersistentContentAddressed
+}
+
+fn emit_evidence_constraints_cover(
+    grant: &EmitEvidenceConstraints,
+    required: &EmitEvidenceConstraints,
+) -> bool {
+    grant
+        .max_bytes
+        .zip(required.max_bytes)
+        .is_none_or(|(grant_value, required_value)| grant_value >= required_value)
+        && required
+            .audiences
+            .as_ref()
+            .is_none_or(|required_audiences| {
+                required_audiences.iter().all(|required_audience| {
+                    grant
+                        .audiences
+                        .as_ref()
+                        .is_some_and(|grant_audiences| grant_audiences.contains(required_audience))
+                })
+            })
+        && required
+            .redactions
+            .as_ref()
+            .is_none_or(|required_redactions| {
+                required_redactions.iter().all(|required_redaction| {
+                    grant.redactions.as_ref().is_some_and(|grant_redactions| {
+                        grant_redactions.contains(required_redaction)
+                    })
+                })
+            })
 }
 
 fn family_grants(grants: &CapabilityGrantSet, family: &CapabilityId) -> Vec<GrantedCapability> {
@@ -2006,6 +2411,15 @@ where
         }
     }
 
+    if comparator == LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 {
+        if let Some(digest) = emit_evidence_replay_input_digest(baseline_record, comparator) {
+            entries.push(json!({
+                "family": "emit-evidence",
+                "replay_input_digest": digest,
+            }));
+        }
+    }
+
     match entries.as_slice() {
         [] => None,
         [entry] => entry
@@ -2042,4 +2456,276 @@ where
             "nested_child_executions": 0,
         },
     })))
+}
+
+fn emit_evidence_replay_input_digest(
+    baseline_record: &ExecutionRecord,
+    comparator: LiveProofComparatorProfile,
+) -> Option<String> {
+    let observed = observed_emit_evidence_slice(baseline_record).ok()?;
+    let comparator_descriptor = comparator_descriptor(comparator);
+    Some(sha256_json(&json!({
+        "family": "emit-evidence",
+        "sink": observed.sink,
+        "payload_sha256": observed.payload_sha256,
+        "comparator_id": comparator_descriptor.comparator_id,
+        "comparator_version": comparator_descriptor.version,
+        "slice": {
+            "single_emission": true,
+            "produced_by_parent_execution": true,
+            "multi_emit": false,
+            "fan_out": false,
+            "fallback_routing": false,
+        },
+    })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use guild_registry::RegistryError;
+    use guild_types::{
+        Budget, CallerRequest, CapabilityGrantSet, EvidenceAudience, EvidenceEmissionRequest,
+        ExecutionMetrics, ExecutionMode, ExecutionReceipt, InstalledVerificationState,
+        LocalPolicyConfig, LocalTrustTier, PolicyDecision, PolicyDecisionOutcome, Provenance,
+        RedactionClass, RequestedSkillRef, ResolvedSkillRef, SkillKey, SkillOutput, SkillVersion,
+        VersionRequirement, local_object_store_evidence_sink_descriptor,
+    };
+
+    #[derive(Clone)]
+    struct UnusedRegistry;
+
+    impl SkillRegistry for UnusedRegistry {
+        fn resolve(&self, _skill: &RequestedSkillRef) -> Result<InstalledSkill, RegistryError> {
+            unreachable!("resolve should not be called in comparator unit tests")
+        }
+
+        fn resolve_exact(
+            &self,
+            _skill: &ResolvedSkillRef,
+        ) -> Result<InstalledSkill, RegistryError> {
+            unreachable!("resolve_exact should not be called in comparator unit tests")
+        }
+
+        fn search(
+            &self,
+            _query: &guild_registry::SearchQuery,
+        ) -> Vec<guild_registry::SearchResult> {
+            unreachable!("search should not be called in comparator unit tests")
+        }
+
+        fn persist_execution_record(&self, _record: &ExecutionRecord) -> Result<(), RegistryError> {
+            unreachable!("persist_execution_record should not be called in comparator unit tests")
+        }
+
+        fn load_execution_record(
+            &self,
+            _execution_id: &str,
+        ) -> Result<ExecutionRecord, RegistryError> {
+            unreachable!("load_execution_record should not be called in comparator unit tests")
+        }
+
+        fn store_evidence(
+            &self,
+            _produced_by_execution: &str,
+            _request: &EvidenceEmissionRequest,
+        ) -> Result<guild_types::EvidenceRef, RegistryError> {
+            unreachable!("store_evidence should not be called in comparator unit tests")
+        }
+
+        fn load_evidence_record(&self, _uri: &str) -> Result<EvidenceRecord, RegistryError> {
+            unreachable!("load_evidence_record should not be called in comparator unit tests")
+        }
+
+        fn read_resource(
+            &self,
+            _uri: &str,
+        ) -> Result<guild_types::ResourceReadResult, RegistryError> {
+            unreachable!("read_resource should not be called in comparator unit tests")
+        }
+
+        fn load_policy_config(&self) -> Result<LocalPolicyConfig, RegistryError> {
+            unreachable!("load_policy_config should not be called in comparator unit tests")
+        }
+    }
+
+    fn sample_emit_record() -> ExecutionRecord {
+        let execution_id = "exec-1".to_owned();
+        let evidence_uri = "guild://objects/records/record-1".to_owned();
+        let blob_uri = "guild://objects/sha256/abc123".to_owned();
+        let sink = local_object_store_evidence_sink_descriptor();
+        let output_evidence = guild_types::EvidenceRef {
+            uri: evidence_uri.clone(),
+            title: Some("hello-inspect snapshot".into()),
+            mime_type: Some("application/json".into()),
+            sha256: Some("sha256:abc123".into()),
+            audience: EvidenceAudience::User,
+            redaction: RedactionClass::None,
+            freshness: Some("deterministic".into()),
+        };
+        ExecutionRecord {
+            receipt: ExecutionReceipt {
+                execution_id: execution_id.clone(),
+                uri: format!("guild://executions/{execution_id}"),
+                trace_id: "trace-1".into(),
+                status: ExecutionStatus::Succeeded,
+            },
+            request: CallerRequest {
+                request_id: "request-1".into(),
+                skill: RequestedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "hello-inspect".into(),
+                    },
+                    version_req: VersionRequirement::parse("^0.1").unwrap(),
+                },
+                tenant_id: "tenant-1".into(),
+                actor_id: "actor-1".into(),
+                mode: ExecutionMode::Inspect,
+                input: json!({"name": "Ada"}),
+                budget: Budget::default(),
+                requested_capabilities: CapabilityGrantSet::default(),
+                idempotency_key: None,
+                trace_id: "trace-1".into(),
+            },
+            policy_decision: PolicyDecision {
+                outcome: PolicyDecisionOutcome::Allowed,
+                summary: "allowed".into(),
+                profile_name: "default".into(),
+                trust_tier: LocalTrustTier::LocalDev,
+                verification_state: InstalledVerificationState::LocalSource,
+                reasons: Vec::new(),
+                detail: None,
+            },
+            resolved_skill: ResolvedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect".into(),
+                },
+                version: SkillVersion::parse("0.1.0").unwrap(),
+                digest: "sha256:digest".into(),
+            },
+            parent_execution_id: None,
+            status: ExecutionStatus::Succeeded,
+            output: Some(SkillOutput {
+                summary: "Hello, Ada. Guild inspect is working.".into(),
+                structured: json!({
+                    "echoed_input": {"name": "Ada"},
+                    "mode": "inspect",
+                    "message": "Hello, Ada",
+                    "granted_capabilities": {"grants": [{"id": "emit-evidence"}]},
+                }),
+                diagnostics: Vec::new(),
+                effects: Vec::new(),
+                evidence: vec![output_evidence],
+            }),
+            termination: None,
+            granted_capabilities: CapabilityGrantSet::default(),
+            emitted_evidence: vec![EvidenceRecord {
+                uri: evidence_uri.clone(),
+                blob_uri,
+                mime_type: "application/json".into(),
+                sha256: "sha256:abc123".into(),
+                size_bytes: 32,
+                sink: Some(sink.clone()),
+                title: Some("hello-inspect snapshot".into()),
+                audience: EvidenceAudience::User,
+                redaction: RedactionClass::None,
+                freshness: Some("deterministic".into()),
+                produced_by_execution: Some(execution_id.clone()),
+            }],
+            authority_observations: vec![AuthorityObservation::EmitEvidence {
+                status: AuthorityObservationStatus::Exercised,
+                detail: guild_types::EmitEvidenceAuthorityObservation {
+                    mime_type: "application/json".into(),
+                    audience: EvidenceAudience::User,
+                    redaction: RedactionClass::None,
+                    size_bytes: 32,
+                    sink: Some(sink),
+                    title: Some("hello-inspect snapshot".into()),
+                    evidence_uri: Some(evidence_uri),
+                    sha256: Some("sha256:abc123".into()),
+                    denial: None,
+                    result_error: None,
+                },
+            }],
+            metrics: ExecutionMetrics::default(),
+            provenance: Provenance {
+                resolved_skill: ResolvedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "hello-inspect".into(),
+                    },
+                    version: SkillVersion::parse("0.1.0").unwrap(),
+                    digest: "sha256:digest".into(),
+                },
+                abi: AbiVersion::GuildSkillInspectV1,
+                dependency_digests: Vec::new(),
+                started_at_utc: Some("2026-03-21T00:00:00Z".into()),
+                finished_at_utc: Some("2026-03-21T00:00:01Z".into()),
+            },
+            child_executions: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn single_sink_emit_evidence_projection_ignores_host_minted_record_handles() {
+        let registry = UnusedRegistry;
+        let baseline = sample_emit_record();
+        let mut changed = baseline.clone();
+        changed.receipt.execution_id = "exec-2".into();
+        changed.receipt.uri = "guild://executions/exec-2".into();
+        changed.emitted_evidence[0].uri = "guild://objects/records/record-2".into();
+        changed.emitted_evidence[0].blob_uri = "guild://objects/sha256/def456".into();
+        changed.emitted_evidence[0].produced_by_execution = Some("exec-2".into());
+        let AuthorityObservation::EmitEvidence { detail, .. } =
+            &mut changed.authority_observations[0]
+        else {
+            panic!("expected emit-evidence observation");
+        };
+        detail.evidence_uri = Some("guild://objects/records/record-2".into());
+
+        let baseline_projection = normalized_execution_projection(
+            &registry,
+            &baseline,
+            LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1,
+        );
+        let changed_projection = normalized_execution_projection(
+            &registry,
+            &changed,
+            LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1,
+        );
+
+        assert_eq!(baseline.output, changed.output);
+        assert_eq!(baseline_projection, changed_projection);
+    }
+
+    #[test]
+    fn single_sink_emit_evidence_projection_rejects_changed_sink_identity_with_same_output() {
+        let registry = UnusedRegistry;
+        let baseline = sample_emit_record();
+        let mut changed = baseline.clone();
+        changed.emitted_evidence[0].sink = Some(EvidenceSinkDescriptor {
+            kind: guild_types::EvidenceSinkKind::LocalObjectStore,
+            record_uri_prefix: "guild://objects/records-alt/".into(),
+            blob_uri_prefix: guild_types::GUILD_OBJECT_BLOB_URI_PREFIX.into(),
+            routing_mode: guild_types::EvidenceRoutingMode::Direct,
+            storage_class: guild_types::EvidenceStorageClass::LocalPersistentContentAddressed,
+        });
+
+        let baseline_projection = normalized_execution_projection(
+            &registry,
+            &baseline,
+            LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1,
+        );
+        let changed_projection = normalized_execution_projection(
+            &registry,
+            &changed,
+            LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1,
+        );
+
+        assert_eq!(baseline.output, changed.output);
+        assert_ne!(baseline_projection, changed_projection);
+    }
 }

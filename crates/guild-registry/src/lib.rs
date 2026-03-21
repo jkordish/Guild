@@ -25,7 +25,8 @@ use guild_types::{
     ExecutionStatus, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
     GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX, GUILD_OBJECT_RECORD_URI_PREFIX, GuildResourceUri,
     InstalledVerificationState, LocalPolicyConfig, LocalTrustTier, RequestedSkillRef,
-    ResolvedSkillRef, ResourceReadResult, SkillCategory, mint_host_evidence_record_id,
+    ResolvedSkillRef, ResourceReadResult, SkillCategory,
+    local_object_store_evidence_sink_descriptor, mint_host_evidence_record_id,
 };
 use rand_core::OsRng;
 use schemars::JsonSchema;
@@ -1340,6 +1341,7 @@ impl SkillRegistry for LocalRegistry {
             mime_type: request.mime_type.clone(),
             sha256: digest_label.clone(),
             size_bytes: request.payload.len() as u64,
+            sink: Some(local_object_store_evidence_sink_descriptor()),
             title: request.title.clone(),
             audience: request.audience.clone(),
             redaction: request.redaction.clone(),

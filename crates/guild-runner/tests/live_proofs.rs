@@ -468,6 +468,60 @@ fn log_write_live_proof_reduces_to_observed_levels_and_leaves_emit_evidence_resi
 }
 
 #[test]
+fn emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable() {
+    let temp = TempRegistry::new();
+    temp.install(hello_skill_dir());
+    let registry = temp.load();
+    let runner = build_runner();
+    let hello = registry.resolve(&requested_skill("hello-inspect")).unwrap();
+
+    let proof_result = runner
+        .prove_live_authority(
+            &registry,
+            &hello,
+            &envelope_for(
+                &hello,
+                json!({ "name": "Ada" }),
+                CapabilityGrantSet {
+                    grants: vec![emit_evidence_grant()],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1,
+        )
+        .unwrap();
+
+    assert_eq!(proof_result.proof.proof_status, "not_proven");
+    assert!(proof_result.proof.proven_authority.grants.is_empty());
+    assert_eq!(proof_result.proof.residual_authority.grants.len(), 1);
+    assert!(proof_result.proof.replay_input_digest.is_some());
+    let emit_family = proof_result
+        .proof
+        .family_statuses
+        .iter()
+        .find(|status| status.family == CapabilityId::EmitEvidence)
+        .unwrap();
+    assert_eq!(emit_family.support, LiveProofSupport::NotProven);
+    assert_eq!(emit_family.proof_status.as_deref(), Some("not_proven"));
+    assert!(
+        emit_family
+            .reason_codes
+            .iter()
+            .any(|code| code == "EMIT_EVIDENCE_REPLAY_UNAVAILABLE")
+    );
+    assert!(
+        emit_family
+            .notes
+            .contains("did not re-execute equivalently under the dedicated comparator")
+    );
+    assert!(proof_result.proof.candidate_trials.iter().any(|trial| {
+        trial.family == CapabilityId::EmitEvidence
+            && trial.change_kind == "shrink_scope"
+            && !trial.accepted
+            && trial.error_code.as_deref() == Some("capability-mismatch")
+    }));
+}
+
+#[test]
 fn http_request_live_proof_is_bounded_with_replay() {
     let temp = TempRegistry::new();
     temp.install(inspect_http_json_dir());

@@ -395,6 +395,44 @@ pub const GUILD_EXECUTION_QUERY_URI_PREFIX: &str = "guild://queries/executions/"
 pub const MAX_EXECUTION_QUERY_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum EvidenceSinkKind {
+    LocalObjectStore,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum EvidenceRoutingMode {
+    Direct,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum EvidenceStorageClass {
+    LocalPersistentContentAddressed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct EvidenceSinkDescriptor {
+    pub kind: EvidenceSinkKind,
+    pub record_uri_prefix: String,
+    pub blob_uri_prefix: String,
+    pub routing_mode: EvidenceRoutingMode,
+    pub storage_class: EvidenceStorageClass,
+}
+
+#[must_use]
+pub fn local_object_store_evidence_sink_descriptor() -> EvidenceSinkDescriptor {
+    EvidenceSinkDescriptor {
+        kind: EvidenceSinkKind::LocalObjectStore,
+        record_uri_prefix: GUILD_OBJECT_RECORD_URI_PREFIX.into(),
+        blob_uri_prefix: GUILD_OBJECT_BLOB_URI_PREFIX.into(),
+        routing_mode: EvidenceRoutingMode::Direct,
+        storage_class: EvidenceStorageClass::LocalPersistentContentAddressed,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ExecutionQueryResource {
     Recent {
@@ -2029,6 +2067,8 @@ pub struct EmitEvidenceAuthorityObservation {
     pub redaction: RedactionClass,
     pub size_bytes: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sink: Option<EvidenceSinkDescriptor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_uri: Option<String>,
@@ -2109,6 +2149,8 @@ pub struct EvidenceRecord {
     pub mime_type: String,
     pub sha256: String,
     pub size_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sink: Option<EvidenceSinkDescriptor>,
     pub title: Option<String>,
     pub audience: EvidenceAudience,
     pub redaction: RedactionClass,

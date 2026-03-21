@@ -693,6 +693,35 @@ fn run_log_write_reduced() -> serde_json::Value {
     })
 }
 
+fn run_emit_evidence_single_sink_replay_unavailable() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/hello-inspect"));
+    let registry = temp.load();
+    let runner = build_runner();
+    let hello = registry.resolve(&requested_skill("hello-inspect")).unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &hello,
+            &envelope_for(
+                &hello,
+                json!({ "name": "Ada" }),
+                CapabilityGrantSet {
+                    grants: vec![emit_evidence_grant()],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "emit-evidence-single-sink-replay-unavailable",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
 fn run_invoke_skill_single_child_bounded() -> serde_json::Value {
     let temp = TempRegistry::new();
     temp.install(repo_root().join("examples/skills/invoke-child-zero"));
@@ -772,6 +801,9 @@ fn main() {
         "http-request-redirect-unsupported" => run_http_request_redirect_unsupported(),
         "http-request-no-replay" | "http-request-not-proven" => run_http_request_no_replay(),
         "log-write-reduced" => run_log_write_reduced(),
+        "emit-evidence-single-sink-replay-unavailable" => {
+            run_emit_evidence_single_sink_replay_unavailable()
+        }
         "invoke-skill-single-child-bounded" => run_invoke_skill_single_child_bounded(),
         "invoke-skill-multi-child-unsupported" => run_invoke_skill_multi_child_unsupported(),
         other => {

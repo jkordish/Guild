@@ -30,7 +30,8 @@ use guild_types::{
     PolicyRule, PolicyRuleEffect, PolicyRuleTarget, Provenance, ReadResourceAuthorityObservation,
     ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope, ResolvedSkillRef,
     ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError, SkillOutput,
-    TerminationDetail, host_now_utc, mint_host_execution_id,
+    TerminationDetail, host_now_utc, local_object_store_evidence_sink_descriptor,
+    mint_host_execution_id,
 };
 use http::Request;
 use http::header::{CONTENT_TYPE, LOCATION};
@@ -1063,6 +1064,7 @@ impl WasmStoreState {
                     audience: request.audience.clone(),
                     redaction: request.redaction.clone(),
                     size_bytes: u64::try_from(request.payload.len()).unwrap_or(u64::MAX),
+                    sink: Some(local_object_store_evidence_sink_descriptor()),
                     title: request.title.clone(),
                     evidence_uri: None,
                     sha256: None,
@@ -1086,6 +1088,7 @@ impl WasmStoreState {
                     audience: request.audience.clone(),
                     redaction: request.redaction.clone(),
                     size_bytes: u64::try_from(request.payload.len()).unwrap_or(u64::MAX),
+                    sink: Some(local_object_store_evidence_sink_descriptor()),
                     title: request.title.clone(),
                     evidence_uri: evidence.map(|value| value.uri.clone()),
                     sha256: evidence.and_then(|value| value.sha256.clone()),

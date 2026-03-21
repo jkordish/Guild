@@ -19,7 +19,7 @@ use guild_types::{
     ExecutionRecord, ExecutionStatus, InstalledVerificationState, LocalPolicyConfig,
     LocalTrustTier, PolicyDecision, PolicyDecisionOutcome, PolicyReason, Provenance,
     RedactionClass, RequestedSkillRef, ResolvedSkillRef, SkillKey, SkillVersion, TerminationDetail,
-    VersionRequirement,
+    VersionRequirement, local_object_store_evidence_sink_descriptor,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -198,6 +198,7 @@ fn sample_evidence_record(evidence_record_id: &str, execution_id: &str) -> Evide
         mime_type: "application/json".into(),
         sha256: format!("sha256:{digest_hex}"),
         size_bytes: 32,
+        sink: Some(local_object_store_evidence_sink_descriptor()),
         title: Some("sample evidence".into()),
         audience: EvidenceAudience::Internal,
         redaction: RedactionClass::None,
@@ -1697,10 +1698,18 @@ fn evidence_payload_and_metadata_resources_are_distinct_and_readable() {
     assert_eq!(first_record.mime_type, "application/json");
     assert_eq!(first_record.title.as_deref(), Some("fixture"));
     assert_eq!(
+        first_record.sink,
+        Some(local_object_store_evidence_sink_descriptor())
+    );
+    assert_eq!(
         first_record.produced_by_execution.as_deref(),
         Some("execution-1")
     );
     assert_eq!(second_record.title.as_deref(), Some("fixture-again"));
+    assert_eq!(
+        second_record.sink,
+        Some(local_object_store_evidence_sink_descriptor())
+    );
     assert_eq!(
         second_record.produced_by_execution.as_deref(),
         Some("execution-2")

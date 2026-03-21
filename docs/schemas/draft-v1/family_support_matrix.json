@@ -7,7 +7,7 @@
     "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
     "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for six deterministic slices, and one bounded invoke-skill slice for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions.",
     "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked, and log-write linkage support reflects the generic consumer path once a real live proof exists."
+    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage support reflects the generic consumer path once a real live proof exists."
   ],
   "layers": [
     "admission_runtime_guarantee_matching",
@@ -479,6 +479,44 @@
           "max_bytes"
         ]
       },
+      "not_proven_shapes": [
+        {
+          "shape_id": "single-emission-local-object-store-replay-mismatch",
+          "reason_codes": [
+            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"
+          ],
+          "notes": "The runtime now binds an explicit host-owned sink descriptor and uses a dedicated comparator profile for the fixed local object-store sink, but the tested exact single-emission shrink still does not re-execute equivalently under that comparator. The slice therefore remains not_proven, and the draft-v1 control-plane does not try to smuggle sink or payload specifics through the coarser emit-evidence fields."
+        },
+        {
+          "shape_id": "dynamic-or-unstable-sink-semantics",
+          "reason_codes": [
+            "EMIT_EVIDENCE_SINK_MODEL_UNAVAILABLE"
+          ],
+          "notes": "Dynamic routing, alternate sink namespaces, unstable storage semantics, or any sink model beyond the fixed local object store remain outside the honest live proof slice."
+        },
+        {
+          "shape_id": "multiple-emissions-or-fan-out",
+          "reason_codes": [
+            "EMIT_EVIDENCE_MULTI_EMIT_UNSUPPORTED"
+          ],
+          "notes": "Baseline executions with blocked emit attempts, more than one exercised emission, fan-out, or append-order-sensitive multi-record behavior remain not_proven."
+        },
+        {
+          "shape_id": "nondeterministic-or-unreadable-payload",
+          "reason_codes": [
+            "EMIT_EVIDENCE_PAYLOAD_NONDETERMINISTIC",
+            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"
+          ],
+          "notes": "If the payload cannot be re-materialized deterministically and compared against a stable persisted digest, emit-evidence remains not_proven."
+        },
+        {
+          "shape_id": "host-result-error-on-emission",
+          "reason_codes": [
+            "EMIT_EVIDENCE_RESULT_ERROR_UNSUPPORTED"
+          ],
+          "notes": "Exercised emit-evidence observations with host-side result errors remain outside the bounded feasibility slice."
+        }
+      ],
       "layers": {
         "admission_runtime_guarantee_matching": {
           "status": "supported",
@@ -492,13 +530,13 @@
         },
         "live_minimization_proof": {
           "status": "not_proven",
-          "reason_codes": ["LIVE_COMPARATOR_UNAVAILABLE"],
-          "notes": "M8c still lacks a stable sink comparator for emit-evidence, so live proof stays not_proven."
+          "reason_codes": ["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"],
+          "notes": "M8c now binds explicit sink identity and uses a dedicated comparator profile for one fixed local-object-store single-emission candidate, but the tested exact single-emission shrink still does not re-execute equivalently under that comparator. The family therefore remains not_proven and fail-closed."
         },
         "token_issuance_basis": {
           "status": "supported",
           "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "M6 still issues canonical emit-evidence scopes, but proof-backed issuance remains unavailable."
+          "notes": "M6 still issues canonical emit-evidence scopes, but proof-backed issuance remains unavailable because no honest live emit-evidence proof exists for the tested exact single-emission slice. The current coarse scope model also does not justify smuggling sink or payload specifics into proof-backed issuance."
         },
         "token_verification": {
           "status": "supported",
@@ -527,13 +565,13 @@
         },
         "plan_proof_token_linkage": {
           "status": "not_proven",
-          "reason_codes": ["PROOF_LINKAGE_UNAVAILABLE", "LIVE_COMPARATOR_UNAVAILABLE"],
-          "notes": "M8c does not claim emit-evidence proof-backed token linkage."
+          "reason_codes": ["PROOF_LINKAGE_UNAVAILABLE", "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"],
+          "notes": "M8c does not claim emit-evidence proof-backed token linkage. The tested exact single-emission shrink did not replay equivalently under the dedicated comparator, so linkage stays fail-closed. The current coarse emit-evidence scope fields are not used to smuggle sink or payload specifics around that failure."
         },
         "proof_witness_linkage": {
           "status": "not_proven",
-          "reason_codes": ["WITNESS_PROOF_LINKAGE_UNAVAILABLE", "LIVE_COMPARATOR_UNAVAILABLE"],
-          "notes": "M8c does not link emit-evidence witnesses to live proofs."
+          "reason_codes": ["WITNESS_PROOF_LINKAGE_UNAVAILABLE", "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"],
+          "notes": "M8c does not link emit-evidence witnesses to live proofs. Witnesses keep the direct observed canonical family facts, but live-proof linkage stays unavailable because the tested exact single-emission shrink did not replay equivalently under the dedicated comparator."
         }
       }
     },

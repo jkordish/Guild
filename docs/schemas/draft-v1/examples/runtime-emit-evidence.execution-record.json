@@ -52,6 +52,13 @@
         "audience": "user",
         "redaction": "none",
         "size_bytes": 244,
+        "sink": {
+          "kind": "local-object-store",
+          "record_uri_prefix": "guild://objects/records/",
+          "blob_uri_prefix": "guild://objects/sha256/",
+          "routing_mode": "direct",
+          "storage_class": "local-persistent-content-addressed"
+        },
         "title": "hello-inspect snapshot",
         "evidence_uri": "guild://objects/records/019d0cda-5fba-76c2-beec-f8a6faee0fb8",
         "sha256": "sha256:7e1ddb0fd1a32693ea58e12d924cdbe1639eb5f2c01817f3b50a0602ae53438a"

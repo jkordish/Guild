@@ -2977,6 +2977,49 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     if emit_family_status is None or emit_family_status["support"] != "not-proven":
         failures.append("runtime-log-write live proof did not keep emit-evidence explicitly outside the proven slice")
 
+    emit_live = load_live_proof_scenario("emit-evidence-single-sink-replay-unavailable")
+    emit_family_status = next(
+        (entry for entry in emit_live["proof"]["family_statuses"] if entry["family"] == "emit-evidence"),
+        None,
+    )
+    if emit_live["proof"]["proof_status"] != "not_proven":
+        failures.append("runtime-emit-evidence single-sink feasibility scenario did not stay not_proven")
+    if emit_live["proof"].get("replay_input_digest") is None:
+        failures.append("runtime-emit-evidence single-sink feasibility scenario did not retain the replay input digest")
+    if (
+        emit_family_status is None
+        or emit_family_status["support"] != "not-proven"
+        or "EMIT_EVIDENCE_REPLAY_UNAVAILABLE" not in emit_family_status["reason_codes"]
+    ):
+        failures.append(
+            "runtime-emit-evidence single-sink feasibility scenario did not keep honest replay-unavailable family status"
+        )
+    if not any(
+        trial["family"] == "emit-evidence"
+        and trial["change_kind"] == "shrink_scope"
+        and not trial["accepted"]
+        and trial.get("error_code") == "capability-mismatch"
+        for trial in emit_live["proof"]["candidate_trials"]
+    ):
+        failures.append(
+            "runtime-emit-evidence single-sink feasibility scenario did not fail closed when the exact single-sink shrink replay diverged"
+        )
+    emit_observation = emit_live["baseline_execution_record"]["authority_observations"][0]["detail"]
+    emit_sink = emit_observation.get("sink")
+    if emit_sink is None:
+        failures.append("runtime-emit-evidence baseline did not retain the explicit host-owned sink descriptor")
+    else:
+        if emit_sink.get("kind") != "local-object-store":
+            failures.append("runtime-emit-evidence baseline did not bind the fixed local object-store sink kind")
+        if emit_sink.get("record_uri_prefix") != "guild://objects/records/":
+            failures.append("runtime-emit-evidence baseline did not bind the fixed evidence record namespace")
+        if emit_sink.get("blob_uri_prefix") != "guild://objects/sha256/":
+            failures.append("runtime-emit-evidence baseline did not bind the fixed evidence blob namespace")
+        if emit_sink.get("routing_mode") != "direct":
+            failures.append("runtime-emit-evidence baseline did not bind the direct routing mode")
+        if emit_sink.get("storage_class") != "local-persistent-content-addressed":
+            failures.append("runtime-emit-evidence baseline did not bind the fixed local storage class")
+
     legacy_http_mapping = runtime_mapping_for_effect(load_json("examples/fetch-transform.contract.json")["required_effects"][2])
     if legacy_http_mapping["mapping_status"] != "narrowing" or legacy_http_mapping["family"] != "http-request":
         failures.append("legacy net.connect compatibility mapping did not stay an explicit narrowing to http-request")
@@ -3063,6 +3106,22 @@ def verify_family_support_matrix() -> list[str]:
         failures.append("family_support_matrix.json did not mark invoke-skill live minimization proof as bounded")
     if families["emit-evidence"]["layers"]["live_minimization_proof"]["status"] != "not_proven":
         failures.append("family_support_matrix.json did not keep emit-evidence live minimization proof not_proven")
+    if "EMIT_EVIDENCE_REPLAY_UNAVAILABLE" not in families["emit-evidence"]["layers"]["live_minimization_proof"]["reason_codes"]:
+        failures.append(
+            "family_support_matrix.json did not report emit-evidence replay unavailability as the live minimization proof blocker"
+        )
+    if families["emit-evidence"]["layers"]["plan_proof_token_linkage"]["status"] != "not_proven":
+        failures.append("family_support_matrix.json did not keep emit-evidence plan->proof->token linkage not_proven")
+    if "EMIT_EVIDENCE_REPLAY_UNAVAILABLE" not in families["emit-evidence"]["layers"]["plan_proof_token_linkage"]["reason_codes"]:
+        failures.append(
+            "family_support_matrix.json did not keep emit-evidence plan->proof->token linkage fail-closed on replay unavailability"
+        )
+    if families["emit-evidence"]["layers"]["proof_witness_linkage"]["status"] != "not_proven":
+        failures.append("family_support_matrix.json did not keep emit-evidence proof->witness linkage not_proven")
+    if "EMIT_EVIDENCE_REPLAY_UNAVAILABLE" not in families["emit-evidence"]["layers"]["proof_witness_linkage"]["reason_codes"]:
+        failures.append(
+            "family_support_matrix.json did not keep emit-evidence proof->witness linkage fail-closed on replay unavailability"
+        )
     if families["http-request"]["layers"]["plan_proof_token_linkage"]["status"] != "bounded":
         failures.append("family_support_matrix.json did not mark http-request plan->proof->token linkage as bounded")
     if families["http-request"]["layers"]["proof_witness_linkage"]["status"] != "bounded":
@@ -3093,6 +3152,16 @@ def verify_family_support_matrix() -> list[str]:
         failures.append(
             "family_support_matrix.json did not describe the implicit default-port http-request slice honestly"
         )
+    emit_not_proven_shapes = families["emit-evidence"].get("not_proven_shapes", [])
+    emit_shape_ids = {entry.get("shape_id") for entry in emit_not_proven_shapes}
+    if emit_shape_ids != {
+        "single-emission-local-object-store-replay-mismatch",
+        "dynamic-or-unstable-sink-semantics",
+        "multiple-emissions-or-fan-out",
+        "nondeterministic-or-unreadable-payload",
+        "host-result-error-on-emission",
+    }:
+        failures.append("family_support_matrix.json did not retain the exact emit-evidence not_proven shape inventory")
     head_default_port_slice = next(
         (entry for entry in http_slices if entry.get("slice_id") == "loopback-ip-head-default-port"),
         None,
