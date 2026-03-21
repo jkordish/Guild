@@ -8,7 +8,8 @@ use guild_runner::{HttpReplayFixture, LiveProofComparatorProfile, Runner, Wasmti
 use guild_types::{
     Budget, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
     CapabilityId, EmitEvidenceConstraints, EvidenceAudience, ExecutionMode, GrantedCapability,
-    HttpMethod, HttpRequestConstraints, HttpScheme, PolicyDecision, PolicyDecisionOutcome,
+    HttpAddressFamily, HttpMethod, HttpRequestConstraints, HttpResolutionBinding,
+    HttpResolvedAddress, HttpScheme, PolicyDecision, PolicyDecisionOutcome,
     ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope,
     ResourceKind, Severity, SkillKey, VersionRequirement,
 };
@@ -166,6 +167,7 @@ fn http_replay_fixture_for_method(method: HttpMethod, url: &str, body: &str) -> 
         response_content_type: Some("application/json".into()),
         response_body: body.as_bytes().to_vec(),
         redirect_location: None,
+        resolution_binding: None,
     }
 }
 
@@ -177,6 +179,30 @@ fn head_http_replay_fixture(url: &str) -> HttpReplayFixture {
     http_replay_fixture_for_method(HttpMethod::Head, url, "")
 }
 
+fn localhost_resolution_binding(port: u16) -> HttpResolutionBinding {
+    HttpResolutionBinding {
+        requested_host: "localhost".into(),
+        port,
+        addresses: vec![HttpResolvedAddress {
+            address: "127.0.0.1".into(),
+            family: HttpAddressFamily::Ipv4,
+        }],
+        loopback_only: true,
+    }
+}
+
+fn localhost_http_replay_fixture(url: &str, port: u16, body: &str) -> HttpReplayFixture {
+    HttpReplayFixture {
+        method: HttpMethod::Get,
+        url: url.to_owned(),
+        response_status: 200,
+        response_content_type: Some("application/json".into()),
+        response_body: body.as_bytes().to_vec(),
+        redirect_location: None,
+        resolution_binding: Some(localhost_resolution_binding(port)),
+    }
+}
+
 fn redirect_replay_fixture(url: &str, redirect_location: &str) -> HttpReplayFixture {
     HttpReplayFixture {
         method: HttpMethod::Get,
@@ -185,6 +211,7 @@ fn redirect_replay_fixture(url: &str, redirect_location: &str) -> HttpReplayFixt
         response_content_type: Some("application/json".into()),
         response_body: br#"{"redirect":"json"}"#.to_vec(),
         redirect_location: Some(redirect_location.to_owned()),
+        resolution_binding: None,
     }
 }
 
@@ -416,6 +443,46 @@ fn run_http_request_head_bounded() -> serde_json::Value {
     })
 }
 
+fn run_http_request_localhost_bounded() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/inspect-http-json"));
+    let registry = temp.load();
+    let replay_url = "http://localhost:18080/response.json";
+    let runner = build_replay_runner(vec![localhost_http_replay_fixture(
+        replay_url,
+        18080,
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "get",
+                    "json_pointers": ["/message", "/nested/count"],
+                }),
+                CapabilityGrantSet {
+                    grants: vec![http_grant("localhost", 18080, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "http-request-localhost-bounded",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
 fn run_http_request_head_default_port_bounded() -> serde_json::Value {
     let temp = TempRegistry::new();
     temp.install(repo_root().join("examples/skills/inspect-http-json"));
@@ -576,6 +643,7 @@ fn main() {
         "read-resource-bounded" => run_read_resource_bounded(),
         "http-request-bounded" => run_http_request_bounded(),
         "http-request-default-port-bounded" => run_http_request_default_port_bounded(),
+        "http-request-localhost-bounded" => run_http_request_localhost_bounded(),
         "http-request-head-bounded" => run_http_request_head_bounded(),
         "http-request-head-default-port-bounded" => run_http_request_head_default_port_bounded(),
         "http-request-redirect-unsupported" => run_http_request_redirect_unsupported(),

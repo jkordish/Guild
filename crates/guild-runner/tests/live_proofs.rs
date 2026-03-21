@@ -9,7 +9,8 @@ use guild_runner::{
 use guild_types::{
     Budget, CallerRequest, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet,
     CapabilityId, EmitEvidenceConstraints, EvidenceAudience, ExecutionMode, GrantedCapability,
-    HttpMethod, HttpRequestConstraints, HttpScheme, PolicyDecision, PolicyDecisionOutcome,
+    HttpAddressFamily, HttpMethod, HttpRequestConstraints, HttpResolutionBinding,
+    HttpResolvedAddress, HttpScheme, PolicyDecision, PolicyDecisionOutcome,
     ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResolvedExecutionEnvelope,
     ResourceKind, Severity, SkillKey, VersionRequirement,
 };
@@ -183,6 +184,7 @@ fn http_replay_fixture_for_method(method: HttpMethod, url: &str, body: &str) -> 
         response_content_type: Some("application/json".into()),
         response_body: body.as_bytes().to_vec(),
         redirect_location: None,
+        resolution_binding: None,
     }
 }
 
@@ -194,6 +196,30 @@ fn head_http_replay_fixture(url: &str) -> HttpReplayFixture {
     http_replay_fixture_for_method(HttpMethod::Head, url, "")
 }
 
+fn localhost_resolution_binding(port: u16) -> HttpResolutionBinding {
+    HttpResolutionBinding {
+        requested_host: "localhost".into(),
+        port,
+        addresses: vec![HttpResolvedAddress {
+            address: "127.0.0.1".into(),
+            family: HttpAddressFamily::Ipv4,
+        }],
+        loopback_only: true,
+    }
+}
+
+fn localhost_http_replay_fixture(url: &str, port: u16, body: &str) -> HttpReplayFixture {
+    HttpReplayFixture {
+        method: HttpMethod::Get,
+        url: url.to_owned(),
+        response_status: 200,
+        response_content_type: Some("application/json".into()),
+        response_body: body.as_bytes().to_vec(),
+        redirect_location: None,
+        resolution_binding: Some(localhost_resolution_binding(port)),
+    }
+}
+
 fn redirect_replay_fixture(url: &str, redirect_location: &str) -> HttpReplayFixture {
     HttpReplayFixture {
         method: HttpMethod::Get,
@@ -202,6 +228,7 @@ fn redirect_replay_fixture(url: &str, redirect_location: &str) -> HttpReplayFixt
         response_content_type: Some("application/json".into()),
         response_body: br#"{"redirect":"json"}"#.to_vec(),
         redirect_location: Some(redirect_location.to_owned()),
+        resolution_binding: None,
     }
 }
 
@@ -559,6 +586,94 @@ fn http_request_live_proof_is_bounded_with_replay_for_default_port_shape() {
                 && trial.change_kind == "shrink_scope"
                 && trial.accepted)
     );
+}
+
+#[test]
+fn http_request_live_proof_is_bounded_with_replay_for_localhost_explicit_port_shape() {
+    let temp = TempRegistry::new();
+    temp.install(inspect_http_json_dir());
+    let registry = temp.load();
+    let replay_url = "http://localhost:18080/response.json";
+    let runner = build_replay_runner(vec![localhost_http_replay_fixture(
+        replay_url,
+        18080,
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let proof_result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "get",
+                    "json_pointers": ["/message", "/nested/count"],
+                }),
+                CapabilityGrantSet {
+                    grants: vec![http_grant("localhost", 18080, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    assert_eq!(proof_result.proof.proof_status, "bounded_minimal");
+    assert!(proof_result.proof.residual_authority.grants.is_empty());
+    assert!(proof_result.proof.replay_input_digest.is_some());
+    let family = proof_result
+        .proof
+        .family_statuses
+        .iter()
+        .find(|status| status.family == CapabilityId::HttpRequest)
+        .unwrap();
+    assert_eq!(family.support, LiveProofSupport::BoundedLiveProof);
+    assert_eq!(family.proof_status.as_deref(), Some("bounded_minimal"));
+    assert!(
+        family
+            .reason_codes
+            .iter()
+            .any(|code| code == "HTTP_LIVE_PROOF_BOUNDED")
+    );
+    match &proof_result.proof.proven_authority.grants[0].constraints {
+        CapabilityConstraints::HttpRequest(value) => {
+            assert_eq!(
+                value.allowed_hosts.as_ref().unwrap(),
+                &vec!["localhost".to_owned()]
+            );
+            assert_eq!(value.allowed_ports.as_ref().unwrap(), &vec![18080]);
+            assert_eq!(
+                value.allowed_methods.as_ref().unwrap(),
+                &vec![HttpMethod::Get]
+            );
+            assert_eq!(
+                value.allowed_path_prefixes.as_ref().unwrap(),
+                &vec!["/response.json".to_owned()]
+            );
+            assert_eq!(value.follow_redirects, Some(false));
+            assert_eq!(value.allow_loopback, Some(true));
+            assert_eq!(value.allow_ip_literals, Some(false));
+        }
+        other => panic!("expected http-request constraints, got {other:?}"),
+    }
+    let observation = match &proof_result
+        .baseline_execution_record
+        .authority_observations[0]
+    {
+        guild_types::AuthorityObservation::HttpRequest { detail, .. } => detail,
+        other => panic!("expected http-request observation, got {other:?}"),
+    };
+    let resolution = observation
+        .resolution
+        .as_ref()
+        .expect("localhost live proof should persist the bound resolution");
+    assert_eq!(resolution.requested_host, "localhost");
+    assert_eq!(resolution.port, 18080);
+    assert!(resolution.loopback_only);
 }
 
 #[test]

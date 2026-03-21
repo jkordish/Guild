@@ -388,7 +388,7 @@ where
                 support: LiveProofSupport::BoundedLiveProof,
                 proof_status: Some("bounded_minimal".into()),
                 reason_codes: stable_sorted_strings(reasons.clone()),
-                notes: "The family was removable for this invocation under the bounded fixture-backed loopback IP GET or HEAD replay slice, including either an explicit port or the default HTTP port.".into(),
+                notes: "The family was removable for this invocation under the bounded fixture-backed HTTP replay slice: one loopback IP GET or HEAD request with either an explicit port or the default HTTP port, or one explicit-port localhost GET request with a deterministic loopback-only resolution binding.".into(),
             },
             reasons,
         );
@@ -468,7 +468,7 @@ where
             support: LiveProofSupport::BoundedLiveProof,
             proof_status: Some(proof_status.into()),
             reason_codes: stable_sorted_strings(reasons.clone()),
-            notes: "Bounded live proof for http-request currently covers only one replay-fixtured HTTP GET or HEAD request to a loopback IP-literal host with either an explicit port or the implicit default HTTP port, exact observed path-prefix, no query, no redirects, and the normalized inspect-output comparator.".into(),
+            notes: "Bounded live proof for http-request currently covers only one replay-fixtured request under the normalized inspect-output comparator: a loopback IP-literal GET or HEAD with either an explicit port or the implicit default HTTP port, or an explicit-port localhost GET with a deterministic loopback-only resolution binding. All slices remain exact-path, query-free, redirect-free, and single-request only.".into(),
         },
         reasons,
     )
@@ -620,24 +620,91 @@ fn observed_http_request_cap(
                 .into(),
         ));
     };
-    let Ok(host_ip) = host.parse::<std::net::IpAddr>() else {
-        return Err((
-            "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
-            "Bounded http-request live proof currently requires an explicit loopback IP-literal host.".into(),
-        ));
-    };
-    if !host_ip.is_loopback() {
-        return Err((
-            "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
-            "Bounded http-request live proof currently requires a loopback IP-literal host.".into(),
-        ));
-    }
-
     let Some(port) = parsed_url.port_or_known_default() else {
         return Err((
             "HTTP_REQUEST_SHAPE_UNSUPPORTED",
             "The exercised http-request URL did not resolve to an explicit or default port.".into(),
         ));
+    };
+    let host = host.to_ascii_lowercase();
+    let allow_ip_literals = if let Ok(host_ip) = host.parse::<std::net::IpAddr>() {
+        if !host_ip.is_loopback() {
+            return Err((
+                "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
+                "Bounded http-request live proof currently requires either a loopback IP-literal host or exact localhost.".into(),
+            ));
+        }
+        true
+    } else {
+        if host != "localhost" {
+            return Err((
+                "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
+                "Bounded http-request live proof currently supports hostname replay only for exact localhost.".into(),
+            ));
+        }
+        if request.method != HttpMethod::Get {
+            return Err((
+                "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
+                "Bounded http-request hostname live proof currently supports only explicit-port localhost GET requests.".into(),
+            ));
+        }
+        if parsed_url.port().is_none() {
+            return Err((
+                "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
+                "Bounded http-request hostname live proof currently requires an explicit port in the localhost URL.".into(),
+            ));
+        }
+        let Some(resolution) = detail.resolution.as_ref() else {
+            return Err((
+                "HTTP_HOST_RESOLUTION_BINDING_UNAVAILABLE",
+                "Bounded localhost http-request live proof requires a deterministic host-owned resolution binding in the exercised observation.".into(),
+            ));
+        };
+        if resolution.requested_host.to_ascii_lowercase() != host || resolution.port != port {
+            return Err((
+                "HTTP_HOST_RESOLUTION_BINDING_UNSAFE",
+                "The exercised localhost http-request resolution binding did not match the observed host and port.".into(),
+            ));
+        }
+        if resolution.addresses.is_empty() {
+            return Err((
+                "HTTP_HOST_RESOLUTION_BINDING_UNSAFE",
+                "The exercised localhost http-request resolution binding did not retain any resolved addresses.".into(),
+            ));
+        }
+        let mut all_loopback = true;
+        for address in &resolution.addresses {
+            let parsed_address = address.address.parse::<std::net::IpAddr>().map_err(|error| {
+                (
+                    "HTTP_HOST_RESOLUTION_BINDING_UNSAFE",
+                    format!(
+                        "The exercised localhost http-request resolution binding contained an invalid IP literal: {error}"
+                    ),
+                )
+            })?;
+            let expected_family = match parsed_address {
+                std::net::IpAddr::V4(_) => "ipv4",
+                std::net::IpAddr::V6(_) => "ipv6",
+            };
+            let observed_family = match address.family {
+                guild_types::HttpAddressFamily::Ipv4 => "ipv4",
+                guild_types::HttpAddressFamily::Ipv6 => "ipv6",
+            };
+            if expected_family != observed_family {
+                return Err((
+                    "HTTP_HOST_RESOLUTION_BINDING_UNSAFE",
+                    "The exercised localhost http-request resolution binding recorded an address family mismatch.".into(),
+                ));
+            }
+            all_loopback &= parsed_address.is_loopback();
+        }
+        if !all_loopback || !resolution.loopback_only {
+            return Err((
+                "HTTP_HOST_RESOLUTION_BINDING_UNSAFE",
+                "Bounded localhost http-request live proof requires loopback-only resolution semantics.".into(),
+            ));
+        }
+        false
     };
     let path = if parsed_url.path().is_empty() {
         "/".to_owned()
@@ -662,7 +729,7 @@ fn observed_http_request_cap(
             allow_loopback: Some(true),
             allow_link_local: Some(false),
             allow_private_networks: Some(false),
-            allow_ip_literals: Some(true),
+            allow_ip_literals: Some(allow_ip_literals),
         }),
     })
 }

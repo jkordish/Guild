@@ -12,6 +12,7 @@ SKILLS = [
     "examples/cluster-rollout.contract.json",
     "examples/runtime-http-read.contract.json",
     "examples/runtime-http-read-default-port.contract.json",
+    "examples/runtime-http-localhost.contract.json",
     "examples/runtime-http-head.contract.json",
     "examples/runtime-http-head-default-port.contract.json",
     "examples/runtime-http-redirect.contract.json",

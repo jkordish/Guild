@@ -22,14 +22,15 @@ use guild_types::{
     EvidenceEmissionRequest, EvidenceRecord, EvidenceRef, ExecutionContext, ExecutionMetrics,
     ExecutionMode, ExecutionPhase, ExecutionReceipt, ExecutionRecord, ExecutionStatus,
     FilesystemConstraints, FilesystemOperation, FilesystemRoot, GrantedCapability,
-    GuildResourceScope, GuildResourceUri, HttpAuthorityObservation, HttpMethod, HttpRequest,
-    HttpRequestConstraints, HttpResponse, HttpScheme, InvokeDependencyConstraints,
-    InvokeSkillAuthorityObservation, LocalPolicyConfig, LocalPolicyDefaultAction, LogConstraints,
-    LogWriteAuthorityObservation, Mutability, PolicyDecision, PolicyDecisionOutcome, PolicyProfile,
-    PolicyProfileBinding, PolicyReason, PolicyRule, PolicyRuleEffect, PolicyRuleTarget, Provenance,
-    ReadResourceAuthorityObservation, ReadResourceConstraints, RedactionClass,
-    ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind, ResourceReadResult, RuntimeKind,
-    Severity, SkillError, SkillOutput, TerminationDetail, host_now_utc, mint_host_execution_id,
+    GuildResourceScope, GuildResourceUri, HttpAddressFamily, HttpAuthorityObservation, HttpMethod,
+    HttpRequest, HttpRequestConstraints, HttpResolutionBinding, HttpResolvedAddress, HttpResponse,
+    HttpScheme, InvokeDependencyConstraints, InvokeSkillAuthorityObservation, LocalPolicyConfig,
+    LocalPolicyDefaultAction, LogConstraints, LogWriteAuthorityObservation, Mutability,
+    PolicyDecision, PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding, PolicyReason,
+    PolicyRule, PolicyRuleEffect, PolicyRuleTarget, Provenance, ReadResourceAuthorityObservation,
+    ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope, ResolvedSkillRef,
+    ResourceKind, ResourceReadResult, RuntimeKind, Severity, SkillError, SkillOutput,
+    TerminationDetail, host_now_utc, mint_host_execution_id,
 };
 use http::Request;
 use http::header::{CONTENT_TYPE, LOCATION};
@@ -133,6 +134,20 @@ pub trait RuntimeHost: Send + Sync {
         timeout: Duration,
         max_response_bytes: u64,
     ) -> Result<HostHttpResponse, SkillError>;
+
+    /// Return a deterministic proof-time hostname resolution binding when one
+    /// is available for the exercised request.
+    ///
+    /// # Errors
+    ///
+    /// Returns a host-owned denial when proof-time replay requires a
+    /// resolution binding that is missing or unsafe.
+    fn replay_resolution_binding_for_request(
+        &self,
+        _request: &HttpRequest,
+    ) -> Result<Option<HttpResolutionBinding>, SkillError> {
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -311,12 +326,13 @@ struct CandidateGrant {
     contributes_to_required: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct HttpExecutionPolicy {
     timeout: Duration,
     max_response_bytes: u64,
     follow_redirects: bool,
     max_redirects: u8,
+    resolution_binding: Option<HttpResolutionBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -333,6 +349,7 @@ pub struct HttpReplayFixture {
     pub response_content_type: Option<String>,
     pub response_body: Vec<u8>,
     pub redirect_location: Option<String>,
+    pub resolution_binding: Option<HttpResolutionBinding>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -341,12 +358,19 @@ struct HttpReplayCatalog {
     digest: String,
 }
 
+#[derive(Debug, Clone)]
+struct ResolvedHttpDestination {
+    addresses: Vec<IpAddr>,
+    resolution_binding: Option<HttpResolutionBinding>,
+}
+
 impl HttpReplayCatalog {
     fn from_fixtures(fixtures: Vec<HttpReplayFixture>) -> Result<Self, ExecutionError> {
         let mut catalog = HashMap::new();
         let mut ordered_entries = Vec::new();
 
         for fixture in fixtures {
+            validate_http_replay_fixture(&fixture)?;
             if fixture.method == HttpMethod::Head && !fixture.response_body.is_empty() {
                 return Err(ExecutionError::new(
                     "http-replay-fixture-invalid",
@@ -387,6 +411,130 @@ impl HttpReplayCatalog {
         self.fixtures
             .get(&http_replay_fixture_key(&request.method, &request.url))
     }
+
+    fn lookup_resolution_binding(&self, request: &HttpRequest) -> Option<HttpResolutionBinding> {
+        self.lookup(request)
+            .and_then(|fixture| fixture.resolution_binding.clone())
+    }
+}
+
+fn validate_http_replay_fixture(fixture: &HttpReplayFixture) -> Result<(), ExecutionError> {
+    let replay_request = HttpRequest {
+        method: fixture.method.clone(),
+        url: fixture.url.clone(),
+        timeout_ms: None,
+    };
+    let parsed_request = parse_http_request(&replay_request)
+        .map_err(|denial| denial.into_execution_error(ExecutionPhase::Validation))?;
+    let parsed_url = Url::parse(&fixture.url).map_err(|error| {
+        ExecutionError::new(
+            "http-replay-fixture-invalid",
+            "proof-only HTTP replay fixtures must use valid absolute URLs",
+        )
+        .with_detail(serde_json::json!({
+            "url": fixture.url,
+            "error": error.to_string(),
+        }))
+        .with_phase(ExecutionPhase::Validation)
+    })?;
+
+    if parsed_request.ip_literal().is_some() {
+        if fixture.resolution_binding.is_some() {
+            return Err(ExecutionError::new(
+                "http-replay-fixture-invalid",
+                "IP-literal proof-only HTTP replay fixtures must not carry hostname resolution bindings",
+            )
+            .with_detail(serde_json::json!({
+                "method": fixture.method,
+                "url": fixture.url,
+            }))
+            .with_phase(ExecutionPhase::Validation));
+        }
+        return Ok(());
+    }
+
+    if parsed_request.host != "localhost" {
+        return Err(ExecutionError::new(
+            "http-replay-fixture-invalid",
+            "proof-only HTTP hostname replay fixtures currently support only exact localhost",
+        )
+        .with_detail(serde_json::json!({
+            "method": fixture.method,
+            "url": fixture.url,
+            "host": parsed_request.host,
+        }))
+        .with_phase(ExecutionPhase::Validation));
+    }
+    if fixture.method != HttpMethod::Get {
+        return Err(ExecutionError::new(
+            "http-replay-fixture-invalid",
+            "proof-only HTTP hostname replay fixtures currently support only GET requests",
+        )
+        .with_detail(serde_json::json!({
+            "method": fixture.method,
+            "url": fixture.url,
+        }))
+        .with_phase(ExecutionPhase::Validation));
+    }
+    if parsed_url.port().is_none() {
+        return Err(ExecutionError::new(
+            "http-replay-fixture-invalid",
+            "proof-only HTTP hostname replay fixtures require an explicit port",
+        )
+        .with_detail(serde_json::json!({
+            "method": fixture.method,
+            "url": fixture.url,
+        }))
+        .with_phase(ExecutionPhase::Validation));
+    }
+    if is_redirect_status(fixture.response_status) || fixture.redirect_location.is_some() {
+        return Err(ExecutionError::new(
+            "http-replay-fixture-invalid",
+            "proof-only HTTP hostname replay fixtures currently do not support redirects",
+        )
+        .with_detail(serde_json::json!({
+            "method": fixture.method,
+            "url": fixture.url,
+            "status": fixture.response_status,
+        }))
+        .with_phase(ExecutionPhase::Validation));
+    }
+
+    let Some(binding) = fixture.resolution_binding.as_ref() else {
+        return Err(ExecutionError::new(
+            "http-replay-fixture-invalid",
+            "proof-only HTTP hostname replay fixtures require a deterministic resolution binding",
+        )
+        .with_detail(serde_json::json!({
+            "method": fixture.method,
+            "url": fixture.url,
+        }))
+        .with_phase(ExecutionPhase::Validation));
+    };
+
+    validate_http_resolution_binding(binding, &parsed_request).map_err(|message| {
+        ExecutionError::new("http-replay-fixture-invalid", message)
+            .with_detail(serde_json::json!({
+                "method": fixture.method,
+                "url": fixture.url,
+                "resolution_binding": binding,
+            }))
+            .with_phase(ExecutionPhase::Validation)
+    })?;
+    if !binding.loopback_only {
+        return Err(ExecutionError::new(
+            "http-replay-fixture-invalid",
+            "proof-only HTTP hostname replay fixtures require loopback-only resolution bindings",
+        )
+        .with_detail(serde_json::json!({
+            "method": fixture.method,
+            "url": fixture.url,
+            "resolution_binding": binding,
+        }))
+        .with_phase(ExecutionPhase::Validation));
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -1059,6 +1207,7 @@ impl WasmStoreState {
                     response_content_type: None,
                     response_bytes: None,
                     redirects_followed: Some(redirects_followed),
+                    resolution: None,
                     denial: Some(Self::authority_failure_from_denial(denial)),
                     result_error: None,
                 },
@@ -1069,6 +1218,7 @@ impl WasmStoreState {
         &mut self,
         request: &HttpRequest,
         redirects_followed: u8,
+        resolution_binding: Option<&HttpResolutionBinding>,
         response: Option<&HttpResponse>,
         result_error: Option<&SkillError>,
     ) {
@@ -1082,6 +1232,7 @@ impl WasmStoreState {
                     response_bytes: response
                         .map(|value| u64::try_from(value.body.len()).unwrap_or(u64::MAX)),
                     redirects_followed: Some(redirects_followed),
+                    resolution: resolution_binding.cloned(),
                     denial: None,
                     result_error: result_error.map(Self::authority_failure_from_skill_error),
                 },
@@ -1115,12 +1266,25 @@ impl WasmStoreState {
         redirects_followed: u8,
         pending_redirect: Option<&PendingRedirect>,
     ) -> wasmtime::Result<HttpExecutionPolicy> {
+        let resolution_binding = self
+            .host
+            .replay_resolution_binding_for_request(request)
+            .map_err(|error| {
+                let denial = CapabilityDenial {
+                    code: error.code,
+                    message: error.message,
+                    detail: error.detail.unwrap_or(Value::Null),
+                };
+                self.push_blocked_http_request(request, redirects_followed, &denial);
+                capability_denial_trap(&denial)
+            })?;
         CapabilityEvaluator::authorize_http_request(
             self.grants(),
             &self.execution.budget,
             self.network_requests,
             request,
             parsed_request,
+            resolution_binding.as_ref(),
         )
         .map_err(|denial| {
             let denial = pending_redirect.as_ref().map_or(denial.clone(), |pending| {
@@ -1369,6 +1533,7 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
                     self.push_exercised_http_request(
                         &request,
                         redirects_followed,
+                        policy.resolution_binding.as_ref(),
                         Some(&response.response),
                         None,
                     );
@@ -1417,6 +1582,7 @@ impl bindings::guild::skill::inspect_host::Host for WasmStoreState {
                     self.push_exercised_http_request(
                         &request,
                         redirects_followed,
+                        policy.resolution_binding.as_ref(),
                         None,
                         Some(&error),
                     );
@@ -1499,6 +1665,15 @@ where
         self.http_replay_catalog
             .as_ref()
             .map(|catalog| catalog.digest.clone())
+    }
+
+    fn http_replay_resolution_binding(
+        &self,
+        request: &HttpRequest,
+    ) -> Option<HttpResolutionBinding> {
+        self.http_replay_catalog
+            .as_ref()
+            .and_then(|catalog| catalog.lookup_resolution_binding(request))
     }
 
     /// Resolve caller intent into a host-owned execution envelope using local policy.
@@ -2290,6 +2465,59 @@ where
     ) -> Result<HostHttpResponse, SkillError> {
         self.runner
             .dispatch_http_request(request, timeout, max_response_bytes)
+    }
+
+    fn replay_resolution_binding_for_request(
+        &self,
+        request: &HttpRequest,
+    ) -> Result<Option<HttpResolutionBinding>, SkillError> {
+        let parsed_request =
+            parse_http_request(request).map_err(CapabilityDenial::into_skill_error)?;
+        RunnerRuntimeHost::replay_resolution_binding_for_request(self, request, &parsed_request)
+            .map_err(CapabilityDenial::into_skill_error)
+    }
+}
+
+impl<A, R> RunnerRuntimeHost<A, R>
+where
+    A: RuntimeAdapter + Clone + 'static,
+    R: SkillRegistry + Clone + Send + Sync + 'static,
+{
+    fn replay_resolution_binding_for_request(
+        &self,
+        request: &HttpRequest,
+        parsed_request: &ParsedHttpRequest,
+    ) -> Result<Option<HttpResolutionBinding>, CapabilityDenial> {
+        let Some(binding) = self.runner.http_replay_resolution_binding(request) else {
+            if self.runner.has_http_replay_fixtures() && parsed_request.ip_literal().is_none() {
+                return Err(CapabilityDenial {
+                    code: "http-request-destination-unresolved".into(),
+                    message:
+                        "http-request hostname replay requires a deterministic resolution binding"
+                            .into(),
+                    detail: serde_json::json!({
+                        "url": request.url,
+                        "host": parsed_request.host,
+                    }),
+                });
+            }
+            return Ok(None);
+        };
+
+        validate_http_resolution_binding(&binding, parsed_request).map_err(|message| {
+            CapabilityDenial {
+                code: "http-request-destination-unresolved".into(),
+                message,
+                detail: serde_json::json!({
+                    "url": request.url,
+                    "host": parsed_request.host,
+                    "port": parsed_request.port,
+                    "resolution_binding": binding,
+                }),
+            }
+        })?;
+
+        Ok(Some(binding))
     }
 }
 
@@ -3348,28 +3576,40 @@ fn execute_http_request_via_replay(
         });
     }
 
-    let Some(destination_ip) = parsed_request.ip_literal() else {
-        return Err(SkillError {
-            code: "http-replay-request-unsupported".into(),
-            message: "proof-only HTTP replay requires an explicit loopback IP-literal host".into(),
-            retryable: false,
-            detail: Some(serde_json::json!({
-                "url": request.url,
-                "host": parsed_request.host,
-            })),
-        });
+    let is_ip_literal_loopback = match parsed_request.ip_literal() {
+        Some(destination_ip) => {
+            if !matches!(
+                classify_destination_ip(destination_ip),
+                HttpDestinationClass::Loopback
+            ) {
+                return Err(SkillError {
+                    code: "http-replay-request-unsupported".into(),
+                    message: "proof-only HTTP replay requires a loopback IP-literal destination"
+                        .into(),
+                    retryable: false,
+                    detail: Some(serde_json::json!({
+                        "url": request.url,
+                        "host": parsed_request.host,
+                    })),
+                });
+            }
+            true
+        }
+        None => false,
     };
-    if !matches!(
-        classify_destination_ip(destination_ip),
-        HttpDestinationClass::Loopback
-    ) {
+    if !is_ip_literal_loopback
+        && (parsed_request.host != "localhost"
+            || request.method != HttpMethod::Get
+            || parsed_url.port().is_none())
+    {
         return Err(SkillError {
             code: "http-replay-request-unsupported".into(),
-            message: "proof-only HTTP replay requires a loopback IP-literal destination".into(),
+            message: "proof-only HTTP replay hostname support is limited to explicit-port localhost GET requests with deterministic resolution bindings".into(),
             retryable: false,
             detail: Some(serde_json::json!({
                 "url": request.url,
                 "host": parsed_request.host,
+                "method": request.method,
             })),
         });
     }
@@ -3383,6 +3623,31 @@ fn execute_http_request_via_replay(
             "url": request.url,
         })),
     })?;
+    if !is_ip_literal_loopback {
+        let Some(binding) = fixture.resolution_binding.as_ref() else {
+            return Err(SkillError {
+                code: "http-replay-request-unsupported".into(),
+                message: "proof-only HTTP replay hostname requests require a deterministic resolution binding".into(),
+                retryable: false,
+                detail: Some(serde_json::json!({
+                    "url": request.url,
+                    "method": request.method,
+                })),
+            });
+        };
+        validate_http_resolution_binding(binding, &parsed_request).map_err(|message| {
+            SkillError {
+                code: "http-replay-request-unsupported".into(),
+                message,
+                retryable: false,
+                detail: Some(serde_json::json!({
+                    "url": request.url,
+                    "method": request.method,
+                    "resolution_binding": binding,
+                })),
+            }
+        })?;
+    }
     let is_redirect = is_redirect_status(fixture.response_status);
     if is_redirect && fixture.redirect_location.is_none() {
         return Err(SkillError {
@@ -3446,6 +3711,7 @@ fn http_replay_catalog_digest(entries: &[(String, HttpReplayFixture)]) -> String
                     "response_content_type": fixture.response_content_type,
                     "response_body_digest": sha256_bytes(&fixture.response_body),
                     "redirect_location": fixture.redirect_location,
+                    "resolution_binding": fixture.resolution_binding,
                 })
             })
             .collect(),
@@ -3729,6 +3995,7 @@ impl CapabilityEvaluator {
         used_network_requests: u32,
         request: &HttpRequest,
         parsed_request: &ParsedHttpRequest,
+        resolution_binding: Option<&HttpResolutionBinding>,
     ) -> Result<HttpExecutionPolicy, CapabilityDenial> {
         let matching =
             Self::matching_grants(grants, &CapabilityId::HttpRequest, &CapabilityAccess::Read);
@@ -3745,6 +4012,9 @@ impl CapabilityEvaluator {
             ));
         }
 
+        let resolved_destination =
+            resolve_http_destination_with_binding(parsed_request, resolution_binding)
+                .map_err(|kind| destination_denial(request, parsed_request, kind))?;
         let mut state = HttpGrantState::default();
 
         for grant in matching {
@@ -3761,11 +4031,17 @@ impl CapabilityEvaluator {
                 constraints,
                 request,
                 parsed_request,
+                &resolved_destination,
                 budget,
             );
         }
 
-        finalize_http_request_authorization(state, request, parsed_request)
+        finalize_http_request_authorization(
+            state,
+            request,
+            parsed_request,
+            resolved_destination.resolution_binding,
+        )
     }
 
     fn matching_grants<'a>(
@@ -5963,6 +6239,7 @@ fn evaluate_http_request_constraints(
     constraints: &HttpRequestConstraints,
     request: &HttpRequest,
     parsed_request: &ParsedHttpRequest,
+    resolved_destination: &ResolvedHttpDestination,
     budget: &guild_types::Budget,
 ) {
     if !matches_http_method(constraints.allowed_methods.as_ref(), &request.method) {
@@ -6017,7 +6294,7 @@ fn evaluate_http_request_constraints(
         return;
     }
 
-    match authorize_http_destination(parsed_request, constraints) {
+    match authorize_http_destination(parsed_request, constraints, resolved_destination) {
         Ok(()) => {}
         Err(kind) => {
             state.note_denial(kind);
@@ -6045,6 +6322,7 @@ fn finalize_http_request_authorization(
     state: HttpGrantState,
     request: &HttpRequest,
     parsed_request: &ParsedHttpRequest,
+    resolution_binding: Option<HttpResolutionBinding>,
 ) -> Result<HttpExecutionPolicy, CapabilityDenial> {
     match (state.authorized_timeout_ms, state.authorized_response_bytes) {
         (Some(timeout_ms), Some(max_response_bytes)) => Ok(HttpExecutionPolicy {
@@ -6052,6 +6330,7 @@ fn finalize_http_request_authorization(
             max_response_bytes,
             follow_redirects: state.authorized_follow_redirects,
             max_redirects: state.authorized_max_redirects.unwrap_or(0),
+            resolution_binding,
         }),
         _ if state.saw_denial(HTTP_DENIAL_TIMEOUT) => Err(CapabilityDenial {
             code: "http-request-timeout-not-granted".into(),
@@ -6146,9 +6425,53 @@ fn finalize_http_request_authorization(
     }
 }
 
+fn destination_denial(
+    request: &HttpRequest,
+    parsed_request: &ParsedHttpRequest,
+    kind: HttpGrantDenialKind,
+) -> CapabilityDenial {
+    match kind {
+        HttpGrantDenialKind::PrivateNetwork => CapabilityDenial {
+            code: "http-request-private-network-not-granted".into(),
+            message: "http-request destination resolved to a private-network target that was not granted".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            }),
+        },
+        HttpGrantDenialKind::LinkLocal => CapabilityDenial {
+            code: "http-request-link-local-not-granted".into(),
+            message: "http-request destination resolved to a link-local target that was not granted".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            }),
+        },
+        HttpGrantDenialKind::Loopback => CapabilityDenial {
+            code: "http-request-loopback-not-granted".into(),
+            message: "http-request destination resolved to a loopback target that was not granted".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+            }),
+        },
+        HttpGrantDenialKind::DestinationUnresolved => CapabilityDenial {
+            code: "http-request-destination-unresolved".into(),
+            message: "http-request destination could not be resolved safely under the current host policy".into(),
+            detail: serde_json::json!({
+                "url": request.url,
+                "host": parsed_request.host,
+                "port": parsed_request.port,
+            }),
+        },
+        other => unreachable!("unexpected destination denial kind: {other:?}"),
+    }
+}
+
 fn authorize_http_destination(
     parsed_request: &ParsedHttpRequest,
     constraints: &HttpRequestConstraints,
+    resolved_destination: &ResolvedHttpDestination,
 ) -> Result<(), HttpGrantDenialKind> {
     if parsed_request.ip_literal().is_none()
         && allow_flag_enabled(constraints.allow_loopback)
@@ -6158,8 +6481,7 @@ fn authorize_http_destination(
         return Ok(());
     }
 
-    let addresses = resolve_http_destination_addresses(parsed_request)?;
-    if addresses.iter().any(|address| {
+    if resolved_destination.addresses.iter().any(|address| {
         matches!(
             classify_destination_ip(*address),
             HttpDestinationClass::Loopback
@@ -6168,7 +6490,7 @@ fn authorize_http_destination(
     {
         return Err(HttpGrantDenialKind::Loopback);
     }
-    if addresses.iter().any(|address| {
+    if resolved_destination.addresses.iter().any(|address| {
         matches!(
             classify_destination_ip(*address),
             HttpDestinationClass::LinkLocal
@@ -6177,7 +6499,7 @@ fn authorize_http_destination(
     {
         return Err(HttpGrantDenialKind::LinkLocal);
     }
-    if addresses.iter().any(|address| {
+    if resolved_destination.addresses.iter().any(|address| {
         matches!(
             classify_destination_ip(*address),
             HttpDestinationClass::PrivateNetwork
@@ -6190,23 +6512,131 @@ fn authorize_http_destination(
     Ok(())
 }
 
-fn resolve_http_destination_addresses(
+fn resolve_http_destination_with_binding(
     parsed_request: &ParsedHttpRequest,
-) -> Result<Vec<IpAddr>, HttpGrantDenialKind> {
+    resolution_binding: Option<&HttpResolutionBinding>,
+) -> Result<ResolvedHttpDestination, HttpGrantDenialKind> {
     if let Some(ip) = parsed_request.ip_literal() {
-        return Ok(vec![ip]);
+        return Ok(ResolvedHttpDestination {
+            addresses: vec![ip],
+            resolution_binding: None,
+        });
     }
 
-    let resolved = (parsed_request.host.as_str(), parsed_request.port)
-        .to_socket_addrs()
-        .map_err(|_| HttpGrantDenialKind::DestinationUnresolved)?
-        .map(|address: SocketAddr| address.ip())
-        .collect::<Vec<_>>();
+    if let Some(binding) = resolution_binding {
+        let addresses = resolution_binding_addresses(binding)
+            .map_err(|_| HttpGrantDenialKind::DestinationUnresolved)?;
+        return Ok(ResolvedHttpDestination {
+            addresses,
+            resolution_binding: Some(binding.clone()),
+        });
+    }
+
+    let resolved = canonicalize_resolved_addresses(
+        (parsed_request.host.as_str(), parsed_request.port)
+            .to_socket_addrs()
+            .map_err(|_| HttpGrantDenialKind::DestinationUnresolved)?
+            .map(|address: SocketAddr| address.ip())
+            .collect::<Vec<_>>(),
+    );
     if resolved.is_empty() {
         return Err(HttpGrantDenialKind::DestinationUnresolved);
     }
 
-    Ok(resolved)
+    let resolution_binding = if parsed_request.host == "localhost" {
+        Some(http_resolution_binding(parsed_request, &resolved))
+    } else {
+        None
+    };
+
+    Ok(ResolvedHttpDestination {
+        addresses: resolved,
+        resolution_binding,
+    })
+}
+
+fn canonicalize_resolved_addresses(mut addresses: Vec<IpAddr>) -> Vec<IpAddr> {
+    addresses.sort_by_cached_key(|address| address.to_string());
+    addresses.dedup();
+    addresses
+}
+
+fn http_address_family(address: IpAddr) -> HttpAddressFamily {
+    match address {
+        IpAddr::V4(_) => HttpAddressFamily::Ipv4,
+        IpAddr::V6(_) => HttpAddressFamily::Ipv6,
+    }
+}
+
+fn http_resolution_binding(
+    parsed_request: &ParsedHttpRequest,
+    addresses: &[IpAddr],
+) -> HttpResolutionBinding {
+    HttpResolutionBinding {
+        requested_host: parsed_request.host.clone(),
+        port: parsed_request.port,
+        addresses: addresses
+            .iter()
+            .map(|address| HttpResolvedAddress {
+                address: address.to_string(),
+                family: http_address_family(*address),
+            })
+            .collect(),
+        loopback_only: addresses.iter().all(IpAddr::is_loopback),
+    }
+}
+
+fn resolution_binding_addresses(binding: &HttpResolutionBinding) -> Result<Vec<IpAddr>, String> {
+    if binding.addresses.is_empty() {
+        return Err(
+            "http-request resolution binding must include at least one resolved address".into(),
+        );
+    }
+
+    let mut parsed = Vec::with_capacity(binding.addresses.len());
+    for address in &binding.addresses {
+        let parsed_address = address.address.parse::<IpAddr>().map_err(|error| {
+            format!(
+                "http-request resolution binding address `{}` was not a valid IP literal: {error}",
+                address.address
+            )
+        })?;
+        if http_address_family(parsed_address) != address.family {
+            return Err(format!(
+                "http-request resolution binding address family for `{}` did not match the parsed IP literal",
+                address.address
+            ));
+        }
+        parsed.push(parsed_address);
+    }
+
+    Ok(canonicalize_resolved_addresses(parsed))
+}
+
+fn validate_http_resolution_binding(
+    binding: &HttpResolutionBinding,
+    parsed_request: &ParsedHttpRequest,
+) -> Result<(), String> {
+    if canonicalize_http_host(&binding.requested_host) != parsed_request.host {
+        return Err(
+            "http-request resolution binding host did not match the exercised request host".into(),
+        );
+    }
+    if binding.port != parsed_request.port {
+        return Err(
+            "http-request resolution binding port did not match the exercised request port".into(),
+        );
+    }
+
+    let parsed_addresses = resolution_binding_addresses(binding)?;
+    if binding.loopback_only != parsed_addresses.iter().all(IpAddr::is_loopback) {
+        return Err(
+            "http-request resolution binding loopback_only did not match the resolved address set"
+                .into(),
+        );
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

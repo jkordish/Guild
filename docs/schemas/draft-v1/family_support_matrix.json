@@ -5,9 +5,9 @@
   "notes": [
     "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
     "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
-    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots and bounded fixture-backed http-request shrinking only for four deterministic loopback IP slices: GET with an explicit port, GET with the implicit default HTTP port, HEAD with an explicit port, and HEAD with the implicit default HTTP port.",
+    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots and bounded fixture-backed http-request shrinking only for five deterministic slices: four loopback IP slices, GET with an explicit port, GET with the implicit default HTTP port, HEAD with an explicit port, and HEAD with the implicit default HTTP port, plus one explicit-port localhost GET slice with a deterministic loopback-only resolution binding.",
     "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port, invoke-skill and emit-evidence stay unlinked, and log-write linkage support reflects the generic consumer path once a real live proof exists."
+    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET slice with a deterministic loopback-only resolution binding, invoke-skill and emit-evidence stay unlinked, and log-write linkage support reflects the generic consumer path once a real live proof exists."
   ],
   "layers": [
     "admission_runtime_guarantee_matching",
@@ -131,15 +131,41 @@
             "replay": "required"
           },
           "notes": "Bounded live proof is also real for the same loopback IP HEAD request shape when the URL omits the port and the runtime normalizes it to port 80."
+        },
+        {
+          "slice_id": "localhost-get-explicit-port",
+          "proof_status": "bounded_minimal",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "request_shape": {
+            "max_exercised_requests": 1,
+            "method": "GET",
+            "scheme": "http",
+            "host_form": "loopback-hostname-localhost",
+            "port_form": "explicit",
+            "path_match": "exact_observed_path",
+            "query": "forbidden",
+            "redirects": "forbidden",
+            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
+            "replay": "required",
+            "resolution_binding": "required",
+            "resolution_scope": "literal_host_explicit_port_resolved_addresses_address_families_loopback_only"
+          },
+          "notes": "Bounded live proof is real for one replay-fixtured explicit-port localhost GET request only when the proof basis binds the literal host string, explicit port, resolved addresses and address families, loopback-only resolution semantics, and replay invalidation inputs for that binding."
         }
       ],
       "not_proven_shapes": [
         {
-          "shape_id": "loopback-hostname-forms",
+          "shape_id": "hostname-forms-beyond-explicit-port-localhost-get",
           "reason_codes": [
-            "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF"
+            "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
+            "HTTP_HOST_RESOLUTION_BINDING_UNAVAILABLE",
+            "HTTP_HOST_RESOLUTION_BINDING_UNSAFE"
           ],
-          "notes": "Loopback hostname forms such as localhost remain outside the honest replay-backed GET and HEAD proof slices."
+          "notes": "Only explicit-port localhost GET with a deterministic loopback-only resolution binding is proven among hostname forms. Localhost default-port GET, localhost HEAD, and all other hostname forms remain outside the honest replay-backed proof slice."
         },
         {
           "shape_id": "query-or-fragment",
@@ -184,12 +210,12 @@
         "live_minimization_proof": {
           "status": "bounded",
           "reason_codes": ["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"],
-          "notes": "M8c now has bounded live proof for exactly four deterministic replay-fixtured http-request slices: exercised GET and HEAD over http to a loopback IP-literal host, each with an explicit port form and an implicit default HTTP port form. All four remain exact-path, query-free, redirect-free, single-request slices under the normalized inspect-output comparator only. Broader http-request shapes stay not_proven."
+          "notes": "M8c now has bounded live proof for exactly five deterministic replay-fixtured http-request slices: exercised GET and HEAD over http to a loopback IP-literal host, each with an explicit port form and an implicit default HTTP port form, plus explicit-port localhost GET when the proof basis carries a deterministic loopback-only resolution binding. All five remain exact-path, query-free, redirect-free, single-request slices under the normalized inspect-output comparator only. Broader http-request shapes stay not_proven."
         },
         "token_issuance_basis": {
           "status": "supported",
           "reason_codes": ["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "M6 still issues direct canonical http-request scopes, and it can now consume the bounded live proof for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port. Unsupported http-request shapes still fall back to explicit upper-bound issuance or refusal."
+          "notes": "M6 still issues direct canonical http-request scopes, and it can now consume the bounded live proof for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the explicit-port localhost GET slice with a deterministic loopback-only resolution binding. Unsupported http-request shapes still fall back to explicit upper-bound issuance or refusal."
         },
         "token_verification": {
           "status": "supported",
@@ -219,12 +245,12 @@
         "plan_proof_token_linkage": {
           "status": "bounded",
           "reason_codes": ["HTTP_LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "M8c now proves a real bounded plan-to-live-proof-to-proof-backed-token chain for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port only. Unsupported http-request shapes still fail closed back to upper-bound issuance or refusal."
+          "notes": "M8c now proves a real bounded plan-to-live-proof-to-proof-backed-token chain for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the explicit-port localhost GET slice with a deterministic loopback-only resolution binding only. Unsupported http-request shapes still fail closed back to upper-bound issuance or refusal."
         },
         "proof_witness_linkage": {
           "status": "bounded",
           "reason_codes": ["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED"],
-          "notes": "Witnesses now link honestly to bounded live proofs only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port. Redirects, queries, hostname forms, multi-request executions, and unsupported comparator or replay conditions stay unlinked and not_proven."
+          "notes": "Witnesses now link honestly to bounded live proofs only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the explicit-port localhost GET slice with a deterministic loopback-only resolution binding. Redirects, unsupported hostname forms, localhost default-port GET, localhost HEAD, queries, multi-request executions, and unsupported comparator or replay conditions stay unlinked and not_proven."
         }
       }
     },

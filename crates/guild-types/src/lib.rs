@@ -1965,6 +1965,27 @@ pub struct AuthorityObservationFailure {
     pub detail: Option<Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HttpAddressFamily {
+    Ipv4,
+    Ipv6,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct HttpResolvedAddress {
+    pub address: String,
+    pub family: HttpAddressFamily,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct HttpResolutionBinding {
+    pub requested_host: String,
+    pub port: u16,
+    pub addresses: Vec<HttpResolvedAddress>,
+    pub loopback_only: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct HttpAuthorityObservation {
     pub request: HttpRequest,
@@ -1976,6 +1997,8 @@ pub struct HttpAuthorityObservation {
     pub response_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redirects_followed: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<HttpResolutionBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub denial: Option<AuthorityObservationFailure>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

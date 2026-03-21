@@ -8,9 +8,10 @@ use guild_runner::{ExecutionError, HttpReplayFixture, Runner, WasmtimeRuntimeAda
 use guild_types::{
     AuthorityObservation, AuthorityObservationStatus, Budget, CallerRequest, CapabilityAccess,
     CapabilityConstraints, CapabilityGrantSet, CapabilityId, ExecutionMode, ExecutionRecord,
-    ExecutionStatus, GrantedCapability, HttpMethod, HttpRequestConstraints, HttpScheme,
-    InvokeDependencyConstraints, PolicyDecision, PolicyDecisionOutcome, RequestedSkillRef,
-    ResolvedExecutionEnvelope, SkillKey, VersionRequirement,
+    ExecutionStatus, GrantedCapability, HttpAddressFamily, HttpMethod, HttpRequestConstraints,
+    HttpResolutionBinding, HttpResolvedAddress, HttpScheme, InvokeDependencyConstraints,
+    PolicyDecision, PolicyDecisionOutcome, RequestedSkillRef, ResolvedExecutionEnvelope, SkillKey,
+    VersionRequirement,
 };
 use serde_json::{Value, json};
 
@@ -81,6 +82,7 @@ fn http_replay_fixture_for_method(method: HttpMethod, url: &str, body: &str) -> 
         response_content_type: Some("application/json".into()),
         response_body: body.as_bytes().to_vec(),
         redirect_location: None,
+        resolution_binding: None,
     }
 }
 
@@ -90,6 +92,30 @@ fn http_replay_fixture(url: &str, body: &str) -> HttpReplayFixture {
 
 fn head_http_replay_fixture(url: &str) -> HttpReplayFixture {
     http_replay_fixture_for_method(HttpMethod::Head, url, "")
+}
+
+fn localhost_resolution_binding(port: u16) -> HttpResolutionBinding {
+    HttpResolutionBinding {
+        requested_host: "localhost".into(),
+        port,
+        addresses: vec![HttpResolvedAddress {
+            address: "127.0.0.1".into(),
+            family: HttpAddressFamily::Ipv4,
+        }],
+        loopback_only: true,
+    }
+}
+
+fn localhost_http_replay_fixture(url: &str, port: u16, body: &str) -> HttpReplayFixture {
+    HttpReplayFixture {
+        method: HttpMethod::Get,
+        url: url.to_owned(),
+        response_status: 200,
+        response_content_type: Some("application/json".into()),
+        response_body: body.as_bytes().to_vec(),
+        redirect_location: None,
+        resolution_binding: Some(localhost_resolution_binding(port)),
+    }
 }
 
 fn execution_request(
@@ -518,6 +544,64 @@ fn http_happy_path_executes_through_real_host_path() {
 }
 
 #[test]
+fn localhost_happy_path_records_resolution_binding() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let record = run_http_skill(
+        &registry,
+        &runner,
+        json!({
+            "url": server.localhost_json_url(),
+            "method": "get",
+            "json_pointers": ["/message", "/nested/count"],
+        }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                "localhost",
+                server.port(),
+                "/json",
+                &[HttpMethod::Get],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap();
+
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.metrics.network_requests, 1);
+    match &record.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            let resolution = detail
+                .resolution
+                .as_ref()
+                .expect("localhost executions persist a resolution binding");
+            assert_eq!(detail.request.url, server.localhost_json_url());
+            assert_eq!(resolution.requested_host, "localhost");
+            assert_eq!(resolution.port, server.port());
+            assert!(resolution.loopback_only);
+            assert!(!resolution.addresses.is_empty());
+            for address in &resolution.addresses {
+                let parsed = address.address.parse::<std::net::IpAddr>().unwrap();
+                assert!(parsed.is_loopback());
+                let expected_family = if parsed.is_ipv4() {
+                    HttpAddressFamily::Ipv4
+                } else {
+                    HttpAddressFamily::Ipv6
+                };
+                assert_eq!(address.family, expected_family);
+            }
+        }
+        other => panic!("expected canonical http-request observation, got {other:?}"),
+    }
+}
+
+#[test]
 fn http_head_happy_path_executes_through_real_host_path() {
     let server = http_test_server::HttpTestServer::start();
     let registry = load_registry();
@@ -674,6 +758,62 @@ fn proof_only_replay_transport_replays_deterministic_loopback_heads() {
 }
 
 #[test]
+fn proof_only_replay_transport_replays_deterministic_localhost_gets_with_explicit_port_binding() {
+    let registry = load_registry();
+    let replay_url = "http://localhost:18080/response.json";
+    let expected_binding = localhost_resolution_binding(18080);
+    let runner = build_replay_runner(vec![localhost_http_replay_fixture(
+        replay_url,
+        18080,
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+    let grants = CapabilityGrantSet {
+        grants: vec![http_grant(
+            "localhost",
+            18080,
+            "/response.json",
+            &[HttpMethod::Get],
+            &[HttpScheme::Http],
+            2_000,
+            4_096,
+        )],
+    };
+    let input = json!({
+        "url": replay_url,
+        "method": "get",
+        "json_pointers": ["/message", "/nested/count"],
+    });
+
+    let first = run_http_skill(
+        &registry,
+        &runner,
+        input.clone(),
+        grants.clone(),
+        Budget::default(),
+    )
+    .unwrap();
+    let second = run_http_skill(&registry, &runner, input, grants, Budget::default()).unwrap();
+
+    assert_eq!(first.status, ExecutionStatus::Succeeded);
+    assert_eq!(second.status, ExecutionStatus::Succeeded);
+    assert_eq!(
+        first.output.as_ref().unwrap().structured,
+        second.output.as_ref().unwrap().structured
+    );
+    assert_eq!(first.authority_observations, second.authority_observations);
+    match &first.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            assert_eq!(detail.request.method, HttpMethod::Get);
+            assert_eq!(detail.request.url, replay_url);
+            assert_eq!(detail.response_status, Some(200));
+            assert_eq!(detail.resolution.as_ref(), Some(&expected_binding));
+        }
+        other => panic!("expected canonical http-request observation, got {other:?}"),
+    }
+}
+
+#[test]
 fn proof_only_replay_transport_replays_deterministic_loopback_gets_with_default_port() {
     let registry = load_registry();
     let replay_url = "http://127.0.0.1/response.json";
@@ -791,6 +931,49 @@ fn proof_only_replay_catalog_rejects_head_fixtures_with_bodies() {
             ),
         ]) {
             Ok(_) => panic!("HEAD replay fixture with a response body should fail closed"),
+            Err(error) => error,
+        };
+
+    assert_eq!(error.code, "http-replay-fixture-invalid");
+}
+
+#[test]
+fn proof_only_replay_catalog_rejects_localhost_fixtures_without_resolution_binding() {
+    let error = match Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(
+        vec![HttpReplayFixture {
+            method: HttpMethod::Get,
+            url: "http://localhost:18080/response.json".into(),
+            response_status: 200,
+            response_content_type: Some("application/json".into()),
+            response_body: br#"{"service":"guild-http"}"#.to_vec(),
+            redirect_location: None,
+            resolution_binding: None,
+        }],
+    ) {
+        Ok(_) => panic!(
+            "localhost replay fixture without a deterministic resolution binding should fail closed"
+        ),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.code, "http-replay-fixture-invalid");
+}
+
+#[test]
+fn proof_only_replay_catalog_rejects_localhost_head_fixtures() {
+    let error =
+        match Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(vec![
+            HttpReplayFixture {
+                method: HttpMethod::Head,
+                url: "http://localhost:18080/response.json".into(),
+                response_status: 200,
+                response_content_type: Some("application/json".into()),
+                response_body: Vec::new(),
+                redirect_location: None,
+                resolution_binding: Some(localhost_resolution_binding(18080)),
+            },
+        ]) {
+            Ok(_) => panic!("localhost HEAD replay fixtures should stay out of scope"),
             Err(error) => error,
         };
 
