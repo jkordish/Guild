@@ -73,15 +73,23 @@ fn build_replay_runner(fixtures: Vec<HttpReplayFixture>) -> Runner<WasmtimeRunti
         .unwrap()
 }
 
-fn http_replay_fixture(url: &str, body: &str) -> HttpReplayFixture {
+fn http_replay_fixture_for_method(method: HttpMethod, url: &str, body: &str) -> HttpReplayFixture {
     HttpReplayFixture {
-        method: HttpMethod::Get,
+        method,
         url: url.to_owned(),
         response_status: 200,
         response_content_type: Some("application/json".into()),
         response_body: body.as_bytes().to_vec(),
         redirect_location: None,
     }
+}
+
+fn http_replay_fixture(url: &str, body: &str) -> HttpReplayFixture {
+    http_replay_fixture_for_method(HttpMethod::Get, url, body)
+}
+
+fn head_http_replay_fixture(url: &str) -> HttpReplayFixture {
+    http_replay_fixture_for_method(HttpMethod::Head, url, "")
 }
 
 fn execution_request(
@@ -510,6 +518,59 @@ fn http_happy_path_executes_through_real_host_path() {
 }
 
 #[test]
+fn http_head_happy_path_executes_through_real_host_path() {
+    let server = http_test_server::HttpTestServer::start();
+    let registry = load_registry();
+    let runner = build_runner();
+
+    let record = run_http_skill(
+        &registry,
+        &runner,
+        json!({
+            "url": server.json_url(),
+            "method": "head",
+        }),
+        CapabilityGrantSet {
+            grants: vec![http_grant(
+                http_test_server::HttpTestServer::host(),
+                server.port(),
+                "/json",
+                &[HttpMethod::Head],
+                &[HttpScheme::Http],
+                2_000,
+                4_096,
+            )],
+        },
+        Budget::default(),
+    )
+    .unwrap();
+
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.metrics.network_requests, 1);
+    let output = record.output.as_ref().unwrap();
+    assert_eq!(output.structured["status"], 200);
+    assert_eq!(output.structured["method"], "head");
+    assert_eq!(output.structured["response_bytes"], 0);
+    assert_eq!(output.structured["json_summary"]["root_kind"], "none");
+    assert_eq!(
+        output.structured["json_summary"]["reason"],
+        "HEAD responses do not include a JSON body"
+    );
+    assert_eq!(record.authority_observations.len(), 1);
+    match &record.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            assert_eq!(detail.request.method, HttpMethod::Head);
+            assert_eq!(detail.request.url, server.json_url());
+            assert_eq!(detail.response_status, Some(200));
+            assert_eq!(detail.denial, None);
+            assert_eq!(detail.result_error, None);
+        }
+        other => panic!("expected canonical http-request observation, got {other:?}"),
+    }
+}
+
+#[test]
 fn proof_only_replay_transport_replays_deterministic_loopback_gets() {
     let registry = load_registry();
     let replay_url = "http://127.0.0.1:18080/response.json";
@@ -553,6 +614,63 @@ fn proof_only_replay_transport_replays_deterministic_loopback_gets() {
         second.output.as_ref().unwrap().structured
     );
     assert_eq!(first.authority_observations, second.authority_observations);
+}
+
+#[test]
+fn proof_only_replay_transport_replays_deterministic_loopback_heads() {
+    let registry = load_registry();
+    let replay_url = "http://127.0.0.1:18080/response.json";
+    let runner = build_replay_runner(vec![head_http_replay_fixture(replay_url)]);
+    let grants = CapabilityGrantSet {
+        grants: vec![http_grant(
+            "127.0.0.1",
+            18080,
+            "/response.json",
+            &[HttpMethod::Head],
+            &[HttpScheme::Http],
+            2_000,
+            4_096,
+        )],
+    };
+    let input = json!({
+        "url": replay_url,
+        "method": "head",
+    });
+
+    let first = run_http_skill(
+        &registry,
+        &runner,
+        input.clone(),
+        grants.clone(),
+        Budget::default(),
+    )
+    .unwrap();
+    let second = run_http_skill(&registry, &runner, input, grants, Budget::default()).unwrap();
+
+    assert_eq!(first.status, ExecutionStatus::Succeeded);
+    assert_eq!(second.status, ExecutionStatus::Succeeded);
+    assert_eq!(first.metrics.network_requests, 1);
+    assert_eq!(second.metrics.network_requests, 1);
+    assert_eq!(
+        first.output.as_ref().unwrap().structured,
+        second.output.as_ref().unwrap().structured
+    );
+    assert_eq!(first.authority_observations, second.authority_observations);
+    assert_eq!(first.output.as_ref().unwrap().structured["method"], "head");
+    assert_eq!(
+        first.output.as_ref().unwrap().structured["response_bytes"],
+        0
+    );
+    match &first.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            assert_eq!(detail.request.method, HttpMethod::Head);
+            assert_eq!(detail.request.url, replay_url);
+            assert_eq!(detail.response_status, Some(200));
+            assert_eq!(detail.response_bytes, Some(0));
+        }
+        other => panic!("expected canonical http-request observation, got {other:?}"),
+    }
 }
 
 #[test]
@@ -608,6 +726,75 @@ fn proof_only_replay_transport_replays_deterministic_loopback_gets_with_default_
         }
         other => panic!("expected canonical http-request observation, got {other:?}"),
     }
+}
+
+#[test]
+fn proof_only_replay_transport_replays_deterministic_loopback_heads_with_default_port() {
+    let registry = load_registry();
+    let replay_url = "http://127.0.0.1/response.json";
+    let runner = build_replay_runner(vec![head_http_replay_fixture(replay_url)]);
+    let grants = CapabilityGrantSet {
+        grants: vec![http_grant(
+            "127.0.0.1",
+            80,
+            "/response.json",
+            &[HttpMethod::Head],
+            &[HttpScheme::Http],
+            2_000,
+            4_096,
+        )],
+    };
+    let input = json!({
+        "url": replay_url,
+        "method": "head",
+    });
+
+    let first = run_http_skill(
+        &registry,
+        &runner,
+        input.clone(),
+        grants.clone(),
+        Budget::default(),
+    )
+    .unwrap();
+    let second = run_http_skill(&registry, &runner, input, grants, Budget::default()).unwrap();
+
+    assert_eq!(first.status, ExecutionStatus::Succeeded);
+    assert_eq!(second.status, ExecutionStatus::Succeeded);
+    assert_eq!(first.metrics.network_requests, 1);
+    assert_eq!(second.metrics.network_requests, 1);
+    assert_eq!(
+        first.output.as_ref().unwrap().structured,
+        second.output.as_ref().unwrap().structured
+    );
+    assert_eq!(first.authority_observations, second.authority_observations);
+    match &first.authority_observations[0] {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            assert_eq!(status, &AuthorityObservationStatus::Exercised);
+            assert_eq!(detail.request.method, HttpMethod::Head);
+            assert_eq!(detail.request.url, replay_url);
+            assert_eq!(detail.response_status, Some(200));
+            assert_eq!(detail.response_bytes, Some(0));
+        }
+        other => panic!("expected canonical http-request observation, got {other:?}"),
+    }
+}
+
+#[test]
+fn proof_only_replay_catalog_rejects_head_fixtures_with_bodies() {
+    let error =
+        match Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(vec![
+            http_replay_fixture_for_method(
+                HttpMethod::Head,
+                "http://127.0.0.1:18080/response.json",
+                r#"{"unexpected":"body"}"#,
+            ),
+        ]) {
+            Ok(_) => panic!("HEAD replay fixture with a response body should fail closed"),
+            Err(error) => error,
+        };
+
+    assert_eq!(error.code, "http-replay-fixture-invalid");
 }
 
 #[test]

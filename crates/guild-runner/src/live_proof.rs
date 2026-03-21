@@ -388,7 +388,7 @@ where
                 support: LiveProofSupport::BoundedLiveProof,
                 proof_status: Some("bounded_minimal".into()),
                 reason_codes: stable_sorted_strings(reasons.clone()),
-                notes: "The family was removable for this invocation under the bounded fixture-backed loopback IP GET replay slice, including either an explicit port or the default HTTP port.".into(),
+                notes: "The family was removable for this invocation under the bounded fixture-backed loopback IP GET or HEAD replay slice, including either an explicit port or the default HTTP port.".into(),
             },
             reasons,
         );
@@ -468,7 +468,7 @@ where
             support: LiveProofSupport::BoundedLiveProof,
             proof_status: Some(proof_status.into()),
             reason_codes: stable_sorted_strings(reasons.clone()),
-            notes: "Bounded live proof for http-request currently covers only one replay-fixtured HTTP GET to a loopback IP-literal host with either an explicit port or the implicit default HTTP port, exact observed path-prefix, no query, no redirects, and the normalized inspect-output comparator.".into(),
+            notes: "Bounded live proof for http-request currently covers only one replay-fixtured HTTP GET or HEAD request to a loopback IP-literal host with either an explicit port or the implicit default HTTP port, exact observed path-prefix, no query, no redirects, and the normalized inspect-output comparator.".into(),
         },
         reasons,
     )
@@ -574,10 +574,10 @@ fn observed_http_request_cap(
     }
 
     let request = &detail.request;
-    if request.method != HttpMethod::Get {
+    if !matches!(request.method, HttpMethod::Get | HttpMethod::Head) {
         return Err((
             "HTTP_REQUEST_SHAPE_UNSUPPORTED",
-            "Bounded http-request live proof currently supports GET requests only.".into(),
+            "Bounded http-request live proof currently supports GET and HEAD requests only.".into(),
         ));
     }
 
@@ -653,7 +653,7 @@ fn observed_http_request_cap(
             allowed_hosts: Some(vec![host.to_owned()]),
             allowed_host_suffixes: None,
             allowed_ports: Some(vec![port]),
-            allowed_methods: Some(vec![HttpMethod::Get]),
+            allowed_methods: Some(vec![request.method.clone()]),
             allowed_path_prefixes: Some(vec![path]),
             max_timeout_ms: None,
             max_response_bytes: None,

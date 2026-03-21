@@ -94,7 +94,12 @@ fn log_grant(levels: &[Severity]) -> GrantedCapability {
     }
 }
 
-fn http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
+fn http_grant_for_method(
+    host: &str,
+    port: u16,
+    path_prefix: &str,
+    method: HttpMethod,
+) -> GrantedCapability {
     GrantedCapability {
         id: CapabilityId::HttpRequest,
         access: CapabilityAccess::Read,
@@ -103,7 +108,7 @@ fn http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
             allowed_hosts: Some(vec![host.to_owned()]),
             allowed_host_suffixes: None,
             allowed_ports: Some(vec![port]),
-            allowed_methods: Some(vec![HttpMethod::Get]),
+            allowed_methods: Some(vec![method]),
             allowed_path_prefixes: Some(vec![path_prefix.to_owned()]),
             max_timeout_ms: Some(2_000),
             max_response_bytes: Some(16_384),
@@ -115,6 +120,14 @@ fn http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
             allow_ip_literals: Some(true),
         }),
     }
+}
+
+fn http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
+    http_grant_for_method(host, port, path_prefix, HttpMethod::Get)
+}
+
+fn head_http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
+    http_grant_for_method(host, port, path_prefix, HttpMethod::Head)
 }
 
 fn redirect_http_grant(host: &str, port: u16, path_prefixes: &[&str]) -> GrantedCapability {
@@ -145,15 +158,23 @@ fn redirect_http_grant(host: &str, port: u16, path_prefixes: &[&str]) -> Granted
     }
 }
 
-fn http_replay_fixture(url: &str, body: &str) -> HttpReplayFixture {
+fn http_replay_fixture_for_method(method: HttpMethod, url: &str, body: &str) -> HttpReplayFixture {
     HttpReplayFixture {
-        method: HttpMethod::Get,
+        method,
         url: url.to_owned(),
         response_status: 200,
         response_content_type: Some("application/json".into()),
         response_body: body.as_bytes().to_vec(),
         redirect_location: None,
     }
+}
+
+fn http_replay_fixture(url: &str, body: &str) -> HttpReplayFixture {
+    http_replay_fixture_for_method(HttpMethod::Get, url, body)
+}
+
+fn head_http_replay_fixture(url: &str) -> HttpReplayFixture {
+    http_replay_fixture_for_method(HttpMethod::Head, url, "")
 }
 
 fn redirect_replay_fixture(url: &str, redirect_location: &str) -> HttpReplayFixture {
@@ -360,6 +381,76 @@ fn run_http_request_default_port_bounded() -> serde_json::Value {
     })
 }
 
+fn run_http_request_head_bounded() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/inspect-http-json"));
+    let registry = temp.load();
+    let replay_url = "http://127.0.0.1:18080/response.json";
+    let runner = build_replay_runner(vec![head_http_replay_fixture(replay_url)]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "head",
+                }),
+                CapabilityGrantSet {
+                    grants: vec![head_http_grant("127.0.0.1", 18080, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "http-request-head-bounded",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
+fn run_http_request_head_default_port_bounded() -> serde_json::Value {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/inspect-http-json"));
+    let registry = temp.load();
+    let replay_url = "http://127.0.0.1/response.json";
+    let runner = build_replay_runner(vec![head_http_replay_fixture(replay_url)]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "head",
+                }),
+                CapabilityGrantSet {
+                    grants: vec![head_http_grant("127.0.0.1", 80, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    json!({
+        "scenario": "http-request-head-default-port-bounded",
+        "baseline_execution_record": result.baseline_execution_record,
+        "proof": result.proof,
+    })
+}
+
 fn run_http_request_redirect_unsupported() -> serde_json::Value {
     let temp = TempRegistry::new();
     temp.install(repo_root().join("examples/skills/inspect-http-json"));
@@ -485,6 +576,8 @@ fn main() {
         "read-resource-bounded" => run_read_resource_bounded(),
         "http-request-bounded" => run_http_request_bounded(),
         "http-request-default-port-bounded" => run_http_request_default_port_bounded(),
+        "http-request-head-bounded" => run_http_request_head_bounded(),
+        "http-request-head-default-port-bounded" => run_http_request_head_default_port_bounded(),
         "http-request-redirect-unsupported" => run_http_request_redirect_unsupported(),
         "http-request-no-replay" | "http-request-not-proven" => run_http_request_no_replay(),
         "log-write-reduced" => run_log_write_reduced(),

@@ -101,7 +101,12 @@ fn read_resource_grant(prefixes: &[&str]) -> GrantedCapability {
     }
 }
 
-fn http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
+fn http_grant_for_method(
+    host: &str,
+    port: u16,
+    path_prefix: &str,
+    method: HttpMethod,
+) -> GrantedCapability {
     GrantedCapability {
         id: CapabilityId::HttpRequest,
         access: CapabilityAccess::Read,
@@ -110,7 +115,7 @@ fn http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
             allowed_hosts: Some(vec![host.to_owned()]),
             allowed_host_suffixes: None,
             allowed_ports: Some(vec![port]),
-            allowed_methods: Some(vec![HttpMethod::Get]),
+            allowed_methods: Some(vec![method]),
             allowed_path_prefixes: Some(vec![path_prefix.to_owned()]),
             max_timeout_ms: Some(2_000),
             max_response_bytes: Some(16_384),
@@ -122,6 +127,14 @@ fn http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
             allow_ip_literals: Some(true),
         }),
     }
+}
+
+fn http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
+    http_grant_for_method(host, port, path_prefix, HttpMethod::Get)
+}
+
+fn head_http_grant(host: &str, port: u16, path_prefix: &str) -> GrantedCapability {
+    http_grant_for_method(host, port, path_prefix, HttpMethod::Head)
 }
 
 fn redirect_http_grant(host: &str, port: u16, path_prefixes: &[&str]) -> GrantedCapability {
@@ -162,15 +175,23 @@ fn build_replay_runner(fixtures: Vec<HttpReplayFixture>) -> Runner<WasmtimeRunti
         .unwrap()
 }
 
-fn http_replay_fixture(url: &str, body: &str) -> HttpReplayFixture {
+fn http_replay_fixture_for_method(method: HttpMethod, url: &str, body: &str) -> HttpReplayFixture {
     HttpReplayFixture {
-        method: HttpMethod::Get,
+        method,
         url: url.to_owned(),
         response_status: 200,
         response_content_type: Some("application/json".into()),
         response_body: body.as_bytes().to_vec(),
         redirect_location: None,
     }
+}
+
+fn http_replay_fixture(url: &str, body: &str) -> HttpReplayFixture {
+    http_replay_fixture_for_method(HttpMethod::Get, url, body)
+}
+
+fn head_http_replay_fixture(url: &str) -> HttpReplayFixture {
+    http_replay_fixture_for_method(HttpMethod::Head, url, "")
 }
 
 fn redirect_replay_fixture(url: &str, redirect_location: &str) -> HttpReplayFixture {
@@ -538,6 +559,158 @@ fn http_request_live_proof_is_bounded_with_replay_for_default_port_shape() {
                 && trial.change_kind == "shrink_scope"
                 && trial.accepted)
     );
+}
+
+#[test]
+fn http_request_live_proof_is_bounded_with_replay_for_head_shape() {
+    let temp = TempRegistry::new();
+    temp.install(inspect_http_json_dir());
+    let registry = temp.load();
+    let replay_url = "http://127.0.0.1:18080/response.json";
+    let runner = build_replay_runner(vec![head_http_replay_fixture(replay_url)]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let proof_result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "head",
+                }),
+                CapabilityGrantSet {
+                    grants: vec![head_http_grant("127.0.0.1", 18080, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    assert_eq!(proof_result.proof.proof_status, "bounded_minimal");
+    assert!(proof_result.proof.residual_authority.grants.is_empty());
+    assert_eq!(proof_result.proof.proven_authority.grants.len(), 1);
+    let family = proof_result
+        .proof
+        .family_statuses
+        .iter()
+        .find(|status| status.family == CapabilityId::HttpRequest)
+        .unwrap();
+    assert_eq!(family.support, LiveProofSupport::BoundedLiveProof);
+    assert_eq!(family.proof_status.as_deref(), Some("bounded_minimal"));
+    assert!(
+        family
+            .reason_codes
+            .iter()
+            .any(|code| code == "HTTP_LIVE_PROOF_BOUNDED")
+    );
+    match &proof_result.proof.proven_authority.grants[0].constraints {
+        CapabilityConstraints::HttpRequest(value) => {
+            assert_eq!(
+                value.allowed_hosts.as_ref().unwrap(),
+                &vec!["127.0.0.1".to_owned()]
+            );
+            assert_eq!(value.allowed_ports.as_ref().unwrap(), &vec![18080]);
+            assert_eq!(
+                value.allowed_methods.as_ref().unwrap(),
+                &vec![HttpMethod::Head]
+            );
+            assert_eq!(
+                value.allowed_path_prefixes.as_ref().unwrap(),
+                &vec!["/response.json".to_owned()]
+            );
+            assert_eq!(value.follow_redirects, Some(false));
+            assert_eq!(value.allow_loopback, Some(true));
+            assert_eq!(value.allow_ip_literals, Some(true));
+        }
+        other => panic!("expected http-request constraints, got {other:?}"),
+    }
+    assert!(
+        proof_result
+            .proof
+            .candidate_trials
+            .iter()
+            .any(|trial| trial.family == CapabilityId::HttpRequest
+                && trial.change_kind == "shrink_scope"
+                && trial.accepted)
+    );
+    assert!(proof_result.proof.replay_input_digest.is_some());
+}
+
+#[test]
+fn http_request_live_proof_is_bounded_with_replay_for_head_default_port_shape() {
+    let temp = TempRegistry::new();
+    temp.install(inspect_http_json_dir());
+    let registry = temp.load();
+    let replay_url = "http://127.0.0.1/response.json";
+    let runner = build_replay_runner(vec![head_http_replay_fixture(replay_url)]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let proof_result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "head",
+                }),
+                CapabilityGrantSet {
+                    grants: vec![head_http_grant("127.0.0.1", 80, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    assert_eq!(proof_result.proof.proof_status, "bounded_minimal");
+    assert!(proof_result.proof.residual_authority.grants.is_empty());
+    assert_eq!(proof_result.proof.proven_authority.grants.len(), 1);
+    let family = proof_result
+        .proof
+        .family_statuses
+        .iter()
+        .find(|status| status.family == CapabilityId::HttpRequest)
+        .unwrap();
+    assert_eq!(family.support, LiveProofSupport::BoundedLiveProof);
+    assert_eq!(family.proof_status.as_deref(), Some("bounded_minimal"));
+    match &proof_result.proof.proven_authority.grants[0].constraints {
+        CapabilityConstraints::HttpRequest(value) => {
+            assert_eq!(
+                value.allowed_hosts.as_ref().unwrap(),
+                &vec!["127.0.0.1".to_owned()]
+            );
+            assert_eq!(value.allowed_ports.as_ref().unwrap(), &vec![80]);
+            assert_eq!(
+                value.allowed_methods.as_ref().unwrap(),
+                &vec![HttpMethod::Head]
+            );
+            assert_eq!(
+                value.allowed_path_prefixes.as_ref().unwrap(),
+                &vec!["/response.json".to_owned()]
+            );
+            assert_eq!(value.follow_redirects, Some(false));
+            assert_eq!(value.allow_loopback, Some(true));
+            assert_eq!(value.allow_ip_literals, Some(true));
+        }
+        other => panic!("expected http-request constraints, got {other:?}"),
+    }
+    assert!(
+        proof_result
+            .proof
+            .candidate_trials
+            .iter()
+            .any(|trial| trial.family == CapabilityId::HttpRequest
+                && trial.change_kind == "shrink_scope"
+                && trial.accepted)
+    );
+    assert!(proof_result.proof.replay_input_digest.is_some());
 }
 
 #[test]

@@ -52,12 +52,12 @@ Current live-alignment status is explicit:
 - M5 is now live-backed only where the Rust runtime actually proves it:
   - `read-resource`: bounded live proof over immutable `guild://executions/` and `guild://objects/records/` roots only
   - `log-write`: live proof over the observed discrete log-level slice
-  - `http-request`: bounded live proof only for two deterministic replay-fixtured loopback IP `GET` slices over `http`, one at `http://127.0.0.1:<port><exact-path>` and one at `http://127.0.0.1/<exact-path>` using the implicit default HTTP port, both with no query and no redirects, under the normalized inspect-output comparator
+  - `http-request`: bounded live proof only for four deterministic replay-fixtured loopback IP slices over `http`, `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, all with no query and no redirects, under the normalized inspect-output comparator
   - `invoke-skill`: `not_proven`
   - `emit-evidence`: `not_proven`
 - M6 now issues and verifies direct canonical family scopes, and it can consume live proofs where they exist, but it remains a draft-local HMAC token layer and does not justify runtime-general enforcement claims
 - M8c now proves honest live end-to-end chains for `read-resource` and for the bounded `http-request` replay slices: plan -> bounded live proof -> proof-backed token -> proof-linked witness
-- broader `http-request` shapes, including loopback hostname forms, `HEAD`, query or fragment components, redirects, multiple exercised requests, and `https`, plus `invoke-skill` and `emit-evidence`, still stay on explicit upper-bound-only token behavior and unlinked witness behavior because live proof is not yet honest for them
+- broader `http-request` shapes, including loopback hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, plus `invoke-skill` and `emit-evidence`, still stay on explicit upper-bound-only token behavior and unlinked witness behavior because live proof is not yet honest for them
 
 ## Design stance
 
@@ -322,6 +322,18 @@ Its current limits are also explicit:
 - `examples/runtime-http-read.contract.json`
 - `examples/runtime-http-read.admit.request.json`
 - `examples/runtime-http-read.invocation.json`
+- `examples/runtime-http-read-default-port.contract.json`
+- `examples/runtime-http-read-default-port.admit.request.json`
+- `examples/runtime-http-read-default-port.invocation.json`
+- `examples/runtime-http-read-default-port.execution-record.json`
+- `examples/runtime-http-head.contract.json`
+- `examples/runtime-http-head.admit.request.json`
+- `examples/runtime-http-head.invocation.json`
+- `examples/runtime-http-head.execution-record.json`
+- `examples/runtime-http-head-default-port.contract.json`
+- `examples/runtime-http-head-default-port.admit.request.json`
+- `examples/runtime-http-head-default-port.invocation.json`
+- `examples/runtime-http-head-default-port.execution-record.json`
 - `examples/runtime-http-read.unavailable.comparator.json`
 - `examples/runtime-http-success.execution-record.json`
 - `examples/runtime-http-redirect.contract.json`
@@ -456,7 +468,7 @@ All bundled examples validate cleanly against the bundled schemas when run with 
 - fixed-claim evaluation success for proof-backed token absence and bounded delegation claims
 - explicit non-success for negative claims blocked by incomplete coverage or redaction
 - deterministic repeated M7 witness generation and MAC output for identical inputs
-- live-runtime alignment cases covering bounded live `read-resource` proof with proof-backed token and proof-linked witness, bounded live `http-request` proof with proof-backed token and proof-linked witness for the replay-fixtured loopback IP `GET` slices with either an explicit port or the implicit default HTTP port, unsupported redirect and no-replay `http-request` fail-closed behavior, exact live `log-write` family proof over the observed level slice, deterministic canonicalization, and explicit alias deprecation or rejection
+- live-runtime alignment cases covering bounded live `read-resource` proof with proof-backed token and proof-linked witness, bounded live `http-request` proof with proof-backed token and proof-linked witness for the replay-fixtured loopback IP `GET` and `HEAD` slices with either an explicit port or the implicit default HTTP port, unsupported redirect and no-replay `http-request` fail-closed behavior, exact live `log-write` family proof over the observed level slice, deterministic canonicalization, and explicit alias deprecation or rejection
 
 `compatibility_check.py` regenerates the derived hard-requirement compatibility matrix and asserts the fail-closed negative probes for omitted and unsupported `wit_worlds` support.
 

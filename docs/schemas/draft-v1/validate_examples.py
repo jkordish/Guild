@@ -27,6 +27,8 @@ EXAMPLES = [
     ("skill_contract.schema.json", "examples/cluster-rollout.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-read.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-read-default-port.contract.json"),
+    ("skill_contract.schema.json", "examples/runtime-http-head.contract.json"),
+    ("skill_contract.schema.json", "examples/runtime-http-head-default-port.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-http-redirect.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-read-resource.contract.json"),
     ("skill_contract.schema.json", "examples/runtime-invoke-skill.contract.json"),
@@ -64,6 +66,8 @@ EXAMPLES = [
     ("admission_request.schema.json", "examples/cluster-rollout.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-read.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-read-default-port.admit.request.json"),
+    ("admission_request.schema.json", "examples/runtime-http-head.admit.request.json"),
+    ("admission_request.schema.json", "examples/runtime-http-head-default-port.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-http-redirect.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-read-resource.admit.request.json"),
     ("admission_request.schema.json", "examples/runtime-invoke-skill.admit.request.json"),
@@ -1339,6 +1343,14 @@ def verify_live_runtime_alignment_cases() -> list[str]:
     http_default_port_request = load_json("examples/runtime-http-read-default-port.admit.request.json")
     http_default_port_invocation = load_json("examples/runtime-http-read-default-port.invocation.json")
     http_default_port_record = load_json("examples/runtime-http-read-default-port.execution-record.json")
+    http_head_contract = load_json("examples/runtime-http-head.contract.json")
+    http_head_request = load_json("examples/runtime-http-head.admit.request.json")
+    http_head_invocation = load_json("examples/runtime-http-head.invocation.json")
+    http_head_record = load_json("examples/runtime-http-head.execution-record.json")
+    http_head_default_port_contract = load_json("examples/runtime-http-head-default-port.contract.json")
+    http_head_default_port_request = load_json("examples/runtime-http-head-default-port.admit.request.json")
+    http_head_default_port_invocation = load_json("examples/runtime-http-head-default-port.invocation.json")
+    http_head_default_port_record = load_json("examples/runtime-http-head-default-port.execution-record.json")
     http_redirect_contract = load_json("examples/runtime-http-redirect.contract.json")
     http_redirect_request = load_json("examples/runtime-http-redirect.admit.request.json")
     http_redirect_invocation = load_json("examples/runtime-http-redirect.invocation.json")
@@ -1352,12 +1364,18 @@ def verify_live_runtime_alignment_cases() -> list[str]:
 
     http_plan = build_execution_plan(http_contract, http_request, [runtime])
     http_default_port_plan = build_execution_plan(http_default_port_contract, http_default_port_request, [runtime])
+    http_head_plan = build_execution_plan(http_head_contract, http_head_request, [runtime])
+    http_head_default_port_plan = build_execution_plan(
+        http_head_default_port_contract, http_head_default_port_request, [runtime]
+    )
     http_redirect_plan = build_execution_plan(http_redirect_contract, http_redirect_request, [runtime])
     read_plan = build_execution_plan(read_contract, read_request, [runtime])
     log_plan = build_execution_plan(log_contract, log_request, [runtime])
     for label, plan in (
         ("runtime-http-read", http_plan),
         ("runtime-http-read-default-port", http_default_port_plan),
+        ("runtime-http-head", http_head_plan),
+        ("runtime-http-head-default-port", http_head_default_port_plan),
         ("runtime-http-redirect", http_redirect_plan),
         ("runtime-read-resource", read_plan),
         ("runtime-log-write", log_plan),
@@ -1835,6 +1853,344 @@ def verify_live_runtime_alignment_cases() -> list[str]:
             "runtime-http-read-default-port live witness did not satisfy the bounded canonical default-port http-request claim"
         )
 
+    http_head_proof, _http_head_scenario = build_live_runtime_proof_record(
+        scenario_name="http-request-head-bounded",
+        plan=http_head_plan,
+        contract=http_head_contract,
+        runtime=runtime,
+        invocation_input=http_head_invocation,
+        created_at="2026-03-21T05:35:30Z",
+    )
+    http_head_proof_errors = validate_instance("proof_record.schema.json", http_head_proof, registry)
+    failures.extend(
+        f"runtime-http-head live proof schema validation failed: {error}"
+        for error in http_head_proof_errors
+    )
+    http_head_family_status = next(
+        (entry for entry in http_head_proof["family_proof_statuses"] if entry["family"] == "http-request"),
+        None,
+    )
+    if http_head_proof["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-http-head live proof record did not mark proof_source_kind as live-runtime")
+    if http_head_proof["proof_status"] != "bounded_minimal":
+        failures.append("runtime-http-head live proof did not stay bounded_minimal")
+    if http_head_proof.get("replay_input_digest") is None:
+        failures.append("runtime-http-head live proof record did not retain the replay input digest")
+    if http_head_proof["cache"]["key_material"].get("replay_input_digest") != http_head_proof.get(
+        "replay_input_digest"
+    ):
+        failures.append("runtime-http-head live proof cache key material did not retain the replay input digest")
+    if (
+        http_head_family_status is None
+        or http_head_family_status["support"] != "bounded-live-proof"
+        or "HTTP_LIVE_PROOF_BOUNDED" not in http_head_family_status["reason_codes"]
+    ):
+        failures.append("runtime-http-head live proof did not carry honest bounded http-request family support metadata")
+    if http_head_proof["residual_authority_plan"]["grants"]:
+        failures.append("runtime-http-head live proof unexpectedly left residual authority outside the proven envelope")
+
+    http_head_token = create_root_token(
+        http_head_plan,
+        http_head_contract,
+        issuer,
+        holder_id="urn:guild:service:runtime-http-head",
+        issued_at="2026-03-21T05:35:45Z",
+        proof=http_head_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        audiences=["runtime-http-head"],
+        resource_bindings=[
+            {
+                "family": "http-request",
+                "audience": "runtime-http-head",
+                "resource": "HEAD:http://127.0.0.1:18080/response.json",
+            }
+        ],
+        chain_links=["urn:guild:actor:runtime-alignment-test"],
+    )
+    if http_head_token.get("kind") != "guild.delegated_capability_token":
+        failures.append("runtime-http-head live proof-backed token issuance did not produce a delegated capability token")
+        return failures
+    if (
+        http_head_token["issuance_basis"] != "m5_proven_subset"
+        or http_head_token.get("proof_source_kind") != PROOF_SOURCE_LIVE_RUNTIME
+    ):
+        failures.append("runtime-http-head token did not stay explicitly live proof-backed")
+
+    http_head_token_verification = verify_token(
+        http_head_token,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:35:50Z",
+        expected_holder_id="urn:guild:service:runtime-http-head",
+        expected_audiences=["runtime-http-head"],
+        expected_resources=[
+            {
+                "family": "http-request",
+                "audience": "runtime-http-head",
+                "resource": "HEAD:http://127.0.0.1:18080/response.json",
+            }
+        ],
+        expected_runtime_guarantee_id="urn:guild:runtime:wasmtime-strict:v1",
+        expected_call_chain_links=http_head_token["call_chain"]["links"],
+        plan=http_head_plan,
+        contract=http_head_contract,
+        proof=http_head_proof,
+        check_replay=False,
+    )
+    if not http_head_token_verification["verified"] or http_head_token_verification["decision"] != "allow":
+        failures.append("runtime-http-head live proof-backed token did not verify cleanly")
+
+    http_head_witness = generate_witness(
+        plan=http_head_plan,
+        contract=http_head_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-21T05:36:00Z",
+        invocation_input=http_head_invocation,
+        proof=http_head_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        token=http_head_token,
+        observation={
+            "source_kind": LIVE_RUNTIME_SOURCE_KIND,
+            "execution_record": http_head_record,
+        },
+        redaction_profile="none",
+    )
+    if http_head_witness["proof_basis"] is None or http_head_witness["proof_basis"]["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append("runtime-http-head witness did not keep an honest live proof linkage")
+    http_head_verification = verify_witness(
+        http_head_witness,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:36:30Z",
+        plan=http_head_plan,
+        contract=http_head_contract,
+        proof=http_head_proof,
+        token=http_head_token,
+    )
+    if not http_head_verification["verified"] or http_head_verification["witness_status"] != "within_envelope":
+        failures.append("runtime-http-head live witness did not verify as within_envelope")
+    http_head_proof_claim = verify_claim(
+        http_head_witness,
+        {
+            "claim_type": "no_authority_use_outside_proof",
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:36:30Z",
+        plan=http_head_plan,
+        contract=http_head_contract,
+        proof=http_head_proof,
+        token=http_head_token,
+    )
+    if http_head_proof_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("runtime-http-head live witness did not satisfy the proof-envelope absence claim")
+    http_head_claim = verify_claim(
+        http_head_witness,
+        {
+            "claim_type": "no_http_request_outside_scope",
+            "http_request_scope": {
+                "kind": "network",
+                "allowed_schemes": ["http"],
+                "allowed_hosts": ["127.0.0.1"],
+                "allowed_ports": [18080],
+                "allowed_methods": ["HEAD"],
+                "allowed_path_prefixes": ["/response.json"],
+                "follow_redirects": False,
+            },
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:36:30Z",
+        plan=http_head_plan,
+        contract=http_head_contract,
+        proof=http_head_proof,
+        token=http_head_token,
+    )
+    if http_head_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append("runtime-http-head live witness did not satisfy the bounded canonical HEAD http-request claim")
+
+    http_head_default_port_proof, _http_head_default_port_scenario = build_live_runtime_proof_record(
+        scenario_name="http-request-head-default-port-bounded",
+        plan=http_head_default_port_plan,
+        contract=http_head_default_port_contract,
+        runtime=runtime,
+        invocation_input=http_head_default_port_invocation,
+        created_at="2026-03-21T05:37:00Z",
+    )
+    http_head_default_port_proof_errors = validate_instance(
+        "proof_record.schema.json", http_head_default_port_proof, registry
+    )
+    failures.extend(
+        f"runtime-http-head-default-port live proof schema validation failed: {error}"
+        for error in http_head_default_port_proof_errors
+    )
+    http_head_default_port_family_status = next(
+        (
+            entry
+            for entry in http_head_default_port_proof["family_proof_statuses"]
+            if entry["family"] == "http-request"
+        ),
+        None,
+    )
+    if http_head_default_port_proof["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME:
+        failures.append(
+            "runtime-http-head-default-port live proof record did not mark proof_source_kind as live-runtime"
+        )
+    if http_head_default_port_proof["proof_status"] != "bounded_minimal":
+        failures.append("runtime-http-head-default-port live proof did not stay bounded_minimal")
+    if http_head_default_port_proof.get("replay_input_digest") is None:
+        failures.append(
+            "runtime-http-head-default-port live proof record did not retain the replay input digest"
+        )
+    if (
+        http_head_default_port_proof["cache"]["key_material"].get("replay_input_digest")
+        != http_head_default_port_proof.get("replay_input_digest")
+    ):
+        failures.append(
+            "runtime-http-head-default-port live proof cache key material did not retain the replay input digest"
+        )
+    if (
+        http_head_default_port_family_status is None
+        or http_head_default_port_family_status["support"] != "bounded-live-proof"
+        or "HTTP_LIVE_PROOF_BOUNDED" not in http_head_default_port_family_status["reason_codes"]
+    ):
+        failures.append(
+            "runtime-http-head-default-port live proof did not carry honest bounded http-request family support metadata"
+        )
+    if http_head_default_port_proof["residual_authority_plan"]["grants"]:
+        failures.append(
+            "runtime-http-head-default-port live proof unexpectedly left residual authority outside the proven envelope"
+        )
+
+    http_head_default_port_token = create_root_token(
+        http_head_default_port_plan,
+        http_head_default_port_contract,
+        issuer,
+        holder_id="urn:guild:service:runtime-http-head-default-port",
+        issued_at="2026-03-21T05:37:15Z",
+        proof=http_head_default_port_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        audiences=["runtime-http-head-default-port"],
+        resource_bindings=[
+            {
+                "family": "http-request",
+                "audience": "runtime-http-head-default-port",
+                "resource": "HEAD:http://127.0.0.1/response.json",
+            }
+        ],
+        chain_links=["urn:guild:actor:runtime-alignment-test"],
+    )
+    if http_head_default_port_token.get("kind") != "guild.delegated_capability_token":
+        failures.append(
+            "runtime-http-head-default-port live proof-backed token issuance did not produce a delegated capability token"
+        )
+        return failures
+    if (
+        http_head_default_port_token["issuance_basis"] != "m5_proven_subset"
+        or http_head_default_port_token.get("proof_source_kind") != PROOF_SOURCE_LIVE_RUNTIME
+    ):
+        failures.append("runtime-http-head-default-port token did not stay explicitly live proof-backed")
+
+    http_head_default_port_token_verification = verify_token(
+        http_head_default_port_token,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:37:20Z",
+        expected_holder_id="urn:guild:service:runtime-http-head-default-port",
+        expected_audiences=["runtime-http-head-default-port"],
+        expected_resources=[
+            {
+                "family": "http-request",
+                "audience": "runtime-http-head-default-port",
+                "resource": "HEAD:http://127.0.0.1/response.json",
+            }
+        ],
+        expected_runtime_guarantee_id="urn:guild:runtime:wasmtime-strict:v1",
+        expected_call_chain_links=http_head_default_port_token["call_chain"]["links"],
+        plan=http_head_default_port_plan,
+        contract=http_head_default_port_contract,
+        proof=http_head_default_port_proof,
+        check_replay=False,
+    )
+    if (
+        not http_head_default_port_token_verification["verified"]
+        or http_head_default_port_token_verification["decision"] != "allow"
+    ):
+        failures.append("runtime-http-head-default-port live proof-backed token did not verify cleanly")
+
+    http_head_default_port_witness = generate_witness(
+        plan=http_head_default_port_plan,
+        contract=http_head_default_port_contract,
+        issuer=issuer,
+        issuer_keys=issuer_keys,
+        issued_at="2026-03-21T05:37:30Z",
+        invocation_input=http_head_default_port_invocation,
+        proof=http_head_default_port_proof,
+        required_proof_source_kind=PROOF_SOURCE_LIVE_RUNTIME,
+        token=http_head_default_port_token,
+        observation={
+            "source_kind": LIVE_RUNTIME_SOURCE_KIND,
+            "execution_record": http_head_default_port_record,
+        },
+        redaction_profile="none",
+    )
+    if (
+        http_head_default_port_witness["proof_basis"] is None
+        or http_head_default_port_witness["proof_basis"]["proof_source_kind"] != PROOF_SOURCE_LIVE_RUNTIME
+    ):
+        failures.append("runtime-http-head-default-port witness did not keep an honest live proof linkage")
+    http_head_default_port_verification = verify_witness(
+        http_head_default_port_witness,
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:38:00Z",
+        plan=http_head_default_port_plan,
+        contract=http_head_default_port_contract,
+        proof=http_head_default_port_proof,
+        token=http_head_default_port_token,
+    )
+    if (
+        not http_head_default_port_verification["verified"]
+        or http_head_default_port_verification["witness_status"] != "within_envelope"
+    ):
+        failures.append("runtime-http-head-default-port live witness did not verify as within_envelope")
+    http_head_default_port_proof_claim = verify_claim(
+        http_head_default_port_witness,
+        {
+            "claim_type": "no_authority_use_outside_proof",
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:38:00Z",
+        plan=http_head_default_port_plan,
+        contract=http_head_default_port_contract,
+        proof=http_head_default_port_proof,
+        token=http_head_default_port_token,
+    )
+    if http_head_default_port_proof_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append(
+            "runtime-http-head-default-port live witness did not satisfy the proof-envelope absence claim"
+        )
+    http_head_default_port_claim = verify_claim(
+        http_head_default_port_witness,
+        {
+            "claim_type": "no_http_request_outside_scope",
+            "http_request_scope": {
+                "kind": "network",
+                "allowed_schemes": ["http"],
+                "allowed_hosts": ["127.0.0.1"],
+                "allowed_ports": [80],
+                "allowed_methods": ["HEAD"],
+                "allowed_path_prefixes": ["/response.json"],
+                "follow_redirects": False,
+            },
+        },
+        issuer_keys=issuer_keys,
+        verification_time="2026-03-21T05:38:00Z",
+        plan=http_head_default_port_plan,
+        contract=http_head_default_port_contract,
+        proof=http_head_default_port_proof,
+        token=http_head_default_port_token,
+    )
+    if http_head_default_port_claim["claim_evaluation"]["status"] != "satisfied":
+        failures.append(
+            "runtime-http-head-default-port live witness did not satisfy the bounded canonical default-port HEAD http-request claim"
+        )
+
     http_no_replay = load_live_proof_scenario("http-request-no-replay")
     http_no_replay_family = next(
         (entry for entry in http_no_replay["proof"]["family_statuses"] if entry["family"] == "http-request"),
@@ -2067,6 +2423,8 @@ def verify_family_support_matrix() -> list[str]:
     if http_slice_ids != {
         "loopback-ip-get-explicit-port",
         "loopback-ip-get-default-port",
+        "loopback-ip-head-explicit-port",
+        "loopback-ip-head-default-port",
     }:
         failures.append("family_support_matrix.json did not retain the exact proven http-request slice inventory")
     default_port_slice = next(
@@ -2080,11 +2438,22 @@ def verify_family_support_matrix() -> list[str]:
         failures.append(
             "family_support_matrix.json did not describe the implicit default-port http-request slice honestly"
         )
+    head_default_port_slice = next(
+        (entry for entry in http_slices if entry.get("slice_id") == "loopback-ip-head-default-port"),
+        None,
+    )
+    if (
+        head_default_port_slice is None
+        or head_default_port_slice.get("request_shape", {}).get("method") != "HEAD"
+        or head_default_port_slice.get("request_shape", {}).get("port_form")
+        != "implicit_default_http_port"
+    ):
+        failures.append(
+            "family_support_matrix.json did not describe the implicit default-port HEAD http-request slice honestly"
+        )
     not_proven_http_shapes = {
         entry.get("shape_id") for entry in families["http-request"].get("not_proven_shapes", [])
     }
-    if "head-http-loopback" not in not_proven_http_shapes:
-        failures.append("family_support_matrix.json did not keep HEAD outside the proven http-request slice set")
     if "query-or-fragment" not in not_proven_http_shapes:
         failures.append("family_support_matrix.json did not keep query-bearing http-request shapes not_proven")
     if "redirect-driven-execution" not in not_proven_http_shapes:

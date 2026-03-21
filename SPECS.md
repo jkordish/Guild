@@ -448,8 +448,8 @@ Current live proof scope in M8c is intentionally narrow:
 
 - `read-resource` MUST be described only as bounded live-proof-backed, and only for the immutable `guild://executions/` and `guild://objects/records/` scope roots the live Rust path actually explores today
 - `log-write` MAY be described as live-proof-supported only for the observed discrete log-level slice the live Rust search actually proves
-- `http-request` MUST be described only as bounded live-proof-backed for two deterministic replay-fixtured `GET` shapes over `http` to a loopback IP-literal host: one with an explicit port and one using the implicit default HTTP port, both with exact observed path-prefix, no query, no redirects, and the normalized inspect-output comparator only
-- broader `http-request` shapes, including loopback hostname forms, `HEAD`, query or fragment components, redirects, multiple exercised requests, and `https`, plus `invoke-skill` and `emit-evidence`, MUST remain explicitly `not_proven` for live proof and MUST NOT be described as proof-backed for token or witness linkage
+- `http-request` MUST be described only as bounded live-proof-backed for four deterministic replay-fixtured shapes over `http` to a loopback IP-literal host: `GET` with an explicit port, `GET` with the implicit default HTTP port, `HEAD` with an explicit port, and `HEAD` with the implicit default HTTP port, all with exact observed path-prefix, no query, no redirects, and the normalized inspect-output comparator only
+- broader `http-request` shapes, including loopback hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, plus `invoke-skill` and `emit-evidence`, MUST remain explicitly `not_proven` for live proof and MUST NOT be described as proof-backed for token or witness linkage
 
 Current mapping boundaries:
 
@@ -534,7 +534,7 @@ That M7 path has hard limits:
 - the current witness path MAY describe runtime-backed exercised-authority and absence claims only where that live stream maps safely into the draft-v1 vocabulary
 - for M8c, draft-v1 now carries the live canonical `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` families directly in witness generation and verification
 - scope-only negative claims MAY now be supported for those five families when the relevant live observation coverage is complete
-- proof-linked witnesses MUST remain limited to real live-runtime proofs. In this milestone that means bounded live `read-resource` linkage is real, bounded live `http-request` linkage is real only for the deterministic replay-fixtured loopback IP `GET` slices with either an explicit port or the implicit default HTTP port, broader `http-request` shapes plus `invoke-skill` and `emit-evidence` stay explicitly unlinked, and `log-write` linkage is honest only when a real live proof record is supplied
+- proof-linked witnesses MUST remain limited to real live-runtime proofs. In this milestone that means bounded live `read-resource` linkage is real, bounded live `http-request` linkage is real only for the deterministic replay-fixtured loopback IP `GET` and `HEAD` slices with either an explicit port or the implicit default HTTP port, broader `http-request` shapes plus `invoke-skill` and `emit-evidence` stay explicitly unlinked, and `log-write` linkage is honest only when a real live proof record is supplied
 - positive observed facts MAY be carried in witness records under partial or complete coverage, but the current fixed claim vocabulary still does not expose per-family positive observed-fact claim types
 - unmappable runtime-native families or semantics MUST still fail closed as `coverage_limited`, `unverifiable`, or explicit verification failure rather than being silently accepted
 

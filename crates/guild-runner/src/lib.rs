@@ -347,6 +347,18 @@ impl HttpReplayCatalog {
         let mut ordered_entries = Vec::new();
 
         for fixture in fixtures {
+            if fixture.method == HttpMethod::Head && !fixture.response_body.is_empty() {
+                return Err(ExecutionError::new(
+                    "http-replay-fixture-invalid",
+                    "HEAD proof-only HTTP replay fixtures must use an empty response body",
+                )
+                .with_detail(serde_json::json!({
+                    "method": fixture.method,
+                    "url": fixture.url,
+                    "response_body_bytes": fixture.response_body.len(),
+                }))
+                .with_phase(ExecutionPhase::Validation));
+            }
             let key = http_replay_fixture_key(&fixture.method, &fixture.url);
             if catalog.insert(key.clone(), fixture.clone()).is_some() {
                 return Err(ExecutionError::new(
@@ -3303,10 +3315,10 @@ fn execute_http_request_via_replay(
         })),
     })?;
 
-    if request.method != HttpMethod::Get {
+    if !matches!(request.method, HttpMethod::Get | HttpMethod::Head) {
         return Err(SkillError {
             code: "http-replay-request-unsupported".into(),
-            message: "proof-only HTTP replay currently supports GET requests only".into(),
+            message: "proof-only HTTP replay currently supports GET and HEAD requests only".into(),
             retryable: false,
             detail: Some(serde_json::json!({
                 "method": request.method,

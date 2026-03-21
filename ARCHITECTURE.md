@@ -301,7 +301,7 @@ M8c closes the biggest remaining lie-shaped gap in that draft bundle: live proof
 
 - `read-resource` now has bounded live proof over immutable execution/object-record scope roots and one honest end-to-end chain from plan to proof to token to witness
 - `log-write` now has real live family proof over the observed discrete level slice
-- `http-request` now has bounded live proof only for two deterministic replay-fixtured loopback IP `GET` slices over `http`, one with an explicit port and one using the implicit default HTTP port, both with no query and no redirects, and loopback hostname forms, `HEAD`, query or fragment components, redirects, multiple exercised requests, `https`, plus `invoke-skill` and `emit-evidence` still stay explicitly `not_proven` for live proof and therefore stay on upper-bound-only or unlinked downstream behavior
+- `http-request` now has bounded live proof only for four deterministic replay-fixtured loopback IP slices over `http`, `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, all with no query and no redirects, and loopback hostname forms, query or fragment components, redirects, multiple exercised requests, `https`, plus `invoke-skill` and `emit-evidence` still stay explicitly `not_proven` for live proof and therefore stay on upper-bound-only or unlinked downstream behavior
 
 That draft mapping is intentionally explicit:
 
