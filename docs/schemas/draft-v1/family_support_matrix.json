@@ -4,10 +4,11 @@
   "canonical_runtime_vocabulary": true,
   "notes": [
     "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
+    "The slice-aware measured source for M8-proper is docs/schemas/draft-v1/benchmark_matrix.json with the paired human report at docs/benchmarking/m8-real-path-benchmark.md. That benchmark keeps supported slices, fallback or refusal paths, and fail-closed walls separate instead of averaging them together.",
     "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
     "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for six deterministic slices, and one bounded invoke-skill slice for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions.",
     "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage support reflects the generic consumer path once a real live proof exists."
+    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
   ],
   "layers": [
     "admission_runtime_guarantee_matching",
@@ -286,6 +287,38 @@
           "resource_kinds"
         ]
       },
+      "proven_slices": [
+        {
+          "slice_id": "immutable-execution-and-object-record-roots",
+          "proof_status": "bounded_minimal",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "request_shape": {
+            "uri_roots": [
+              "guild://executions/",
+              "guild://objects/records/"
+            ],
+            "resource_kinds": [
+              "execution",
+              "object"
+            ],
+            "proof_model": "bounded_root_shrink_over_immutable_guild_resources"
+          },
+          "notes": "The M8-proper benchmark measures one bounded real-path slice here: immutable Guild execution and object-record roots, with plan -> proof -> token -> witness linkage checked against repo-backed scenarios."
+        }
+      ],
+      "not_proven_shapes": [
+        {
+          "shape_id": "execution-query-roots",
+          "reason_codes": [
+            "LIVE_SCOPE_SHRINK_UNSUPPORTED"
+          ],
+          "notes": "Execution-query resources remain outside the current bounded read-resource shrink model and stay fail-closed in the M8-proper benchmark."
+        }
+      ],
       "layers": {
         "admission_runtime_guarantee_matching": {
           "status": "supported",
@@ -582,6 +615,22 @@
           "levels"
         ]
       },
+      "proven_slices": [
+        {
+          "slice_id": "observed-info-level",
+          "proof_status": "exact_minimal",
+          "proof_backed_layers": [
+            "live_minimization_proof"
+          ],
+          "request_shape": {
+            "levels": [
+              "info"
+            ],
+            "max_calls": 1
+          },
+          "notes": "The M8-proper benchmark measures this slice through M4 plus M5 only. It does not claim a checked real-path token or witness linkage slice for log-write."
+        }
+      ],
       "layers": {
         "admission_runtime_guarantee_matching": {
           "status": "supported",
@@ -631,12 +680,12 @@
         "plan_proof_token_linkage": {
           "status": "supported",
           "reason_codes": ["LIVE_PROOF_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "Once a real log-write live proof record exists, M6 consumes it through the same proof-backed issuance path used in M8c's read-resource chain."
+          "notes": "The draft M6 layer can consume a real log-write live proof record, but the M8-proper benchmark does not claim a checked real-path log-write issuance slice yet."
         },
         "proof_witness_linkage": {
           "status": "supported",
           "reason_codes": ["LIVE_PROOF_SUPPORTED"],
-          "notes": "M7 can link witnesses honestly to real log-write live proofs when provided."
+          "notes": "The draft M7 layer can link witnesses to a real log-write live proof when provided, but the M8-proper benchmark does not claim a checked real-path log-write witness slice yet."
         }
       }
     }

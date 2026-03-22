@@ -1,0 +1,643 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "benchmark_matrix.schema.json",
+  "title": "Guild Real Path Benchmark Matrix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "version",
+    "generated_at",
+    "methodology",
+    "slices",
+    "checked_fail_closed_walls",
+    "questions"
+  ],
+  "properties": {
+    "kind": {
+      "const": "guild.real_path_benchmark_matrix"
+    },
+    "version": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "methodology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "warmup_runs",
+        "measured_runs",
+        "live_proof_timing_source",
+        "admission_token_witness_timing_source",
+        "cache_truth"
+      ],
+      "properties": {
+        "warmup_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "measured_runs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "live_proof_timing_source": {
+          "type": "string"
+        },
+        "admission_token_witness_timing_source": {
+          "type": "string"
+        },
+        "cache_truth": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "slices": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sliceEntry"
+      },
+      "minItems": 1
+    },
+    "checked_fail_closed_walls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/failClosedWall"
+      }
+    },
+    "questions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority_reduction",
+        "issuance_modes",
+        "overheads",
+        "negative_claims",
+        "fail_closed_walls"
+      ],
+      "properties": {
+        "authority_reduction": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "issuance_modes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "overheads": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "negative_claims": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "fail_closed_walls": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "timingSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cold_first_run_ms",
+        "warmup_runs",
+        "measured_runs",
+        "samples_ms",
+        "mean_ms",
+        "p50_ms",
+        "p95_ms",
+        "max_ms",
+        "cache_present",
+        "cache_notes"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "cold_first_run_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "warmup_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "measured_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "samples_ms": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "mean_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "p50_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "p95_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cache_present": {
+          "type": "boolean"
+        },
+        "cache_notes": {
+          "type": "string"
+        }
+      }
+    },
+    "countRate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "rate"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rate": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "sliceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slice_id",
+        "family",
+        "slice_name",
+        "exact_scope",
+        "support_status",
+        "proof_status",
+        "token_linkage_status",
+        "witness_linkage_status",
+        "negative_claim_support_status",
+        "benchmark_scenario_source",
+        "baseline_upper_bound_authority",
+        "final_proven_authority",
+        "final_issued_authority",
+        "reduction_result",
+        "timing_overhead_results",
+        "issuance_outcomes",
+        "witness_outcomes",
+        "negative_claim_verification",
+        "fallback_refusal_behavior",
+        "fail_closed_reasons",
+        "notes",
+        "linked_path",
+        "benchmark_limits",
+        "selected_token_verification_result",
+        "selected_witness_verification_result"
+      ],
+      "properties": {
+        "slice_id": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "slice_name": {
+          "type": "string"
+        },
+        "exact_scope": {
+          "type": "string"
+        },
+        "support_status": {
+          "type": "string"
+        },
+        "proof_status": {
+          "type": "string"
+        },
+        "token_linkage_status": {
+          "type": "string"
+        },
+        "witness_linkage_status": {
+          "type": "string"
+        },
+        "negative_claim_support_status": {
+          "type": "string"
+        },
+        "benchmark_scenario_source": {
+          "type": "object"
+        },
+        "baseline_upper_bound_authority": {
+          "type": "object"
+        },
+        "final_proven_authority": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "final_issued_authority": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "reduction_result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "classification",
+            "narrowed_dimensions"
+          ],
+          "properties": {
+            "classification": {
+              "type": "string"
+            },
+            "narrowed_dimensions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "timing_overhead_results": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "admission_only",
+            "live_proof_search",
+            "proof_backed_token_issuance",
+            "upper_bound_token_issuance",
+            "token_refusal",
+            "token_verification",
+            "witness_generation",
+            "witness_verification"
+          ],
+          "properties": {
+            "admission_only": {
+              "$ref": "#/$defs/timingSummary"
+            },
+            "live_proof_search": {
+              "$ref": "#/$defs/timingSummary"
+            },
+            "proof_backed_token_issuance": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/timingSummary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "upper_bound_token_issuance": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/timingSummary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "token_refusal": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/timingSummary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "token_verification": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/timingSummary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "witness_generation": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/timingSummary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "witness_verification": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/timingSummary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "issuance_outcomes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "proof_backed_success",
+            "upper_bound_fallback",
+            "token_refusal",
+            "scenario_count"
+          ],
+          "properties": {
+            "proof_backed_success": {
+              "$ref": "#/$defs/countRate"
+            },
+            "upper_bound_fallback": {
+              "$ref": "#/$defs/countRate"
+            },
+            "token_refusal": {
+              "$ref": "#/$defs/countRate"
+            },
+            "scenario_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "witness_outcomes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "proof_linked_success",
+            "unlinked_success",
+            "scenario_count"
+          ],
+          "properties": {
+            "proof_linked_success": {
+              "$ref": "#/$defs/countRate"
+            },
+            "unlinked_success": {
+              "$ref": "#/$defs/countRate"
+            },
+            "scenario_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "negative_claim_verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "support_status",
+            "claims",
+            "raw_status_counts",
+            "minimum_requested_summary"
+          ],
+          "properties": {
+            "support_status": {
+              "type": "string"
+            },
+            "claims": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "claim_type",
+                  "status",
+                  "reason_codes"
+                ],
+                "properties": {
+                  "claim_type": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "reason_codes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "raw_status_counts": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "satisfied",
+                "violated",
+                "not_provable",
+                "unsupported"
+              ],
+              "properties": {
+                "satisfied": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "violated": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "not_provable": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "unsupported": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "minimum_requested_summary": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "success",
+                "fail",
+                "coverage_limited_or_unverifiable"
+              ],
+              "properties": {
+                "success": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "fail": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "coverage_limited_or_unverifiable": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        "fallback_refusal_behavior": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "default_path",
+            "fallback_available",
+            "proof_notes"
+          ],
+          "properties": {
+            "default_path": {
+              "type": "string"
+            },
+            "fallback_available": {
+              "type": "boolean"
+            },
+            "proof_notes": {
+              "type": "string"
+            }
+          }
+        },
+        "fail_closed_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "linked_path": {
+          "type": "string"
+        },
+        "benchmark_limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "warmup_runs",
+            "measured_runs"
+          ],
+          "properties": {
+            "warmup_runs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "measured_runs": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "selected_token_verification_result": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "selected_witness_verification_result": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "failClosedWall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wall_id",
+        "family",
+        "stage",
+        "wall_name",
+        "benchmark_scenario_source",
+        "proof_status",
+        "fail_closed_reasons",
+        "timing_overhead_results",
+        "trigger_count",
+        "trigger_rate",
+        "notes"
+      ],
+      "properties": {
+        "wall_id": {
+          "type": "string"
+        },
+        "family": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "wall_name": {
+          "type": "string"
+        },
+        "benchmark_scenario_source": {
+          "type": "object"
+        },
+        "proof_status": {
+          "type": "string"
+        },
+        "fail_closed_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timing_overhead_results": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "live_proof_search"
+          ],
+          "properties": {
+            "live_proof_search": {
+              "$ref": "#/$defs/timingSummary"
+            }
+          }
+        },
+        "trigger_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "trigger_rate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

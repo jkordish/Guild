@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -3258,6 +3259,22 @@ def verify_family_support_matrix() -> list[str]:
     return failures
 
 
+def verify_benchmark_artifacts() -> list[str]:
+    script = Path(__file__).with_name("benchmark_real_path.py")
+    result = subprocess.run(
+        [sys.executable, str(script), "--check-artifacts"],
+        cwd=script.parent,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        return []
+
+    details = result.stdout.strip() or result.stderr.strip() or "benchmark artifact validation failed"
+    return [f"benchmark artifacts failed validation: {details}"]
+
+
 def main() -> int:
     registry = build_registry()
     failures: list[str] = []
@@ -3269,6 +3286,7 @@ def main() -> int:
     failures.extend(verify_witness_cases())
     failures.extend(verify_live_runtime_alignment_cases())
     failures.extend(verify_family_support_matrix())
+    failures.extend(verify_benchmark_artifacts())
 
     if failures:
         print("Validation failed:")
@@ -3276,7 +3294,10 @@ def main() -> int:
             print(f" - {failure}")
         return 1
 
-    print("All bundled examples, admission cases, minimization cases, token cases, witness cases, and live runtime alignment cases validate cleanly.")
+    print(
+        "All bundled examples, admission cases, minimization cases, token cases, witness cases, "
+        "live runtime alignment cases, support-matrix checks, and benchmark artifact checks validate cleanly."
+    )
     return 0
 
 

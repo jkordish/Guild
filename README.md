@@ -10,6 +10,7 @@ Guild is best read as a milestone program, not as a generic agent wrapper:
 - `M6`: issue invocation-bound delegated capability tokens
 - `M7`: record exercised and blocked authority as durable witness facts
 - `M8a`, `M8b`, `M8c`: align the draft control-plane with the live Rust runtime and add live proof only where the runtime can honestly support it
+- `M8-proper`: benchmark the actual checked real path slice by slice, including refusal and fallback walls
 
 MCP is only the transport facade here. Guild is the layer that admits, runs, delegates, and witnesses authority under explicit host control instead of ambient guest access.
 
@@ -20,6 +21,7 @@ MCP is only the transport facade here. Guild is the layer that admits, runs, del
 > - `M8a`: complete; the live Rust runtime vocabulary is canonical
 > - `M8b`: complete for the active canonical families in draft-v1
 > - `M8c`: partial; `read-resource` has bounded live proof with checked plan -> proof -> token -> witness linkage, `log-write` has real live family proof, `http-request` has bounded live proof only for six deterministic replay-fixtured slices over `http`, and `invoke-skill` now has one bounded live-proof-backed exact single-child slice only: one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, a child-aware comparator, and zero nested child executions
+> - `M8-proper`: complete as a slice-aware real-path benchmark under `docs/schemas/draft-v1/benchmark_matrix.json` and `docs/benchmarking/m8-real-path-benchmark.md`
 > - broader `http-request` shapes, including `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, plus broader `invoke-skill` shapes such as dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, non-inspect child targets, and all current `emit-evidence` flows, remain outside the live-proof envelope; `emit-evidence` now binds a fixed local-object-store sink descriptor and uses a dedicated comparator profile in the runtime, but the tested exact single-emission shrink still fails closed on replay, so there is still no honest proof-backed linkage
 > - `M9` and `M10`: not started
 
@@ -194,8 +196,42 @@ cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/
 - `M8a Runtime Alignment and Canonical Effect Vocabulary`: complete. The live Rust capability-family surface is canonical, the runtime persists durable `authority_observations`, and draft-v1 maps live runtime data through explicit `exact`, `narrowing`, `partial`, and `unsupported` outcomes.
 - `M8b Direct Canonical Family Support in Draft-v1`: complete for the active runtime slice. Draft-v1 now carries direct canonical `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` families for admission, minimization, tokens, and witnesses.
 - `M8c Live Proof Basis and Honest End-to-End Linkage`: partial. `read-resource` has bounded live proof and checked plan -> proof -> token -> witness linkage over immutable `guild://executions/...` and `guild://objects/records/...` resources. `log-write` has real live family proof over observed level slices. `http-request` has bounded plan -> proof -> token -> witness linkage only for six deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` and `HEAD` with deterministic loopback-only resolution bindings, all with exact observed path, no query, and no redirects. `invoke-skill` has one bounded plan -> proof -> token -> witness slice only for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, the child-aware normalized inspect comparator, and zero nested child executions. `emit-evidence` still remains `not_proven`: the runtime now binds a host-owned sink descriptor and uses a dedicated single-sink comparator profile, but the tested exact single-emission shrink still does not re-execute equivalently under that comparator, so proof-backed token issuance and proof-linked witnesses stay unavailable. The current canonical `emit-evidence` authority shape and draft-v1 control-plane also remain too coarse to justify smuggling exact sink or payload specifics through coarser fields. `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https` remain `not_proven` for `http-request`; dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, and non-inspect child targets remain `not_proven` for `invoke-skill`.
+- `M8-proper Real-Path Benchmarking`: complete. The checked slice-aware benchmark now lives in `docs/schemas/draft-v1/benchmark_matrix.json` with the paired report in `docs/benchmarking/m8-real-path-benchmark.md`, and it measures supported proof-linked slices, proof-only slices, explicit upper-bound fallback paths, explicit refusal paths, fail-closed walls, and timing distributions without averaging unsupported states away.
 - `M9 Draft the patent packet`: not started.
 - `M10 Filing hygiene`: not started.
+
+## M8 Proper Benchmark
+
+The slice-aware benchmark artifacts now live at [`docs/schemas/draft-v1/benchmark_matrix.json`](docs/schemas/draft-v1/benchmark_matrix.json) and [`docs/benchmarking/m8-real-path-benchmark.md`](docs/benchmarking/m8-real-path-benchmark.md).
+
+The measured supported slices are exactly:
+
+- `read-resource`: immutable `guild://executions/` and `guild://objects/records/` roots, with measured narrowing from the admitted upper bound
+- `http-request`: six replay-fixtured `http` slices, loopback IP `GET` and `HEAD` with explicit or implicit default port, plus explicit-port `localhost` `GET` and `HEAD`; these measured fixtures are already narrow, so the proven authority stays bounded but does not shrink further
+- `invoke-skill`: one single-child zero-authority slice; this measured fixture is already narrow, so the proof result is `no_reduction`
+- `log-write`: one observed `info`-level slice through M4 plus M5 only
+
+The measured unsupported or fail-closed slices are exactly:
+
+- `http-request` redirect-driven execution
+- `invoke-skill` multi-child fan-out
+- `emit-evidence` single-emission replay-unavailable
+- extra fail-closed walls for unsupported `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use
+
+The measured timing story is narrow and specific, not global:
+
+- M4 admission in the checked scenarios is about `12.5` to `17.0 ms`
+- M5 live proof search is about `6.8 s` for `read-resource`, `7.3` to `7.5 s` for the supported `http-request` slices, `10.3 s` for the supported `invoke-skill` slice, `9.0 s` for the measured `log-write` slice, and `3.0` to `7.7 s` for the benchmarked unsupported slices and walls
+- on the proof-linked supported slices, proof-backed M6 issuance is about `20` to `24 ms`, token verification about `31` to `34 ms`, witness generation about `77` to `88 ms`, and witness verification about `119` to `133 ms`
+- on the benchmarked unsupported fallback path, explicit upper-bound M6 issuance is about `20` to `21 ms`, default refusal about `14.7` to `15.3 ms`, and unlinked witness verification about `112` to `124 ms`
+
+The measured behavioral split is also explicit:
+
+- the supported proof-linked slices issued proof-backed tokens `10/10` and produced proof-linked witnesses `10/10`
+- the benchmarked unsupported slices refused by default `10/10`, issued upper-bound fallback tokens `10/10` when explicitly allowed, and produced only unlinked witnesses `10/10`
+- the extra fail-closed walls triggered `10/10` in the checked scenarios
+- the checked negative-claim probes were coverage-limited in every measured non-`log-write` slice: `0` success, `0` fail, `3` coverage-limited outcomes per slice
+- the benchmark artifact itself is now part of the checked draft-v1 validation path, so stale matrix or report output fails `docs/schemas/draft-v1/validate_examples.py`
 
 ## What Is Real Today
 

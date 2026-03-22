@@ -97,6 +97,27 @@ Current live-runtime claim status after M8c is explicit and per family:
 - M7 witness linkage now stays proof-linked only where the supplied proof is a real live-runtime proof and otherwise remains explicitly unlinked
 - per-family, per-layer machine-readable status now lives in `docs/schemas/draft-v1/family_support_matrix.json`
 
+The M8-proper real-path benchmark is separate from the schema examples and can be rerun locally with:
+
+```bash
+/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/benchmark_real_path.py
+/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/benchmark_real_path.py --check-artifacts
+```
+
+That benchmark writes:
+
+- `docs/schemas/draft-v1/benchmark_matrix.json`
+- `docs/benchmarking/m8-real-path-benchmark.md`
+
+Current measured benchmark truth on the checked path is:
+
+- supported proof-linked slices: `read-resource` immutable roots, six bounded `http-request` replay slices, and one bounded `invoke-skill` single-child zero-authority slice
+- supported proof-only slice: `log-write` observed `info` level through M4 plus M5 only
+- benchmarked unsupported slices: redirect `http-request`, multi-child `invoke-skill`, and replay-unavailable `emit-evidence`, each with `10/10` default refusal, `10/10` explicit upper-bound fallback issuance, and `10/10` unlinked witness generation
+- benchmarked fail-closed walls: `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use, each triggered `10/10` in the checked scenarios
+- measured overheads: M4 admission about `12.5` to `17.0 ms`; M5 proof search about `6.8 s` for `read-resource`, `7.3` to `7.5 s` for the supported `http-request` slices, `10.3 s` for the supported `invoke-skill` slice, `9.0 s` for `log-write`, and `3.0` to `7.7 s` for the benchmarked unsupported slices or walls; proof-backed token issuance about `20` to `24 ms`; token verification about `31` to `34 ms`; witness generation about `77` to `88 ms`; witness verification about `119` to `133 ms`
+- negative-claim checks remain coverage-limited in the checked scenarios: every measured non-`log-write` slice recorded `0` success, `0` fail, and `3` coverage-limited outcomes
+
 If you touched the live Rust proof path, run the focused integration suite explicitly:
 
 ```bash

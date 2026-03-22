@@ -43,6 +43,8 @@ The remaining compatibility aliases are now explicit, bounded, and deprecated:
 
 The machine-readable status source for M8c is [`family_support_matrix.json`](./family_support_matrix.json).
 
+The machine-readable slice-aware benchmark source for M8-proper is [`benchmark_matrix.json`](./benchmark_matrix.json), with the paired human report at [`../../benchmarking/m8-real-path-benchmark.md`](../../benchmarking/m8-real-path-benchmark.md).
+
 Current live-alignment status is explicit:
 
 - the live Rust runner now persists durable `authority_observations` for exercised and blocked attempts in `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
@@ -58,6 +60,15 @@ Current live-alignment status is explicit:
 - M6 now issues and verifies direct canonical family scopes, and it can consume live proofs where they exist, but it remains a draft-local HMAC token layer and does not justify runtime-general enforcement claims
 - M8c now proves honest live end-to-end chains for `read-resource`, for the bounded `http-request` replay slices, and for the exact bounded single-child `invoke-skill` slice: plan -> bounded live proof -> proof-backed token -> proof-linked witness
 - broader `http-request` shapes, including `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, broader `invoke-skill` shapes including dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, and non-inspect child targets, plus all current `emit-evidence` flows, still stay on explicit upper-bound-only token behavior and unlinked witness behavior because live proof is not yet honest for them
+
+Current M8-proper benchmark truth is explicit and slice-aware:
+
+- supported proof-linked slices: one bounded `read-resource` immutable-root slice, six bounded `http-request` replay-fixtured `http` slices, and one bounded `invoke-skill` single-child zero-authority slice
+- supported proof-only slice: one exact `log-write` observed `info`-level slice through M4 plus M5 only
+- benchmarked unsupported slices: redirect `http-request`, multi-child `invoke-skill`, and replay-unavailable `emit-evidence`, each with `10/10` default refusal, `10/10` explicit upper-bound fallback issuance, and `10/10` unlinked witness generation
+- benchmarked extra fail-closed walls: `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use, each triggering `10/10` in the checked scenarios
+- measured overhead ranges on the checked path: M4 admission about `12.5` to `17.0 ms`; M5 proof search about `6.8 s` for `read-resource`, `7.3` to `7.5 s` for the supported `http-request` slices, `10.3 s` for the supported `invoke-skill` slice, `9.0 s` for `log-write`, and `3.0` to `7.7 s` for the benchmarked unsupported slices or walls; proof-backed issuance about `20` to `24 ms`; token verification about `31` to `34 ms`; witness generation about `77` to `88 ms`; witness verification about `119` to `133 ms`
+- negative-claim checks are still coverage-limited in the checked scenarios: every measured non-`log-write` slice recorded `0` success, `0` fail, and `3` coverage-limited outcomes
 
 ## Design stance
 

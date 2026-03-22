@@ -305,6 +305,15 @@ M8c closes the biggest remaining lie-shaped gap in that draft bundle: live proof
 - `invoke-skill` now has one bounded live-proof-backed slice only: one exercised declared alias resolved through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, the child-aware normalized inspect comparator over the parent execution plus the persisted child execution record, and zero nested child executions
 - `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, `https`, broader `invoke-skill` shapes including dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, and non-inspect child targets, plus all current `emit-evidence` flows, still stay explicitly `not_proven` for live proof and therefore stay on upper-bound-only or unlinked downstream behavior. For `emit-evidence`, the runtime now binds a host-owned sink descriptor and uses a dedicated single-sink comparator profile, but the tested exact single-emission shrink still does not re-execute equivalently under that comparator, so plan -> proof -> token and proof -> witness linkage remain unavailable. The current canonical authority model also stays too coarse to justify smuggling sink or payload specifics around that failure.
 
+M8-proper now adds a measured slice-aware benchmark on top of that shape. The machine-readable artifact is `docs/schemas/draft-v1/benchmark_matrix.json` and the paired report is `docs/benchmarking/m8-real-path-benchmark.md`. Those artifacts currently measure:
+
+- supported proof-linked slices only for `read-resource`, the six bounded `http-request` replay slices, and the one bounded `invoke-skill` single-child zero-authority slice
+- one proof-only `log-write` slice through M4 plus M5 only, with no claimed checked real-path M6 or M7 linkage
+- unsupported redirect `http-request`, multi-child `invoke-skill`, and replay-unavailable `emit-evidence` slices as explicit refusal or fallback cases, not hidden failure noise
+- extra fail-closed walls for `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use
+- measured overheads of about `12.5` to `17.0 ms` for M4 admission, `6.8 s` for `read-resource` live proof search, `7.3` to `7.5 s` for the bounded `http-request` live proof slices, `10.3 s` for the bounded `invoke-skill` slice, `9.0 s` for the proof-only `log-write` slice, and `3.0` to `7.7 s` for the benchmarked unsupported slices or walls
+- coverage-limited negative-claim outcomes across the checked non-`log-write` slices rather than synthetic success counts
+
 That draft mapping is intentionally explicit:
 
 | `docs/schemas/draft-v1/` term | Current runtime term | Relationship |
