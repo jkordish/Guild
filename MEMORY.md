@@ -38,7 +38,8 @@ What is materially real today:
 - local source installs are staged and atomic instead of destructive pre-delete operations
 - durable execution records now carry host-stamped start and finish timestamps
 - signed bundle import now verifies local trust, signature validity, and bundled digests before installation
-- the stricter workspace pedantic/cargo/future-not-send Clippy pass is now clean across code, examples, and test harnesses
+- repo-owned Cargo workspace packages are now `0.1.1`, while the checked-in example Guild skill manifests intentionally remain `0.1.0`; Guild resolution and transport identity follow manifest metadata rather than Cargo package versions
+- the current broad verification sweep keeps `cargo test --workspace` and `cargo run -q -p xtask -- draft-v1 truth check` green, but `cargo fmt --all --check` still reports formatting drift in `crates/guild-runner/examples/live_proof_scenarios.rs` and strict `cargo clippy --workspace --all-targets --all-features -- -D warnings` still reports one `clippy::type_complexity` finding in `crates/guild-draft-truth/src/benchmark.rs`
 
 The trust boundary remains intact:
 

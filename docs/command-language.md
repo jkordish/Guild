@@ -81,6 +81,8 @@ The CLI also accepts bare `<namespace>/<name>@<version-or-range>` as operator co
 
 When unambiguous across installed skills, the CLI also accepts short `<name>@<version-or-range>` refs such as `hello-inspect@^0.1`.
 
+Version note: the current workspace Cargo packages are `0.1.1`, but the checked-in example Guild skill manifests still use `0.1.0`, so example `skill://...@^0.1` refs and `...:0.1.0` OCI tags remain the honest values. Guild resolves requested and transported skill identity from the Guild manifest contract, not from the Cargo package version of the CLI or guest implementation crate.
+
 ## Registry Roots
 
 Registry root selection is local-first and overrideable:

@@ -86,6 +86,8 @@ Intentionally deferred:
 The canonical command and URI grammar lives at [`docs/command-language.md`](docs/command-language.md).
 Public docs prefer canonical `skill://...` refs. The CLI also accepts bare `<namespace>/<name>@<version-or-range>` as convenience syntax for operators.
 
+Version note: the current workspace Cargo packages, including the `guild` CLI crate, are `0.1.1`. The checked-in example Guild skill manifests still resolve as `0.1.0` / `@^0.1`, and the OCI transport examples intentionally keep those manifest-driven tags. Cargo package version and Guild skill identity are separate axes.
+
 ## Quickstart
 
 Guild now has one sane local root rule for the operator-facing CLI:

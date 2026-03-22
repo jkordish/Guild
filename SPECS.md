@@ -175,6 +175,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 
 - source manifests install into digest-pinned installed manifests plus staged artifacts
 - source and installed manifests now carry distinct `manifest_schema_version`, `skill_api_version`, and `runtime.guest_abi_version` axes
+- Guild skill identity and transport tags are driven by the Guild manifest version and resolved artifact identity, not by implementation-language package-manager metadata such as the Cargo package version used to build a CLI or guest crate
 - execution resolves only against installed executable state
 - the host now models caller intent separately from resolved execution envelopes and durable execution records
 - durable execution record identifiers are minted by the host rather than accepted from callers
@@ -251,6 +252,8 @@ Durable execution record identifiers MUST be minted by the host. Callers MAY sup
 ### 9.6 Mutable aliases
 
 Implementations MAY support aliases such as stable, approved, or channel-like selectors, but execution MUST still bind to a concrete immutable resolved artifact.
+
+Implementation-language package metadata, such as Cargo package versions, MUST NOT be treated as requested or resolved Guild skill identity. Execution identity MUST continue to derive from the Guild manifest contract and the resolved executable artifact selected by the host.
 
 ### 9.7 Requested resolution ambiguity
 

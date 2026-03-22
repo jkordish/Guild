@@ -9,10 +9,12 @@ The README is intentionally focused on Guild itself and on a few usage examples.
 Run the repository-wide verification sweep with:
 
 ```bash
-cargo fmt --all
+cargo fmt --all --check
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
+
+If the format check reports drift and you want to rewrite files locally instead of only checking them, run `cargo fmt --all`.
 
 If you want the focused CLI and stdio regression suites first:
 
@@ -195,6 +197,8 @@ cargo run -q -p guild-mcp --bin guild -- \
 ```
 
 ## CLI Smoke Flows
+
+Version note: the current workspace Cargo packages are `0.1.1`, but the checked-in example Guild skill manifests and OCI transport examples intentionally still use manifest version `0.1.0` / `@^0.1`. Those smoke commands follow Guild manifest identity, not Cargo package version.
 
 Minimal local CLI smoke:
 

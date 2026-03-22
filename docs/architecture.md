@@ -13,6 +13,7 @@ Current architecture highlights worth knowing before you follow older notes:
 - evidence payload reads and evidence metadata reads now use distinct companion URIs under the same object-record scope root
 - source installs stage and move atomically instead of pre-deleting installed state
 - inspect-mode Wasm guests now instantiate against `guild-skill-inspect-v1`, so unsupported capability imports are absent from the active inspect ABI, host-side unsupported families are still rejected before execution if they appear in grants/manifests, and broader Guild component imports are rejected as host-owned `unsupported-runtime-surface` before instantiation
+- repo-owned Cargo package versions and Guild skill manifest versions are separate axes; Guild resolution and transport identity still follow the manifest contract rather than Cargo package metadata
 - the shared host-side capability surface now includes a typed deferred `filesystem` family, and the active inspect slice still rejects it before guest start rather than pretending runtime file access exists
 - bounded `http-request` execution is now part of that active inspect slice through the same Wasmtime runtime path, including host/domain/path enforcement, explicit redirect policy, and fail-closed loopback/private-network blocking unless policy grants those destinations
 - the runner now uses one explicit host-to-guest inspect projection boundary rather than incidental field dropping when mapping durable host grants into the active guest ABI

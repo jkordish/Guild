@@ -101,6 +101,7 @@ The current repository maps this architecture onto a small Rust workspace:
 - `crates/guild-sdk-rust`: guest authoring support for Rust skills
 - `wit/guild-skill-v1.wit`: guest and host ABI contract package, including the active inspect world
 - `examples/skills/`: runnable source skills used to prove the vertical slice
+- repo-owned Cargo package versions and Guild skill manifest versions are distinct axes; Guild resolution and transport identity follow manifest metadata plus resolved artifact identity rather than build-package metadata
 
 ## 3. Logical Data Model
 
@@ -137,6 +138,7 @@ In the current repository this logical model is now split more explicitly into:
 - `EvidenceBlobRecord` for content-addressed payload storage
 - `EvidenceRecord` plus `EvidenceRef` for host-owned per-emission metadata and guest-visible handles
 - distinct manifest schema, skill API, and guest ABI version axes
+- implementation-language package metadata such as Cargo package version is build and distribution metadata for a crate, not Guild execution identity
 
 ## 4. Reference Execution Flow
 

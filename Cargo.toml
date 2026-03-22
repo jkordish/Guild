@@ -19,7 +19,7 @@ license = "UNLICENSED"
 readme = "README.md"
 repository = "https://github.com/jkordish/Guild"
 rust-version = "1.94"
-version = "0.1.0"
+version = "0.1.1"
 
 [workspace.dependencies]
 base64 = "0.22"
