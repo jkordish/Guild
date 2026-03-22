@@ -7,17 +7,17 @@ The public CLI remains an operator surface, not a separate normative runtime-con
 
 ## Context
 
-Guild's inspect/runtime/resource substrate is now real enough that the operator-facing command language also needs to be real.
+Guild's runtime, registry, trust, and resource behavior is now real enough that the operator-facing command language also needs to be real.
 
-Before this ADR, the repository had:
+Before this ADR, the repository already had:
 
-- a real local install, inspect, read, export/import, and OCI transport substrate
+- a real local install, inspect, read, export/import, and OCI transport path
 - a real stdio MCP server with one public tool, `guild.inspect`
-- repo examples and helper binaries that proved the substrate honestly
+- repo examples and helper binaries that exercised the real behavior honestly
 
 But the public command language had drifted across conceptual verbs, proof examples, and helper-specific commands. The product story was sharper than the actual operator workflow.
 
-This ADR originally made the command language real, substrate-backed, and explicit.
+This ADR originally made the command language real, behavior-backed, and explicit.
 
 It is now also the place where Guild intentionally records the move from an explicit-only root posture to sane local operator defaults, because the CLI has become a real persistent local tool rather than a thin proof wrapper.
 
@@ -53,14 +53,14 @@ The canonical public URI families are:
 - `guild://...` for Guild-owned durable resources
 - standard OCI references such as `<registry>/<repo>:<tag>` or `<registry>/<repo>@<digest>` for transport and publication artifacts
 
-The CLI is intentionally substrate-backed rather than a second runtime layer:
+The CLI is intentionally thin rather than a second runtime layer:
 
 - `guild show` is a non-executing summary surface over installed skills and stored Guild refs
-- `guild run` delegates to the same inspect path used by `guild.inspect`
+- `guild run` delegates to the same execution path used by `guild.inspect`
 - `guild get` delegates to the same resource backend used by MCP `resources/read` and guest `read-resource`
 - `guild why` reads one persisted execution record directly from host-owned durable state
 - `guild verify` summarizes installed trust and verification state for skill refs only
-- install/export/import/push/pull delegate to the current registry and installer substrate
+- install/export/import/push/pull delegate to the current registry and installer behavior
 - `guild init` creates the selected local root and may explicitly fold in local setup tasks such as Codex config writes without inventing a second state model
 - `guild codex` delegates to the existing Codex bootstrap/config/scenario/smoke helpers without creating a second server model
 - `guild mcp serve --stdio` launches the current stdio MCP server without widening the MCP surface
@@ -83,7 +83,7 @@ Registry root selection is now local-first with one intentional default:
 - read-only commands do not silently initialize a missing root
 - write-oriented commands may create the selected root honestly when they are already performing real local mutation
 
-This is an intentional change from the earlier explicit-only posture. Guild now has enough real local substrate that a stable home under `~/.guild` reduces friction without introducing cwd-based ambient state.
+This is an intentional change from the earlier explicit-only posture. Guild now has enough real local behavior that a stable home under `~/.guild` reduces friction without introducing cwd-based ambient state.
 
 Canonical public-facing skill syntax uses:
 
@@ -123,9 +123,9 @@ Docs, examples, and site snippets should prefer the canonical `skill://...` form
 - `--global` and `--project` may explicitly and idempotently update `~/.codex/config.toml` and/or `.codex/config.toml`
 - it does not introduce cwd-local hidden state or silent Codex config edits
 
-`guild codex` remains the deterministic dogfood helper surface:
+`guild codex` remains the deterministic repo-local helper surface:
 
-- `bootstrap`, `print-config`, `scenario`, and `smoke` stay available for repo-local proofs and smoke flows
+- `bootstrap`, `print-config`, `scenario`, and `smoke` stay available for repo-local proofs, scenarios, and smoke flows
 - they are not the normal persistent operator setup path
 
 ## Consequences
@@ -135,18 +135,18 @@ Positive:
 - Guild now has one real local command language
 - README, example docs, Codex workflow docs, and future site snippets can point at honest commands
 - Guild has one predictable local home under `~/.guild` without introducing cwd-local hidden state
-- Codex config can launch the real `guild` binary directly while `guild init` is the single current setup workflow and `guild codex` stays a deterministic proof/dogfood helper surface
+- Codex config can launch the real `guild` binary directly while `guild init` is the single current setup workflow and `guild codex` stays a deterministic repo-local helper surface
 
 Intentional non-decisions:
 
-- `guild build` remains deferred because the current substrate does not yet define an honest standalone build artifact contract separate from install
+- `guild build` remains deferred because the current runtime and registry behavior do not yet define an honest standalone build artifact contract separate from install
 - `guild deploy` remains deferred because Guild does not yet have one precise deployment target model
 - this ADR does not add new capability families, new MCP tools, subscriptions, search, indexing, or a management console
 
 ## Guardrail
 
-The `guild` CLI must remain a thin reflection of actual Guild substrate behavior.
+The `guild` CLI must remain a thin reflection of actual Guild behavior.
 
 Guild should not add headline verbs or workflows to the CLI unless the underlying runtime, registry, trust, and durability semantics already exist and can be documented honestly.
 
-The CLI must not become an aspirational product shell. Headline verbs such as `guild deploy` stay out until Guild has a precise substrate-backed deployment model that can be named honestly.
+The CLI must not become an aspirational product shell. Headline verbs such as `guild deploy` stay out until Guild has a precise behavior-backed deployment model that can be named honestly.

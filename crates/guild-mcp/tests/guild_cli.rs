@@ -1557,23 +1557,87 @@ fn codex_subcommand_help_is_available_through_guild_cli() {
     assert!(stdout.contains("usage: guild [--registry-root <path>] codex"));
     assert!(stdout.contains("<bootstrap|print-config|scenario|smoke>"));
     assert!(!stdout.contains("setup          "));
-    assert!(stdout.contains("dogfood"));
+    assert!(stdout.contains("repo-local"));
     assert!(stdout.contains("scenario"));
     assert!(stdout.contains("smoke"));
+    assert!(!stdout.contains("dogfood"));
 }
 
 #[test]
-fn top_level_help_lists_init_as_a_first_class_command() {
+fn top_level_help_is_grouped_and_points_to_topic_help() {
     let stdout = run_guild_success(&["--help"], None);
-    assert!(stdout.contains("init"));
-    assert!(stdout.contains("create the selected Guild root"));
-    assert!(stdout.contains("show"));
-    assert!(stdout.contains("run"));
-    assert!(stdout.contains("ls"));
-    assert!(stdout.contains("get"));
-    assert!(stdout.contains("why"));
-    assert!(stdout.contains("verify"));
-    assert!(stdout.contains("legacy aliases: `inspect` -> `run`"));
+    assert!(stdout.contains("Guild CLI"));
+    assert!(stdout.contains("Run, inspect, and manage Guild skills locally."));
+    assert!(stdout.contains("Daily use:"));
+    assert!(stdout.contains("Install and publish:"));
+    assert!(stdout.contains("Setup and integration:"));
+    assert!(stdout.contains("guild help refs"));
+    assert!(stdout.contains("guild help trust"));
+    assert!(stdout.contains("guild help roots"));
+    assert!(stdout.contains("guild <command> --help"));
+    assert!(!stdout.contains("deferred:"));
+    assert!(!stdout.contains("inspect path"));
+    assert!(!stdout.contains("dogfood"));
+}
+
+#[test]
+fn shared_help_topics_are_available() {
+    let help = run_guild_success(&["help"], None);
+    assert!(help.contains("Guild help topics"));
+    assert!(help.contains("guild help [refs|trust|roots]"));
+
+    let refs = run_guild_success(&["help", "refs"], None);
+    assert!(refs.contains("Guild ref forms"));
+    assert!(refs.contains("skill://<namespace>/<name>@<version-or-range>"));
+    assert!(refs.contains("guild://..."));
+
+    let trust = run_guild_success(&["help", "trust"], None);
+    assert!(trust.contains("Trust and verification"));
+    assert!(trust.contains("guild verify <skill-ref>"));
+    assert!(trust.contains("guild trust verify-plan"));
+
+    let roots = run_guild_success(&["help", "roots"], None);
+    assert!(roots.contains("Guild root resolution"));
+    assert!(roots.contains("GUILD_REGISTRY_ROOT"));
+    assert!(roots.contains("There is no cwd-local .guild fallback."));
+}
+
+#[test]
+fn invalid_help_topic_fails_closed() {
+    let output = run_guild_failure_output(&["help", "unknown-topic"], None);
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("invalid value"));
+    assert!(stderr.contains("unknown-topic"));
+}
+
+#[test]
+fn show_help_points_to_ref_topics() {
+    let stdout = run_guild_success(&["show", "--help"], None);
+    assert!(stdout.contains("Show a skill, run, object, or evidence summary"));
+    assert!(stdout.contains("Accepted refs:"));
+    assert!(stdout.contains("guild help refs"));
+}
+
+#[test]
+fn run_help_uses_input_file_flag_and_ref_topic() {
+    let stdout = run_guild_success(&["run", "--help"], None);
+    assert!(stdout.contains("Run a skill locally"));
+    assert!(stdout.contains("--input-file <PATH>"));
+    assert!(!stdout.contains("input-file-path"));
+    assert!(stdout.contains("stdout carries the result payload."));
+    assert!(stdout.contains("guild help refs"));
+}
+
+#[test]
+fn why_and_verify_help_call_out_scope() {
+    let why_help = run_guild_success(&["why", "--help"], None);
+    assert!(why_help.contains("Explain a persisted execution"));
+    assert!(why_help.contains("persisted execution record"));
+
+    let verify_help = run_guild_success(&["verify", "--help"], None);
+    assert!(verify_help.contains("Show installed trust and verification status"));
+    assert!(verify_help.contains("guild trust verify-plan"));
+    assert!(verify_help.contains("guild help trust"));
 }
 
 #[test]

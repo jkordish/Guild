@@ -1,8 +1,8 @@
 # Testing And Proof Flows
 
-This document holds the verification commands and proof workflows that do not belong in the top-level README.
+This document collects the verification commands and proof workflows that go beyond the quick operator path in the README.
 
-The README is intentionally focused on Guild itself and on a few usage examples. This page is the deeper operator and contributor reference for regression sweeps, example proofs, and Codex helper flows.
+Use this page when you need regression sweeps, example proofs, benchmark checks, or deterministic repo-local Codex helper flows.
 
 The source-of-truth declaration lives in `SPECS.md` section "Source Of Truth".
 For the frozen runtime-contract surfaces in this milestone, use `SPECS.md` section "Contract Surface v1 (core)" rather than treating this testing guide as a parallel source.

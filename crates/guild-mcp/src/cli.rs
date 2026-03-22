@@ -1,12 +1,12 @@
 use std::fmt::Write as _;
 use std::fs;
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Write as _};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
 use clap::error::ErrorKind;
-use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use guild_manifest::{PublisherRef, SkillManifest};
 use guild_registry::{
     ExecutionPlanSignatureEnvelope, ExecutionPlanVerification, InstalledSkill,
@@ -46,6 +46,10 @@ const DEFAULT_TENANT_ID: &str = "local";
 const DEFAULT_ACTOR_ID: &str = "guild-cli";
 const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
 const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
+const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nSee also:\n  guild help refs";
+const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nOutput:\n  stdout carries the result payload.\n  stderr carries the human status summary.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs";
+const WHY_AFTER_HELP: &str = "Accepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nThis command explains a persisted execution record; it does not rerun the skill.";
+const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nSee also:\n  guild help trust";
 
 #[derive(Debug)]
 pub struct CliError {
@@ -376,6 +380,13 @@ impl LsCategory {
     }
 }
 
+#[derive(Debug, Clone, ValueEnum)]
+enum HelpTopic {
+    Refs,
+    Trust,
+    Roots,
+}
+
 #[derive(Debug, Clone, Args, Default)]
 struct RenderCliArgs {
     #[arg(long = "json", conflicts_with = "porcelain_output")]
@@ -398,15 +409,20 @@ struct MachineOutputCliArgs {
     porcelain_output: bool,
 }
 
+#[derive(Debug, Clone, Args)]
+struct HelpCliArgs {
+    #[arg(value_enum)]
+    topic: Option<HelpTopic>,
+}
+
 #[derive(Debug, Parser)]
 #[command(
     name = CLI_BINARY_NAME,
-    about = "Guild operator CLI over the local runtime, registry, and MCP substrate",
-    disable_help_subcommand = true,
-    after_help = "registry roots resolve as `--registry-root`, then `GUILD_REGISTRY_ROOT`, then `~/.guild`; there is no cwd-local `.guild/` fallback.\ncanonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` and short `<name>@<version>` are accepted when unambiguous.\nlegacy aliases: `inspect` -> `run`, `list` -> `ls`, `read` -> `get`.\n`guild trust ...` manages local trust-store state only.\ndeferred: `guild build` and `guild deploy` are intentionally not implemented."
+    about = "Run, inspect, and manage Guild skills locally.",
+    disable_help_subcommand = true
 )]
 struct Cli {
-    #[arg(long, global = true, value_name = "path")]
+    #[arg(long, global = true, value_name = "PATH", help = "Use this Guild root")]
     registry_root: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<CliCommand>,
@@ -414,40 +430,51 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum CliCommand {
-    /// create the selected Guild root and print or write Codex setup.
+    #[command(about = "Create a Guild root and print setup steps")]
     Init(InitCliArgs),
-    /// Summarize an installed skill or persisted Guild ref.
+    #[command(
+        about = "Show a skill, run, object, or evidence summary",
+        after_help = SHOW_AFTER_HELP
+    )]
     Show(ShowCliArgs),
-    /// Execute a skill through the local inspect path.
-    #[command(alias = "inspect")]
+    #[command(
+        alias = "inspect",
+        about = "Run a skill locally",
+        after_help = RUN_AFTER_HELP
+    )]
     Run(RunCliArgs),
-    /// List skills, runs, objects, or evidence.
-    #[command(alias = "list")]
+    #[command(about = "List skills, runs, objects, or evidence", alias = "list")]
     Ls(LsCliArgs),
-    /// Read a Guild resource ref.
-    #[command(alias = "read")]
+    #[command(about = "Read a Guild resource", alias = "read")]
     Get(GetCliArgs),
-    /// Explain one persisted execution record.
+    #[command(about = "Explain a persisted execution", after_help = WHY_AFTER_HELP)]
     Why(WhyCliArgs),
-    /// Summarize installed trust and verification state.
+    #[command(
+        about = "Show installed trust and verification status",
+        after_help = VERIFY_AFTER_HELP
+    )]
     Verify(VerifyCliArgs),
-    /// Install a source skill into a Guild root.
+    #[command(about = "Install a source skill into a Guild root")]
     Install(InstallCliArgs),
-    /// Export installed state as a signed bundle or OCI layout.
+    #[command(about = "Export installed state as a signed bundle or OCI layout")]
     Export(ExportCliArgs),
-    /// Import a signed bundle or OCI layout into a Guild root.
+    #[command(about = "Import a signed bundle or OCI layout into a Guild root")]
     Import(ImportCliArgs),
-    /// Publish installed state to an OCI registry.
+    #[command(about = "Publish installed state to an OCI registry")]
     Push(PushCliArgs),
-    /// Pull and import installed state from an OCI registry.
+    #[command(about = "Pull and import installed state from an OCI registry")]
     Pull(PullCliArgs),
-    /// Manage local publisher identities and trust records.
+    #[command(about = "Manage local trust records")]
     Trust(TrustCliArgs),
-    /// Run deterministic Codex dogfood and smoke helpers.
-    #[command(disable_help_flag = true)]
+    #[command(
+        about = "Run deterministic Codex smoke helpers",
+        disable_help_flag = true
+    )]
     Codex(CodexCliArgs),
-    /// Launch the existing Guild MCP stdio server.
+    #[command(about = "Start the Guild MCP stdio server")]
     Mcp(McpCliArgs),
+    #[command(about = "Show shared help topics")]
+    Help(HelpCliArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -464,17 +491,17 @@ struct RunCliArgs {
     skill_ref: String,
     #[arg(value_name = "input-file")]
     input_file: Option<PathBuf>,
-    #[arg(long)]
+    #[arg(long, value_name = "JSON")]
     input_json: Option<String>,
-    #[arg(long)]
+    #[arg(long = "input-file", value_name = "PATH")]
     input_file_path: Option<PathBuf>,
-    #[arg(long)]
+    #[arg(long, value_name = "JSON")]
     grants_json: Option<String>,
-    #[arg(long)]
+    #[arg(long, value_name = "PATH")]
     grants_file: Option<PathBuf>,
-    #[arg(long, default_value = DEFAULT_TENANT_ID)]
+    #[arg(long, value_name = "ID", default_value = DEFAULT_TENANT_ID)]
     tenant_id: String,
-    #[arg(long, default_value = DEFAULT_ACTOR_ID)]
+    #[arg(long, value_name = "ID", default_value = DEFAULT_ACTOR_ID)]
     actor_id: String,
     #[command(flatten)]
     render: RenderCliArgs,
@@ -494,7 +521,7 @@ struct LsCliArgs {
 struct GetCliArgs {
     #[arg(value_name = "ref")]
     reference: String,
-    #[arg(long)]
+    #[arg(long, value_name = "PATH")]
     output: Option<PathBuf>,
     #[command(flatten)]
     machine: MachineOutputCliArgs,
@@ -1066,7 +1093,13 @@ pub fn run(
     args: impl IntoIterator<Item = String>,
     env_registry_root: Option<String>,
 ) -> Result<(), CliError> {
-    let cli = match Cli::try_parse_from(args) {
+    let args: Vec<String> = args.into_iter().collect();
+    if is_top_level_help_request(&args) {
+        print_usage();
+        return Ok(());
+    }
+
+    let cli = match Cli::try_parse_from(&args) {
         Ok(cli) => cli,
         Err(error) => {
             if matches!(
@@ -1104,7 +1137,38 @@ pub fn run(
         CliCommand::Trust(command) => run_trust(&command.to_args(), &global, env_registry_root),
         CliCommand::Codex(command) => run_codex(&command.args, &global, env_registry_root),
         CliCommand::Mcp(command) => run_mcp(&command.to_args(), &global, env_registry_root),
+        CliCommand::Help(command) => run_help(command),
     }
+}
+
+fn is_top_level_help_request(args: &[String]) -> bool {
+    let mut saw_help = false;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--help" | "-h" => saw_help = true,
+            "--registry-root" => {
+                index += 1;
+                if args.get(index).is_none() {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+        index += 1;
+    }
+    saw_help
+}
+
+fn run_help(command: HelpCliArgs) -> Result<(), CliError> {
+    match command.topic {
+        None => print_help_topics(),
+        Some(HelpTopic::Refs) => print_help_refs(),
+        Some(HelpTopic::Trust) => print_help_trust(),
+        Some(HelpTopic::Roots) => print_help_roots(),
+    }
+    io::stdout().flush()?;
+    Ok(())
 }
 
 fn run_show(
@@ -3366,11 +3430,111 @@ fn print_import_text(output: &ImportCommandOutput) {
 }
 
 fn print_usage() {
-    let mut command = Cli::command();
-    command
-        .print_help()
-        .expect("printing clap-generated root help should succeed");
+    println!("Guild CLI");
     println!();
+    println!("Run, inspect, and manage Guild skills locally.");
+    println!();
+    println!("Usage:");
+    println!("  guild [OPTIONS] <COMMAND>");
+    println!();
+    println!("Daily use:");
+    println!("  show      Show a skill, run, object, or evidence summary");
+    println!("  run       Run a skill locally");
+    println!("  ls        List skills, runs, objects, or evidence");
+    println!("  get       Read a Guild resource");
+    println!("  why       Explain a persisted execution");
+    println!("  verify    Show installed trust and verification status");
+    println!();
+    println!("Install and publish:");
+    println!("  install   Install a source skill into a Guild root");
+    println!("  export    Export installed state as a signed bundle or OCI layout");
+    println!("  import    Import a signed bundle or OCI layout into a Guild root");
+    println!("  push      Publish installed state to an OCI registry");
+    println!("  pull      Pull and import installed state from an OCI registry");
+    println!("  trust     Manage local trust records");
+    println!();
+    println!("Setup and integration:");
+    println!("  init      Create a Guild root and print setup steps");
+    println!("  mcp       Start the Guild MCP stdio server");
+    println!("  codex     Run deterministic Codex smoke helpers");
+    println!();
+    println!("Options:");
+    println!("      --registry-root <PATH>  Use this Guild root");
+    println!("  -h, --help                  Show help");
+    println!();
+    println!("Notes:");
+    println!("  Guild root resolution: --registry-root, then GUILD_REGISTRY_ROOT, then ~/.guild");
+    println!(
+        "  Accepted skill refs: skill://ns/name@version, ns/name@version, or name@version when unambiguous"
+    );
+    println!("  Aliases: inspect -> run, list -> ls, read -> get");
+    println!();
+    println!("See also:");
+    println!("  guild help refs");
+    println!("  guild help trust");
+    println!("  guild help roots");
+    println!("  guild <command> --help");
+}
+
+fn print_help_topics() {
+    println!("Guild help topics");
+    println!();
+    println!("Usage:");
+    println!("  guild help [refs|trust|roots]");
+    println!();
+    println!("Topics:");
+    println!("  refs    Accepted skill and resource ref forms");
+    println!("  trust   Installed trust and verification scope");
+    println!("  roots   Guild root selection and initialization");
+    println!();
+    println!("See also:");
+    println!("  guild --help");
+    println!("  guild <command> --help");
+}
+
+fn print_help_refs() {
+    println!("Guild ref forms");
+    println!();
+    println!("Skills:");
+    println!("  skill://<namespace>/<name>@<version-or-range>");
+    println!("  <namespace>/<name>@<version-or-range>");
+    println!("  <name>@<version-or-range>              when unambiguous");
+    println!();
+    println!("Resources:");
+    println!("  exec:<execution-id-prefix>");
+    println!("  evidence:<evidence-record-id-prefix>");
+    println!("  obj:<sha256-prefix>");
+    println!("  guild://...");
+    println!();
+    println!(
+        "Use canonical skill refs and full Guild URIs in scripts or when ambiguity is possible."
+    );
+}
+
+fn print_help_trust() {
+    println!("Trust and verification");
+    println!();
+    println!("guild verify <skill-ref>");
+    println!("  Shows installed trust and verification status for installed skills.");
+    println!();
+    println!("guild trust ...");
+    println!("  Manages local trust-store state only.");
+    println!("  It does not verify remote policy, deployment state, or registry-wide trust.");
+    println!();
+    println!("Signed execution plan verification remains under guild trust verify-plan.");
+}
+
+fn print_help_roots() {
+    println!("Guild root resolution");
+    println!();
+    println!("Guild chooses a root in this order:");
+    println!("  1. --registry-root");
+    println!("  2. GUILD_REGISTRY_ROOT");
+    println!("  3. ~/.guild");
+    println!();
+    println!("There is no cwd-local .guild fallback.");
+    println!("guild init is the explicit root-creation workflow.");
+    println!("Read-only commands do not create a missing root.");
 }
 
 fn print_show_usage() {

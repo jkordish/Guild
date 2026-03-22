@@ -82,7 +82,7 @@ Responsible for exposing a small honest MCP surface over the existing Guild runt
 
 ### 2.10 Local Operator Shell
 
-Responsible for exposing the same registry, runtime, trust, and resource substrate through one thin local CLI without introducing a second state model.
+Responsible for exposing the same registry, runtime, trust, and resource behavior through one thin local CLI without introducing a second state model.
 
 The current operator shell rules are:
 
@@ -90,7 +90,7 @@ The current operator shell rules are:
 - operator-facing root selection resolves as `--registry-root <path>`, then `GUILD_REGISTRY_ROOT`, then `~/.guild`
 - there is no cwd-local `.guild/` default
 - `guild init` is the persistent local setup path for creating the selected root and printing or writing Codex stdio configuration
-- `guild codex` remains a deterministic repo-local dogfood and smoke helper surface rather than the normal persistent setup path
+- `guild codex` remains a deterministic repo-local scenario and smoke helper surface rather than the normal persistent setup path
 
 ### 2.11 Current repository mapping
 

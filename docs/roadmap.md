@@ -1,36 +1,50 @@
 # Roadmap
 
-## Phase 0: contracts and skeleton
-Goal: make the repo honest before making it impressive.
+Guild is sequenced as a small set of ordered epics. The labels below keep the existing phase order, but the outcome comes first.
+
+## Epic 1: Define The Contract Surface
+
+Current mapping: Phase 0
+
+Outcome: make the repo honest before making it impressive.
 
 - define shared Rust types
-- define manifest model
+- define the manifest model
 - draft the WIT ABI
 - scaffold the Cargo workspace
-- define MCP façade names
+- define MCP facade names
 - add one example skill manifest
 
-## Phase 1: local execution
-Goal: inspect-mode vertical slice.
+## Epic 2: Run Skills Locally
+
+Current mapping: Phase 1
+
+Outcome: ship one real inspect-mode vertical slice.
 
 - local registry storage
-- WASM runner
+- Wasm runner
 - capability grant evaluation
 - execution records
 - evidence storage
-- `guild.inspect` path end to end
+- `guild.inspect` end to end
 
-## Phase 2: inspect reuse and composition
-Goal: richer read-only execution over durable artifacts.
+## Epic 3: Explain And Compose Stored Work
+
+Current mapping: Phase 2
+
+Outcome: make durable execution state useful after the run completes.
 
 - child skill invocation
 - dependency snapshots
-- explain/debug skills over persisted artifacts
+- explain and debug skills over persisted artifacts
 - bounded local query resources over stored executions
 - better diagnostics and provenance
 
-## Phase 3: distribution and trust
-Goal: portable skill sharing that is not naive.
+## Epic 4: Package, Trust, And Distribute
+
+Current mapping: Phase 3
+
+Outcome: move installed skills safely between local roots and registries.
 
 - signed skill packages
 - publisher identity
@@ -38,8 +52,11 @@ Goal: portable skill sharing that is not naive.
 - org vs public visibility
 - package verification
 
-## Phase 4: apply mode
-Goal: mutation with discipline, not wishful thinking.
+## Epic 5: Apply With Discipline
+
+Current mapping: Phase 4
+
+Outcome: support mutation without pretending retries, approval, or audit are optional.
 
 - idempotency keys
 - approvals

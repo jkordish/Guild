@@ -150,20 +150,20 @@ fn print_usage() {
     );
     println!();
     println!(
-        "note: `guild init` is the normal operator setup path; `guild codex ...` is for deterministic repo-local dogfood and smoke flows."
+        "note: `guild init` is the normal setup path; `guild codex ...` is for deterministic repo-local scenarios and smoke flows."
     );
     println!();
     println!(
-        "bootstrap      create a local Guild root for Codex and install the default dogfood skills"
+        "bootstrap      create a local Guild root for Codex and install the default example skills"
     );
     println!(
         "print-config   print the deterministic repo-local Codex MCP config for an existing or planned Guild root"
     );
     println!(
-        "scenario       seed one deterministic Codex dogfood scenario and print the resulting Guild URIs"
+        "scenario       seed one deterministic repo-local scenario and print the resulting Guild URIs"
     );
     println!(
-        "smoke          run one or more deterministic Codex dogfood flows against an existing Guild root"
+        "smoke          run one or more deterministic repo-local smoke flows against an existing Guild root"
     );
 }
 
@@ -334,7 +334,7 @@ fn print_bootstrap_output(
     println!();
     print_config_output(config);
     println!();
-    println!("recommended dogfood flows:");
+    println!("recommended scenario flows:");
     for command in recommended_scenario_commands(&bootstrap.registry_root) {
         println!("- {command}");
     }

@@ -1,108 +1,83 @@
 # Guild
 
-**Guild** is a contracts-first Rust/Wasm runtime and control-plane for portable AI skills.
+Guild is a contracts-first Rust/Wasm runtime and control plane for portable AI skills.
 
-Guild is best read as a milestone program, not as a generic agent wrapper:
+It gives you a local CLI, a small MCP surface, and explicit host-owned execution, trust, and evidence records. The main path today is straightforward: install a skill, run it locally, inspect what happened, and move installed state through signed bundles or OCI transport.
 
-- `M3`: define the portable contract bundle
-- `M4`: compute a fail-closed upper-bound execution plan
-- `M5`: minimize authority when a narrower claim can actually be proven
-- `M6`: issue invocation-bound delegated capability tokens
-- `M7`: record exercised and blocked authority as durable witness facts
-- `M8a`, `M8b`, `M8c`: align the draft control-plane with the live Rust runtime and add live proof only where the runtime can honestly support it
-- `M8-proper`: benchmark the actual checked real path slice by slice, including refusal and fallback walls
-
-MCP is only the transport facade here. Guild is the layer that admits, runs, delegates, and witnesses authority under explicit host control instead of ambient guest access.
-
-> Status: pre-alpha. Read the repository milestone-first.
+> Status: pre-alpha.
 >
-> - `M3` and `M4`: implemented as the draft-v1 contract and admission bundle under `docs/schemas/draft-v1/`
-> - `M5`, `M6`, and `M7`: implemented there as bounded draft-v1 minimization, token, and witness paths
-> - `M8a`: complete; the live Rust runtime vocabulary is canonical
-> - `M8b`: complete for the active canonical families in draft-v1
-> - `M8c`: partial; `read-resource` has bounded live proof with checked plan -> proof -> token -> witness linkage, `log-write` has real live family proof, `http-request` has bounded live proof only for six deterministic replay-fixtured slices over `http`, and `invoke-skill` now has one bounded live-proof-backed exact single-child slice only: one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, a child-aware comparator, and zero nested child executions
-> - `M8-proper`: complete as a slice-aware real-path benchmark under `docs/schemas/draft-v1/benchmark_matrix.json` and `docs/benchmarking/m8-real-path-benchmark.md`
-> - the standard draft-v1 truth path is now Rust-native and repo-native through `cargo run -q -p xtask -- draft-v1 ...`; the checked JSON and Markdown artifacts remain outputs, and `docs/schemas/draft-v1/` remains draft rather than a public stable CLI surface
-> - broader `http-request` shapes, including `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, plus broader `invoke-skill` shapes such as dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, non-inspect child targets, and all current `emit-evidence` flows, remain outside the live-proof envelope; `emit-evidence` now binds a fixed local-object-store sink descriptor and uses a dedicated comparator profile in the runtime, but the tested exact single-emission shrink still fails closed on replay, so there is still no honest proof-backed linkage
-> - `M9` and `M10`: not started
-
-Normative runtime sources live in `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
-Generated support, compatibility, and benchmark artifacts remain checked outputs, not primary contract definitions.
-For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
+> Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
 
 ## Why Guild
 
-Guild is strict about a few things because the milestone program requires them:
+Guild is strict about a few things on purpose:
 
 - requested identity is not executable identity
 - the host, not the guest, owns trust-sensitive authority
 - evidence is a durable artifact, not a prompt scrap
 - inspect, plan, and apply are distinct modes
-- the MCP surface should stay small and boring
+- the MCP surface stays small and boring
 
-The goal is not a loose agent wrapper layer. It is a portable skill system where admission, delegation, and witness claims stay tied to real runtime truth.
+The goal is not a loose agent wrapper. It is a portable skill system where execution, delegation, and witness claims stay tied to real runtime behavior.
 
-## Real CLI
+## What Works Today
 
-Guild now has one real first-class local CLI: `guild`.
+Guild already has:
 
-Install it as the normal operator entrypoint with:
+- a real local `guild` CLI for install, run, show, list, read, explain, verify, trust, transport, and MCP setup
+- a local registry root with durable execution and evidence records under `guild://...`
+- signed bundle export and import with local trust verification
+- OCI image layout and OCI registry transport for installed signed bundles
+- a real stdio MCP server with one public tool, `guild.inspect`, plus Guild resources
+- bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, and `log-write` slices
+
+The live-proof envelope is intentionally narrow. The exact current status lives in `SPECS.md`, `docs/testing.md`, and `docs/schemas/draft-v1/family_support_matrix.json`.
+
+## CLI
+
+Install the operator CLI with:
 
 ```bash
 cargo install --path crates/guild-mcp --bin guild
 ```
 
-If you are working from the repository instead, use the repo-local wrapper:
+If you are working from the repository instead, use:
 
 ```bash
 cargo run -q -p guild-mcp --bin guild -- ...
 ```
 
-The current local command surface is:
+Top-level commands are grouped around daily use, distribution, and setup:
 
-- `guild init`
-- `guild show`
-- `guild run`
-- `guild ls`
-- `guild get`
-- `guild why`
-- `guild verify`
-- `guild install`
-- `guild export`
-- `guild import`
-- `guild push`
-- `guild pull`
-- `guild trust ...`
-- `guild codex ...`
-- `guild mcp serve --stdio`
+- daily use: `guild show`, `guild run`, `guild ls`, `guild get`, `guild why`, `guild verify`
+- install and publish: `guild install`, `guild export`, `guild import`, `guild push`, `guild pull`, `guild trust ...`
+- setup and integration: `guild init`, `guild mcp serve --stdio`, `guild codex ...`
 
-Legacy aliases remain supported in this milestone for script compatibility:
+Legacy aliases remain available for existing scripts:
 
 - `guild inspect` -> `guild run`
 - `guild read` -> `guild get`
 - `guild list` -> `guild ls`
 
-Intentionally deferred:
+The CLI now also ships focused help topics:
 
-- `guild build`
-- `guild deploy`
-
-The canonical command and URI grammar lives at [`docs/command-language.md`](docs/command-language.md).
-Public docs prefer canonical `skill://...` refs. The CLI also accepts bare `<namespace>/<name>@<version-or-range>` as convenience syntax for operators.
+- `guild help refs`
+- `guild help trust`
+- `guild help roots`
 
 Version note: the current workspace Cargo packages, including the `guild` CLI crate, are `0.1.1`. The checked-in example Guild skill manifests still resolve as `0.1.0` / `@^0.1`, and the OCI transport examples intentionally keep those manifest-driven tags. Cargo package version and Guild skill identity are separate axes.
 
 ## Quickstart
 
-Guild now has one sane local root rule for the operator-facing CLI:
+Guild chooses a local root in this order:
 
-- `--registry-root <path>` wins
-- otherwise `GUILD_REGISTRY_ROOT`
-- otherwise Guild uses `~/.guild`
+- `--registry-root <path>`
+- `GUILD_REGISTRY_ROOT`
+- `~/.guild`
 
-Guild does not create a cwd-local `.guild/` directory. Read-only commands fail clearly if the selected root does not exist yet. `guild init` is the explicit way to create the selected root up front, and write-oriented commands such as `install`, `run`, `import`, `pull`, and the setup/bootstrap helpers can also create the selected root honestly when they are already doing real work.
+There is no cwd-local `.guild/` fallback. `guild init` is the explicit root-creation workflow, and read-only commands do not silently create a missing root.
 
-### Install, Show, Run, Why, Get, Verify
+### Install, Run, Inspect, Explain
 
 ```bash
 guild init
@@ -129,15 +104,15 @@ guild verify skill://example/hello-inspect@^0.1
 What that flow shows:
 
 - `install` builds source into installed executable state
-- `show` is the primary non-executing summary path for installed skills and stored Guild refs
+- `show` is the primary non-executing summary path
 - `run` executes a human-facing `skill://...` ref through the real Guild path
-- `ls` shows what is installed here and what has run recently, without pretending Guild already has a live loaded-module registry
-- success returns a durable `guild://executions/...` receipt
-- `why` explains one persisted execution record without widening runtime semantics
-- `get` goes back through the same resource backend used by MCP and guest `read-resource`
-- `verify` stays narrow and reports installed trust and verification state for skill refs only
+- `ls` shows installed skills and recent persisted activity
+- successful runs return a durable `guild://executions/...` receipt
+- `why` explains a persisted execution record
+- `get` reads the same resource backend used by MCP and guest `read-resource`
+- `verify` reports installed trust and verification state for skill refs only
 
-`guild run` keeps payload on stdout and writes the human execution summary to stderr. `guild get` stays the raw resource-read path and supports `--json`, `--porcelain`, and `--output <path>` when you want machine-stable reads instead of styled summaries. `guild inspect`, `guild list`, and `guild read` remain as legacy aliases for existing scripts, but docs now teach the primary verbs first.
+`guild run` keeps the payload on stdout and writes the human execution summary to stderr. `guild get` stays the raw resource-read path and supports `--json`, `--porcelain`, and `--output <path>` when you want machine-stable reads instead of styled summaries.
 
 If you want an explicit non-default root for local proofs or CI, keep passing it:
 
@@ -146,7 +121,7 @@ export GUILD_REGISTRY_ROOT=target/dev-local-registry/hello
 cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
 ```
 
-### Trust And Transport
+## Trust And Transport
 
 ```bash
 cargo run -q -p guild-mcp --bin guild -- trust generate \
@@ -166,11 +141,11 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-regist
   target/dev-local-registry/bundle
 ```
 
-That flow stays honest to the substrate:
+That flow demonstrates the current trust model:
 
-- export/import operate on installed signed bundle semantics, not source directories
-- `guild trust ...` is explicit local trust-store management only
-- OCI transport uses the same installed signed bundle contract carried through another transport shape
+- export and import operate on installed signed bundle semantics, not source directories
+- `guild trust ...` manages local trust-store state only
+- OCI transport carries the same installed signed bundle contract through another transport shape
 
 ## MCP And Codex
 
@@ -186,13 +161,6 @@ The public MCP surface is intentionally small:
 - Guild execution, evidence, object, and bounded query resources through `resources/read`
 - cursor-based pagination on `tools/list`, `resources/list`, and `resources/templates/list`
 
-MCP protocol hygiene in the current milestone stays honest to the real runtime:
-
-- `guild.inspect` is annotated as not read-only and not idempotent because inspect execution persists durable execution records and may persist evidence records
-- `guild.inspect` is annotated as open-world because the active inspect slice includes bounded outbound `http-request`
-- `resources/list` remains a bounded recent-execution view over durable records rather than a general search/index surface
-- stdio is the only MCP transport in this milestone; subscriptions, list-changed notifications, HTTP transport, and more public tools remain intentionally deferred
-
 For persistent Codex integration, use the explicit setup workflow:
 
 ```bash
@@ -200,117 +168,39 @@ guild init
 guild init --global
 ```
 
-`guild init` is now the one current local setup path. It creates the resolved Guild root, prints the exact `guild mcp serve --stdio` wiring for Codex, and `guild init --global` or `guild init --project` explicitly write the matching Codex config. The operator path no longer depends on a separate `guild codex setup` command.
+`guild init` creates the selected Guild root, prints the exact `guild mcp serve --stdio` wiring for the running `guild` binary, and can explicitly update global or project Codex config files with `--global` or `--project`.
 
-For deterministic local dogfood from the repository, Guild still keeps the existing helper path:
+For deterministic repo-local scenarios and smoke flows from this repository, Guild also keeps the `guild codex` helper surface:
 
 ```bash
 cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
 cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/dev-local-registry/codex-local
 ```
 
-`guild codex` is now the deterministic repo-local dogfood and smoke surface: bootstrap, Cargo-based `print-config`, scenario prep, and smoke flows.
+`guild codex` is not the normal setup path. It is the deterministic repo-local helper surface for bootstrap, scenario preparation, and smoke coverage.
 
-## Milestone Status
+## Status
 
-- `M3 Define the schemas`: complete in `docs/schemas/draft-v1/`, with checked examples and deterministic validation.
-- `M4 Build the admission engine`: complete in that same bundle, producing fail-closed `admit`, `downgrade`, `migrate`, and `refuse` execution plans.
-- `M5 Build the counterfactual authority minimizer`: complete as a bounded draft-v1 minimization path with explicit `exact_minimal`, `bounded_minimal`, `reduced`, `no_reduction`, and `not_proven` outcomes. Live proof exists only where `M8c` says it does.
-- `M6 Build delegation-chain-bound capability tokens`: complete as a bounded draft-v1 token path with proof-backed issuance by default, explicit `m4_upper_bound` issuance, and fail-closed verification. This is still a draft-local token layer, not runtime-general enforcement.
-- `M7 Build the bounded draft-v1 witness layer`: complete for the bounded draft-v1 witness path, including exercised authority, blocked attempts, coverage semantics, redaction semantics, and fixed claim checks.
-- `M8a Runtime Alignment and Canonical Effect Vocabulary`: complete. The live Rust capability-family surface is canonical, the runtime persists durable `authority_observations`, and draft-v1 maps live runtime data through explicit `exact`, `narrowing`, `partial`, and `unsupported` outcomes.
-- `M8b Direct Canonical Family Support in Draft-v1`: complete for the active runtime slice. Draft-v1 now carries direct canonical `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` families for admission, minimization, tokens, and witnesses.
-- `M8c Live Proof Basis and Honest End-to-End Linkage`: partial. `read-resource` has bounded live proof and checked plan -> proof -> token -> witness linkage over immutable `guild://executions/...` and `guild://objects/records/...` resources. `log-write` has real live family proof over observed level slices. `http-request` has bounded plan -> proof -> token -> witness linkage only for six deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` and `HEAD` with deterministic loopback-only resolution bindings, all with exact observed path, no query, and no redirects. `invoke-skill` has one bounded plan -> proof -> token -> witness slice only for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, the child-aware normalized inspect comparator, and zero nested child executions. `emit-evidence` still remains `not_proven`: the runtime now binds a host-owned sink descriptor and uses a dedicated single-sink comparator profile, but the tested exact single-emission shrink still does not re-execute equivalently under that comparator, so proof-backed token issuance and proof-linked witnesses stay unavailable. The current canonical `emit-evidence` authority shape and draft-v1 control-plane also remain too coarse to justify smuggling exact sink or payload specifics through coarser fields. `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https` remain `not_proven` for `http-request`; dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, and non-inspect child targets remain `not_proven` for `invoke-skill`.
-- `M8-proper Real-Path Benchmarking`: complete. The checked slice-aware benchmark now lives in `docs/schemas/draft-v1/benchmark_matrix.json` with the paired report in `docs/benchmarking/m8-real-path-benchmark.md`, and it measures supported proof-linked slices, proof-only slices, explicit upper-bound fallback paths, explicit refusal paths, fail-closed walls, and timing distributions without averaging unsupported states away.
-- `M9 Draft the patent packet`: complete. The measured technical packet now lives under `docs/patent/`, anchored to the checked support and benchmark artifacts and validated with `cargo run -q -p xtask -- patent-packet check`.
-- `M10 Filing hygiene`: not started.
+Guild still tracks work in milestone labels, but the practical summary is:
 
-## M8 Proper Benchmark
+- M3 and M4 are complete as the draft-v1 contract and admission bundle under `docs/schemas/draft-v1/`
+- M5, M6, and M7 are complete as bounded draft-v1 minimization, token, and witness flows
+- M8a and M8b are complete for the active live runtime vocabulary and canonical family mapping
+- M8c is partial and intentionally narrow; the exact supported live-proof slices are documented in `docs/testing.md`
+- M8-proper is complete as the checked real-path benchmark under `docs/schemas/draft-v1/benchmark_matrix.json` and `docs/benchmarking/m8-real-path-benchmark.md`
+- M9 is complete as the measured patent packet under `docs/patent/`
+- M10 is not started
 
-The slice-aware benchmark artifacts now live at [`docs/schemas/draft-v1/benchmark_matrix.json`](docs/schemas/draft-v1/benchmark_matrix.json) and [`docs/benchmarking/m8-real-path-benchmark.md`](docs/benchmarking/m8-real-path-benchmark.md).
-
-The standard repo truth commands for that draft bundle are now:
-
-```bash
-cargo run -q -p xtask -- draft-v1 truth check
-cargo run -q -p xtask -- draft-v1 truth write
-cargo run -q -p xtask -- patent-packet check
-```
-
-Those Rust-native commands replace the old Python-via-venv truth pipeline for validation, compatibility checking, support-matrix generation, and benchmark artifact generation. The checked JSON and Markdown files remain outputs in the repository, and the narrower `support-matrix`, `compatibility`, and `benchmark` subcommands remain available under `xtask` when you only want one slice of the truth path. The separate `patent-packet check` command validates the measured M9 packet under `docs/patent/` against those checked artifacts without turning the packet itself into a primary runtime-contract source.
-
-The measured supported slices are exactly:
-
-- `read-resource`: immutable `guild://executions/` and `guild://objects/records/` roots, with measured narrowing from the admitted upper bound
-- `http-request`: six replay-fixtured `http` slices, loopback IP `GET` and `HEAD` with explicit or implicit default port, plus explicit-port `localhost` `GET` and `HEAD`; these measured fixtures are already narrow, so the proven authority stays bounded but does not shrink further
-- `invoke-skill`: one single-child zero-authority slice; this measured fixture is already narrow, so the proof result is `no_reduction`
-- `log-write`: one observed `info`-level slice through M4 plus M5 only
-
-The measured unsupported or fail-closed slices are exactly:
-
-- `http-request` redirect-driven execution
-- `invoke-skill` multi-child fan-out
-- `emit-evidence` single-emission replay-unavailable
-- extra fail-closed walls for unsupported `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use
-
-The measured timing story is narrow and specific, not global. The checked timing distributions now live in the benchmark artifacts themselves, and the Rust-native benchmark generator owns those values directly.
-
-The measured behavioral split is also explicit:
-
-- the supported proof-linked slices issued proof-backed tokens `10/10` and produced proof-linked witnesses `10/10`
-- the benchmarked unsupported slices refused by default `10/10`, issued upper-bound fallback tokens `10/10` when explicitly allowed, and produced only unlinked witnesses `10/10`
-- the extra fail-closed walls triggered `10/10` in the checked scenarios
-- the checked negative-claim probes were coverage-limited in every measured non-`log-write` slice: `0` success, `0` fail, `3` coverage-limited outcomes per slice
-- the benchmark artifact itself is now part of the checked draft-v1 validation path, so stale matrix or report output fails `cargo run -q -p xtask -- draft-v1 truth check`
-
-## What Is Real Today
-
-Read the current repository in milestone buckets.
-
-Live runtime work through `M8a`, `M8b`, and the implemented slice of `M8c` already has:
-
-- source-to-installed lifecycle with atomic local installs
-- `RequestedSkillRef -> ResolvedSkillRef` execution boundaries
-- real Wasmtime-backed Wasm component execution
-- inspect-only primitive and composite skills
-- dedicated zero-authority invoke fixtures, `invoke-parent-single-child` and `invoke-child-zero`, for the bounded M8c `invoke-skill` slice
-- alias-scoped child dependency invocation
-- durable host-owned execution and evidence records under `guild://...`
-- durable live-runtime `authority_observations` for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
-- guest-side `read-resource` over the same backend MCP uses
-- explain/debug skills over persisted artifacts
-- signed local bundle export/import with local trust verification
-- OCI image layout and OCI registry transport for that same installed signed bundle contract
-- a real stdio MCP server with one stable public tool, `guild.inspect`
-
-Draft-v1 control-plane work through `M3` through `M7`, plus the draft-facing side of `M8a`, `M8b`, and `M8c`, already has:
-
-- M3 and M4 contract/runtime/request/plan artifacts under `docs/schemas/draft-v1/`
-- M5 bounded minimization proofs
-- M6 bounded delegated capability tokens
-- M7 bounded witness generation and verification
-- M8a live-runtime alignment fixtures and validators
-- M8b direct canonical family support for the five active runtime families
-- M8c live-proof consumption and honest linkage inside the real live-proof envelope
-
-The current milestone boundary is:
-
-- the live Rust runtime vocabulary is canonical
-- the draft-v1 bundle is still draft and still non-canonical
-- live proof support is narrow by design: `read-resource` is bounded live-proof-backed only for immutable `guild://executions/...` and `guild://objects/records/...` reads, `log-write` has real live family proof over observed log-level slices, `http-request` is bounded live-proof-backed only for six deterministic replay-fixtured slices over `http`, and `invoke-skill` is bounded live-proof-backed only for one exact single-child slice where one declared alias resolves through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, the child-aware comparator, and zero nested child executions; `emit-evidence` stays `not_proven` even after adding explicit sink binding and a dedicated single-sink comparator profile because the tested exact single-emission shrink still fails closed on replay, and the current authority model still cannot carry exact sink and payload identity honestly enough for proof-backed linkage; `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, `https`, and broader `invoke-skill` shapes also remain `not_proven`
-- proof-backed token issuance and proof-linked witnesses are honest only inside that live proof envelope; outside it, the draft-v1 path stays explicit about upper-bound issuance, unlinked witnesses, or `not_proven` status
-
-For the exhaustive proof commands, regression sweeps, and example-by-example smoke flows, see [`docs/testing.md`](docs/testing.md).
-For the draft admission bundle itself, see [`docs/schemas/draft-v1/README.md`](docs/schemas/draft-v1/README.md); the runnable validation path for that bundle also lives in [`docs/testing.md`](docs/testing.md).
+If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`, `docs/testing.md`, and `docs/schemas/draft-v1/README.md`.
 
 ## Canonical Docs
 
-- [`docs/command-language.md`](docs/command-language.md) - canonical public CLI verbs, URI grammar, and terminal snippets
-- [`docs/testing.md`](docs/testing.md) - local proof commands, verification commands, and smoke workflows
-- [`SPECS.md`](SPECS.md) - normative contract and conformance requirements
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) - practical system view and data flow
-- [`docs/adr/README.md`](docs/adr/README.md) - ADR index and follow-on ADR backlog
-- [`AGENTS.md`](AGENTS.md) - contributor guardrails for contract-first changes
-- [`docs/roadmap.md`](docs/roadmap.md) - phased build priorities
+- `docs/command-language.md` - public CLI verbs, grouped workflows, and ref grammar
+- `docs/testing.md` - verification commands, proof workflows, and smoke paths
+- `SPECS.md` - normative contract and conformance language
+- `ARCHITECTURE.md` - practical system view and trust boundaries
+- `docs/adr/README.md` - decision log and ADR backlog
+- `AGENTS.md` - contributor guardrails for contract-first changes
+- `docs/roadmap.md` - ordered epics and build priorities
 
-Compatibility wrappers remain at [`docs/contracts.md`](docs/contracts.md) and [`docs/architecture.md`](docs/architecture.md) so existing links keep working.
+Compatibility wrappers remain at `docs/contracts.md` and `docs/architecture.md` so existing links keep working.
