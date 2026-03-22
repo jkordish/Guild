@@ -38,7 +38,7 @@ use http::header::{CONTENT_TYPE, LOCATION};
 use http_body_util::{BodyExt, Empty};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use url::Url;
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable, types::ComponentItem};
@@ -67,6 +67,13 @@ const INSPECT_WORLD_ENTRYPOINT: &str = "guild-skill-inspect-v1";
 const ACTIVE_INSPECT_GUILD_IMPORTS: [&str; 2] = [
     "guild:skill/inspect-types@1.0.0",
     "guild:skill/inspect-host@1.0.0",
+];
+const ACTIVE_WASM_INSPECT_CAPABILITY_SURFACE: [(CapabilityId, CapabilityAccess); 5] = [
+    (CapabilityId::HttpRequest, CapabilityAccess::Read),
+    (CapabilityId::ReadResource, CapabilityAccess::Read),
+    (CapabilityId::InvokeSkill, CapabilityAccess::Invoke),
+    (CapabilityId::EmitEvidence, CapabilityAccess::Write),
+    (CapabilityId::LogWrite, CapabilityAccess::Write),
 ];
 const GUILD_COMPONENT_IMPORT_PREFIX: &str = "guild:skill/";
 const UNSUPPORTED_RUNTIME_SURFACE_CLASSIFICATION: &str = "unsupported-runtime-surface";
@@ -441,101 +448,90 @@ fn validate_http_replay_fixture(fixture: &HttpReplayFixture) -> Result<(), Execu
 
     if parsed_request.ip_literal().is_some() {
         if fixture.resolution_binding.is_some() {
-            return Err(ExecutionError::new(
-                "http-replay-fixture-invalid",
+            return Err(http_replay_fixture_error(
                 "IP-literal proof-only HTTP replay fixtures must not carry hostname resolution bindings",
-            )
-            .with_detail(serde_json::json!({
-                "method": fixture.method,
-                "url": fixture.url,
-            }))
-            .with_phase(ExecutionPhase::Validation));
+                fixture,
+                None,
+            ));
         }
         return Ok(());
     }
 
     if parsed_request.host != "localhost" {
-        return Err(ExecutionError::new(
-            "http-replay-fixture-invalid",
+        return Err(http_replay_fixture_error(
             "proof-only HTTP hostname replay fixtures currently support only exact localhost",
-        )
-        .with_detail(serde_json::json!({
-            "method": fixture.method,
-            "url": fixture.url,
-            "host": parsed_request.host,
-        }))
-        .with_phase(ExecutionPhase::Validation));
+            fixture,
+            Some(json!({ "host": parsed_request.host })),
+        ));
     }
     if !matches!(fixture.method, HttpMethod::Get | HttpMethod::Head) {
-        return Err(ExecutionError::new(
-            "http-replay-fixture-invalid",
+        return Err(http_replay_fixture_error(
             "proof-only HTTP hostname replay fixtures currently support only GET and HEAD requests",
-        )
-        .with_detail(serde_json::json!({
-            "method": fixture.method,
-            "url": fixture.url,
-        }))
-        .with_phase(ExecutionPhase::Validation));
+            fixture,
+            None,
+        ));
     }
     if parsed_url.port().is_none() {
-        return Err(ExecutionError::new(
-            "http-replay-fixture-invalid",
+        return Err(http_replay_fixture_error(
             "proof-only HTTP hostname replay fixtures require an explicit port",
-        )
-        .with_detail(serde_json::json!({
-            "method": fixture.method,
-            "url": fixture.url,
-        }))
-        .with_phase(ExecutionPhase::Validation));
+            fixture,
+            None,
+        ));
     }
     if is_redirect_status(fixture.response_status) || fixture.redirect_location.is_some() {
-        return Err(ExecutionError::new(
-            "http-replay-fixture-invalid",
+        return Err(http_replay_fixture_error(
             "proof-only HTTP hostname replay fixtures currently do not support redirects",
-        )
-        .with_detail(serde_json::json!({
-            "method": fixture.method,
-            "url": fixture.url,
-            "status": fixture.response_status,
-        }))
-        .with_phase(ExecutionPhase::Validation));
+            fixture,
+            Some(json!({ "status": fixture.response_status })),
+        ));
     }
 
     let Some(binding) = fixture.resolution_binding.as_ref() else {
-        return Err(ExecutionError::new(
-            "http-replay-fixture-invalid",
+        return Err(http_replay_fixture_error(
             "proof-only HTTP hostname replay fixtures require a deterministic resolution binding",
-        )
-        .with_detail(serde_json::json!({
-            "method": fixture.method,
-            "url": fixture.url,
-        }))
-        .with_phase(ExecutionPhase::Validation));
+            fixture,
+            None,
+        ));
     };
 
     validate_http_resolution_binding(binding, &parsed_request).map_err(|message| {
-        ExecutionError::new("http-replay-fixture-invalid", message)
-            .with_detail(serde_json::json!({
-                "method": fixture.method,
-                "url": fixture.url,
-                "resolution_binding": binding,
-            }))
-            .with_phase(ExecutionPhase::Validation)
+        http_replay_fixture_error(
+            &message,
+            fixture,
+            Some(json!({ "resolution_binding": binding })),
+        )
     })?;
     if !binding.loopback_only {
-        return Err(ExecutionError::new(
-            "http-replay-fixture-invalid",
+        return Err(http_replay_fixture_error(
             "proof-only HTTP hostname replay fixtures require loopback-only resolution bindings",
-        )
-        .with_detail(serde_json::json!({
-            "method": fixture.method,
-            "url": fixture.url,
-            "resolution_binding": binding,
-        }))
-        .with_phase(ExecutionPhase::Validation));
+            fixture,
+            Some(json!({ "resolution_binding": binding })),
+        ));
     }
 
     Ok(())
+}
+
+fn http_replay_fixture_error(
+    message: &str,
+    fixture: &HttpReplayFixture,
+    extra_detail: Option<Value>,
+) -> ExecutionError {
+    let mut detail = json!({
+        "method": fixture.method,
+        "url": fixture.url,
+    });
+    if let Some(extra_detail) = extra_detail
+        && let (Value::Object(detail), Value::Object(extra_detail)) = (&mut detail, extra_detail)
+    {
+        for (key, value) in extra_detail {
+            detail.insert(key, value);
+        }
+    }
+
+    ExecutionError::new("http-replay-fixture-invalid", message)
+        .with_detail(detail)
+        .with_phase(ExecutionPhase::Validation)
 }
 
 #[derive(Debug, Clone)]
@@ -5684,28 +5680,22 @@ fn capability_surface_entry(
     })
 }
 
+#[must_use]
+pub fn active_wasm_inspect_capability_surface() -> &'static [(CapabilityId, CapabilityAccess)] {
+    &ACTIVE_WASM_INSPECT_CAPABILITY_SURFACE
+}
+
 fn is_supported_wasm_inspect_capability(id: &CapabilityId, access: &CapabilityAccess) -> bool {
-    matches!(
-        (id, access),
-        (
-            CapabilityId::HttpRequest | CapabilityId::ReadResource,
-            CapabilityAccess::Read
-        ) | (CapabilityId::InvokeSkill, CapabilityAccess::Invoke)
-            | (
-                CapabilityId::EmitEvidence | CapabilityId::LogWrite,
-                CapabilityAccess::Write
-            )
-    )
+    active_wasm_inspect_capability_surface()
+        .iter()
+        .any(|(supported_id, supported_access)| supported_id == id && supported_access == access)
 }
 
 fn supported_wasm_inspect_capabilities() -> Vec<Value> {
-    vec![
-        serde_json::json!({ "id": CapabilityId::HttpRequest, "access": CapabilityAccess::Read }),
-        serde_json::json!({ "id": CapabilityId::ReadResource, "access": CapabilityAccess::Read }),
-        serde_json::json!({ "id": CapabilityId::InvokeSkill, "access": CapabilityAccess::Invoke }),
-        serde_json::json!({ "id": CapabilityId::EmitEvidence, "access": CapabilityAccess::Write }),
-        serde_json::json!({ "id": CapabilityId::LogWrite, "access": CapabilityAccess::Write }),
-    ]
+    active_wasm_inspect_capability_surface()
+        .iter()
+        .map(|(id, access)| serde_json::json!({ "id": id, "access": access }))
+        .collect()
 }
 
 fn unsupported_surface_includes_filesystem(entries: &[Value]) -> bool {
@@ -6559,7 +6549,7 @@ fn resolve_http_destination_with_binding(
 }
 
 fn canonicalize_resolved_addresses(mut addresses: Vec<IpAddr>) -> Vec<IpAddr> {
-    addresses.sort_by_cached_key(|address| address.to_string());
+    addresses.sort_by_cached_key(std::string::ToString::to_string);
     addresses.dedup();
     addresses
 }

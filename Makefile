@@ -1,4 +1,4 @@
-.PHONY: check test fmt clippy draft-truth draft-truth-write draft-support-matrix draft-compatibility draft-benchmark
+.PHONY: check test fmt fmt-check clippy draft-truth draft-truth-write draft-support-matrix draft-compatibility draft-benchmark verify
 
 check:
 	cargo check --workspace
@@ -9,8 +9,11 @@ test:
 fmt:
 	cargo fmt --all
 
+fmt-check:
+	cargo fmt --all --check
+
 clippy:
-	cargo clippy --workspace --all-targets -- -D warnings
+	cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 draft-truth:
 	cargo run -q -p xtask -- draft-v1 truth check
@@ -26,3 +29,5 @@ draft-compatibility:
 
 draft-benchmark:
 	cargo run -q -p xtask -- draft-v1 benchmark check
+
+verify: fmt-check test clippy draft-truth

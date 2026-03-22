@@ -1295,7 +1295,7 @@ fn observed_http_request_cap(
         access: CapabilityAccess::Read,
         constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
             allowed_schemes: Some(vec![HttpScheme::Http]),
-            allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_hosts: Some(vec![host.clone()]),
             allowed_host_suffixes: None,
             allowed_ports: Some(vec![port]),
             allowed_methods: Some(vec![request.method.clone()]),
@@ -2400,24 +2400,23 @@ where
             )
             && status.proof_status.as_deref() != Some("not_proven")
     });
-    if invoke_supported {
-        if let Some(digest) =
+    if invoke_supported
+        && let Some(digest) =
             invoke_replay_input_digest(registry, installed, baseline_record, comparator)
-        {
-            entries.push(json!({
-                "family": "invoke-skill",
-                "replay_input_digest": digest,
-            }));
-        }
+    {
+        entries.push(json!({
+            "family": "invoke-skill",
+            "replay_input_digest": digest,
+        }));
     }
 
-    if comparator == LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 {
-        if let Some(digest) = emit_evidence_replay_input_digest(baseline_record, comparator) {
-            entries.push(json!({
-                "family": "emit-evidence",
-                "replay_input_digest": digest,
-            }));
-        }
+    if comparator == LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1
+        && let Some(digest) = emit_evidence_replay_input_digest(baseline_record, comparator)
+    {
+        entries.push(json!({
+            "family": "emit-evidence",
+            "replay_input_digest": digest,
+        }));
     }
 
     match entries.as_slice() {
@@ -2550,6 +2549,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn sample_emit_record() -> ExecutionRecord {
         let execution_id = "exec-1".to_owned();
         let evidence_uri = "guild://objects/records/record-1".to_owned();

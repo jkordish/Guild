@@ -357,6 +357,31 @@ pub enum CapabilityId {
     WallClock,
 }
 
+impl CapabilityId {
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::HttpRequest => "http-request",
+            Self::ReadResource => "read-resource",
+            Self::InvokeSkill => "invoke-skill",
+            Self::EmitEvidence => "emit-evidence",
+            Self::GetSecret => "get-secret",
+            Self::CacheRead => "cache-read",
+            Self::CacheWrite => "cache-write",
+            Self::LogWrite => "log-write",
+            Self::Filesystem => "filesystem",
+            Self::MonotonicClock => "monotonic-clock",
+            Self::WallClock => "wall-clock",
+        }
+    }
+}
+
+impl fmt::Display for CapabilityId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum CapabilityAccess {
@@ -2254,19 +2279,7 @@ pub struct ChildExecutionRecord {
 }
 
 fn capability_id_label(id: &CapabilityId) -> &'static str {
-    match id {
-        CapabilityId::HttpRequest => "http-request",
-        CapabilityId::ReadResource => "read-resource",
-        CapabilityId::InvokeSkill => "invoke-skill",
-        CapabilityId::EmitEvidence => "emit-evidence",
-        CapabilityId::GetSecret => "get-secret",
-        CapabilityId::CacheRead => "cache-read",
-        CapabilityId::CacheWrite => "cache-write",
-        CapabilityId::LogWrite => "log-write",
-        CapabilityId::Filesystem => "filesystem",
-        CapabilityId::MonotonicClock => "monotonic-clock",
-        CapabilityId::WallClock => "wall-clock",
-    }
+    id.as_str()
 }
 
 fn filesystem_operation_label(operation: &FilesystemOperation) -> &'static str {

@@ -4,6 +4,8 @@ This document holds the verification commands and proof workflows that do not be
 
 The README is intentionally focused on Guild itself and on a few usage examples. This page is the deeper operator and contributor reference for regression sweeps, example proofs, and Codex helper flows.
 
+The source-of-truth declaration lives in `SPECS.md` section "Source Of Truth".
+
 ## Full Verification
 
 Run the repository-wide verification sweep with:
@@ -13,6 +15,8 @@ cargo fmt --all --check
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
+
+`make verify` runs that same repo-wide check plus the Rust-native draft-v1 truth gate.
 
 If the format check reports drift and you want to rewrite files locally instead of only checking them, run `cargo fmt --all`.
 
@@ -57,6 +61,7 @@ cargo run -q -p xtask -- draft-v1 benchmark write
 ```
 
 No Python virtualenv is required for those migrated truth flows anymore. The remaining direct Python engines later in this document are legacy draft-harness utilities for manual inspection and development work, not the standard repo truth path.
+The checked JSON and Markdown artifacts remain outputs of that Rust-native path; they do not become runtime-contract sources just because they are checked into the repo.
 
 The Rust-native truth gate now checks the current repo-backed draft-v1 truth surface conservatively:
 

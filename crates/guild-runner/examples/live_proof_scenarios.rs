@@ -357,7 +357,11 @@ fn percentile(samples: &[f64], percentile: f64) -> f64 {
     sorted[rank]
 }
 
-fn summarize_samples(cold_first_run_ms: f64, warmup_runs: usize, samples_ms: Vec<f64>) -> TimingSummary {
+fn summarize_samples(
+    cold_first_run_ms: f64,
+    warmup_runs: usize,
+    samples_ms: Vec<f64>,
+) -> TimingSummary {
     let measured_runs = samples_ms.len();
     let mean_ms = if measured_runs == 0 {
         0.0
@@ -445,7 +449,9 @@ fn prepare_read_resource_bounded() -> PreparedScenario {
         )
         .unwrap();
 
-    let explain = registry.resolve(&requested_skill("explain-execution")).unwrap();
+    let explain = registry
+        .resolve(&requested_skill("explain-execution"))
+        .unwrap();
     PreparedScenario {
         _temp: temp,
         _server: None,
@@ -470,7 +476,10 @@ fn prepare_read_resource_bounded() -> PreparedScenario {
 }
 
 fn run_read_resource_bounded() -> Value {
-    scenario_output("read-resource-bounded", prepare_read_resource_bounded().prove())
+    scenario_output(
+        "read-resource-bounded",
+        prepare_read_resource_bounded().prove(),
+    )
 }
 
 fn prepare_read_resource_query_unsupported() -> PreparedScenario {
@@ -533,7 +542,9 @@ fn prepare_http_request_bounded() -> PreparedScenario {
         replay_url,
         r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
     )]);
-    let http_skill = registry.resolve(&requested_skill("inspect-http-json")).unwrap();
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
     PreparedScenario {
         _temp: temp,
         _server: None,
@@ -556,7 +567,10 @@ fn prepare_http_request_bounded() -> PreparedScenario {
 }
 
 fn run_http_request_bounded() -> Value {
-    scenario_output("http-request-bounded", prepare_http_request_bounded().prove())
+    scenario_output(
+        "http-request-bounded",
+        prepare_http_request_bounded().prove(),
+    )
 }
 
 fn prepare_http_request_default_port_bounded() -> PreparedScenario {
@@ -568,7 +582,9 @@ fn prepare_http_request_default_port_bounded() -> PreparedScenario {
         replay_url,
         r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
     )]);
-    let http_skill = registry.resolve(&requested_skill("inspect-http-json")).unwrap();
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
     PreparedScenario {
         _temp: temp,
         _server: None,
@@ -603,7 +619,9 @@ fn prepare_http_request_head_bounded() -> PreparedScenario {
     let registry = temp.load();
     let replay_url = "http://127.0.0.1:18080/response.json";
     let runner = build_replay_runner(vec![head_http_replay_fixture(replay_url)]);
-    let http_skill = registry.resolve(&requested_skill("inspect-http-json")).unwrap();
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
     PreparedScenario {
         _temp: temp,
         _server: None,
@@ -641,7 +659,9 @@ fn prepare_http_request_localhost_bounded() -> PreparedScenario {
         18080,
         r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
     )]);
-    let http_skill = registry.resolve(&requested_skill("inspect-http-json")).unwrap();
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
     PreparedScenario {
         _temp: temp,
         _server: None,
@@ -676,7 +696,9 @@ fn prepare_http_request_head_default_port_bounded() -> PreparedScenario {
     let registry = temp.load();
     let replay_url = "http://127.0.0.1/response.json";
     let runner = build_replay_runner(vec![head_http_replay_fixture(replay_url)]);
-    let http_skill = registry.resolve(&requested_skill("inspect-http-json")).unwrap();
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
     PreparedScenario {
         _temp: temp,
         _server: None,
@@ -710,7 +732,9 @@ fn prepare_http_request_localhost_head_bounded() -> PreparedScenario {
     let registry = temp.load();
     let replay_url = "http://localhost:18080/response.json";
     let runner = build_replay_runner(vec![localhost_head_http_replay_fixture(replay_url, 18080)]);
-    let http_skill = registry.resolve(&requested_skill("inspect-http-json")).unwrap();
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
     PreparedScenario {
         _temp: temp,
         _server: None,
@@ -749,7 +773,9 @@ fn prepare_http_request_redirect_unsupported() -> PreparedScenario {
             r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
         ),
     ]);
-    let http_skill = registry.resolve(&requested_skill("inspect-http-json")).unwrap();
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
     PreparedScenario {
         _temp: temp,
         _server: None,
@@ -788,7 +814,9 @@ fn prepare_http_request_no_replay() -> PreparedScenario {
     temp.install(repo_root().join("examples/skills/inspect-http-json"));
     let registry = temp.load();
     let runner = build_runner();
-    let http_skill = registry.resolve(&requested_skill("inspect-http-json")).unwrap();
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
     let envelope = envelope_for(
         &http_skill,
         json!({
@@ -816,7 +844,10 @@ fn prepare_http_request_no_replay() -> PreparedScenario {
 }
 
 fn run_http_request_no_replay() -> Value {
-    scenario_output("http-request-no-replay", prepare_http_request_no_replay().prove())
+    scenario_output(
+        "http-request-no-replay",
+        prepare_http_request_no_replay().prove(),
+    )
 }
 
 fn prepare_log_write_reduced() -> PreparedScenario {
@@ -952,7 +983,9 @@ fn prepare_invoke_skill_child_authority_unsupported() -> PreparedScenario {
     temp.install(repo_root().join("examples/skills/hello-composite"));
     let registry = temp.load();
     let runner = build_runner();
-    let composite = registry.resolve(&requested_skill("hello-composite")).unwrap();
+    let composite = registry
+        .resolve(&requested_skill("hello-composite"))
+        .unwrap();
     PreparedScenario {
         _temp: temp,
         _server: None,

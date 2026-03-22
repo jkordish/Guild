@@ -43,9 +43,6 @@ fn main() -> Result<()> {
     };
 
     run_truth_action(action, mode).with_context(|| {
-        format!(
-            "failed to run `cargo run -p xtask -- draft-v1 {} {}`",
-            action_name, mode_name
-        )
+        format!("failed to run `cargo run -p xtask -- draft-v1 {action_name} {mode_name}`")
     })
 }

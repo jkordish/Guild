@@ -6,6 +6,10 @@ use crate::benchmark;
 use crate::compatibility;
 use crate::schemas::{validate_examples, validate_instance};
 use crate::support_matrix;
+use crate::surface::{
+    verify_active_runtime_example_alignment, verify_doc_truth_markers,
+    verify_removed_truth_entrypoints,
+};
 use crate::util::{draft_v1_dir, read_json};
 
 const EXAMPLES: &[(&str, &str)] = &[
@@ -282,6 +286,9 @@ const EXAMPLES: &[(&str, &str)] = &[
 pub fn run(mode: ArtifactMode) -> Result<()> {
     verify_example_schemas()?;
     verify_invalid_runtime_probes()?;
+    verify_active_runtime_example_alignment()?;
+    verify_removed_truth_entrypoints()?;
+    verify_doc_truth_markers()?;
 
     match mode {
         ArtifactMode::Check => {

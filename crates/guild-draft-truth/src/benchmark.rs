@@ -3,6 +3,12 @@ use serde_json::{Map, Value, json};
 
 use crate::ArtifactMode;
 use crate::schemas::validate_instance;
+use crate::surface::{
+    LINKAGE_NOT_MEASURED_ON_REAL_PATH, LINKAGE_PROOF_LINKED, LINKAGE_UNLINKED,
+    LINKED_PATH_FALLBACK_UNLINKED, LINKED_PATH_PROOF_LINKED, LINKED_PATH_PROOF_ONLY,
+    STATUS_BOUNDED, STATUS_NOT_PROVEN, STATUS_SUPPORTED, TOKEN_LINKAGE_PROOF_BACKED,
+    TOKEN_LINKAGE_UPPER_BOUND_FALLBACK, ensure_allowed_value,
+};
 use crate::util::{
     benchmarking_dir, count_rate, draft_v1_dir, ensure_parent_dir, json_array, json_digest,
     json_object, measure_operation, read_json, read_to_string, run_cargo_json, write_json_pretty,
@@ -61,6 +67,16 @@ struct WallSpec {
     checked_test: &'static str,
 }
 
+struct TokenIssuanceBenchmark {
+    proof_backed_token: Option<Value>,
+    proof_backed_timing: Option<Value>,
+    upper_bound_token: Option<Value>,
+    upper_bound_timing: Option<Value>,
+    _refusal_result: Option<Value>,
+    refusal_timing: Option<Value>,
+    issuance_outcomes: Value,
+}
+
 pub fn run(mode: ArtifactMode) -> Result<()> {
     match mode {
         ArtifactMode::Check => {
@@ -106,6 +122,7 @@ pub fn validate_checked_matrix(matrix: &Value) -> Result<()> {
     }
     validate_matrix_inventory(matrix)?;
     validate_matrix_questions(matrix)?;
+    validate_matrix_vocabulary(matrix)?;
     Ok(())
 }
 
@@ -209,21 +226,16 @@ fn build_slice_entry(spec: SliceSpec) -> Result<Value> {
         "Rust-native draft-v1 admission shaping has no cache on the checked path.",
     )?;
 
-    let (
-        proof_backed_token,
-        proof_backed_timing,
-        upper_bound_token,
-        upper_bound_timing,
-        _refusal_result,
-        refusal_timing,
-        issuance_outcomes,
-    ) = issue_tokens_for_slice(
+    let issuance = issue_tokens_for_slice(
         spec,
         &baseline_authority,
         value_ref(&final_issued_authority),
     )?;
 
-    let selected_token = proof_backed_token.or(upper_bound_token);
+    let selected_token = issuance
+        .proof_backed_token
+        .clone()
+        .or_else(|| issuance.upper_bound_token.clone());
 
     let (selected_token_verification_result, token_verification_timing) =
         verify_selected_token_for_slice(spec, &baseline_authority, selected_token.as_ref())?;
@@ -260,14 +272,14 @@ fn build_slice_entry(spec: SliceSpec) -> Result<Value> {
         "timing_overhead_results": {
             "admission_only": admission_timing,
             "live_proof_search": live_benchmark.get("timing").cloned().context("live proof benchmark missing timing")?,
-            "proof_backed_token_issuance": proof_backed_timing,
-            "upper_bound_token_issuance": upper_bound_timing,
-            "token_refusal": refusal_timing,
+            "proof_backed_token_issuance": issuance.proof_backed_timing,
+            "upper_bound_token_issuance": issuance.upper_bound_timing,
+            "token_refusal": issuance.refusal_timing,
             "token_verification": token_verification_timing,
             "witness_generation": witness_generation_timing,
             "witness_verification": witness_verification_timing,
         },
-        "issuance_outcomes": issuance_outcomes,
+        "issuance_outcomes": issuance.issuance_outcomes,
         "witness_outcomes": witness_outcomes,
         "negative_claim_verification": negative_claim_verification,
         "fallback_refusal_behavior": {
@@ -409,6 +421,111 @@ fn validate_matrix_questions(matrix: &Value) -> Result<()> {
     }
     if json_object(&expected, "expected questions")?.len() != questions.len() {
         bail!("benchmark questions shape drifted");
+    }
+    Ok(())
+}
+
+fn validate_matrix_vocabulary(matrix: &Value) -> Result<()> {
+    let slices = json_array(
+        matrix
+            .get("slices")
+            .context("benchmark matrix missing slices")?,
+        "benchmark_matrix.slices",
+    )?;
+    for slice in slices {
+        let slice = json_object(slice, "benchmark slice")?;
+        let slice_id = slice
+            .get("slice_id")
+            .and_then(Value::as_str)
+            .context("benchmark slice missing slice_id")?;
+
+        let support_status = slice
+            .get("support_status")
+            .and_then(Value::as_str)
+            .context("benchmark slice missing support_status")?;
+        ensure_allowed_value(
+            support_status,
+            &[STATUS_SUPPORTED, STATUS_NOT_PROVEN],
+            &format!("benchmark slice {slice_id} support_status"),
+        )?;
+
+        let token_linkage_status = slice
+            .get("token_linkage_status")
+            .and_then(Value::as_str)
+            .context("benchmark slice missing token_linkage_status")?;
+        ensure_allowed_value(
+            token_linkage_status,
+            &[
+                TOKEN_LINKAGE_PROOF_BACKED,
+                TOKEN_LINKAGE_UPPER_BOUND_FALLBACK,
+                LINKAGE_NOT_MEASURED_ON_REAL_PATH,
+            ],
+            &format!("benchmark slice {slice_id} token_linkage_status"),
+        )?;
+
+        let witness_linkage_status = slice
+            .get("witness_linkage_status")
+            .and_then(Value::as_str)
+            .context("benchmark slice missing witness_linkage_status")?;
+        ensure_allowed_value(
+            witness_linkage_status,
+            &[
+                LINKAGE_PROOF_LINKED,
+                LINKAGE_UNLINKED,
+                LINKAGE_NOT_MEASURED_ON_REAL_PATH,
+            ],
+            &format!("benchmark slice {slice_id} witness_linkage_status"),
+        )?;
+
+        let linked_path = slice
+            .get("linked_path")
+            .and_then(Value::as_str)
+            .context("benchmark slice missing linked_path")?;
+        ensure_allowed_value(
+            linked_path,
+            &[
+                LINKED_PATH_PROOF_LINKED,
+                LINKED_PATH_FALLBACK_UNLINKED,
+                LINKED_PATH_PROOF_ONLY,
+            ],
+            &format!("benchmark slice {slice_id} linked_path"),
+        )?;
+
+        let negative_claim_support_status = slice
+            .get("negative_claim_support_status")
+            .and_then(Value::as_str)
+            .context("benchmark slice missing negative_claim_support_status")?;
+        ensure_allowed_value(
+            negative_claim_support_status,
+            &[
+                STATUS_SUPPORTED,
+                STATUS_NOT_PROVEN,
+                LINKAGE_NOT_MEASURED_ON_REAL_PATH,
+            ],
+            &format!("benchmark slice {slice_id} negative_claim_support_status"),
+        )?;
+
+        let reduction = json_object(
+            slice
+                .get("reduction_result")
+                .context("benchmark slice missing reduction_result")?,
+            "benchmark slice reduction_result",
+        )?;
+        let classification = reduction
+            .get("classification")
+            .and_then(Value::as_str)
+            .context("benchmark slice reduction_result missing classification")?;
+        ensure_allowed_value(
+            classification,
+            &[
+                STATUS_NOT_PROVEN,
+                STATUS_BOUNDED,
+                "exact",
+                "no_reduction",
+                "reduced",
+            ],
+            &format!("benchmark slice {slice_id} reduction_result.classification"),
+        )?;
     }
     Ok(())
 }
@@ -635,7 +752,7 @@ fn final_proven_authority(
     baseline_upper_bound_authority: &Value,
     live_proof: &Map<String, Value>,
 ) -> Result<Value> {
-    if live_proof.get("proof_status").and_then(Value::as_str) == Some("not_proven") {
+    if live_proof.get("proof_status").and_then(Value::as_str) == Some(STATUS_NOT_PROVEN) {
         return Ok(Value::Null);
     }
     let live_grants = json_array(
@@ -688,9 +805,9 @@ fn reduction_result(
     baseline_upper_bound_authority: &Value,
     final_issued_authority: Option<&Value>,
 ) -> Result<Value> {
-    if family_proof_status == "not_proven" {
+    if family_proof_status == STATUS_NOT_PROVEN {
         return Ok(json!({
-            "classification": "not_proven",
+            "classification": STATUS_NOT_PROVEN,
             "narrowed_dimensions": [],
         }));
     }
@@ -705,18 +822,18 @@ fn reduction_result(
 }
 
 fn classify_reduction(proof_status: &str) -> &'static str {
-    if proof_status == "not_proven" {
-        "not_proven"
+    if proof_status == STATUS_NOT_PROVEN {
+        STATUS_NOT_PROVEN
     } else if proof_status.starts_with("exact") {
         "exact"
     } else if proof_status.starts_with("bounded") {
-        "bounded"
+        STATUS_BOUNDED
     } else if proof_status == "no_reduction" {
         "no_reduction"
     } else if proof_status == "reduced" {
         "reduced"
     } else {
-        "not_proven"
+        STATUS_NOT_PROVEN
     }
 }
 
@@ -933,15 +1050,7 @@ fn issue_tokens_for_slice(
     spec: SliceSpec,
     baseline_upper_bound_authority: &Value,
     final_issued_authority: Option<&Value>,
-) -> Result<(
-    Option<Value>,
-    Option<Value>,
-    Option<Value>,
-    Option<Value>,
-    Option<Value>,
-    Option<Value>,
-    Value,
-)> {
+) -> Result<TokenIssuanceBenchmark> {
     let scenario_count = BENCHMARK_RUNS;
     match spec.linked_path {
         LinkedPath::ProofLinked => {
@@ -967,20 +1076,20 @@ fn issue_tokens_for_slice(
                 "Rust-native proof-backed token issuance has no cache on the checked path.",
             )?;
             let outcomes = values.iter().map(token_outcome).collect::<Vec<_>>();
-            Ok((
-                Some(selected_token),
-                Some(timing),
-                None,
-                None,
-                None,
-                None,
-                json!({
+            Ok(TokenIssuanceBenchmark {
+                proof_backed_token: Some(selected_token),
+                proof_backed_timing: Some(timing),
+                upper_bound_token: None,
+                upper_bound_timing: None,
+                _refusal_result: None,
+                refusal_timing: None,
+                issuance_outcomes: json!({
                     "proof_backed_success": count_rate(&outcomes, "proof_backed_success"),
                     "upper_bound_fallback": count_rate(&outcomes, "upper_bound_fallback"),
                     "token_refusal": count_rate(&outcomes, "refusal"),
                     "scenario_count": scenario_count,
                 }),
-            ))
+            })
         }
         LinkedPath::FallbackUnlinked => {
             let refusal_factory = || {
@@ -1021,35 +1130,35 @@ fn issue_tokens_for_slice(
                 .iter()
                 .map(token_outcome)
                 .collect::<Vec<_>>();
-            Ok((
-                None,
-                None,
-                Some(selected_token),
-                Some(fallback_timing),
-                Some(selected_refusal),
-                Some(refusal_timing),
-                json!({
+            Ok(TokenIssuanceBenchmark {
+                proof_backed_token: None,
+                proof_backed_timing: None,
+                upper_bound_token: Some(selected_token),
+                upper_bound_timing: Some(fallback_timing),
+                _refusal_result: Some(selected_refusal),
+                refusal_timing: Some(refusal_timing),
+                issuance_outcomes: json!({
                     "proof_backed_success": count_rate(&fallback_outcomes, "proof_backed_success"),
                     "upper_bound_fallback": count_rate(&fallback_outcomes, "upper_bound_fallback"),
                     "token_refusal": count_rate(&refusal_outcomes, "refusal"),
                     "scenario_count": scenario_count,
                 }),
-            ))
+            })
         }
-        LinkedPath::ProofOnly => Ok((
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            json!({
+        LinkedPath::ProofOnly => Ok(TokenIssuanceBenchmark {
+            proof_backed_token: None,
+            proof_backed_timing: None,
+            upper_bound_token: None,
+            upper_bound_timing: None,
+            _refusal_result: None,
+            refusal_timing: None,
+            issuance_outcomes: json!({
                 "proof_backed_success": {"count": 0, "rate": 0.0},
                 "upper_bound_fallback": {"count": 0, "rate": 0.0},
                 "token_refusal": {"count": 0, "rate": 0.0},
                 "scenario_count": scenario_count,
             }),
-        )),
+        }),
     }
 }
 
@@ -1201,8 +1310,8 @@ fn generate_witness_for_slice(
                 Some(selected_witness),
                 Some(timing),
                 json!({
-                    "proof_linked_success": count_rate(&outcomes, "proof_linked"),
-                    "unlinked_success": count_rate(&outcomes, "unlinked"),
+                    "proof_linked_success": count_rate(&outcomes, LINKAGE_PROOF_LINKED),
+                    "unlinked_success": count_rate(&outcomes, LINKAGE_UNLINKED),
                     "scenario_count": BENCHMARK_RUNS,
                 }),
             ))
@@ -1857,9 +1966,9 @@ fn witness_mode(entry: &Map<String, Value>) -> String {
         .and_then(Value::as_u64)
         .unwrap_or(0);
     if proof_linked > 0 {
-        "proof_linked".to_owned()
+        LINKAGE_PROOF_LINKED.to_owned()
     } else if unlinked > 0 {
-        "unlinked".to_owned()
+        LINKAGE_UNLINKED.to_owned()
     } else {
         "not_measured".to_owned()
     }
@@ -1880,9 +1989,9 @@ fn token_outcome(value: &Value) -> String {
 
 fn witness_outcome(value: &Value) -> String {
     if value.get("proof_basis").is_some() && !value.get("proof_basis").is_some_and(Value::is_null) {
-        "proof_linked".to_owned()
+        LINKAGE_PROOF_LINKED.to_owned()
     } else {
-        "unlinked".to_owned()
+        LINKAGE_UNLINKED.to_owned()
     }
 }
 
@@ -1902,9 +2011,9 @@ fn fail_closed_reasons_for_slice(spec: SliceSpec) -> Result<Value> {
 
 fn linked_path_label(linked_path: LinkedPath) -> &'static str {
     match linked_path {
-        LinkedPath::ProofLinked => "proof_linked",
-        LinkedPath::FallbackUnlinked => "fallback_unlinked",
-        LinkedPath::ProofOnly => "proof_only",
+        LinkedPath::ProofLinked => LINKED_PATH_PROOF_LINKED,
+        LinkedPath::FallbackUnlinked => LINKED_PATH_FALLBACK_UNLINKED,
+        LinkedPath::ProofOnly => LINKED_PATH_PROOF_ONLY,
     }
 }
 

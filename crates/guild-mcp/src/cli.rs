@@ -325,6 +325,7 @@ struct TrustVerifyPlanOutput {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 enum ShowTarget {
     Skill {
         requested: String,
@@ -490,6 +491,7 @@ fn run_show(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn run_run_command(
     args: &[String],
     global: &GlobalOptions,
@@ -637,7 +639,7 @@ fn run_ls(
     let (render, positional, limit) = parse_ls_args(args)?;
     match positional.first().map(String::as_str) {
         Some("skills") => run_ls_skills(&registry, &registry_root, &render),
-        Some("runs") | Some("executions") => run_ls_runs(&registry, &registry_root, &render, limit),
+        Some("runs" | "executions") => run_ls_runs(&registry, &registry_root, &render, limit),
         Some("objects") => run_ls_objects(&registry, &registry_root, &render, limit),
         Some("evidence") => run_ls_evidence(&registry, &registry_root, &render, limit),
         None => run_ls_summary(&registry, &registry_root, &render),
@@ -889,9 +891,8 @@ fn consume_render_flag(
             Ok(true)
         }
         _ if argument.starts_with("-v") && argument.chars().skip(1).all(|ch| ch == 'v') => {
-            render.verbosity = render
-                .verbosity
-                .saturating_add((argument.len().saturating_sub(1)) as u8);
+            let extra_verbosity = u8::try_from(argument.len().saturating_sub(1)).unwrap_or(u8::MAX);
+            render.verbosity = render.verbosity.saturating_add(extra_verbosity);
             Ok(true)
         }
         _ => Ok(false),
@@ -2315,7 +2316,7 @@ fn resolve_execution_prefix(registry: &LocalRegistry, prefix: &str) -> Result<St
             matches
                 .iter()
                 .take(5)
-                .map(|record| short_execution_ref(record))
+                .map(short_execution_ref)
                 .collect::<Vec<_>>()
                 .join(", ")
         ))),

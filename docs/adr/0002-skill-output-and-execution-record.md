@@ -7,6 +7,7 @@ Accepted
 ## Note
 
 ADR 0003 refines the boundary frozen here. ADR 0002 remains the historical split decision; ADR 0003 is the authoritative statement of the WIT guest ABI versus durable host record layering model.
+For the current normative runtime contract, see `SPECS.md`, `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
 
 ## Context
 

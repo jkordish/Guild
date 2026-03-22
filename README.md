@@ -26,6 +26,9 @@ MCP is only the transport facade here. Guild is the layer that admits, runs, del
 > - broader `http-request` shapes, including `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, plus broader `invoke-skill` shapes such as dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, non-inspect child targets, and all current `emit-evidence` flows, remain outside the live-proof envelope; `emit-evidence` now binds a fixed local-object-store sink descriptor and uses a dedicated comparator profile in the runtime, but the tested exact single-emission shrink still fails closed on replay, so there is still no honest proof-backed linkage
 > - `M9` and `M10`: not started
 
+Normative runtime sources live in `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+Generated support, compatibility, and benchmark artifacts remain checked outputs, not primary contract definitions.
+
 ## Why Guild
 
 Guild is strict about a few things because the milestone program requires them:

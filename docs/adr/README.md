@@ -1,6 +1,7 @@
 # ADR Index
 
 Guild uses ADRs to record platform-shaping decisions and to queue the next contract work that should be captured as decisions rather than implied by code drift.
+ADRs record rationale and accepted decisions. They are not the current normative contract surface.
 
 ## Current ADRs
 

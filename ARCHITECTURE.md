@@ -4,6 +4,8 @@ Status: Draft v0.1
 Scope: practical architecture for a local-first Guild implementation  
 Audience: implementers, maintainers, reviewers, security and platform engineers
 
+This document is explanatory architecture, not the primary runtime-contract source of truth. For normative runtime ownership, use `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+
 ## 1. Overview
 
 Guild is a local-first skill execution fabric.

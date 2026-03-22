@@ -49,6 +49,33 @@ Guild MAY integrate with models, MCP servers, and orchestration systems, but tho
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY in this document are to be interpreted as normative requirements.
 
+### 4.1 Source Of Truth
+
+Guild does not treat every repo surface as equally normative.
+
+For runtime contracts, the normative sources are:
+
+- `SPECS.md`
+- `wit/guild-skill-v1.wit`
+- the core Rust runtime and type surfaces, especially `crates/guild-types` and `crates/guild-runner`
+
+Those sources own the live runtime vocabulary, execution boundary, durable record model, and active inspect-slice contract. If an explanatory document, generated artifact, or older rationale note disagrees with them, those runtime-contract sources win.
+
+For the bounded draft proof/control-plane harness, the normative sources are the schemas, checked examples, and Rust-native truth tooling under `docs/schemas/draft-v1/` together with the shared Rust generator code that validates and regenerates that bundle. That draft harness is normative only for the draft harness itself. It is not the primary runtime-contract definition for Guild.
+
+The following repo surfaces are not primary runtime-contract definitions:
+
+- ADRs are rationale and history. They explain why decisions were made, but they do not replace current runtime-contract ownership in `SPECS.md`, WIT, or the core Rust runtime/types.
+- Generated support, compatibility, and benchmark artifacts are measured or derived outputs. They must reflect current repo-backed truth exactly, but they are not hidden sources of truth.
+- `README.md`, `ARCHITECTURE.md`, `docs/testing.md`, and other explanatory docs are derived documentation unless they explicitly point back to a normative source.
+
+This pass stays fail-closed:
+
+- unsupported and `not_proven` slices remain explicit
+- generated outputs must not widen support by wording alone
+- explanatory docs must not smooth over runtime or draft-harness boundaries
+- later Contract Surface v1 hardening may freeze more surfaces, but this milestone does not
+
 ## 5. Terms
 
 ### 5.1 Skill

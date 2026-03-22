@@ -2,6 +2,9 @@
 
 This bundle is the current draft schema surface for Guild's M3, M4, the older draft-example M5 proof path, the new M8c live proof bridge for the families the Rust runtime can honestly support today, one draft-local M6 token path, and one bounded M7 witness path.
 
+This bundle is normative only for the draft proof/control-plane harness under `docs/schemas/draft-v1/`.
+For runtime-contract truth, use `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+
 It now covers five distinct layers:
 
 - M3 hard-requirement precheck over `skill_contract` plus `runtime_guarantee`

@@ -15,7 +15,9 @@ If you are working from the repository, use the repo-local wrapper:
 cargo run -q -p guild-mcp --bin guild -- ...
 ```
 
-This document is the source of truth for Guild's public command and URI grammar. The repository does not currently include landing-page source, so the terminal snippets here are also the canonical in-repo hero examples for future site work.
+This document is the source of truth for Guild's public command and URI grammar only.
+It is not the runtime-contract source of truth; see `SPECS.md` section "Source Of Truth".
+The repository does not currently include landing-page source, so the terminal snippets here are also the canonical in-repo hero examples for future site work.
 
 ## Canonical Verbs
 

@@ -1,14 +1,22 @@
-use anyhow::{Result, bail};
-use serde_json::{Value, json};
+use anyhow::{Context, Result, bail};
+use guild_types::CapabilityId;
+use serde_json::{Map, Value, json};
 
 use crate::ArtifactMode;
-use crate::util::{draft_v1_dir, ensure_parent_dir, read_json, write_json_pretty};
+use crate::surface::{
+    STATUS_BOUNDED, STATUS_NOT_PROVEN, STATUS_PARTIAL, STATUS_SUPPORTED, STATUS_UNSUPPORTED,
+    active_runtime_family_names, ensure_allowed_value, ensure_exact_string_set,
+    immutable_read_resource_live_proof_roots,
+};
+use crate::util::{
+    draft_v1_dir, ensure_parent_dir, json_array, json_object, read_json, write_json_pretty,
+};
 
 const OUTPUT_NAME: &str = "family_support_matrix.json";
 
 pub fn run(mode: ArtifactMode) -> Result<()> {
     let path = draft_v1_dir().join(OUTPUT_NAME);
-    let generated = build_matrix();
+    let generated = build_matrix()?;
     match mode {
         ArtifactMode::Check => {
             let existing = read_json(&path)?;
@@ -27,8 +35,30 @@ pub fn run(mode: ArtifactMode) -> Result<()> {
     }
 }
 
-pub fn build_matrix() -> Value {
-    json!({
+pub fn build_matrix() -> Result<Value> {
+    let mut families = Map::new();
+    families.insert(
+        CapabilityId::HttpRequest.as_str().to_owned(),
+        http_request_family(),
+    );
+    families.insert(
+        CapabilityId::ReadResource.as_str().to_owned(),
+        read_resource_family(),
+    );
+    families.insert(
+        CapabilityId::InvokeSkill.as_str().to_owned(),
+        invoke_skill_family(),
+    );
+    families.insert(
+        CapabilityId::EmitEvidence.as_str().to_owned(),
+        emit_evidence_family(),
+    );
+    families.insert(
+        CapabilityId::LogWrite.as_str().to_owned(),
+        log_write_family(),
+    );
+
+    let matrix = json!({
         "kind": "guild.family_support_matrix",
         "version": "1.0.0",
         "canonical_runtime_vocabulary": true,
@@ -53,34 +83,152 @@ pub fn build_matrix() -> Value {
             "plan_proof_token_linkage",
             "proof_witness_linkage"
         ],
-        "families": {
-            "http-request": http_request_family(),
-            "read-resource": read_resource_family(),
-            "invoke-skill": invoke_skill_family(),
-            "emit-evidence": emit_evidence_family(),
-            "log-write": log_write_family(),
-        },
+        "families": families,
         "compatibility_aliases": {
             "net.connect": {
-                "status": "partial",
+                "status": STATUS_PARTIAL,
                 "reason_codes": ["COMPAT_ALIAS_USED", "COMPAT_ALIAS_DEPRECATED", "VOCABULARY_MAPPING_NARROWING"],
-                "maps_to": "http-request",
+                "maps_to": CapabilityId::HttpRequest.as_str(),
                 "notes": "Legacy net.connect stays as an explicit narrowing-only compatibility alias for safe HTTP(S) GET or HEAD scopes."
             },
             "component.invoke": {
-                "status": "partial",
+                "status": STATUS_PARTIAL,
                 "reason_codes": ["COMPAT_ALIAS_USED", "COMPAT_ALIAS_DEPRECATED", "VOCABULARY_MAPPING_NARROWING"],
-                "maps_to": "invoke-skill",
+                "maps_to": CapabilityId::InvokeSkill.as_str(),
                 "notes": "Legacy component.invoke stays as an explicit narrowing-only compatibility alias to alias-scoped invoke-skill."
             },
             "net.resolve": {
-                "status": "unsupported",
+                "status": STATUS_UNSUPPORTED,
                 "reason_codes": ["VOCABULARY_MAPPING_UNSUPPORTED", "CANONICAL_FAMILY_UNSUPPORTED"],
                 "maps_to": null,
                 "notes": "The live runtime does not expose a standalone DNS-resolution family in the active inspect slice."
             }
         }
+    });
+    validate_generated_matrix(&matrix)?;
+    Ok(matrix)
+}
+
+fn validate_generated_matrix(matrix: &Value) -> Result<()> {
+    let matrix = json_object(matrix, "family_support_matrix")?;
+    let families = json_object(
+        matrix
+            .get("families")
+            .context("family_support_matrix missing families")?,
+        "family_support_matrix.families",
+    )?;
+    ensure_exact_string_set(
+        families.keys().cloned(),
+        active_runtime_family_names(),
+        "family_support_matrix families",
+    )?;
+
+    for (family_name, family) in families {
+        let family = json_object(
+            family,
+            &format!("family_support_matrix.families.{family_name}"),
+        )?;
+        let layers = json_object(
+            family
+                .get("layers")
+                .context("family entry missing layers")?,
+            &format!("family_support_matrix.families.{family_name}.layers"),
+        )?;
+        for (layer_name, layer_value) in layers {
+            let layer = json_object(
+                layer_value,
+                &format!("family_support_matrix.families.{family_name}.layers.{layer_name}"),
+            )?;
+            let status = layer
+                .get("status")
+                .and_then(Value::as_str)
+                .with_context(|| {
+                    format!(
+                        "family_support_matrix.families.{family_name}.layers.{layer_name}.status missing"
+                    )
+                })?;
+            ensure_allowed_value(
+                status,
+                &[
+                    STATUS_SUPPORTED,
+                    STATUS_BOUNDED,
+                    STATUS_NOT_PROVEN,
+                    STATUS_UNSUPPORTED,
+                ],
+                &format!("family_support_matrix layer status for {family_name}.{layer_name}"),
+            )?;
+        }
+
+        if family_name == CapabilityId::ReadResource.as_str() {
+            validate_read_resource_roots(family)?;
+        }
+    }
+
+    let aliases = json_object(
+        matrix
+            .get("compatibility_aliases")
+            .context("family_support_matrix missing compatibility_aliases")?,
+        "family_support_matrix.compatibility_aliases",
+    )?;
+    for (alias_name, alias) in aliases {
+        let alias = json_object(
+            alias,
+            &format!("family_support_matrix.compatibility_aliases.{alias_name}"),
+        )?;
+        let status = alias
+            .get("status")
+            .and_then(Value::as_str)
+            .with_context(|| {
+                format!("family_support_matrix.compatibility_aliases.{alias_name}.status missing")
+            })?;
+        ensure_allowed_value(
+            status,
+            &[STATUS_PARTIAL, STATUS_UNSUPPORTED],
+            &format!("compatibility alias status for {alias_name}"),
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_read_resource_roots(family: &Map<String, Value>) -> Result<()> {
+    let proven_slices = json_array(
+        family
+            .get("proven_slices")
+            .context("read-resource family missing proven_slices")?,
+        "family_support_matrix.families.read-resource.proven_slices",
+    )?;
+    let slice = proven_slices
+        .first()
+        .context("read-resource family missing immutable proven slice")?;
+    let slice = json_object(
+        slice,
+        "family_support_matrix.families.read-resource.proven_slices[0]",
+    )?;
+    let request_shape = json_object(
+        slice
+            .get("request_shape")
+            .context("read-resource immutable proven slice missing request_shape")?,
+        "family_support_matrix.families.read-resource.proven_slices[0].request_shape",
+    )?;
+    let roots = json_array(
+        request_shape
+            .get("uri_prefixes")
+            .context("read-resource immutable proven slice missing uri_prefixes")?,
+        "family_support_matrix.families.read-resource.proven_slices[0].request_shape.uri_prefixes",
+    )?
+    .iter()
+    .map(|value| {
+        value
+            .as_str()
+            .map(str::to_owned)
+            .context("read-resource immutable proven uri_prefixes must be strings")
     })
+    .collect::<Result<Vec<_>>>()?;
+    ensure_exact_string_set(
+        roots,
+        immutable_read_resource_live_proof_roots(),
+        "family_support_matrix read-resource immutable live-proof roots",
+    )
 }
 
 fn http_request_family() -> Value {
@@ -144,22 +292,23 @@ fn http_request_family() -> Value {
             }
         ],
         "layers": {
-            "admission_runtime_guarantee_matching": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical http-request grants match the live runtime vocabulary and URL-granularity runtime guarantee checks."),
-            "execution_plan_representation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical http-request scopes directly."),
-            "live_minimization_proof": layer("bounded", &["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "M8c now has bounded live proof for exactly six deterministic replay-fixtured http-request slices: exercised GET and HEAD over http to a loopback IP-literal host, each with an explicit port form and an implicit default HTTP port form, plus explicit-port localhost GET and HEAD when the proof basis carries deterministic loopback-only resolution bindings. All six remain exact-path, query-free, redirect-free, single-request slices under the normalized inspect-output comparator only. Broader http-request shapes stay not_proven."),
-            "token_issuance_basis": layer("supported", &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "M6 still issues direct canonical http-request scopes, and it can now consume the bounded live proof for the replay-fixtured loopback IP and explicit-port localhost slices. Unsupported http-request shapes still fall back to explicit upper-bound issuance or refusal."),
-            "token_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical METHOD:scheme://host:port/path resource bindings verify directly against http-request scopes."),
-            "witness_generation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Live exercised and blocked http-request observations still normalize directly into canonical witness effects."),
-            "witness_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical http-request witnesses verify directly against plans and tokens."),
-            "positive_claim_verification": layer("unsupported", &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Draft-v1 still does not carry a fixed positive observed-fact claim vocabulary for canonical http-request facts."),
-            "negative_claim_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
-            "plan_proof_token_linkage": layer("bounded", &["HTTP_LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to the six replay-backed live proof slices only."),
-            "proof_witness_linkage": layer("bounded", &["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to the six replay-backed live proof slices only.")
+            "admission_runtime_guarantee_matching": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical http-request grants match the live runtime vocabulary and URL-granularity runtime guarantee checks."),
+            "execution_plan_representation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical http-request scopes directly."),
+            "live_minimization_proof": layer(STATUS_BOUNDED, &["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "M8c now has bounded live proof for exactly six deterministic replay-fixtured http-request slices: exercised GET and HEAD over http to a loopback IP-literal host, each with an explicit port form and an implicit default HTTP port form, plus explicit-port localhost GET and HEAD when the proof basis carries deterministic loopback-only resolution bindings. All six remain exact-path, query-free, redirect-free, single-request slices under the normalized inspect-output comparator only. Broader http-request shapes stay not_proven."),
+            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "M6 still issues direct canonical http-request scopes, and it can now consume the bounded live proof for the replay-fixtured loopback IP and explicit-port localhost slices. Unsupported http-request shapes still fall back to explicit upper-bound issuance or refusal."),
+            "token_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical METHOD:scheme://host:port/path resource bindings verify directly against http-request scopes."),
+            "witness_generation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Live exercised and blocked http-request observations still normalize directly into canonical witness effects."),
+            "witness_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical http-request witnesses verify directly against plans and tokens."),
+            "positive_claim_verification": layer(STATUS_UNSUPPORTED, &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Draft-v1 still does not carry a fixed positive observed-fact claim vocabulary for canonical http-request facts."),
+            "negative_claim_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
+            "plan_proof_token_linkage": layer(STATUS_BOUNDED, &["HTTP_LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to the six replay-backed live proof slices only."),
+            "proof_witness_linkage": layer(STATUS_BOUNDED, &["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to the six replay-backed live proof slices only.")
         }
     })
 }
 
 fn read_resource_family() -> Value {
+    let immutable_roots = immutable_read_resource_live_proof_roots();
     json!({
         "scope_shape": {
             "kind": "resource",
@@ -171,7 +320,7 @@ fn read_resource_family() -> Value {
                 "proof_status": "bounded_minimal",
                 "proof_backed_layers": ["live_minimization_proof", "plan_proof_token_linkage", "proof_witness_linkage"],
                 "request_shape": {
-                    "uri_prefixes": ["guild://executions/", "guild://objects/records/"],
+                    "uri_prefixes": immutable_roots,
                     "resource_kinds": ["execution", "object"]
                 },
                 "notes": "Bounded live proof exists over immutable Guild execution and object-record roots only."
@@ -185,17 +334,17 @@ fn read_resource_family() -> Value {
             }
         ],
         "layers": {
-            "admission_runtime_guarantee_matching": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical read-resource grants match the live runtime vocabulary."),
-            "execution_plan_representation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical read-resource scopes directly."),
-            "live_minimization_proof": layer("bounded", &["LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "Read-resource live proof is bounded to immutable execution/object-record roots."),
-            "token_issuance_basis": layer("supported", &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "Proof-backed M6 issuance can consume the bounded read-resource proof."),
-            "token_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical Guild resource bindings verify directly."),
-            "witness_generation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Live read-resource observations normalize directly into canonical witness effects."),
-            "witness_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical read-resource witnesses verify directly."),
-            "positive_claim_verification": layer("unsupported", &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
-            "negative_claim_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
-            "plan_proof_token_linkage": layer("bounded", &["TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to immutable execution/object-record roots."),
-            "proof_witness_linkage": layer("bounded", &["LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to immutable execution/object-record roots.")
+            "admission_runtime_guarantee_matching": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical read-resource grants match the live runtime vocabulary."),
+            "execution_plan_representation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical read-resource scopes directly."),
+            "live_minimization_proof": layer(STATUS_BOUNDED, &["LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "Read-resource live proof is bounded to immutable execution/object-record roots."),
+            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "Proof-backed M6 issuance can consume the bounded read-resource proof."),
+            "token_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical Guild resource bindings verify directly."),
+            "witness_generation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Live read-resource observations normalize directly into canonical witness effects."),
+            "witness_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical read-resource witnesses verify directly."),
+            "positive_claim_verification": layer(STATUS_UNSUPPORTED, &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
+            "negative_claim_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
+            "plan_proof_token_linkage": layer(STATUS_BOUNDED, &["TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to immutable execution/object-record roots."),
+            "proof_witness_linkage": layer(STATUS_BOUNDED, &["LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to immutable execution/object-record roots.")
         }
     })
 }
@@ -231,17 +380,17 @@ fn invoke_skill_family() -> Value {
             not_proven_shape("non-inspect-child-world", &["INVOKE_SKILL_CHILD_WORLD_UNSUPPORTED"], "Non-inspect child targets remain not_proven.")
         ],
         "layers": {
-            "admission_runtime_guarantee_matching": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical invoke-skill grants match the active runtime vocabulary."),
-            "execution_plan_representation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical invoke-skill scopes directly."),
-            "live_minimization_proof": layer("bounded", &["LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "Invoke-skill live proof is bounded to one exact zero-authority child slice only."),
-            "token_issuance_basis": layer("supported", &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "Proof-backed M6 issuance can consume the bounded invoke-skill proof for the exact single-child slice."),
-            "token_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical alias bindings verify directly against invoke-skill scopes."),
-            "witness_generation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Live invoke observations normalize directly into canonical witness effects."),
-            "witness_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical invoke-skill witnesses verify directly."),
-            "positive_claim_verification": layer("unsupported", &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
-            "negative_claim_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
-            "plan_proof_token_linkage": layer("bounded", &["TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to the exact single-child slice only."),
-            "proof_witness_linkage": layer("bounded", &["LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to the exact single-child slice only.")
+            "admission_runtime_guarantee_matching": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical invoke-skill grants match the active runtime vocabulary."),
+            "execution_plan_representation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical invoke-skill scopes directly."),
+            "live_minimization_proof": layer(STATUS_BOUNDED, &["LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "Invoke-skill live proof is bounded to one exact zero-authority child slice only."),
+            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "Proof-backed M6 issuance can consume the bounded invoke-skill proof for the exact single-child slice."),
+            "token_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical alias bindings verify directly against invoke-skill scopes."),
+            "witness_generation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Live invoke observations normalize directly into canonical witness effects."),
+            "witness_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical invoke-skill witnesses verify directly."),
+            "positive_claim_verification": layer(STATUS_UNSUPPORTED, &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
+            "negative_claim_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
+            "plan_proof_token_linkage": layer(STATUS_BOUNDED, &["TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to the exact single-child slice only."),
+            "proof_witness_linkage": layer(STATUS_BOUNDED, &["LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to the exact single-child slice only.")
         }
     })
 }
@@ -261,17 +410,17 @@ fn emit_evidence_family() -> Value {
             not_proven_shape("host-result-error-on-emission", &["EMIT_EVIDENCE_HOST_ERROR_UNSUPPORTED"], "Host-side emission failures remain not_proven.")
         ],
         "layers": {
-            "admission_runtime_guarantee_matching": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical emit-evidence grants match the active runtime vocabulary."),
-            "execution_plan_representation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical emit-evidence scopes directly."),
-            "live_minimization_proof": layer("not_proven", &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "Emit-evidence remains not_proven because the tested exact single-emission replay still fails closed."),
-            "token_issuance_basis": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "M6 can still issue upper-bound emit-evidence scopes as a draft-local token layer."),
-            "token_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical emit-evidence bindings verify directly against emit-evidence scopes."),
-            "witness_generation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Live emit-evidence observations normalize directly into canonical witness effects."),
-            "witness_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical emit-evidence witnesses verify directly."),
-            "positive_claim_verification": layer("unsupported", &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
-            "negative_claim_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
-            "plan_proof_token_linkage": layer("not_proven", &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "Plan -> proof -> token linkage remains fail-closed while emit-evidence is not_proven."),
-            "proof_witness_linkage": layer("not_proven", &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "Proof -> witness linkage remains fail-closed while emit-evidence is not_proven.")
+            "admission_runtime_guarantee_matching": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical emit-evidence grants match the active runtime vocabulary."),
+            "execution_plan_representation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical emit-evidence scopes directly."),
+            "live_minimization_proof": layer(STATUS_NOT_PROVEN, &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "Emit-evidence remains not_proven because the tested exact single-emission replay still fails closed."),
+            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M6 can still issue upper-bound emit-evidence scopes as a draft-local token layer."),
+            "token_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical emit-evidence bindings verify directly against emit-evidence scopes."),
+            "witness_generation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Live emit-evidence observations normalize directly into canonical witness effects."),
+            "witness_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical emit-evidence witnesses verify directly."),
+            "positive_claim_verification": layer(STATUS_UNSUPPORTED, &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
+            "negative_claim_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
+            "plan_proof_token_linkage": layer(STATUS_NOT_PROVEN, &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "Plan -> proof -> token linkage remains fail-closed while emit-evidence is not_proven."),
+            "proof_witness_linkage": layer(STATUS_NOT_PROVEN, &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "Proof -> witness linkage remains fail-closed while emit-evidence is not_proven.")
         }
     })
 }
@@ -295,17 +444,17 @@ fn log_write_family() -> Value {
         ],
         "not_proven_shapes": [],
         "layers": {
-            "admission_runtime_guarantee_matching": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical log-write grants match the active runtime vocabulary."),
-            "execution_plan_representation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical log-write scopes directly."),
-            "live_minimization_proof": layer("supported", &["LIVE_PROOF_SUPPORTED"], "Log-write has real live proof over the observed discrete level slice."),
-            "token_issuance_basis": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "M6 can issue direct canonical log-write scopes."),
-            "token_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical log-write bindings verify directly against log-write scopes."),
-            "witness_generation": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Live log observations normalize directly into canonical witness effects."),
-            "witness_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Canonical log-write witnesses verify directly."),
-            "positive_claim_verification": layer("unsupported", &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
-            "negative_claim_verification": layer("supported", &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
-            "plan_proof_token_linkage": layer("unsupported", &["BENCHMARK_LINKAGE_NOT_MEASURED"], "The checked benchmark does not currently claim a real-path token linkage slice for log-write."),
-            "proof_witness_linkage": layer("unsupported", &["BENCHMARK_LINKAGE_NOT_MEASURED"], "The checked benchmark does not currently claim a real-path witness linkage slice for log-write.")
+            "admission_runtime_guarantee_matching": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical log-write grants match the active runtime vocabulary."),
+            "execution_plan_representation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical log-write scopes directly."),
+            "live_minimization_proof": layer(STATUS_SUPPORTED, &["LIVE_PROOF_SUPPORTED"], "Log-write has real live proof over the observed discrete level slice."),
+            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M6 can issue direct canonical log-write scopes."),
+            "token_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical log-write bindings verify directly against log-write scopes."),
+            "witness_generation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Live log observations normalize directly into canonical witness effects."),
+            "witness_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical log-write witnesses verify directly."),
+            "positive_claim_verification": layer(STATUS_UNSUPPORTED, &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
+            "negative_claim_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
+            "plan_proof_token_linkage": layer(STATUS_UNSUPPORTED, &["BENCHMARK_LINKAGE_NOT_MEASURED"], "The checked benchmark does not currently claim a real-path token linkage slice for log-write."),
+            "proof_witness_linkage": layer(STATUS_UNSUPPORTED, &["BENCHMARK_LINKAGE_NOT_MEASURED"], "The checked benchmark does not currently claim a real-path witness linkage slice for log-write.")
         }
     })
 }

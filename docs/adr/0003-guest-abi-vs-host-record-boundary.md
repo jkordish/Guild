@@ -4,6 +4,8 @@
 
 Accepted
 
+For the current normative runtime contract, see `SPECS.md`, `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+
 ## Context
 
 Guild already had the right instinct: separate requested identity from resolved identity, keep the guest ABI smaller than the host runtime, and persist host-owned execution records. The problem was that the contract story was still soft in a few important places:

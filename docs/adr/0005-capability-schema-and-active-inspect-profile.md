@@ -4,6 +4,8 @@
 
 Accepted
 
+For the current normative runtime contract, see `SPECS.md`, `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+
 ## Context
 
 Guild's contracts already define a broader capability universe than the current working runtime slice actually supports.

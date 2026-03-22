@@ -138,12 +138,10 @@ pub fn short_execution_ref(record: &ExecutionRecord) -> String {
 
 #[must_use]
 pub fn short_evidence_ref(record: &EvidenceRecord) -> String {
-    record
-        .uri
-        .rsplit('/')
-        .next()
-        .map(|id| short_prefixed_id("evidence", id))
-        .unwrap_or_else(|| record.uri.clone())
+    record.uri.rsplit('/').next().map_or_else(
+        || record.uri.clone(),
+        |id| short_prefixed_id("evidence", id),
+    )
 }
 
 #[must_use]
@@ -189,7 +187,7 @@ pub fn support_summary_for_execution(record: &ExecutionRecord) -> SupportSummary
             record.granted_capabilities.grants.iter().map(|cap| &cap.id),
         )
     } else {
-        support_summary_for_capabilities(observed.into_iter())
+        support_summary_for_capabilities(observed)
     }
 }
 
@@ -388,7 +386,7 @@ pub fn render_execution_show(
         styler.paint(Tone::Type, abi_version_label(&record.provenance.abi))
     );
     if let Some(output_summary) = record.output.as_ref().map(|output| output.summary.as_str()) {
-        let _ = writeln!(output, "result: {}", output_summary);
+        let _ = writeln!(output, "result: {output_summary}");
     }
     if options.verbose() {
         let _ = writeln!(
@@ -741,10 +739,10 @@ fn support_summary_for_capabilities<'a>(
         match capability {
             CapabilityId::LogWrite => proof_backed.push(capability_id_label(capability).to_owned()),
             CapabilityId::HttpRequest | CapabilityId::ReadResource | CapabilityId::InvokeSkill => {
-                bounded.push(capability_id_label(capability).to_owned())
+                bounded.push(capability_id_label(capability).to_owned());
             }
             CapabilityId::EmitEvidence => {
-                not_proven.push(capability_id_label(capability).to_owned())
+                not_proven.push(capability_id_label(capability).to_owned());
             }
             _ => refused.push(capability_id_label(capability).to_owned()),
         }
@@ -876,6 +874,7 @@ fn short_prefixed_id(prefix: &str, value: &str) -> String {
     format!("{prefix}:{short}")
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn render_support_summary(summary: &SupportSummary, styler: &Styler) -> String {
     summary
         .buckets
@@ -894,11 +893,12 @@ fn render_support_summary(summary: &SupportSummary, styler: &Styler) -> String {
 fn format_bytes(bytes: u64) -> String {
     match bytes {
         0..=1023 => format!("{bytes}B"),
-        1024..=1_048_575 => format!("{:.1}KiB", bytes as f64 / 1024.0),
-        _ => format!("{:.1}MiB", bytes as f64 / 1_048_576.0),
+        1024..=1_048_575 => format_scaled_bytes(bytes, 1024, "KiB"),
+        _ => format_scaled_bytes(bytes, 1_048_576, "MiB"),
     }
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn paint_status_word(styler: &Styler, word: &str) -> String {
     match word {
         "proof-backed" | "linked" | "verified-import" | "trusted-imported" | "succeeded" | "ok" => {
@@ -909,6 +909,12 @@ fn paint_status_word(styler: &Styler, word: &str) -> String {
         "not_proven" | "refused" | "rejected" | "failed" => styler.paint(Tone::Danger, word),
         _ => word.to_owned(),
     }
+}
+
+fn format_scaled_bytes(bytes: u64, unit_size: u64, suffix: &str) -> String {
+    let whole = bytes / unit_size;
+    let tenths = ((bytes % unit_size) * 10) / unit_size;
+    format!("{whole}.{tenths}{suffix}")
 }
 
 fn terminal_status_word(status: &ExecutionStatus) -> &'static str {

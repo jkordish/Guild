@@ -2,6 +2,7 @@ pub mod benchmark;
 pub mod compatibility;
 pub mod schemas;
 pub mod support_matrix;
+pub mod surface;
 pub mod truth;
 pub mod util;
 

@@ -3,6 +3,8 @@
 Status: Accepted  
 Date: 2026-03-17
 
+For the current normative runtime contract, see `SPECS.md`, `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+
 ## Context
 
 ADR 0005 froze Guild's typed capability families and the honest active inspect
