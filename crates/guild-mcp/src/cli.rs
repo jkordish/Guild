@@ -1,9 +1,12 @@
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, IsTerminal};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
+use clap::error::ErrorKind;
+use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use guild_manifest::{PublisherRef, SkillManifest};
 use guild_registry::{
     ExecutionPlanSignatureEnvelope, ExecutionPlanVerification, InstalledSkill,
@@ -16,7 +19,7 @@ use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
     CapabilityGrantSet, EvidenceBlobRecord, EvidenceRecord, ExecutionRecord, ExecutionStatus,
     GuildResourceUri, InstalledVerificationState, LocalTrustTier, RequestedSkillRef,
-    ResourceReadResult, SkillKey, VersionRequirement,
+    ResourceReadResult, SkillKey, VersionRequirement, execution_status_label,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -336,6 +339,723 @@ enum ShowTarget {
     Object(EvidenceBlobRecord),
 }
 
+#[derive(Debug, Clone, ValueEnum)]
+enum CliColorMode {
+    Auto,
+    Always,
+    Never,
+}
+
+impl CliColorMode {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Always => "always",
+            Self::Never => "never",
+        }
+    }
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+enum LsCategory {
+    Skills,
+    #[value(alias = "executions")]
+    Runs,
+    Objects,
+    Evidence,
+}
+
+impl LsCategory {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Skills => "skills",
+            Self::Runs => "runs",
+            Self::Objects => "objects",
+            Self::Evidence => "evidence",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Args, Default)]
+struct RenderCliArgs {
+    #[arg(long = "json", conflicts_with = "porcelain_output")]
+    json_output: bool,
+    #[arg(long = "porcelain", conflicts_with = "json_output")]
+    porcelain_output: bool,
+    #[arg(short = 'v', action = ArgAction::Count)]
+    verbosity: u8,
+    #[arg(long)]
+    debug: bool,
+    #[arg(long, value_enum)]
+    color: Option<CliColorMode>,
+}
+
+#[derive(Debug, Clone, Args, Default)]
+struct MachineOutputCliArgs {
+    #[arg(long = "json", conflicts_with = "porcelain_output")]
+    json_output: bool,
+    #[arg(long = "porcelain", conflicts_with = "json_output")]
+    porcelain_output: bool,
+}
+
+#[derive(Debug, Parser)]
+#[command(
+    name = CLI_BINARY_NAME,
+    about = "Guild operator CLI over the local runtime, registry, and MCP substrate",
+    disable_help_subcommand = true,
+    after_help = "registry roots resolve as `--registry-root`, then `GUILD_REGISTRY_ROOT`, then `~/.guild`; there is no cwd-local `.guild/` fallback.\ncanonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` and short `<name>@<version>` are accepted when unambiguous.\nlegacy aliases: `inspect` -> `run`, `list` -> `ls`, `read` -> `get`.\n`guild trust ...` manages local trust-store state only.\ndeferred: `guild build` and `guild deploy` are intentionally not implemented."
+)]
+struct Cli {
+    #[arg(long, global = true, value_name = "path")]
+    registry_root: Option<PathBuf>,
+    #[command(subcommand)]
+    command: Option<CliCommand>,
+}
+
+#[derive(Debug, Subcommand)]
+enum CliCommand {
+    /// create the selected Guild root and print or write Codex setup.
+    Init(InitCliArgs),
+    /// Summarize an installed skill or persisted Guild ref.
+    Show(ShowCliArgs),
+    /// Execute a skill through the local inspect path.
+    #[command(alias = "inspect")]
+    Run(RunCliArgs),
+    /// List skills, runs, objects, or evidence.
+    #[command(alias = "list")]
+    Ls(LsCliArgs),
+    /// Read a Guild resource ref.
+    #[command(alias = "read")]
+    Get(GetCliArgs),
+    /// Explain one persisted execution record.
+    Why(WhyCliArgs),
+    /// Summarize installed trust and verification state.
+    Verify(VerifyCliArgs),
+    /// Install a source skill into a Guild root.
+    Install(InstallCliArgs),
+    /// Export installed state as a signed bundle or OCI layout.
+    Export(ExportCliArgs),
+    /// Import a signed bundle or OCI layout into a Guild root.
+    Import(ImportCliArgs),
+    /// Publish installed state to an OCI registry.
+    Push(PushCliArgs),
+    /// Pull and import installed state from an OCI registry.
+    Pull(PullCliArgs),
+    /// Manage local publisher identities and trust records.
+    Trust(TrustCliArgs),
+    /// Run deterministic Codex dogfood and smoke helpers.
+    #[command(disable_help_flag = true)]
+    Codex(CodexCliArgs),
+    /// Launch the existing Guild MCP stdio server.
+    Mcp(McpCliArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+struct ShowCliArgs {
+    #[arg(value_name = "ref")]
+    reference: String,
+    #[command(flatten)]
+    render: RenderCliArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+struct RunCliArgs {
+    #[arg(value_name = "skill-ref")]
+    skill_ref: String,
+    #[arg(value_name = "input-file")]
+    input_file: Option<PathBuf>,
+    #[arg(long)]
+    input_json: Option<String>,
+    #[arg(long)]
+    input_file_path: Option<PathBuf>,
+    #[arg(long)]
+    grants_json: Option<String>,
+    #[arg(long)]
+    grants_file: Option<PathBuf>,
+    #[arg(long, default_value = DEFAULT_TENANT_ID)]
+    tenant_id: String,
+    #[arg(long, default_value = DEFAULT_ACTOR_ID)]
+    actor_id: String,
+    #[command(flatten)]
+    render: RenderCliArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+struct LsCliArgs {
+    #[arg(value_enum)]
+    category: Option<LsCategory>,
+    #[arg(long, value_parser = clap::value_parser!(NonZeroUsize))]
+    limit: Option<NonZeroUsize>,
+    #[command(flatten)]
+    render: RenderCliArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+struct GetCliArgs {
+    #[arg(value_name = "ref")]
+    reference: String,
+    #[arg(long)]
+    output: Option<PathBuf>,
+    #[command(flatten)]
+    machine: MachineOutputCliArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+struct WhyCliArgs {
+    #[arg(value_name = "exec-ref")]
+    execution_ref: String,
+    #[command(flatten)]
+    render: RenderCliArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+struct VerifyCliArgs {
+    #[arg(value_name = "skill-ref")]
+    skill_ref: String,
+    #[command(flatten)]
+    render: RenderCliArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+struct InitCliArgs {
+    #[arg(long, default_value = DEFAULT_CODEX_SERVER_NAME)]
+    name: String,
+    #[arg(long)]
+    global: bool,
+    #[arg(long)]
+    project: bool,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct InstallCliArgs {
+    #[arg(value_name = "source-dir")]
+    source_dir: PathBuf,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct ExportCliArgs {
+    #[command(subcommand)]
+    command: ExportCliCommand,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum ExportCliCommand {
+    Bundle(ExportBundleCliArgs),
+    #[command(name = "oci-layout")]
+    OciLayout(ExportOciLayoutCliArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+struct ExportBundleCliArgs {
+    #[arg(value_name = "skill-ref")]
+    skill_ref: String,
+    #[arg(long)]
+    signer: PathBuf,
+    #[arg(long)]
+    output: PathBuf,
+    #[arg(long)]
+    include_dependencies: bool,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct ExportOciLayoutCliArgs {
+    #[arg(value_name = "skill-ref")]
+    skill_ref: String,
+    #[arg(long)]
+    signer: PathBuf,
+    #[arg(long)]
+    output: PathBuf,
+    #[arg(long)]
+    include_dependencies: bool,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct ImportCliArgs {
+    #[command(subcommand)]
+    command: ImportCliCommand,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum ImportCliCommand {
+    Bundle(ImportBundleCliArgs),
+    #[command(name = "oci-layout")]
+    OciLayout(ImportOciLayoutCliArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+struct ImportBundleCliArgs {
+    #[arg(value_name = "dir")]
+    directory: PathBuf,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct ImportOciLayoutCliArgs {
+    #[arg(value_name = "dir")]
+    directory: PathBuf,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct PushCliArgs {
+    #[arg(value_name = "skill-ref")]
+    skill_ref: String,
+    #[arg(long)]
+    reference: String,
+    #[arg(long)]
+    signer: PathBuf,
+    #[arg(long)]
+    include_dependencies: bool,
+    #[arg(long)]
+    allow_http: bool,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct PullCliArgs {
+    #[arg(value_name = "oci-ref")]
+    reference: String,
+    #[arg(long)]
+    allow_http: bool,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct TrustCliArgs {
+    #[command(subcommand)]
+    command: TrustCliCommand,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum TrustCliCommand {
+    Generate(TrustGenerateCliArgs),
+    Add(TrustAddCliArgs),
+    List(TrustListCliArgs),
+    Remove(TrustRemoveCliArgs),
+    #[command(name = "sign-plan")]
+    SignPlan(TrustSignPlanCliArgs),
+    #[command(name = "verify-plan")]
+    VerifyPlan(TrustVerifyPlanCliArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+struct TrustGenerateCliArgs {
+    #[arg(long)]
+    publisher_id: String,
+    #[arg(long)]
+    display_name: String,
+    #[arg(long)]
+    homepage: Option<String>,
+    #[arg(long)]
+    output: PathBuf,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct TrustAddCliArgs {
+    #[arg(long)]
+    identity_file: Option<PathBuf>,
+    #[arg(long)]
+    record_file: Option<PathBuf>,
+    #[arg(long)]
+    tier: Option<LocalTrustTier>,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct TrustListCliArgs {
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct TrustRemoveCliArgs {
+    #[arg(value_name = "publisher-id")]
+    publisher_id: String,
+}
+
+#[derive(Debug, Clone, Args)]
+struct TrustSignPlanCliArgs {
+    #[arg(long)]
+    plan: PathBuf,
+    #[arg(long)]
+    identity_file: PathBuf,
+    #[arg(long)]
+    output: PathBuf,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct TrustVerifyPlanCliArgs {
+    #[arg(long)]
+    plan: PathBuf,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+#[command(disable_help_flag = true, disable_help_subcommand = true)]
+struct CodexCliArgs {
+    #[arg(
+        allow_hyphen_values = true,
+        trailing_var_arg = true,
+        value_name = "ARGS"
+    )]
+    args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Args)]
+struct McpCliArgs {
+    #[command(subcommand)]
+    command: McpCliCommand,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum McpCliCommand {
+    Serve(McpServeCliArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+struct McpServeCliArgs {
+    #[arg(long)]
+    stdio: bool,
+}
+
+fn append_render_cli_args(args: &mut Vec<String>, render: &RenderCliArgs) {
+    if render.json_output {
+        args.push("--json".into());
+    }
+    if render.porcelain_output {
+        args.push("--porcelain".into());
+    }
+    if render.debug {
+        args.push("--debug".into());
+    }
+    for _ in 0..render.verbosity {
+        args.push("-v".into());
+    }
+    if let Some(color) = &render.color {
+        args.push("--color".into());
+        args.push(color.as_str().into());
+    }
+}
+
+fn append_machine_cli_args(args: &mut Vec<String>, machine: &MachineOutputCliArgs) {
+    if machine.json_output {
+        args.push("--json".into());
+    }
+    if machine.porcelain_output {
+        args.push("--porcelain".into());
+    }
+}
+
+impl ShowCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = vec![self.reference.clone()];
+        append_render_cli_args(&mut args, &self.render);
+        args
+    }
+}
+
+impl RunCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = vec![self.skill_ref.clone()];
+        if let Some(path) = &self.input_file {
+            args.push(path.display().to_string());
+        }
+        if let Some(input_json) = &self.input_json {
+            args.push("--input-json".into());
+            args.push(input_json.clone());
+        }
+        if let Some(path) = &self.input_file_path {
+            args.push("--input-file".into());
+            args.push(path.display().to_string());
+        }
+        if let Some(grants_json) = &self.grants_json {
+            args.push("--grants-json".into());
+            args.push(grants_json.clone());
+        }
+        if let Some(path) = &self.grants_file {
+            args.push("--grants-file".into());
+            args.push(path.display().to_string());
+        }
+        args.push("--tenant-id".into());
+        args.push(self.tenant_id.clone());
+        args.push("--actor-id".into());
+        args.push(self.actor_id.clone());
+        append_render_cli_args(&mut args, &self.render);
+        args
+    }
+}
+
+impl LsCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+        if let Some(category) = &self.category {
+            args.push(category.as_str().into());
+        }
+        if let Some(limit) = self.limit {
+            args.push("--limit".into());
+            args.push(limit.get().to_string());
+        }
+        append_render_cli_args(&mut args, &self.render);
+        args
+    }
+}
+
+impl GetCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = vec![self.reference.clone()];
+        if let Some(path) = &self.output {
+            args.push("--output".into());
+            args.push(path.display().to_string());
+        }
+        append_machine_cli_args(&mut args, &self.machine);
+        args
+    }
+}
+
+impl WhyCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = vec![self.execution_ref.clone()];
+        append_render_cli_args(&mut args, &self.render);
+        args
+    }
+}
+
+impl VerifyCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = vec![self.skill_ref.clone()];
+        append_render_cli_args(&mut args, &self.render);
+        args
+    }
+}
+
+impl InitCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = vec!["--name".into(), self.name.clone()];
+        if self.global {
+            args.push("--global".into());
+        }
+        if self.project {
+            args.push("--project".into());
+        }
+        if self.json {
+            args.push("--json".into());
+        }
+        args
+    }
+}
+
+impl InstallCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = vec![self.source_dir.display().to_string()];
+        if self.json {
+            args.push("--json".into());
+        }
+        args
+    }
+}
+
+impl ExportCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        match &self.command {
+            ExportCliCommand::Bundle(command) => {
+                let mut args = vec!["bundle".into(), command.skill_ref.clone()];
+                args.push("--signer".into());
+                args.push(command.signer.display().to_string());
+                args.push("--output".into());
+                args.push(command.output.display().to_string());
+                if command.include_dependencies {
+                    args.push("--include-dependencies".into());
+                }
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
+            ExportCliCommand::OciLayout(command) => {
+                let mut args = vec!["oci-layout".into(), command.skill_ref.clone()];
+                args.push("--signer".into());
+                args.push(command.signer.display().to_string());
+                args.push("--output".into());
+                args.push(command.output.display().to_string());
+                if command.include_dependencies {
+                    args.push("--include-dependencies".into());
+                }
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
+        }
+    }
+}
+
+impl ImportCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        match &self.command {
+            ImportCliCommand::Bundle(command) => {
+                let mut args = vec!["bundle".into(), command.directory.display().to_string()];
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
+            ImportCliCommand::OciLayout(command) => {
+                let mut args = vec!["oci-layout".into(), command.directory.display().to_string()];
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
+        }
+    }
+}
+
+impl PushCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = vec![self.skill_ref.clone()];
+        args.push("--reference".into());
+        args.push(self.reference.clone());
+        args.push("--signer".into());
+        args.push(self.signer.display().to_string());
+        if self.include_dependencies {
+            args.push("--include-dependencies".into());
+        }
+        if self.allow_http {
+            args.push("--allow-http".into());
+        }
+        if self.json {
+            args.push("--json".into());
+        }
+        args
+    }
+}
+
+impl PullCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = vec![self.reference.clone()];
+        if self.allow_http {
+            args.push("--allow-http".into());
+        }
+        if self.json {
+            args.push("--json".into());
+        }
+        args
+    }
+}
+
+impl TrustCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        match &self.command {
+            TrustCliCommand::Generate(command) => {
+                let mut args = vec![
+                    "generate".into(),
+                    "--publisher-id".into(),
+                    command.publisher_id.clone(),
+                    "--display-name".into(),
+                    command.display_name.clone(),
+                ];
+                if let Some(homepage) = &command.homepage {
+                    args.push("--homepage".into());
+                    args.push(homepage.clone());
+                }
+                args.push("--output".into());
+                args.push(command.output.display().to_string());
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
+            TrustCliCommand::Add(command) => {
+                let mut args = vec!["add".into()];
+                if let Some(path) = &command.identity_file {
+                    args.push("--identity-file".into());
+                    args.push(path.display().to_string());
+                }
+                if let Some(path) = &command.record_file {
+                    args.push("--record-file".into());
+                    args.push(path.display().to_string());
+                }
+                if let Some(tier) = &command.tier {
+                    args.push("--tier".into());
+                    args.push(tier.to_string());
+                }
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
+            TrustCliCommand::List(command) => {
+                let mut args = vec!["list".into()];
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
+            TrustCliCommand::Remove(command) => {
+                vec!["remove".into(), command.publisher_id.clone()]
+            }
+            TrustCliCommand::SignPlan(command) => {
+                let mut args = vec![
+                    "sign-plan".into(),
+                    "--plan".into(),
+                    command.plan.display().to_string(),
+                    "--identity-file".into(),
+                    command.identity_file.display().to_string(),
+                    "--output".into(),
+                    command.output.display().to_string(),
+                ];
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
+            TrustCliCommand::VerifyPlan(command) => {
+                let mut args = vec![
+                    "verify-plan".into(),
+                    "--plan".into(),
+                    command.plan.display().to_string(),
+                ];
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
+        }
+    }
+}
+
+impl McpCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        match &self.command {
+            McpCliCommand::Serve(command) => {
+                let mut args = vec!["serve".into()];
+                if command.stdio {
+                    args.push("--stdio".into());
+                }
+                args
+            }
+        }
+    }
+}
+
 /// Run the first-class local `guild` CLI against the current process args.
 ///
 /// # Errors
@@ -346,58 +1066,45 @@ pub fn run(
     args: impl IntoIterator<Item = String>,
     env_registry_root: Option<String>,
 ) -> Result<(), CliError> {
-    let (global, args) = parse_global_options(args)?;
-    let Some(command) = args.first().map(String::as_str) else {
+    let cli = match Cli::try_parse_from(args) {
+        Ok(cli) => cli,
+        Err(error) => {
+            if matches!(
+                error.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) {
+                error.print().map_err(CliError::from)?;
+                return Ok(());
+            }
+            return Err(CliError::new(error.to_string().trim_end().to_owned()));
+        }
+    };
+
+    let global = GlobalOptions {
+        registry_root: cli.registry_root,
+    };
+    let Some(command) = cli.command else {
         print_usage();
         return Ok(());
     };
 
     match command {
-        "--help" | "-h" => {
-            print_usage();
-            Ok(())
-        }
-        "show" => run_show(&args[1..], &global, env_registry_root),
-        "run" | "inspect" => run_run_command(&args[1..], &global, env_registry_root),
-        "ls" | "list" => run_ls(&args[1..], &global, env_registry_root),
-        "get" | "read" => run_get(&args[1..], &global, env_registry_root),
-        "why" => run_why(&args[1..], &global, env_registry_root),
-        "verify" => run_verify(&args[1..], &global, env_registry_root),
-        "init" => run_init(&args[1..], &global, env_registry_root),
-        "install" => run_install(&args[1..], &global, env_registry_root),
-        "export" => run_export(&args[1..], &global, env_registry_root),
-        "import" => run_import(&args[1..], &global, env_registry_root),
-        "push" => run_push(&args[1..], &global, env_registry_root),
-        "pull" => run_pull(&args[1..], &global, env_registry_root),
-        "trust" => run_trust(&args[1..], &global, env_registry_root),
-        "codex" => run_codex(&args[1..], &global, env_registry_root),
-        "mcp" => run_mcp(&args[1..], &global, env_registry_root),
-        _ => Err(CliError::new(format!("unknown subcommand `{command}`"))),
+        CliCommand::Show(command) => run_show(&command.to_args(), &global, env_registry_root),
+        CliCommand::Run(command) => run_run_command(&command.to_args(), &global, env_registry_root),
+        CliCommand::Ls(command) => run_ls(&command.to_args(), &global, env_registry_root),
+        CliCommand::Get(command) => run_get(&command.to_args(), &global, env_registry_root),
+        CliCommand::Why(command) => run_why(&command.to_args(), &global, env_registry_root),
+        CliCommand::Verify(command) => run_verify(&command.to_args(), &global, env_registry_root),
+        CliCommand::Init(command) => run_init(&command.to_args(), &global, env_registry_root),
+        CliCommand::Install(command) => run_install(&command.to_args(), &global, env_registry_root),
+        CliCommand::Export(command) => run_export(&command.to_args(), &global, env_registry_root),
+        CliCommand::Import(command) => run_import(&command.to_args(), &global, env_registry_root),
+        CliCommand::Push(command) => run_push(&command.to_args(), &global, env_registry_root),
+        CliCommand::Pull(command) => run_pull(&command.to_args(), &global, env_registry_root),
+        CliCommand::Trust(command) => run_trust(&command.to_args(), &global, env_registry_root),
+        CliCommand::Codex(command) => run_codex(&command.args, &global, env_registry_root),
+        CliCommand::Mcp(command) => run_mcp(&command.to_args(), &global, env_registry_root),
     }
-}
-
-fn parse_global_options(
-    args: impl IntoIterator<Item = String>,
-) -> Result<(GlobalOptions, Vec<String>), CliError> {
-    let mut args = args.into_iter();
-    let _program = args.next();
-    let mut registry_root = None;
-    let mut remaining = Vec::new();
-
-    while let Some(argument) = args.next() {
-        if argument == "--registry-root" {
-            let Some(value) = args.next() else {
-                return Err(CliError::new(
-                    "--registry-root requires a following path argument",
-                ));
-            };
-            registry_root = Some(PathBuf::from(value));
-        } else {
-            remaining.push(argument);
-        }
-    }
-
-    Ok((GlobalOptions { registry_root }, remaining))
 }
 
 fn run_show(
@@ -586,11 +1293,15 @@ fn run_run_command(
         .unwrap_or_default();
 
     let facade = build_facade(&registry_root)?;
-    let response = facade
-        .inspect(InspectRequest::new(
-            skill, input, tenant_id, actor_id, grants,
-        ))
-        .map_err(cli_error_from_mcp)?;
+    let response = match facade.inspect(InspectRequest::new(
+        skill, input, tenant_id, actor_id, grants,
+    )) {
+        Ok(response) => response,
+        Err(error) => {
+            emit_run_error_status(&facade, &render, &error);
+            return Err(cli_error_from_mcp(error));
+        }
+    };
 
     let output = InspectCommandOutput {
         summary: response.summary.clone(),
@@ -622,6 +1333,31 @@ fn run_run_command(
     };
     eprintln!("{status}");
     Ok(())
+}
+
+fn emit_run_error_status(
+    facade: &GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter>,
+    render: &RenderFlags,
+    error: &McpError,
+) {
+    if render.json_output {
+        return;
+    }
+
+    let Some(receipt) = error.receipt.as_ref() else {
+        return;
+    };
+    let Ok(record) = facade.load_execution_record(&receipt.execution_id) else {
+        return;
+    };
+
+    let presentation = presentation_options(render);
+    let status = if render.porcelain_output {
+        render_run_porcelain(&record)
+    } else {
+        render_run_status(&record, presentation, StreamKind::Stderr)
+    };
+    eprintln!("{status}");
 }
 
 fn run_ls(
@@ -2544,12 +3280,7 @@ fn format_resolved_skill_ref(skill: &guild_types::ResolvedSkillRef) -> String {
 }
 
 fn status_label(status: &ExecutionStatus) -> &'static str {
-    match status {
-        ExecutionStatus::Succeeded => "succeeded",
-        ExecutionStatus::Failed => "failed",
-        ExecutionStatus::Partial => "partial",
-        ExecutionStatus::Rejected => "rejected",
-    }
+    execution_status_label(status)
 }
 
 fn next_value<'a>(args: &'a [String], index: &mut usize, flag: &str) -> Result<&'a str, CliError> {
@@ -2635,34 +3366,11 @@ fn print_import_text(output: &ImportCommandOutput) {
 }
 
 fn print_usage() {
-    println!("usage: guild [--registry-root <path>] <command> [options]");
+    let mut command = Cli::command();
+    command
+        .print_help()
+        .expect("printing clap-generated root help should succeed");
     println!();
-    println!("commands:");
-    println!("  init         create the selected Guild root and print or write Codex setup");
-    println!("  show         summarize an installed skill or persisted Guild ref");
-    println!("  run          execute a skill through the local inspect path");
-    println!("  ls           list skills, runs, objects, or evidence");
-    println!("  get          read a Guild resource ref");
-    println!("  why          explain one persisted execution record");
-    println!("  verify       summarize installed trust and verification state");
-    println!("  install      install a source skill into a Guild root");
-    println!("  export       export installed state as a signed bundle or OCI layout");
-    println!("  import       import a signed bundle or OCI layout into a Guild root");
-    println!("  push         publish installed state to an OCI registry");
-    println!("  pull         pull and import installed state from an OCI registry");
-    println!("  trust        manage local publisher identities and trust records");
-    println!("  codex        run deterministic Codex dogfood and smoke helpers");
-    println!("  mcp          launch the existing Guild MCP stdio server");
-    println!();
-    println!(
-        "registry roots resolve as `--registry-root`, then `GUILD_REGISTRY_ROOT`, then `~/.guild`; there is no cwd-local `.guild/` fallback."
-    );
-    println!(
-        "canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` and short `<name>@<version>` are accepted when unambiguous."
-    );
-    println!("legacy aliases: `inspect` -> `run`, `list` -> `ls`, `read` -> `get`.");
-    println!("`guild trust ...` manages local trust-store state only.");
-    println!("deferred: `guild build` and `guild deploy` are intentionally not implemented.");
 }
 
 fn print_show_usage() {

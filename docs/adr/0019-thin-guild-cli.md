@@ -71,7 +71,7 @@ Legacy aliases remain supported for backward compatibility:
 - `guild read` -> `guild get`
 - `guild list` -> `guild ls`
 
-Those aliases remain supported through M8e and until a later explicit deprecation decision replaces them. They should be documented as legacy aliases rather than taught as the primary happy path.
+Those aliases remain supported in the current CLI milestone and until a later explicit deprecation decision replaces them. They should be documented as legacy aliases rather than taught as the primary happy path.
 
 Registry root selection is now local-first with one intentional default:
 

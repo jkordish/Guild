@@ -38,7 +38,7 @@ Run it locally from the repository root:
 
 ```bash
 cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/hello-inspect install examples/skills/hello-inspect
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/hello-inspect inspect skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/hello-inspect run skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
 cargo run -p guild-mcp --example inspect_local
 ```
 
@@ -64,7 +64,7 @@ That command:
 1. builds the guest from `skill-rust/`
 2. installs it into its own cleaned subdirectory under `target/dev-local-registry/`
 3. resolves the public `skill://example/hello-inspect@^0.1` ref to installed executable state
-4. executes it through `guild.inspect`
+4. executes it through `guild run`
 5. reads back the stored execution and evidence resources
 
 The stored execution URI is host-issued. Any caller-supplied request ID is preserved only as correlation metadata inside the durable record.

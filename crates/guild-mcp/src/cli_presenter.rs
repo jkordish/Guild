@@ -5,11 +5,10 @@ use guild_registry::{InstalledSkill, SignatureScheme};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
     CapabilityRequirement, EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionPhase,
-    ExecutionRecord, ExecutionStatus, InstalledVerificationState, LocalTrustTier,
-    PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED,
-    PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND, RedactionClass,
-    ResolvedSkillRef, RuntimeKind, SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN,
-    SkillCategory, TerminationDetail,
+    ExecutionRecord, ExecutionStatus, PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED,
+    PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND,
+    RedactionClass, ResolvedSkillRef, RuntimeKind, SUPPORT_STATUS_BOUNDED,
+    SUPPORT_STATUS_NOT_PROVEN, SkillCategory, TerminationDetail, execution_status_label,
 };
 use serde::Serialize;
 
@@ -233,6 +232,8 @@ pub fn render_skill_show(
 ) -> String {
     let styler = options.styler(stream);
     let support = support_summary_for_skill(installed);
+    let verification = installed.trust.verification_state.to_string();
+    let trust = installed.trust.trust_tier.to_string();
     let mut output = String::new();
     let _ = writeln!(
         output,
@@ -243,11 +244,8 @@ pub fn render_skill_show(
     let _ = writeln!(
         output,
         "status: {} / {}",
-        paint_status_word(
-            &styler,
-            verification_state_word(&installed.trust.verification_state)
-        ),
-        paint_status_word(&styler, trust_tier_word(&installed.trust.trust_tier))
+        paint_status_word(&styler, &verification),
+        paint_status_word(&styler, &trust)
     );
     let _ = writeln!(
         output,
@@ -310,6 +308,8 @@ pub fn render_skill_verify(
     stream: StreamKind,
 ) -> String {
     let styler = options.styler(stream);
+    let verification = installed.trust.verification_state.to_string();
+    let trust = installed.trust.trust_tier.to_string();
     let mut output = String::new();
     let _ = writeln!(
         output,
@@ -319,16 +319,9 @@ pub fn render_skill_verify(
     let _ = writeln!(
         output,
         "verification: {}",
-        paint_status_word(
-            &styler,
-            verification_state_word(&installed.trust.verification_state)
-        )
+        paint_status_word(&styler, &verification)
     );
-    let _ = writeln!(
-        output,
-        "trust: {}",
-        paint_status_word(&styler, trust_tier_word(&installed.trust.trust_tier))
-    );
+    let _ = writeln!(output, "trust: {}", paint_status_word(&styler, &trust));
     if let Some(verification) = &installed.verification {
         let _ = writeln!(
             output,
@@ -365,11 +358,12 @@ pub fn render_execution_show(
 ) -> String {
     let styler = options.styler(stream);
     let support = support_summary_for_execution(record);
+    let status = execution_status_label(&record.status);
     let mut output = String::new();
     let _ = writeln!(
         output,
         "{}  {}",
-        paint_status_word(&styler, status_word(&record.status)),
+        paint_status_word(&styler, status),
         styler.paint(Tone::Ref, short_execution_ref(record))
     );
     let _ = writeln!(
@@ -392,17 +386,14 @@ pub fn render_execution_show(
         let _ = writeln!(output, "result: {output_summary}");
     }
     if options.verbose() {
+        let trust = record.policy_decision.trust_tier.to_string();
+        let verification = record.policy_decision.verification_state.to_string();
         let _ = writeln!(
             output,
             "uri: {}",
             styler.paint(Tone::Ref, record.receipt.uri.as_str())
         );
-        let _ = writeln!(
-            output,
-            "trust: {} / {}",
-            trust_tier_word(&record.policy_decision.trust_tier),
-            verification_state_word(&record.policy_decision.verification_state)
-        );
+        let _ = writeln!(output, "trust: {trust} / {verification}");
         if let Some(termination) = &record.termination {
             let _ = writeln!(output, "termination: {}", format_termination(termination));
         }
@@ -438,11 +429,12 @@ pub fn render_execution_why(
 ) -> String {
     let styler = options.styler(stream);
     let summary = why_summary(record);
+    let status = execution_status_label(&record.status);
     let mut output = String::new();
     let _ = writeln!(
         output,
         "{}  {}",
-        paint_status_word(&styler, status_word(&record.status)),
+        paint_status_word(&styler, status),
         styler.paint(Tone::Ref, short_execution_ref(record))
     );
     let _ = writeln!(
@@ -473,17 +465,14 @@ pub fn render_execution_why(
         let _ = writeln!(output, "detail: {}", format_termination(termination));
     }
     if options.verbose() {
+        let trust = record.policy_decision.trust_tier.to_string();
+        let verification = record.policy_decision.verification_state.to_string();
         let _ = writeln!(
             output,
             "skill: {}",
             styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill))
         );
-        let _ = writeln!(
-            output,
-            "trust: {} / {}",
-            trust_tier_word(&record.policy_decision.trust_tier),
-            verification_state_word(&record.policy_decision.verification_state)
-        );
+        let _ = writeln!(output, "trust: {trust} / {verification}");
     }
     output
 }
@@ -495,12 +484,13 @@ pub fn render_run_status(
     stream: StreamKind,
 ) -> String {
     let styler = options.styler(stream);
+    let status = execution_status_label(&record.status);
     let proof = overall_support_word(&support_summary_for_execution(record));
     let mut output = String::new();
     let _ = write!(
         output,
         "{}  {}  {}  {}",
-        paint_status_word(&styler, terminal_status_word(&record.status)),
+        paint_status_word(&styler, status),
         paint_status_word(&styler, proof),
         styler.paint(Tone::Ref, short_execution_ref(record)),
         styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill))
@@ -525,15 +515,14 @@ pub fn render_skills_list(
     let mut output = String::new();
     for skill in skills {
         let support = support_summary_for_skill(skill);
+        let verification = skill.trust.verification_state.to_string();
+        let trust = skill.trust.trust_tier.to_string();
         let _ = writeln!(
             output,
             "{}  {}  {}  {}",
             styler.paint(Tone::Ref, short_skill_ref(skill)),
-            paint_status_word(
-                &styler,
-                verification_state_word(&skill.trust.verification_state)
-            ),
-            paint_status_word(&styler, trust_tier_word(&skill.trust.trust_tier)),
+            paint_status_word(&styler, &verification),
+            paint_status_word(&styler, &trust),
             paint_status_word(&styler, overall_support_word(&support))
         );
     }
@@ -556,7 +545,7 @@ pub fn render_runs_list(
         let _ = writeln!(
             output,
             "{}  {}  {}",
-            paint_status_word(&styler, status_word(&record.status)),
+            paint_status_word(&styler, execution_status_label(&record.status)),
             styler.paint(Tone::Ref, short_execution_ref(record)),
             styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill))
         );
@@ -689,8 +678,8 @@ pub fn render_skill_porcelain(installed: &InstalledSkill) -> String {
     format!(
         "skill\t{}\t{}\t{}\t{}",
         short_skill_ref(installed),
-        verification_state_word(&installed.trust.verification_state),
-        trust_tier_word(&installed.trust.trust_tier),
+        installed.trust.verification_state,
+        installed.trust.trust_tier,
         overall_support_word(&support)
     )
 }
@@ -700,8 +689,8 @@ pub fn render_verify_porcelain(installed: &InstalledSkill) -> String {
     format!(
         "verify\t{}\t{}\t{}",
         short_skill_ref(installed),
-        verification_state_word(&installed.trust.verification_state),
-        trust_tier_word(&installed.trust.trust_tier),
+        installed.trust.verification_state,
+        installed.trust.trust_tier,
     )
 }
 
@@ -709,7 +698,7 @@ pub fn render_verify_porcelain(installed: &InstalledSkill) -> String {
 pub fn render_run_porcelain(record: &ExecutionRecord) -> String {
     format!(
         "run\t{}\t{}\t{}\t{}",
-        terminal_status_word(&record.status),
+        execution_status_label(&record.status),
         overall_support_word(&support_summary_for_execution(record)),
         record.receipt.execution_id,
         short_resolved_skill_ref(&record.resolved_skill)
@@ -917,8 +906,7 @@ fn paint_status_word(styler: &Styler, word: &str) -> String {
         | PRESENTATION_STATUS_LINKED
         | "verified-import"
         | "trusted-imported"
-        | "succeeded"
-        | "ok" => styler.paint(Tone::Success, word),
+        | "succeeded" => styler.paint(Tone::Success, word),
         SUPPORT_STATUS_BOUNDED
         | PRESENTATION_STATUS_UPPER_BOUND
         | PRESENTATION_STATUS_UNLINKED
@@ -937,39 +925,6 @@ fn format_scaled_bytes(bytes: u64, unit_size: u64, suffix: &str) -> String {
     let whole = bytes / unit_size;
     let tenths = ((bytes % unit_size) * 10) / unit_size;
     format!("{whole}.{tenths}{suffix}")
-}
-
-fn terminal_status_word(status: &ExecutionStatus) -> &'static str {
-    match status {
-        ExecutionStatus::Succeeded => "ok",
-        ExecutionStatus::Failed => "failed",
-        ExecutionStatus::Partial => "partial",
-        ExecutionStatus::Rejected => PRESENTATION_STATUS_REFUSED,
-    }
-}
-
-fn status_word(status: &ExecutionStatus) -> &'static str {
-    match status {
-        ExecutionStatus::Succeeded => "succeeded",
-        ExecutionStatus::Failed => "failed",
-        ExecutionStatus::Partial => "partial",
-        ExecutionStatus::Rejected => PRESENTATION_STATUS_REFUSED,
-    }
-}
-
-fn trust_tier_word(tier: &LocalTrustTier) -> &'static str {
-    match tier {
-        LocalTrustTier::LocalDev => "local-dev",
-        LocalTrustTier::TrustedImported => "trusted-imported",
-        LocalTrustTier::Restricted => "restricted",
-    }
-}
-
-fn verification_state_word(state: &InstalledVerificationState) -> &'static str {
-    match state {
-        InstalledVerificationState::LocalSource => "local-source",
-        InstalledVerificationState::VerifiedImport => "verified-import",
-    }
 }
 
 fn capability_id_label(id: &CapabilityId) -> &'static str {

@@ -1643,6 +1643,16 @@ pub enum InstalledVerificationState {
     VerifiedImport,
 }
 
+impl fmt::Display for InstalledVerificationState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            Self::LocalSource => "local-source",
+            Self::VerifiedImport => "verified-import",
+        };
+        f.write_str(label)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum PolicyRuleEffect {
@@ -2418,7 +2428,8 @@ fn string_schema(format: Option<&str>, description: Option<&str>) -> Schema {
         .expect("string schema helper produces a valid JSON Schema")
 }
 
-fn execution_status_label(status: &ExecutionStatus) -> &'static str {
+#[must_use]
+pub fn execution_status_label(status: &ExecutionStatus) -> &'static str {
     match status {
         ExecutionStatus::Succeeded => EXECUTION_QUERY_STATUS_SUCCEEDED,
         ExecutionStatus::Failed => EXECUTION_QUERY_STATUS_FAILED,

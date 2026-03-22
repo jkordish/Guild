@@ -9,7 +9,8 @@ use guild_mcp::protocol::{InitializeResult, ListToolsResult, PROTOCOL_VERSION_20
 use guild_registry::LocalSourceInstaller;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, GrantedCapability, RedactionClass,
+    CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, FilesystemConstraints,
+    FilesystemOperation, FilesystemRoot, GrantedCapability, RedactionClass,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -45,6 +46,35 @@ fn emit_evidence_grants_json() -> String {
                 redactions: Some(vec![RedactionClass::None]),
             }),
         }],
+    })
+    .unwrap()
+}
+
+fn emit_filesystem_rejection_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![
+            GrantedCapability {
+                id: CapabilityId::EmitEvidence,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
+                    max_bytes: Some(65_536),
+                    audiences: Some(vec![EvidenceAudience::User]),
+                    redactions: Some(vec![RedactionClass::None]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::Filesystem,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::Filesystem(FilesystemConstraints {
+                    preopened_roots: vec![FilesystemRoot {
+                        name: "workspace".into(),
+                        guest_path_prefix: "/workspace".into(),
+                        host_path: "/var/lib/guild/workspace".into(),
+                        operations: vec![FilesystemOperation::Read],
+                    }],
+                }),
+            },
+        ],
     })
     .unwrap()
 }
@@ -154,6 +184,17 @@ fn run_guild_success_output(args: &[&str], env_registry_root: Option<&Path>) -> 
     output
 }
 
+fn run_guild_failure_output(args: &[&str], env_registry_root: Option<&Path>) -> Output {
+    let output = run_guild(args, env_registry_root);
+    assert!(
+        !output.status.success(),
+        "guild command unexpectedly succeeded\nargs: {args:?}\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    output
+}
+
 fn run_guild_success_with_home(args: &[&str], home_dir: &Path) -> String {
     let output = run_guild_with_home(args, home_dir);
     assert!(
@@ -188,6 +229,93 @@ fn install_with_cli(registry_root: &Path) {
     let source_dir = hello_source_dir().display().to_string();
     let root = registry_root.display().to_string();
     let _ = run_guild_success(&["--registry-root", &root, "install", &source_dir], None);
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) {
+    fs::create_dir_all(destination).unwrap();
+    for entry in fs::read_dir(source).unwrap() {
+        let entry = entry.unwrap();
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir_recursive(&source_path, &destination_path);
+        } else {
+            fs::copy(&source_path, &destination_path).unwrap();
+        }
+    }
+}
+
+fn installed_skill_dir(registry_root: &Path, namespace: &str, name: &str) -> PathBuf {
+    let version_root = registry_root
+        .join("installed")
+        .join(namespace)
+        .join(name)
+        .join("0.1.0");
+    let mut entries = fs::read_dir(&version_root).unwrap();
+    let install_dir = entries.next().unwrap().unwrap().path();
+    assert!(
+        entries.next().is_none(),
+        "expected a single installed digest dir"
+    );
+    install_dir
+}
+
+fn write_installed_manifest(skill_dir: &Path, update: impl FnOnce(&mut SkillManifest)) {
+    let manifest_path = skill_dir.join("manifest.json");
+    let mut manifest: SkillManifest =
+        serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+    update(&mut manifest);
+    fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+}
+
+fn duplicate_installed_hello_with_namespace(registry_root: &Path, namespace: &str) -> PathBuf {
+    let source_dir = installed_skill_dir(registry_root, "example", "hello-inspect");
+    let target_dir = registry_root
+        .join("installed")
+        .join(namespace)
+        .join("hello-inspect")
+        .join("0.1.0")
+        .join(source_dir.file_name().unwrap());
+    copy_dir_recursive(&source_dir, &target_dir);
+    write_installed_manifest(&target_dir, |manifest| {
+        manifest.key.namespace = namespace.into();
+        manifest.display_name = format!("Hello Inspect ({namespace})");
+    });
+    target_dir
+}
+
+fn duplicate_installed_hello_with_filesystem(registry_root: &Path, skill_name: &str) -> PathBuf {
+    let source_dir = installed_skill_dir(registry_root, "example", "hello-inspect");
+    let target_dir = registry_root
+        .join("installed")
+        .join("example")
+        .join(skill_name)
+        .join("0.1.0")
+        .join(source_dir.file_name().unwrap());
+    copy_dir_recursive(&source_dir, &target_dir);
+    write_installed_manifest(&target_dir, |manifest| {
+        manifest.key.name = skill_name.into();
+        manifest.display_name = "Hello Inspect Filesystem".into();
+        manifest.description = "A fixture that declares the deferred filesystem contract.".into();
+        manifest.capabilities.push(CapabilityRequirement {
+            id: CapabilityId::Filesystem,
+            access: CapabilityAccess::Read,
+            required: true,
+            constraints: CapabilityConstraints::Filesystem(FilesystemConstraints {
+                preopened_roots: vec![FilesystemRoot {
+                    name: "workspace".into(),
+                    guest_path_prefix: "/workspace".into(),
+                    host_path: "/var/lib/guild/workspace".into(),
+                    operations: vec![FilesystemOperation::Read],
+                }],
+            }),
+        });
+    });
+    target_dir
 }
 
 fn inspect_hello_with_cli(registry_root: &Path, name: &str, skill_ref: &str) -> Value {
@@ -359,10 +487,47 @@ fn primary_run_command_keeps_payload_on_stdout_and_status_on_stderr() {
 
     assert_eq!(payload["message"].as_str(), Some("Hello, Ada"));
     assert_eq!(payload["mode"].as_str(), Some("inspect"));
-    assert!(stderr.contains("ok  not_proven  exec:"), "{stderr}");
+    assert!(stderr.contains("succeeded  not_proven  exec:"), "{stderr}");
     assert!(stderr.contains("example/hello-inspect@0.1.0"), "{stderr}");
     assert!(!stdout.contains("exec:"), "{stdout}");
     assert!(!stderr.contains("\"message\""), "{stderr}");
+}
+
+#[test]
+fn run_refusal_keeps_payload_off_stdout_and_status_on_stderr() {
+    let temp = TempFixtureDir::new("guild-cli-run-refusal-stdio");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let _ = duplicate_installed_hello_with_filesystem(&registry_root, "hello-inspect-filesystem");
+
+    let grants_json = emit_filesystem_rejection_grants_json();
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect-filesystem@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(stderr.contains("rejected  refused  exec:"), "{stderr}");
+    assert!(
+        stderr.contains("example/hello-inspect-filesystem@0.1.0"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("filesystem-runtime-not-supported"),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -522,6 +687,82 @@ fn primary_get_ls_and_show_commands_accept_short_resource_refs() {
         show_object_value["record"]["uri"].as_str(),
         Some(blob_uri.as_str())
     );
+}
+
+#[test]
+fn short_refs_fail_closed_when_ambiguous() {
+    let temp = TempFixtureDir::new("guild-cli-short-ref-ambiguity");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let _ = duplicate_installed_hello_with_namespace(&registry_root, "other-example");
+
+    let show_output =
+        run_guild_failure_output(&["show", "hello-inspect@^0.1"], Some(&registry_root));
+    let show_stderr = String::from_utf8(show_output.stderr).unwrap();
+    assert!(
+        show_stderr.contains(
+            "short skill ref `hello-inspect@^0.1` was ambiguous across namespaces: example, other-example"
+        ) || show_stderr.contains(
+            "short skill ref `hello-inspect@^0.1` was ambiguous across namespaces: other-example, example"
+        ),
+        "{show_stderr}"
+    );
+
+    let _ = inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let _ = inspect_hello_with_cli(
+        &registry_root,
+        "Turing",
+        "skill://other-example/hello-inspect@^0.1",
+    );
+
+    let why_output = run_guild_failure_output(&["why", "exec:0"], Some(&registry_root));
+    let why_stderr = String::from_utf8(why_output.stderr).unwrap();
+    assert!(
+        why_stderr.contains("execution ref `exec:0` was ambiguous"),
+        "{why_stderr}"
+    );
+}
+
+#[test]
+fn color_modes_are_additive_and_not_required_for_machine_output() {
+    let temp = TempFixtureDir::new("guild-cli-colors");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let color_output = guild_command(Some(&registry_root))
+        .env_remove("NO_COLOR")
+        .args(["show", "hello-inspect@^0.1", "--color", "always"])
+        .output()
+        .unwrap();
+    assert!(color_output.status.success(), "{color_output:?}");
+    let color_stdout = String::from_utf8(color_output.stdout).unwrap();
+    assert!(color_stdout.contains("\u{1b}["), "{color_stdout}");
+
+    let no_color_output = guild_command(Some(&registry_root))
+        .env("NO_COLOR", "1")
+        .args(["show", "hello-inspect@^0.1", "--color", "always"])
+        .output()
+        .unwrap();
+    assert!(no_color_output.status.success(), "{no_color_output:?}");
+    let no_color_stdout = String::from_utf8(no_color_output.stdout).unwrap();
+    assert!(!no_color_stdout.contains("\u{1b}["), "{no_color_stdout}");
+
+    let porcelain_output = run_guild_success(
+        &[
+            "show",
+            "hello-inspect@^0.1",
+            "--porcelain",
+            "--color",
+            "always",
+        ],
+        Some(&registry_root),
+    );
+    assert_eq!(
+        porcelain_output,
+        "skill\texample/hello-inspect@0.1.0\tlocal-source\tlocal-dev\tnot_proven\n"
+    );
+    assert!(!porcelain_output.contains("\u{1b}["), "{porcelain_output}");
 }
 
 #[test]

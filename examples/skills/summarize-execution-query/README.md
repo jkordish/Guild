@@ -14,14 +14,14 @@ Canonical local proof flow:
 ```bash
 cargo run -p guild-mcp --example explain_recent_failures_local
 # after that deterministic setup has seeded records:
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/recent-failures read guild://queries/executions/failures/recent/10
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/recent-failures get guild://queries/executions/failures/recent/10
 ```
 
 That command:
 
 1. installs `inspect-http-json`
 2. produces one succeeded, one failed, and one rejected persisted execution
-3. reads `guild://queries/executions/failures/recent/10` directly through the Guild resource backend
+3. reads `guild://queries/executions/failures/recent/10` directly through the Guild resource backend with `guild get`
 4. installs `summarize-execution-query`
 5. executes the summary skill against that query URI through the same Wasmtime-backed path
 
