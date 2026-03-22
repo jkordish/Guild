@@ -5,6 +5,7 @@ This document holds the verification commands and proof workflows that do not be
 The README is intentionally focused on Guild itself and on a few usage examples. This page is the deeper operator and contributor reference for regression sweeps, example proofs, and Codex helper flows.
 
 The source-of-truth declaration lives in `SPECS.md` section "Source Of Truth".
+For the frozen runtime-contract surfaces in this milestone, use `SPECS.md` section "Contract Surface v1 (core)" rather than treating this testing guide as a parallel source.
 
 ## Full Verification
 

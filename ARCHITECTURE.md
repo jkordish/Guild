@@ -5,6 +5,7 @@ Scope: practical architecture for a local-first Guild implementation
 Audience: implementers, maintainers, reviewers, security and platform engineers
 
 This document is explanatory architecture, not the primary runtime-contract source of truth. For normative runtime ownership, use `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
 
 ## 1. Overview
 
@@ -255,13 +256,9 @@ Wasm/WASI is the preferred execution substrate because it gives Guild:
 
 ### 6.2 Runtime host interface
 
-The runtime host SHOULD expose a narrow interface to the guest for operations such as:
-
-- `http-request`
-- `read-resource`
-- `emit-evidence`
-- `invoke-skill`
-- `log-write`
+The runtime host SHOULD expose only the frozen active live runtime families
+listed in `SPECS.md` section "Contract Surface v1 (core)" plus any future
+families that are added there in a later milestone.
 
 The exact ABI can evolve, but the shape should stay minimal and explicit.
 
@@ -273,7 +270,12 @@ Anything that changes durable system state or reaches outside the guest boundary
 
 The current repository uses a Wasmtime-backed Wasm component adapter for the working slice. Primitive, explain, composite, and bounded HTTP example skills execute through the dedicated inspect world `guild-skill-inspect-v1` defined in `wit/guild-skill-v1.wit`, where the active host-facing operation names are `http-request`, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`, and skill output or failure is returned from `inspect-skill.run` rather than emitted through separate host calls.
 
-The active Wasm inspect slice is intentionally smaller than the broader shared type surface. The currently supported capability families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`. Capabilities outside that set are rejected before execution, and their host imports are absent from `guild-skill-inspect-v1`, so the active runtime surface stays honest by construction.
+The active Wasm inspect slice is intentionally smaller than the broader shared
+type surface. The frozen current live family registry is owned by
+`SPECS.md` section "Contract Surface v1 (core)". Capabilities outside that set
+are rejected before execution, and their host imports are absent from
+`guild-skill-inspect-v1`, so the active runtime surface stays honest by
+construction.
 
 The runtime now also preflights Guild component imports before instantiation. In the active inspect path, only `guild:skill/inspect-types@1.0.0` and `guild:skill/inspect-host@1.0.0` are allowed. If an artifact still exposes a broader Guild import surface, the host rejects it as `unsupported-runtime-surface` during runtime load instead of letting it collapse into a generic component-instantiation failure.
 
@@ -298,7 +300,7 @@ The live Rust vocabulary now wins explicitly:
 
 - `runtime_guarantee.supported_canonical_families` is the authoritative live-runtime family list for the draft bundle
 - `supported_effect_classes` remains a temporary draft-v1 compatibility list for legacy bounded examples
-- the current active canonical families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- the frozen current active canonical family list now lives in `SPECS.md` section "Contract Surface v1 (core)"
 - `docs/schemas/draft-v1/family_support_matrix.json` is the machine-readable per-family or per-layer status source for the draft control-plane surface
 
 M8c closes the biggest remaining lie-shaped gap in that draft bundle: live proof now exists only where the runtime actually supports it.

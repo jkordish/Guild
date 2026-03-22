@@ -3,6 +3,8 @@
 - Status: accepted
 - Date: 2026-03-19
 
+The public CLI remains an operator surface, not a separate normative runtime-contract source.
+
 ## Context
 
 Guild's inspect/runtime/resource substrate is now real enough that the operator-facing command language also needs to be real.

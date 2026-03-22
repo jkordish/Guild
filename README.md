@@ -28,6 +28,7 @@ MCP is only the transport facade here. Guild is the layer that admits, runs, del
 
 Normative runtime sources live in `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
 Generated support, compatibility, and benchmark artifacts remain checked outputs, not primary contract definitions.
+For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
 
 ## Why Guild
 

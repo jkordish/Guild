@@ -7,8 +7,8 @@ use crate::compatibility;
 use crate::schemas::{validate_examples, validate_instance};
 use crate::support_matrix;
 use crate::surface::{
-    verify_active_runtime_example_alignment, verify_doc_truth_markers,
-    verify_removed_truth_entrypoints,
+    verify_active_runtime_example_alignment, verify_contract_surface_v1_spec_markers,
+    verify_doc_truth_markers, verify_removed_truth_entrypoints,
 };
 use crate::util::{draft_v1_dir, read_json};
 
@@ -289,6 +289,7 @@ pub fn run(mode: ArtifactMode) -> Result<()> {
     verify_active_runtime_example_alignment()?;
     verify_removed_truth_entrypoints()?;
     verify_doc_truth_markers()?;
+    verify_contract_surface_v1_spec_markers()?;
 
     match mode {
         ArtifactMode::Check => {

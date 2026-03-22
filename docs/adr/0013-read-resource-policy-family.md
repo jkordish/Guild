@@ -3,6 +3,8 @@
 Status: Accepted  
 Date: 2026-03-17
 
+For the frozen runtime URI and scope-root contract in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
+
 ## Context
 
 Guild already exposes one host-mediated resource path that is shared by guest
@@ -32,12 +34,8 @@ The current resource kinds are:
   `guild://objects/sha256/{digest}`
 - `query` for `guild://queries/executions/...`
 
-The current scope roots are exact canonical Guild prefixes:
-
-- `guild://executions/`
-- `guild://objects/records/`
-- `guild://objects/sha256/`
-- `guild://queries/executions/`
+The exact canonical scope-root registry is now frozen in `SPECS.md` section
+"Contract Surface v1 (core)".
 
 `ReadResourceConstraints` has two policy dimensions:
 

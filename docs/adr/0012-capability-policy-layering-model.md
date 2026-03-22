@@ -4,6 +4,7 @@ Status: Accepted
 Date: 2026-03-17
 
 For the current normative runtime contract, see `SPECS.md`, `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+The frozen active-family registry now lives in `SPECS.md` section "Contract Surface v1 (core)".
 
 ## Context
 

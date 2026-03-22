@@ -5,8 +5,11 @@ use guild_registry::{InstalledSkill, SignatureScheme};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
     CapabilityRequirement, EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionPhase,
-    ExecutionRecord, ExecutionStatus, InstalledVerificationState, LocalTrustTier, RedactionClass,
-    ResolvedSkillRef, RuntimeKind, SkillCategory, TerminationDetail,
+    ExecutionRecord, ExecutionStatus, InstalledVerificationState, LocalTrustTier,
+    PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED,
+    PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND, RedactionClass,
+    ResolvedSkillRef, RuntimeKind, SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN,
+    SkillCategory, TerminationDetail,
 };
 use serde::Serialize;
 
@@ -195,21 +198,21 @@ pub fn support_summary_for_execution(record: &ExecutionRecord) -> SupportSummary
 pub fn why_summary(record: &ExecutionRecord) -> WhySummary {
     let proof = overall_support_word(&support_summary_for_execution(record));
     let plan = if matches!(record.status, ExecutionStatus::Rejected) {
-        "refused"
+        PRESENTATION_STATUS_REFUSED
     } else {
-        "upper-bound"
+        PRESENTATION_STATUS_UPPER_BOUND
     };
     let token = if matches!(record.status, ExecutionStatus::Rejected) {
-        "refused"
-    } else if proof == "proof-backed" {
-        "linked"
+        PRESENTATION_STATUS_REFUSED
+    } else if proof == PRESENTATION_STATUS_PROOF_BACKED {
+        PRESENTATION_STATUS_LINKED
     } else {
-        "upper-bound"
+        PRESENTATION_STATUS_UPPER_BOUND
     };
-    let witness = if proof == "proof-backed" {
-        "linked"
+    let witness = if proof == PRESENTATION_STATUS_PROOF_BACKED {
+        PRESENTATION_STATUS_LINKED
     } else {
-        "unlinked"
+        PRESENTATION_STATUS_UNLINKED
     };
 
     WhySummary {
@@ -751,25 +754,25 @@ fn support_summary_for_capabilities<'a>(
     let mut buckets = Vec::new();
     if !proof_backed.is_empty() {
         buckets.push(SupportBucket {
-            status: "proof-backed".into(),
+            status: PRESENTATION_STATUS_PROOF_BACKED.into(),
             capabilities: proof_backed,
         });
     }
     if !bounded.is_empty() {
         buckets.push(SupportBucket {
-            status: "bounded".into(),
+            status: SUPPORT_STATUS_BOUNDED.into(),
             capabilities: bounded,
         });
     }
     if !not_proven.is_empty() {
         buckets.push(SupportBucket {
-            status: "not_proven".into(),
+            status: SUPPORT_STATUS_NOT_PROVEN.into(),
             capabilities: not_proven,
         });
     }
     if !refused.is_empty() {
         buckets.push(SupportBucket {
-            status: "refused".into(),
+            status: PRESENTATION_STATUS_REFUSED.into(),
             capabilities: refused,
         });
     }
@@ -813,14 +816,23 @@ fn overall_support_word(summary: &SupportSummary) -> &'static str {
 }
 
 fn overall_support_word_from_buckets(buckets: &[SupportBucket]) -> &'static str {
-    if buckets.iter().any(|bucket| bucket.status == "refused") {
-        "refused"
-    } else if buckets.iter().any(|bucket| bucket.status == "not_proven") {
-        "not_proven"
-    } else if buckets.iter().any(|bucket| bucket.status == "bounded") {
-        "bounded"
+    if buckets
+        .iter()
+        .any(|bucket| bucket.status == PRESENTATION_STATUS_REFUSED)
+    {
+        PRESENTATION_STATUS_REFUSED
+    } else if buckets
+        .iter()
+        .any(|bucket| bucket.status == SUPPORT_STATUS_NOT_PROVEN)
+    {
+        SUPPORT_STATUS_NOT_PROVEN
+    } else if buckets
+        .iter()
+        .any(|bucket| bucket.status == SUPPORT_STATUS_BOUNDED)
+    {
+        SUPPORT_STATUS_BOUNDED
     } else {
-        "proof-backed"
+        PRESENTATION_STATUS_PROOF_BACKED
     }
 }
 
@@ -901,12 +913,22 @@ fn format_bytes(bytes: u64) -> String {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn paint_status_word(styler: &Styler, word: &str) -> String {
     match word {
-        "proof-backed" | "linked" | "verified-import" | "trusted-imported" | "succeeded" | "ok" => {
-            styler.paint(Tone::Success, word)
-        }
-        "bounded" | "upper-bound" | "unlinked" | "local-source" | "local-dev" | "restricted"
+        PRESENTATION_STATUS_PROOF_BACKED
+        | PRESENTATION_STATUS_LINKED
+        | "verified-import"
+        | "trusted-imported"
+        | "succeeded"
+        | "ok" => styler.paint(Tone::Success, word),
+        SUPPORT_STATUS_BOUNDED
+        | PRESENTATION_STATUS_UPPER_BOUND
+        | PRESENTATION_STATUS_UNLINKED
+        | "local-source"
+        | "local-dev"
+        | "restricted"
         | "partial" => styler.paint(Tone::Warning, word),
-        "not_proven" | "refused" | "rejected" | "failed" => styler.paint(Tone::Danger, word),
+        SUPPORT_STATUS_NOT_PROVEN | PRESENTATION_STATUS_REFUSED | "rejected" | "failed" => {
+            styler.paint(Tone::Danger, word)
+        }
         _ => word.to_owned(),
     }
 }
@@ -922,7 +944,7 @@ fn terminal_status_word(status: &ExecutionStatus) -> &'static str {
         ExecutionStatus::Succeeded => "ok",
         ExecutionStatus::Failed => "failed",
         ExecutionStatus::Partial => "partial",
-        ExecutionStatus::Rejected => "refused",
+        ExecutionStatus::Rejected => PRESENTATION_STATUS_REFUSED,
     }
 }
 
@@ -931,7 +953,7 @@ fn status_word(status: &ExecutionStatus) -> &'static str {
         ExecutionStatus::Succeeded => "succeeded",
         ExecutionStatus::Failed => "failed",
         ExecutionStatus::Partial => "partial",
-        ExecutionStatus::Rejected => "refused",
+        ExecutionStatus::Rejected => PRESENTATION_STATUS_REFUSED,
     }
 }
 
@@ -951,19 +973,7 @@ fn verification_state_word(state: &InstalledVerificationState) -> &'static str {
 }
 
 fn capability_id_label(id: &CapabilityId) -> &'static str {
-    match id {
-        CapabilityId::HttpRequest => "http-request",
-        CapabilityId::ReadResource => "read-resource",
-        CapabilityId::InvokeSkill => "invoke-skill",
-        CapabilityId::EmitEvidence => "emit-evidence",
-        CapabilityId::GetSecret => "get-secret",
-        CapabilityId::CacheRead => "cache-read",
-        CapabilityId::CacheWrite => "cache-write",
-        CapabilityId::LogWrite => "log-write",
-        CapabilityId::Filesystem => "filesystem",
-        CapabilityId::MonotonicClock => "monotonic-clock",
-        CapabilityId::WallClock => "wall-clock",
-    }
+    id.as_str()
 }
 
 fn capability_access_label(access: &CapabilityAccess) -> &'static str {

@@ -17,6 +17,7 @@ cargo run -q -p guild-mcp --bin guild -- ...
 
 This document is the source of truth for Guild's public command and URI grammar only.
 It is not the runtime-contract source of truth; see `SPECS.md` section "Source Of Truth".
+For the frozen runtime URI roots and support vocabulary in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
 The repository does not currently include landing-page source, so the terminal snippets here are also the canonical in-repo hero examples for future site work.
 
 ## Canonical Verbs
@@ -66,7 +67,7 @@ Guild uses three distinct public identifier families:
   Host-owned evidence-record metadata.
 - `guild://objects/sha256/<digest>`
   Raw content-addressed blobs.
-- `guild://queries/...`
+- `guild://queries/executions/...`
   Bounded query resources over durable Guild state.
 - `<registry>/<repo>:<tag>` or `<registry>/<repo>@<digest>`
   Standard OCI registry references for transport and publication.

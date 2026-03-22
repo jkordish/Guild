@@ -5,6 +5,7 @@
 Accepted
 
 For the current normative runtime contract, see `SPECS.md`, `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+The frozen active-family registry now lives in `SPECS.md` section "Contract Surface v1 (core)".
 
 ## Context
 
@@ -38,13 +39,8 @@ The active typed constraint families in the current inspect implementation are:
 - `EmitEvidenceConstraints`
 - `LogConstraints`
 
-These map to the currently active inspect capability families:
-
-- `http-request` with `read` access
-- `read-resource` with `read` access
-- `invoke-skill` with `invoke` access
-- `emit-evidence` with `write` access
-- `log-write` with `write` access
+These map to the frozen current active inspect capability families owned by
+`SPECS.md` section "Contract Surface v1 (core)".
 
 The draft schema bundle under `docs/schemas/draft-v1/` is not a replacement vocabulary for those current product terms. Where the bundle uses broader or differently named effect classes such as `component.invoke`, `net.connect`, or `fs.*`, the repository still treats the host-owned capability-family model above as canonical and keeps the schema bundle explicitly marked draft until that mapping is closed repo-wide.
 
@@ -107,7 +103,7 @@ The host enforces typed constraint coverage, not loose string matching:
 `read-resource` scope matching is canonical and typed:
 
 - manifest and grant `uri_prefixes` must use canonical Guild scope roots
-- the current supported roots are `guild://executions/`, `guild://objects/records/`, and `guild://objects/sha256/`
+- the frozen runtime root registry now lives in `SPECS.md` section "Contract Surface v1 (core)"
 - resource authorization parses concrete Guild URIs into typed execution, evidence-record, or blob forms before matching
 - malformed URIs and non-canonical scope roots fail closed
 

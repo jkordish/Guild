@@ -74,7 +74,181 @@ This pass stays fail-closed:
 - unsupported and `not_proven` slices remain explicit
 - generated outputs must not widen support by wording alone
 - explanatory docs must not smooth over runtime or draft-harness boundaries
-- later Contract Surface v1 hardening may freeze more surfaces, but this milestone does not
+- Contract Surface v1 (core) freezes only the mature surfaces listed below
+
+### 4.2 Contract Surface v1 (core)
+
+This milestone freezes only the runtime-contract surfaces that are already real,
+stable enough to be normative now, and mechanically guardable against drift.
+
+Included in Contract Surface v1 (core):
+
+- Guild runtime resource URI grammar and canonical root registry
+- `GuildResourceScope` normalization and rejection rules for those roots
+- the active live runtime capability-family registry
+- support-status and linkage vocabulary used by the frozen surface and checked outputs
+- executable identity semantics from requested reference through resolved artifact and host-minted execution identity
+- runtime-vs-draft source-of-truth boundaries where they affect contract interpretation
+
+Excluded from Contract Surface v1 (core):
+
+- broader OCI artifact profile freeze
+- broader remote trust and distribution semantics
+- public CLI output as a normative API contract
+- broader `apply` and effects semantics beyond already explicit normative material
+- deeper prose-lint drift checks beyond exact marker blocks and structured lists
+- broader future-facing capability-universe freeze outside the active live runtime family set
+
+Included surfaces are frozen now because they already have concrete truth in the
+runtime parser, the core Rust types, the active runner surface, or WIT, and
+they can be checked fail-closed. Excluded surfaces stay deferred because the
+current repository truth is still transport-specific, draft-local, broader than
+the active live path, or not yet precise enough to freeze without overclaiming.
+
+### 4.3 Contract Index
+
+- URIs and canonical resource roots: this document section 4.4 plus `crates/guild-types`
+- active live runtime family registry: this document section 4.5 plus `crates/guild-runner`
+- support and linkage vocabulary: this document section 4.6 plus `crates/guild-types`
+- executable identity semantics: this document section 4.7 plus `crates/guild-types` and `crates/guild-runner`
+- guest ABI and active inspect world: section 8 plus `wit/guild-skill-v1.wit`
+- draft control-plane harness only: section 12.7 plus `docs/schemas/draft-v1/`
+
+### 4.4 Guild URI Grammar And Resource Roots
+
+The canonical runtime parser and normalizer live in `crates/guild-types`. The
+runtime contract is the exact accepted and rejected local Guild URI surface
+implemented there. This document freezes the canonical roots and accepted query
+forms; the Rust parser remains the authoritative executable definition.
+
+<!-- contract-surface-v1-core:uri-roots:start -->
+Canonical runtime resource roots:
+- `guild://executions/`
+- `guild://objects/sha256/`
+- `guild://objects/records/`
+- `guild://queries/executions/`
+
+Accepted execution-query forms:
+- `guild://queries/executions/recent/{limit}`
+- `guild://queries/executions/failures/recent/{limit}`
+- `guild://queries/executions/by-status/{status}/{limit}` where `{status}` is one of `succeeded`, `failed`, `partial`, `rejected`
+- `guild://queries/executions/by-skill/{namespace}/{name}/{limit}`
+<!-- contract-surface-v1-core:uri-roots:end -->
+
+The frozen runtime rules are:
+
+- `GuildResourceScope::parse` accepts only the exact canonical roots above. Missing trailing slashes, broader prefixes, and unknown roots are rejected.
+- `GuildResourceUri::parse` accepts only concrete execution, object-blob, object-record, object-record-metadata, and execution-query URIs under those roots.
+- `guild://objects/records/{evidence_record_id}/metadata` is a supported concrete URI and remains in the same `guild://objects/records/` scope root as the payload-dereference URI.
+- execution identifiers, evidence-record identifiers, and `by-skill` namespace or name segments are percent-decoded; malformed percent encoding is rejected rather than normalized loosely.
+- object blob digests must be lowercase hexadecimal under `guild://objects/sha256/{digest}`.
+- execution-query limits remain bounded to `1..=50`.
+- unsupported roots, unsupported query paths, and malformed concrete URIs fail closed.
+
+### 4.5 Canonical Capability Family Registry
+
+The frozen core family registry is the active live runtime family set only. It
+does not freeze the broader future-facing capability universe carried elsewhere
+in shared Rust types, draft schemas, or broader WIT package surface.
+
+<!-- contract-surface-v1-core:families:start -->
+Frozen active live runtime families:
+- `http-request`
+- `read-resource`
+- `invoke-skill`
+- `emit-evidence`
+- `log-write`
+<!-- contract-surface-v1-core:families:end -->
+
+The frozen family rules are:
+
+- the names above are the canonical family spellings for the current live runtime surface
+- inclusion in this registry does not imply broad or exact support across every slice; slice status remains separate and may still be `bounded` or `not_proven`
+- draft-v1 compatibility aliases such as `net.connect` or `component.invoke` are not canonical family names in this frozen surface
+- broader future-facing families such as filesystem, cache, secret, or clock remain typed contract vocabulary only where already present; they are not part of the Contract Surface v1 (core) family freeze
+
+### 4.6 Support-Status Vocabulary
+
+The frozen vocabulary below is closed for this milestone. These words have
+distinct meanings and MUST NOT be collapsed into a softer or broader support
+claim.
+
+- `supported`: the named live runtime surface or checked slice is implemented as claimed on the checked path
+- `bounded`: the named surface is supported only within an explicitly narrower checked envelope
+- `partial`: only a narrowing compatibility or incomplete mapping exists; this is not direct canonical support
+- `unsupported`: the named surface is not supported on the current live path and stays fail-closed
+- `not_proven`: there is not yet an honest live proof basis for the claimed slice
+- `proof_backed`: token or explanation basis comes from an acceptable proof rather than only an upper-bound plan
+- `upper_bound_fallback`: issuance or explanation fell back to the admitted upper bound rather than a proof-backed reduction
+- `proof_linked`: witness or downstream linkage is backed by an acceptable proof chain on the checked path
+- `unlinked`: witness or downstream output exists without proof linkage
+- `refused`: the host rejected the execution or issuance attempt rather than widening authority
+- `coverage_limited`: the checked observation coverage is insufficient for the requested verification claim
+- `unverifiable`: the available material cannot support safe verification
+
+Some checked outputs also use explicit residual terms for benchmark or linkage
+reporting. Those spellings remain checked and stable, but they are output terms
+rather than a claim that the broader live runtime surface is generally
+supported.
+
+<!-- contract-surface-v1-core:status-vocabulary:start -->
+Frozen support status spellings:
+- `supported`
+- `bounded`
+- `partial`
+- `unsupported`
+- `not_proven`
+
+Frozen linkage and presentation spellings:
+- `proof_backed` -> CLI `proof-backed`
+- `upper_bound_fallback` -> CLI `upper-bound`
+- `proof_linked` -> CLI `linked`
+- `unlinked` -> CLI `unlinked`
+- `refused` -> CLI `refused`
+
+Explicit checked-output residual terms:
+- `not_measured_on_real_path`
+- `fallback_unlinked`
+- `proof_only`
+- `coverage_limited`
+- `unverifiable`
+- `not_provable`
+- `coverage_limited_or_unverifiable`
+<!-- contract-surface-v1-core:status-vocabulary:end -->
+
+### 4.7 Executable Identity Semantics
+
+Requested identity, resolved identity, and durable execution identity are
+distinct layers. The core Rust types are the executable truth for those layers,
+and this section freezes their normative meaning.
+
+<!-- contract-surface-v1-core:identity:start -->
+Frozen executable identity terms:
+- requested identity: `RequestedSkillRef` fields `key`, `version_req`
+- resolved identity: `ResolvedSkillRef` fields `key`, `version`, `digest`
+- host-minted durable execution identity field: `execution_id`
+- non-authoritative caller correlation fields: `request_id`, `trace_id`
+<!-- contract-surface-v1-core:identity:end -->
+
+The frozen identity rules are:
+
+- `RequestedSkillRef` is caller intent only. It is not executable identity.
+- `ResolvedSkillRef` is the executable identity that actually ran. The resolved digest is normative for the executable artifact.
+- the current inspect runtime path also depends normatively on the selected runtime entrypoint and guest ABI identity; in this repository that means `guild-skill-inspect-v1` where the active inspect slice requires it
+- durable execution identity is host-minted and persists through the receipt and execution record
+- caller request or correlation fields may be preserved for observability, but they do not control durable execution identity
+- implementation-language package metadata such as Cargo package version is not Guild requested or resolved identity
+
+### 4.8 Deferred From Contract Surface v1 (core)
+
+This milestone does not freeze the following surfaces:
+
+- OCI profile details beyond the current already-shipped signed-bundle transport behavior, because the broader transport profile is still transport-specific and not yet narrow enough for a stable general freeze
+- remote trust and distribution semantics, because the repository truth is still local-first and host-owned
+- public CLI output as a normative API, because the CLI remains an operator surface rather than a stable external contract
+- broader `apply` and effects semantics, because `apply` remains intentionally deferred
+- broader capability-universe semantics outside the active live runtime family set, because the current repository still distinguishes typed future vocabulary from active live runtime support
+- paragraph-level prose drift enforcement, because this pass only claims exact-list and exact-marker checks where the repo truth is structured enough to support them safely
 
 ## 5. Terms
 
@@ -217,7 +391,7 @@ This repository already implements a narrow local inspect-oriented slice of the 
 - composite skills invoke declared child dependencies by alias through the host boundary
 - local source installs stage and validate before an atomic move into place
 - requested resolution fails closed if a single key and version maps to multiple installed digests
-- supported typed capability families in the active Wasm inspect slice are currently `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- supported typed capability families in the active Wasm inspect slice are the frozen active live runtime families listed in section 4.5
 - inspect-mode Wasm skills now declare `runtime.entrypoint = guild-skill-inspect-v1` together with `runtime.guest_abi_version = guild-skill-inspect-v1`
 - the active Wasm inspect runtime instantiates only the `guild-skill-inspect-v1` world, so unsupported capability imports such as secret, cache, clock, and filesystem surface are absent from the active inspect guest ABI
 - the active Wasm inspect runtime also preflights Guild component imports and allows only `guild:skill/inspect-types@1.0.0` and `guild:skill/inspect-host@1.0.0`; broader Guild import surfaces fail closed as host-owned `unsupported-runtime-surface` rejections rather than degrading into generic component instantiation failures
@@ -397,19 +571,15 @@ Caller-requested capabilities are policy input, not final authority. The host MA
 
 ### 12.3 Capability families
 
-Implementations MAY define capability families such as:
+The frozen core live-runtime family registry for this milestone is defined in
+section 4.5.
 
-- `inspect`
-- `explain`
-- `filesystem`
-- `http-request`
-- `read-resource`
-- `emit-evidence`
-- `invoke-skill`
-- `log-write`
-- `policy-introspect`
+Shared Rust types, broader WIT package surfaces, or draft harnesses MAY still
+carry broader future-facing capability vocabulary, but those names are not part
+of Contract Surface v1 (core) unless they also appear in section 4.5.
 
-If supported, these MUST be enforced by the host.
+If a capability family is supported on a given runtime path, it MUST be
+enforced by the host.
 
 ### 12.4 Denied capability use
 
@@ -444,7 +614,12 @@ For `filesystem`, `CapabilityAccess::Read` roots may only declare `read` operati
 
 Unsupported runtime surface outcomes are not policy denials. If policy allowed the request but the active inspect runtime still rejects a broader capability family or broader Guild import surface, the persisted `PolicyDecision` remains the host-owned policy truth while the termination detail carries the host-owned unsupported-runtime-surface classification.
 
-For `read-resource`, `uri_prefixes` are canonical local Guild scope roots rather than arbitrary string prefixes. The current repository accepts `guild://executions/`, `guild://objects/records/`, `guild://objects/sha256/`, and `guild://queries/executions/`, and authorization MUST compare parsed Guild URIs against those canonical scopes rather than using loose raw-string prefix matching. The object-record scope covers both `guild://objects/records/{evidence_record_id}` payload URIs and `guild://objects/records/{evidence_record_id}/metadata` metadata URIs.
+For `read-resource`, `uri_prefixes` are the canonical local Guild scope roots
+frozen in section 4.4 rather than arbitrary string prefixes. Authorization
+MUST compare parsed Guild URIs against those canonical scopes rather than using
+loose raw-string prefix matching. The object-record scope covers both
+`guild://objects/records/{evidence_record_id}` payload URIs and
+`guild://objects/records/{evidence_record_id}/metadata` metadata URIs.
 
 For `http-request`, the current repository exposes a bounded request/response model rather than ambient networking. The host MUST parse absolute HTTP or HTTPS URLs, reject embedded credentials, enforce typed scheme/host/domain-suffix/port/path/method constraints before dispatch, and clamp timeout and response-size limits to host-owned bounds. Redirect following MUST remain disabled unless the granted capability explicitly enables it with a bounded `max_redirects`, and every redirected hop MUST pass the same host-owned authorization path before dispatch. Loopback, link-local, private-network, and raw IP-literal destinations MUST fail closed unless the granted capability explicitly allows those destination classes. Authorization denials MUST remain host-owned. The current inspect slice supports bodyless `GET` and `HEAD` requests only, does not expose arbitrary request headers or request-body streaming, and returns a bounded typed response body to the guest.
 
@@ -453,6 +628,9 @@ Shared contracts may mention broader capability families for future phases, but 
 ### 12.7 M3/M4/M5/M6/M7 schema-bundle mapping and draft status
 
 The draft schema bundle under `docs/schemas/draft-v1/` is still a draft M3/M4/M5/M6/M7 contract vocabulary. It is useful for tightening admission, minimization, token-materialization, and witness-verification semantics, but it is not the canonical product vocabulary for the current repository.
+
+Contract Surface v1 (core) does not freeze those broader draft control-plane
+semantics. It freezes only the runtime-facing surfaces listed in section 4.2.
 
 The stricter interpretation wins:
 

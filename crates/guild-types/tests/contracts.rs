@@ -1,12 +1,20 @@
 use guild_types::{
-    Budget, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    ExecutionContext, ExecutionMode, ExecutionQueryResource, FilesystemConstraints,
-    FilesystemOperation, FilesystemRoot, GrantedCapability, GuildResourceScope, GuildResourceUri,
-    HttpMethod, HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme,
-    InstalledVerificationState, LocalPolicyConfig, LocalTrustTier, PolicyDecision,
-    PolicyDecisionOutcome, PolicyProfile, PolicyProfileBinding, PolicyReason, PolicyRule,
-    PolicyRuleEffect, PolicyRuleTarget, ReadResourceConstraints, ResolvedSkillRef, ResourceKind,
-    SkillKey, SkillVersion, VersionRequirement,
+    Budget, CONTRACT_SURFACE_V1_CORE_EXECUTION_QUERY_PATTERNS,
+    CONTRACT_SURFACE_V1_CORE_EXECUTION_QUERY_STATUS_SEGMENTS,
+    CONTRACT_SURFACE_V1_CORE_HOST_MINTED_EXECUTION_FIELDS,
+    CONTRACT_SURFACE_V1_CORE_NON_AUTHORITATIVE_CORRELATION_FIELDS,
+    CONTRACT_SURFACE_V1_CORE_REQUESTED_SKILL_REF_FIELDS,
+    CONTRACT_SURFACE_V1_CORE_RESOLVED_SKILL_REF_FIELDS, CONTRACT_SURFACE_V1_CORE_RESOURCE_ROOTS,
+    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId, ExecutionContext,
+    ExecutionMode, ExecutionQueryResource, FilesystemConstraints, FilesystemOperation,
+    FilesystemRoot, GrantedCapability, GuildResourceScope, GuildResourceUri, HttpMethod,
+    HttpRequest, HttpRequestConstraints, HttpResponse, HttpScheme, InstalledVerificationState,
+    LocalPolicyConfig, LocalTrustTier, PRESENTATION_STATUS_LINKED,
+    PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED,
+    PRESENTATION_STATUS_UPPER_BOUND, PolicyDecision, PolicyDecisionOutcome, PolicyProfile,
+    PolicyProfileBinding, PolicyReason, PolicyRule, PolicyRuleEffect, PolicyRuleTarget,
+    ReadResourceConstraints, ResolvedSkillRef, ResourceKind, SkillKey, SkillVersion,
+    VersionRequirement,
 };
 
 #[test]
@@ -85,6 +93,13 @@ fn guild_resource_scopes_must_be_canonical_roots() {
     assert!(GuildResourceScope::parse("guild://executions").is_err());
     assert!(GuildResourceScope::parse("guild://objects/").is_err());
     assert!(GuildResourceScope::parse("guild://exec").is_err());
+    assert_eq!(
+        GuildResourceScope::all()
+            .iter()
+            .map(GuildResourceScope::canonical_prefix)
+            .collect::<Vec<_>>(),
+        CONTRACT_SURFACE_V1_CORE_RESOURCE_ROOTS
+    );
 }
 
 #[test]
@@ -154,6 +169,52 @@ fn malformed_execution_query_resources_fail_closed() {
             .is_err()
     );
     assert!(GuildResourceUri::parse("guild://queries/executions/unknown/5").is_err());
+}
+
+#[test]
+fn contract_surface_v1_query_helpers_stay_exact() {
+    assert_eq!(
+        CONTRACT_SURFACE_V1_CORE_EXECUTION_QUERY_STATUS_SEGMENTS,
+        ["succeeded", "failed", "partial", "rejected"]
+    );
+    assert_eq!(
+        CONTRACT_SURFACE_V1_CORE_EXECUTION_QUERY_PATTERNS,
+        [
+            "guild://queries/executions/recent/{limit}",
+            "guild://queries/executions/failures/recent/{limit}",
+            "guild://queries/executions/by-status/{status}/{limit}",
+            "guild://queries/executions/by-skill/{namespace}/{name}/{limit}",
+        ]
+    );
+}
+
+#[test]
+fn contract_surface_v1_identity_terms_stay_exact() {
+    assert_eq!(
+        CONTRACT_SURFACE_V1_CORE_REQUESTED_SKILL_REF_FIELDS,
+        ["key", "version_req"]
+    );
+    assert_eq!(
+        CONTRACT_SURFACE_V1_CORE_RESOLVED_SKILL_REF_FIELDS,
+        ["key", "version", "digest"]
+    );
+    assert_eq!(
+        CONTRACT_SURFACE_V1_CORE_HOST_MINTED_EXECUTION_FIELDS,
+        ["execution_id"]
+    );
+    assert_eq!(
+        CONTRACT_SURFACE_V1_CORE_NON_AUTHORITATIVE_CORRELATION_FIELDS,
+        ["request_id", "trace_id"]
+    );
+}
+
+#[test]
+fn presentation_status_spellings_stay_exact() {
+    assert_eq!(PRESENTATION_STATUS_PROOF_BACKED, "proof-backed");
+    assert_eq!(PRESENTATION_STATUS_UPPER_BOUND, "upper-bound");
+    assert_eq!(PRESENTATION_STATUS_LINKED, "linked");
+    assert_eq!(PRESENTATION_STATUS_UNLINKED, "unlinked");
+    assert_eq!(PRESENTATION_STATUS_REFUSED, "refused");
 }
 
 #[test]

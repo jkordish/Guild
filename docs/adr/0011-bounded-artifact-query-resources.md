@@ -3,6 +3,8 @@
 - Status: accepted
 - Date: 2026-03-17
 
+For the frozen runtime URI and query-resource contract in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
+
 ## Context
 
 Guild already persists durable host-owned execution and evidence artifacts and already exposes direct artifact reads through Guild resources, guest `read-resource`, and MCP `resources/read`.

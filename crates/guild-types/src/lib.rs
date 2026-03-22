@@ -418,6 +418,69 @@ pub const GUILD_OBJECT_RECORD_URI_PREFIX: &str = "guild://objects/records/";
 pub const GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX: &str = "/metadata";
 pub const GUILD_EXECUTION_QUERY_URI_PREFIX: &str = "guild://queries/executions/";
 pub const MAX_EXECUTION_QUERY_LIMIT: usize = 50;
+pub const CONTRACT_SURFACE_V1_CORE_RESOURCE_ROOTS: [&str; 4] = [
+    GUILD_EXECUTION_URI_PREFIX,
+    GUILD_OBJECT_BLOB_URI_PREFIX,
+    GUILD_OBJECT_RECORD_URI_PREFIX,
+    GUILD_EXECUTION_QUERY_URI_PREFIX,
+];
+pub const CONTRACT_SURFACE_V1_CORE_EXECUTION_QUERY_PATTERNS: [&str; 4] = [
+    "guild://queries/executions/recent/{limit}",
+    "guild://queries/executions/failures/recent/{limit}",
+    "guild://queries/executions/by-status/{status}/{limit}",
+    "guild://queries/executions/by-skill/{namespace}/{name}/{limit}",
+];
+pub const EXECUTION_QUERY_STATUS_SUCCEEDED: &str = "succeeded";
+pub const EXECUTION_QUERY_STATUS_FAILED: &str = "failed";
+pub const EXECUTION_QUERY_STATUS_PARTIAL: &str = "partial";
+pub const EXECUTION_QUERY_STATUS_REJECTED: &str = "rejected";
+pub const CONTRACT_SURFACE_V1_CORE_EXECUTION_QUERY_STATUS_SEGMENTS: [&str; 4] = [
+    EXECUTION_QUERY_STATUS_SUCCEEDED,
+    EXECUTION_QUERY_STATUS_FAILED,
+    EXECUTION_QUERY_STATUS_PARTIAL,
+    EXECUTION_QUERY_STATUS_REJECTED,
+];
+pub const CONTRACT_SURFACE_V1_CORE_REQUESTED_SKILL_REF_FIELDS: [&str; 2] = ["key", "version_req"];
+pub const CONTRACT_SURFACE_V1_CORE_RESOLVED_SKILL_REF_FIELDS: [&str; 3] =
+    ["key", "version", "digest"];
+pub const CONTRACT_SURFACE_V1_CORE_HOST_MINTED_EXECUTION_FIELDS: [&str; 1] = ["execution_id"];
+pub const CONTRACT_SURFACE_V1_CORE_NON_AUTHORITATIVE_CORRELATION_FIELDS: [&str; 2] =
+    ["request_id", "trace_id"];
+pub const SUPPORT_STATUS_SUPPORTED: &str = "supported";
+pub const SUPPORT_STATUS_BOUNDED: &str = "bounded";
+pub const SUPPORT_STATUS_PARTIAL: &str = "partial";
+pub const SUPPORT_STATUS_UNSUPPORTED: &str = "unsupported";
+pub const SUPPORT_STATUS_NOT_PROVEN: &str = "not_proven";
+pub const TOKEN_LINKAGE_STATUS_PROOF_BACKED: &str = "proof_backed";
+pub const TOKEN_LINKAGE_STATUS_UPPER_BOUND_FALLBACK: &str = "upper_bound_fallback";
+pub const LINKAGE_STATUS_PROOF_LINKED: &str = "proof_linked";
+pub const LINKAGE_STATUS_UNLINKED: &str = "unlinked";
+pub const LINKAGE_STATUS_NOT_MEASURED_ON_REAL_PATH: &str = "not_measured_on_real_path";
+pub const LINKED_PATH_PROOF_LINKED: &str = "proof_linked";
+pub const LINKED_PATH_FALLBACK_UNLINKED: &str = "fallback_unlinked";
+pub const LINKED_PATH_PROOF_ONLY: &str = "proof_only";
+pub const NEGATIVE_CLAIM_STATUS_COVERAGE_LIMITED: &str = "coverage_limited";
+pub const NEGATIVE_CLAIM_STATUS_UNVERIFIABLE: &str = "unverifiable";
+pub const NEGATIVE_CLAIM_STATUS_NOT_PROVABLE: &str = "not_provable";
+pub const NEGATIVE_CLAIM_STATUS_COVERAGE_LIMITED_OR_UNVERIFIABLE: &str =
+    "coverage_limited_or_unverifiable";
+pub const PRESENTATION_STATUS_PROOF_BACKED: &str = "proof-backed";
+pub const PRESENTATION_STATUS_UPPER_BOUND: &str = "upper-bound";
+pub const PRESENTATION_STATUS_LINKED: &str = "linked";
+pub const PRESENTATION_STATUS_UNLINKED: &str = "unlinked";
+pub const PRESENTATION_STATUS_REFUSED: &str = "refused";
+
+#[must_use]
+pub fn presentation_status_label(machine_status: &str) -> Option<&'static str> {
+    match machine_status {
+        TOKEN_LINKAGE_STATUS_PROOF_BACKED => Some(PRESENTATION_STATUS_PROOF_BACKED),
+        TOKEN_LINKAGE_STATUS_UPPER_BOUND_FALLBACK => Some(PRESENTATION_STATUS_UPPER_BOUND),
+        LINKAGE_STATUS_PROOF_LINKED => Some(PRESENTATION_STATUS_LINKED),
+        LINKAGE_STATUS_UNLINKED => Some(PRESENTATION_STATUS_UNLINKED),
+        PRESENTATION_STATUS_REFUSED => Some(PRESENTATION_STATUS_REFUSED),
+        _ => None,
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -579,6 +642,16 @@ pub enum GuildResourceScope {
 }
 
 impl GuildResourceScope {
+    #[must_use]
+    pub const fn all() -> &'static [Self; 4] {
+        &[
+            Self::Execution,
+            Self::ObjectBlob,
+            Self::ObjectRecord,
+            Self::ExecutionQuery,
+        ]
+    }
+
     /// Parse an exact canonical Guild resource scope root.
     ///
     /// # Errors
@@ -1982,6 +2055,13 @@ pub enum ExecutionStatus {
     Rejected,
 }
 
+impl ExecutionStatus {
+    #[must_use]
+    pub const fn all_queryable() -> &'static [Self; 4] {
+        &[Self::Succeeded, Self::Failed, Self::Partial, Self::Rejected]
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExecutionPhase {
@@ -2340,19 +2420,19 @@ fn string_schema(format: Option<&str>, description: Option<&str>) -> Schema {
 
 fn execution_status_label(status: &ExecutionStatus) -> &'static str {
     match status {
-        ExecutionStatus::Succeeded => "succeeded",
-        ExecutionStatus::Failed => "failed",
-        ExecutionStatus::Partial => "partial",
-        ExecutionStatus::Rejected => "rejected",
+        ExecutionStatus::Succeeded => EXECUTION_QUERY_STATUS_SUCCEEDED,
+        ExecutionStatus::Failed => EXECUTION_QUERY_STATUS_FAILED,
+        ExecutionStatus::Partial => EXECUTION_QUERY_STATUS_PARTIAL,
+        ExecutionStatus::Rejected => EXECUTION_QUERY_STATUS_REJECTED,
     }
 }
 
 fn parse_execution_query_status(segment: &str) -> Result<ExecutionStatus, GuildResourceParseError> {
     match segment {
-        "succeeded" => Ok(ExecutionStatus::Succeeded),
-        "failed" => Ok(ExecutionStatus::Failed),
-        "partial" => Ok(ExecutionStatus::Partial),
-        "rejected" => Ok(ExecutionStatus::Rejected),
+        EXECUTION_QUERY_STATUS_SUCCEEDED => Ok(ExecutionStatus::Succeeded),
+        EXECUTION_QUERY_STATUS_FAILED => Ok(ExecutionStatus::Failed),
+        EXECUTION_QUERY_STATUS_PARTIAL => Ok(ExecutionStatus::Partial),
+        EXECUTION_QUERY_STATUS_REJECTED => Ok(ExecutionStatus::Rejected),
         _ => Err(GuildResourceParseError::new(format!(
             "unsupported execution query status `{segment}`"
         ))),
