@@ -1,0 +1,821 @@
+{
+  "kind": "guild.m9_patent_packet",
+  "version": "1.0.0",
+  "packet_id": "m9-patent-packet-from-measured-behavior",
+  "source_of_truth": {
+    "benchmark_matrix": "docs/schemas/draft-v1/benchmark_matrix.json",
+    "benchmark_report": "docs/benchmarking/m8-real-path-benchmark.md",
+    "support_matrix": "docs/schemas/draft-v1/family_support_matrix.json",
+    "specs": "SPECS.md"
+  },
+  "documents": [
+    {
+      "id": "invention_brief",
+      "path": "docs/patent/m9-invention-brief.md",
+      "required_terms": [
+        "fail-closed",
+        "read-resource",
+        "http-request",
+        "invoke-skill",
+        "log-write",
+        "emit-evidence",
+        "not_proven"
+      ],
+      "forbidden_terms": [
+        "secure by design",
+        "patentable"
+      ]
+    },
+    {
+      "id": "technical_delta",
+      "path": "docs/patent/m9-technical-delta.md",
+      "required_terms": [
+        "upper-bound",
+        "proof_backed",
+        "unlinked",
+        "not_measured_on_real_path",
+        "fail-closed"
+      ],
+      "forbidden_terms": [
+        "secure by design",
+        "patentable"
+      ]
+    },
+    {
+      "id": "prior_art_kill_matrix",
+      "path": "docs/patent/m9-prior-art-kill-matrix.md",
+      "required_terms": [
+        "technical delta",
+        "not a legal opinion"
+      ],
+      "forbidden_terms": [
+        "patentable"
+      ]
+    },
+    {
+      "id": "claim_ladder",
+      "path": "docs/patent/m9-claim-ladder.md",
+      "required_terms": [
+        "measured_supported_now",
+        "architecture_supported_but_not_yet_measured",
+        "not_claimable_yet"
+      ],
+      "forbidden_terms": [
+        "patentable"
+      ]
+    },
+    {
+      "id": "evidence_map",
+      "path": "docs/patent/m9-evidence-map.md",
+      "required_terms": [
+        "benchmark_matrix.json",
+        "family_support_matrix.json",
+        "crates/guild-runner/tests/live_proofs.rs",
+        "crates/guild-runner/examples/live_proof_scenarios.rs"
+      ],
+      "forbidden_terms": [
+        "patentable"
+      ]
+    },
+    {
+      "id": "non_claims",
+      "path": "docs/patent/m9-non-claims.md",
+      "required_terms": [
+        "No runtime-general proof claim across all families.",
+        "No broad `emit-evidence` live-proof claim.",
+        "No runtime-general delegated-token enforcement claim."
+      ],
+      "forbidden_terms": [
+        "patentable"
+      ]
+    },
+    {
+      "id": "figures",
+      "path": "docs/patent/m9-figures.md",
+      "required_terms": [
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5"
+      ],
+      "forbidden_terms": [
+        "patentable"
+      ]
+    },
+    {
+      "id": "m10_next",
+      "path": "docs/patent/m9-m10-next.md",
+      "required_terms": [
+        "M10",
+        "Freeze the M9 packet artifact set"
+      ],
+      "forbidden_terms": [
+        "patentable"
+      ]
+    }
+  ],
+  "measured_frontier": {
+    "supported_proof_linked_slice_ids": [
+      "read-resource-immutable-guild-roots",
+      "http-request-loopback-ip-get-explicit-port",
+      "http-request-loopback-ip-get-default-port",
+      "http-request-localhost-get-explicit-port",
+      "http-request-localhost-head-explicit-port",
+      "http-request-loopback-ip-head-explicit-port",
+      "http-request-loopback-ip-head-default-port",
+      "invoke-skill-single-child-zero-authority"
+    ],
+    "supported_proof_only_slice_ids": [
+      "log-write-observed-info-level"
+    ],
+    "unsupported_or_not_proven_slice_ids": [
+      "http-request-redirect-driven-execution",
+      "invoke-skill-multi-child-fan-out",
+      "emit-evidence-single-emission-replay-unavailable"
+    ],
+    "fail_closed_wall_ids": [
+      "http-request-no-replay-fixture",
+      "read-resource-query-root-shrink-unsupported",
+      "invoke-skill-child-authority-unsupported"
+    ]
+  },
+  "claim_concepts": [
+    {
+      "id": "c1-primary-method-fail-closed-admission-bounded-proof-linkage",
+      "status": "measured_supported_now",
+      "measured_supported_slice_ids": [
+        "read-resource-immutable-guild-roots",
+        "http-request-loopback-ip-get-explicit-port",
+        "http-request-loopback-ip-get-default-port",
+        "http-request-localhost-get-explicit-port",
+        "http-request-localhost-head-explicit-port",
+        "http-request-loopback-ip-head-explicit-port",
+        "http-request-loopback-ip-head-default-port",
+        "invoke-skill-single-child-zero-authority"
+      ],
+      "proof_only_slice_ids": [],
+      "unsupported_or_not_proven_slice_ids": [
+        "http-request-redirect-driven-execution",
+        "invoke-skill-multi-child-fan-out",
+        "emit-evidence-single-emission-replay-unavailable"
+      ],
+      "fail_closed_wall_ids": [
+        "http-request-no-replay-fixture",
+        "read-resource-query-root-shrink-unsupported",
+        "invoke-skill-child-authority-unsupported"
+      ],
+      "support_matrix_refs": [
+        {
+          "family": "read-resource",
+          "kind": "layer",
+          "name": "live_minimization_proof",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "http-request",
+          "kind": "layer",
+          "name": "live_minimization_proof",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "layer",
+          "name": "live_minimization_proof",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "emit-evidence",
+          "kind": "layer",
+          "name": "live_minimization_proof",
+          "expected_status": "not_proven"
+        },
+        {
+          "family": "log-write",
+          "kind": "layer",
+          "name": "live_minimization_proof",
+          "expected_status": "supported"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/live_proofs.rs",
+          "names": [
+            "read_resource_live_proof_is_bounded_and_live_linkable",
+            "http_request_live_proof_is_bounded_with_replay",
+            "http_request_live_proof_is_bounded_with_replay_for_default_port_shape",
+            "http_request_live_proof_is_bounded_with_replay_for_localhost_explicit_port_shape",
+            "http_request_live_proof_is_bounded_with_replay_for_localhost_head_explicit_port_shape",
+            "http_request_live_proof_is_bounded_with_replay_for_head_shape",
+            "http_request_live_proof_is_bounded_with_replay_for_head_default_port_shape",
+            "invoke_skill_live_proof_is_bounded_for_single_zero_authority_child",
+            "http_request_live_proof_stays_not_proven_for_redirect_shape",
+            "invoke_skill_live_proof_stays_not_proven_for_multi_child_shape",
+            "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable"
+          ]
+        }
+      ],
+      "scenario_refs": [
+        {
+          "path": "crates/guild-runner/examples/live_proof_scenarios.rs",
+          "names": [
+            "read-resource-bounded",
+            "http-request-bounded",
+            "http-request-default-port-bounded",
+            "http-request-localhost-bounded",
+            "http-request-localhost-head-bounded",
+            "http-request-head-bounded",
+            "http-request-head-default-port-bounded",
+            "invoke-skill-single-child-bounded",
+            "http-request-redirect-unsupported",
+            "invoke-skill-multi-child-unsupported",
+            "emit-evidence-single-sink-replay-unavailable"
+          ]
+        }
+      ],
+      "codepaths": [
+        "crates/guild-runner/src/live_proof.rs",
+        "crates/guild-draft-truth/src/benchmark.rs",
+        "crates/guild-draft-truth/src/support_matrix.rs"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map"
+      ]
+    },
+    {
+      "id": "c2-family-specific-bounded-proof-slices",
+      "status": "measured_supported_now",
+      "measured_supported_slice_ids": [
+        "read-resource-immutable-guild-roots",
+        "http-request-loopback-ip-get-explicit-port",
+        "http-request-loopback-ip-get-default-port",
+        "http-request-localhost-get-explicit-port",
+        "http-request-localhost-head-explicit-port",
+        "http-request-loopback-ip-head-explicit-port",
+        "http-request-loopback-ip-head-default-port",
+        "invoke-skill-single-child-zero-authority"
+      ],
+      "proof_only_slice_ids": [
+        "log-write-observed-info-level"
+      ],
+      "unsupported_or_not_proven_slice_ids": [],
+      "fail_closed_wall_ids": [],
+      "support_matrix_refs": [
+        {
+          "family": "read-resource",
+          "kind": "proven_slice",
+          "name": "immutable-guild-execution-object-record-roots",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "http-request",
+          "kind": "proven_slice",
+          "name": "loopback-ip-get-explicit-port",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "http-request",
+          "kind": "proven_slice",
+          "name": "loopback-ip-get-default-port",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "http-request",
+          "kind": "proven_slice",
+          "name": "localhost-get-explicit-port",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "http-request",
+          "kind": "proven_slice",
+          "name": "localhost-head-explicit-port",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "http-request",
+          "kind": "proven_slice",
+          "name": "loopback-ip-head-explicit-port",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "http-request",
+          "kind": "proven_slice",
+          "name": "loopback-ip-head-default-port",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "proven_slice",
+          "name": "single-child-zero-authority-inspect-child",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "log-write",
+          "kind": "proven_slice",
+          "name": "observed-discrete-levels",
+          "expected_status": "exact_minimal"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/composition.rs",
+          "names": [
+            "single_child_invoke_fixture_persists_exact_child_digest_binding"
+          ]
+        }
+      ],
+      "scenario_refs": [],
+      "codepaths": [
+        "crates/guild-runner/src/live_proof.rs"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map"
+      ]
+    },
+    {
+      "id": "c3-deterministic-replay-or-comparator-basis",
+      "status": "measured_supported_now",
+      "measured_supported_slice_ids": [],
+      "proof_only_slice_ids": [],
+      "unsupported_or_not_proven_slice_ids": [
+        "emit-evidence-single-emission-replay-unavailable"
+      ],
+      "fail_closed_wall_ids": [
+        "http-request-no-replay-fixture",
+        "read-resource-query-root-shrink-unsupported",
+        "invoke-skill-child-authority-unsupported"
+      ],
+      "support_matrix_refs": [
+        {
+          "family": "http-request",
+          "kind": "layer",
+          "name": "live_minimization_proof",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "proven_slice",
+          "name": "single-child-zero-authority-inspect-child",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "emit-evidence",
+          "kind": "not_proven_shape",
+          "name": "single-emission-local-object-store-replay-mismatch"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/live_proofs.rs",
+          "names": [
+            "http_request_live_proof_stays_not_proven_without_replay",
+            "http_request_live_proof_stays_not_proven_for_unsupported_comparator",
+            "invoke_skill_live_proof_stays_not_proven_for_child_authority",
+            "invoke_skill_live_proof_stays_not_proven_for_unsupported_comparator",
+            "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable"
+          ]
+        }
+      ],
+      "scenario_refs": [
+        {
+          "path": "crates/guild-runner/examples/live_proof_scenarios.rs",
+          "names": [
+            "http-request-no-replay",
+            "read-resource-query-unsupported",
+            "invoke-skill-child-authority-unsupported",
+            "emit-evidence-single-sink-replay-unavailable"
+          ]
+        }
+      ],
+      "codepaths": [
+        "crates/guild-runner/src/live_proof.rs"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map"
+      ]
+    },
+    {
+      "id": "c4-proof-backed-token-issuance-versus-explicit-upper-bound-fallback",
+      "status": "measured_supported_now",
+      "measured_supported_slice_ids": [
+        "read-resource-immutable-guild-roots",
+        "http-request-loopback-ip-get-explicit-port",
+        "http-request-loopback-ip-get-default-port",
+        "http-request-localhost-get-explicit-port",
+        "http-request-localhost-head-explicit-port",
+        "http-request-loopback-ip-head-explicit-port",
+        "http-request-loopback-ip-head-default-port",
+        "invoke-skill-single-child-zero-authority"
+      ],
+      "proof_only_slice_ids": [],
+      "unsupported_or_not_proven_slice_ids": [
+        "http-request-redirect-driven-execution",
+        "invoke-skill-multi-child-fan-out",
+        "emit-evidence-single-emission-replay-unavailable"
+      ],
+      "fail_closed_wall_ids": [],
+      "support_matrix_refs": [
+        {
+          "family": "read-resource",
+          "kind": "layer",
+          "name": "plan_proof_token_linkage",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "http-request",
+          "kind": "layer",
+          "name": "plan_proof_token_linkage",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "layer",
+          "name": "plan_proof_token_linkage",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "emit-evidence",
+          "kind": "layer",
+          "name": "plan_proof_token_linkage",
+          "expected_status": "not_proven"
+        },
+        {
+          "family": "log-write",
+          "kind": "layer",
+          "name": "plan_proof_token_linkage",
+          "expected_status": "unsupported"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/live_proofs.rs",
+          "names": [
+            "http_request_live_proof_stays_not_proven_for_redirect_shape",
+            "invoke_skill_live_proof_stays_not_proven_for_multi_child_shape",
+            "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable"
+          ]
+        }
+      ],
+      "scenario_refs": [],
+      "codepaths": [
+        "crates/guild-draft-truth/src/benchmark.rs"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map"
+      ]
+    },
+    {
+      "id": "c5-proof-linked-witness-generation-versus-unlinked-witnesses",
+      "status": "measured_supported_now",
+      "measured_supported_slice_ids": [
+        "read-resource-immutable-guild-roots",
+        "http-request-loopback-ip-get-explicit-port",
+        "http-request-loopback-ip-get-default-port",
+        "http-request-localhost-get-explicit-port",
+        "http-request-localhost-head-explicit-port",
+        "http-request-loopback-ip-head-explicit-port",
+        "http-request-loopback-ip-head-default-port",
+        "invoke-skill-single-child-zero-authority"
+      ],
+      "proof_only_slice_ids": [],
+      "unsupported_or_not_proven_slice_ids": [
+        "http-request-redirect-driven-execution",
+        "invoke-skill-multi-child-fan-out",
+        "emit-evidence-single-emission-replay-unavailable"
+      ],
+      "fail_closed_wall_ids": [],
+      "support_matrix_refs": [
+        {
+          "family": "read-resource",
+          "kind": "layer",
+          "name": "proof_witness_linkage",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "http-request",
+          "kind": "layer",
+          "name": "proof_witness_linkage",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "layer",
+          "name": "proof_witness_linkage",
+          "expected_status": "bounded"
+        },
+        {
+          "family": "emit-evidence",
+          "kind": "layer",
+          "name": "proof_witness_linkage",
+          "expected_status": "not_proven"
+        },
+        {
+          "family": "log-write",
+          "kind": "layer",
+          "name": "proof_witness_linkage",
+          "expected_status": "unsupported"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/inspect_slice.rs",
+          "names": [
+            "emitted_evidence_is_deduped_by_digest_and_resources_are_readable",
+            "emit_evidence_denials_are_host_owned_rejections"
+          ]
+        },
+        {
+          "path": "crates/guild-runner/tests/http_requests.rs",
+          "names": [
+            "localhost_happy_path_records_resolution_binding"
+          ]
+        },
+        {
+          "path": "crates/guild-runner/tests/composition.rs",
+          "names": [
+            "composite_skill_invokes_child_and_records_host_owned_metadata"
+          ]
+        }
+      ],
+      "scenario_refs": [],
+      "codepaths": [
+        "crates/guild-runner/src/live_proof.rs"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map"
+      ]
+    },
+    {
+      "id": "c6-explicit-fail-closed-unsupported-walls-and-reason-codes",
+      "status": "measured_supported_now",
+      "measured_supported_slice_ids": [],
+      "proof_only_slice_ids": [],
+      "unsupported_or_not_proven_slice_ids": [
+        "http-request-redirect-driven-execution",
+        "invoke-skill-multi-child-fan-out",
+        "emit-evidence-single-emission-replay-unavailable"
+      ],
+      "fail_closed_wall_ids": [
+        "http-request-no-replay-fixture",
+        "read-resource-query-root-shrink-unsupported",
+        "invoke-skill-child-authority-unsupported"
+      ],
+      "support_matrix_refs": [
+        {
+          "family": "read-resource",
+          "kind": "not_proven_shape",
+          "name": "execution-query-shrink"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "not_proven_shape",
+          "name": "multi-child-fan-out"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "not_proven_shape",
+          "name": "child-authority-use"
+        },
+        {
+          "family": "emit-evidence",
+          "kind": "not_proven_shape",
+          "name": "single-emission-local-object-store-replay-mismatch"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/http_requests.rs",
+          "names": [
+            "redirect_is_denied_when_following_is_not_granted",
+            "redirect_target_must_still_be_granted"
+          ]
+        },
+        {
+          "path": "crates/guild-runner/tests/composition.rs",
+          "names": [
+            "child_capabilities_must_be_satisfied_by_parent_grants",
+            "unsupported_capability_grants_are_rejected_before_execution"
+          ]
+        },
+        {
+          "path": "crates/guild-runner/tests/inspect_slice.rs",
+          "names": [
+            "unsupported_manifest_capabilities_are_rejected_before_execution",
+            "filesystem_grants_are_rejected_before_execution"
+          ]
+        }
+      ],
+      "scenario_refs": [],
+      "codepaths": [
+        "crates/guild-runner/src/live_proof.rs",
+        "crates/guild-runner/tests/http_requests.rs",
+        "crates/guild-runner/tests/composition.rs"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map",
+        "non_claims"
+      ]
+    },
+    {
+      "id": "c7-machine-readable-support-frontier-and-benchmark-surface",
+      "status": "measured_supported_now",
+      "measured_supported_slice_ids": [],
+      "proof_only_slice_ids": [],
+      "unsupported_or_not_proven_slice_ids": [],
+      "fail_closed_wall_ids": [],
+      "support_matrix_refs": [
+        {
+          "family": "http-request",
+          "kind": "layer",
+          "name": "live_minimization_proof",
+          "expected_status": "bounded"
+        }
+      ],
+      "test_refs": [],
+      "scenario_refs": [],
+      "codepaths": [
+        "crates/guild-draft-truth/src/support_matrix.rs",
+        "crates/guild-draft-truth/src/benchmark.rs",
+        "xtask/src/main.rs"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map"
+      ]
+    },
+    {
+      "id": "c8-proof-only-log-write-slice-without-real-path-downstream-linkage",
+      "status": "measured_supported_now",
+      "measured_supported_slice_ids": [],
+      "proof_only_slice_ids": [
+        "log-write-observed-info-level"
+      ],
+      "unsupported_or_not_proven_slice_ids": [],
+      "fail_closed_wall_ids": [],
+      "support_matrix_refs": [
+        {
+          "family": "log-write",
+          "kind": "proven_slice",
+          "name": "observed-discrete-levels",
+          "expected_status": "exact_minimal"
+        },
+        {
+          "family": "log-write",
+          "kind": "layer",
+          "name": "plan_proof_token_linkage",
+          "expected_status": "unsupported"
+        },
+        {
+          "family": "log-write",
+          "kind": "layer",
+          "name": "proof_witness_linkage",
+          "expected_status": "unsupported"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/live_proofs.rs",
+          "names": [
+            "log_write_live_proof_reduces_to_observed_levels_and_leaves_emit_evidence_residual"
+          ]
+        }
+      ],
+      "scenario_refs": [
+        {
+          "path": "crates/guild-runner/examples/live_proof_scenarios.rs",
+          "names": [
+            "log-write-reduced"
+          ]
+        }
+      ],
+      "codepaths": [
+        "crates/guild-runner/src/live_proof.rs"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map"
+      ]
+    },
+    {
+      "id": "c9-real-path-log-write-downstream-linkage",
+      "status": "architecture_supported_but_not_yet_measured",
+      "measured_supported_slice_ids": [],
+      "proof_only_slice_ids": [
+        "log-write-observed-info-level"
+      ],
+      "unsupported_or_not_proven_slice_ids": [],
+      "fail_closed_wall_ids": [],
+      "support_matrix_refs": [
+        {
+          "family": "log-write",
+          "kind": "layer",
+          "name": "token_issuance_basis",
+          "expected_status": "supported"
+        },
+        {
+          "family": "log-write",
+          "kind": "layer",
+          "name": "witness_generation",
+          "expected_status": "supported"
+        },
+        {
+          "family": "log-write",
+          "kind": "layer",
+          "name": "plan_proof_token_linkage",
+          "expected_status": "unsupported"
+        },
+        {
+          "family": "log-write",
+          "kind": "layer",
+          "name": "proof_witness_linkage",
+          "expected_status": "unsupported"
+        }
+      ],
+      "test_refs": [],
+      "scenario_refs": [],
+      "codepaths": [
+        "crates/guild-draft-truth/src/benchmark.rs",
+        "crates/guild-draft-truth/src/support_matrix.rs"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map",
+        "non_claims"
+      ]
+    },
+    {
+      "id": "c10-not-claimable-yet-surfaces",
+      "status": "not_claimable_yet",
+      "measured_supported_slice_ids": [],
+      "proof_only_slice_ids": [],
+      "unsupported_or_not_proven_slice_ids": [
+        "http-request-redirect-driven-execution",
+        "invoke-skill-multi-child-fan-out",
+        "emit-evidence-single-emission-replay-unavailable"
+      ],
+      "fail_closed_wall_ids": [
+        "http-request-no-replay-fixture",
+        "read-resource-query-root-shrink-unsupported",
+        "invoke-skill-child-authority-unsupported"
+      ],
+      "support_matrix_refs": [
+        {
+          "family": "emit-evidence",
+          "kind": "layer",
+          "name": "live_minimization_proof",
+          "expected_status": "not_proven"
+        },
+        {
+          "family": "emit-evidence",
+          "kind": "layer",
+          "name": "plan_proof_token_linkage",
+          "expected_status": "not_proven"
+        },
+        {
+          "family": "emit-evidence",
+          "kind": "layer",
+          "name": "proof_witness_linkage",
+          "expected_status": "not_proven"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "not_proven_shape",
+          "name": "multi-child-fan-out"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "not_proven_shape",
+          "name": "child-authority-use"
+        }
+      ],
+      "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/live_proofs.rs",
+          "names": [
+            "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable",
+            "invoke_skill_live_proof_stays_not_proven_for_multi_child_shape",
+            "invoke_skill_live_proof_stays_not_proven_for_child_authority",
+            "http_request_live_proof_stays_not_proven_for_redirect_shape",
+            "http_request_live_proof_stays_not_proven_without_replay"
+          ]
+        }
+      ],
+      "scenario_refs": [],
+      "codepaths": [
+        "crates/guild-runner/src/live_proof.rs",
+        "docs/schemas/draft-v1/README.md"
+      ],
+      "required_documents": [
+        "claim_ladder",
+        "evidence_map",
+        "non_claims"
+      ]
+    }
+  ]
+}

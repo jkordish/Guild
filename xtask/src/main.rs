@@ -2,27 +2,40 @@
 #![allow(clippy::multiple_crate_versions)]
 
 use anyhow::{Context, Result, bail};
-use guild_draft_truth::{ArtifactMode, TruthAction, run_truth_action};
+use guild_draft_truth::{ArtifactMode, TruthAction, run_patent_packet_check, run_truth_action};
 
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let Some(command) = args.next() else {
         bail!(
-            "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>"
+            "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check"
         );
     };
+    if command == "patent-packet" {
+        let Some(mode_name) = args.next() else {
+            bail!("usage: cargo run -p xtask -- patent-packet check");
+        };
+        if args.next().is_some() {
+            bail!("unexpected extra arguments");
+        }
+        if mode_name != "check" {
+            bail!("unknown patent-packet mode `{mode_name}`");
+        }
+        return run_patent_packet_check()
+            .with_context(|| "failed to run `cargo run -p xtask -- patent-packet check`");
+    }
     if command != "draft-v1" {
         bail!("unknown xtask command `{command}`");
     }
 
     let Some(action_name) = args.next() else {
         bail!(
-            "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>"
+            "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check"
         );
     };
     let Some(mode_name) = args.next() else {
         bail!(
-            "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>"
+            "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check"
         );
     };
     if args.next().is_some() {

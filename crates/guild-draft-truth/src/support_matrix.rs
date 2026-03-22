@@ -15,24 +15,31 @@ use crate::util::{
 const OUTPUT_NAME: &str = "family_support_matrix.json";
 
 pub fn run(mode: ArtifactMode) -> Result<()> {
-    let path = draft_v1_dir().join(OUTPUT_NAME);
-    let generated = build_matrix()?;
     match mode {
         ArtifactMode::Check => {
-            let existing = read_json(&path)?;
-            if existing != generated {
-                bail!("{OUTPUT_NAME} is out of date with the Rust-native generator");
-            }
+            checked_matrix()?;
             println!("{OUTPUT_NAME} validates cleanly.");
             Ok(())
         }
         ArtifactMode::Write => {
+            let path = draft_v1_dir().join(OUTPUT_NAME);
+            let generated = build_matrix()?;
             ensure_parent_dir(&path)?;
             write_json_pretty(&path, &generated)?;
             println!("Wrote {}", path.display());
             Ok(())
         }
     }
+}
+
+pub fn checked_matrix() -> Result<Value> {
+    let path = draft_v1_dir().join(OUTPUT_NAME);
+    let existing = read_json(&path)?;
+    let generated = build_matrix()?;
+    if existing != generated {
+        bail!("{OUTPUT_NAME} is out of date with the Rust-native generator");
+    }
+    Ok(existing)
 }
 
 pub fn build_matrix() -> Result<Value> {

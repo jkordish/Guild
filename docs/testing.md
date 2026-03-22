@@ -53,6 +53,12 @@ cargo run -q -p xtask -- draft-v1 compatibility check
 cargo run -q -p xtask -- draft-v1 benchmark check
 ```
 
+The measured patent-packet consistency check is separate:
+
+```bash
+cargo run -q -p xtask -- patent-packet check
+```
+
 The artifact-regeneration commands are:
 
 ```bash
@@ -71,6 +77,14 @@ The Rust-native truth gate now checks the current repo-backed draft-v1 truth sur
 - `family_support_matrix.json` stays aligned with the canonical live-family vocabulary and the current bounded draft-v1 layer statuses
 - `compatibility_matrix.md` stays aligned with the fail-closed hard-requirement precheck logic, including the omitted and unsupported `wit_worlds` probes
 - `benchmark_matrix.json` and `m8-real-path-benchmark.md` stay aligned with the real Rust live-proof scenarios, including supported slices, unsupported fallback slices, and explicit fail-closed walls
+
+The separate patent-packet check now validates the downstream M9 drafting bundle conservatively:
+
+- every packet artifact under `docs/patent/` exists
+- local markdown cross-references resolve
+- packet evidence references point to real benchmark slices, support-matrix entries, tests, scenarios, and codepaths
+- the packet frontier does not widen support beyond the checked `family_support_matrix.json` and `benchmark_matrix.json`
+- the packet still names the unsupported or `not_proven` families, slices, and fail-closed walls instead of smoothing them away
 
 The older draft-harness M5, M6, and M7 Python engines still exist for manual example work, but they are no longer the standard repo truth gate. Their shared-secret HMAC MAC model and bounded fixture behavior remain draft-local rather than runtime-general.
 

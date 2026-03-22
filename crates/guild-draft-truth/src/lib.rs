@@ -1,5 +1,6 @@
 pub mod benchmark;
 pub mod compatibility;
+pub mod patent_packet;
 pub mod schemas;
 pub mod support_matrix;
 pub mod surface;
@@ -29,4 +30,8 @@ pub fn run_truth_action(action: TruthAction, mode: ArtifactMode) -> Result<()> {
         TruthAction::Compatibility => compatibility::run(mode),
         TruthAction::Benchmark => benchmark::run(mode),
     }
+}
+
+pub fn run_patent_packet_check() -> Result<()> {
+    patent_packet::check()
 }

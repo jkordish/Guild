@@ -6,6 +6,8 @@ Guild now has a real local inspect-only skills fabric, not just a contract sketc
 
 What is materially real today:
 
+- a measured M9 patent packet now exists under `docs/patent/`, anchored to the checked support matrix, benchmark matrix, benchmark report, and frozen contract vocabulary rather than to aspirational architecture prose
+- the repo now has a separate Rust-native `patent-packet check` path under `xtask` plus `crates/guild-draft-truth` that validates packet artifact existence, markdown cross-reference resolution, claim-to-evidence references, and fail-closed measured-frontier discipline without turning the packet into a primary runtime-contract source
 - source skills install into digest-pinned executable records
 - installed skills can be exported as signed portable local bundles and imported into a fresh Guild root
 - `RequestedSkillRef` resolves to `ResolvedSkillRef` before execution
@@ -53,6 +55,7 @@ The trust boundary remains intact:
 
 Where the repository is now:
 
+- M9 is now materially complete as a measured technical packet, not filing hygiene: the repo carries a counsel-facing invention brief, technical-delta memo, prior-art/delta matrix, claim ladder, evidence map, figure source set, and exclusions memo under `docs/patent/`, all backed by a machine-readable packet manifest and checked by `xtask`
 - Guild has completed a real local inspect-first vertical slice, not just a type skeleton.
 - Phase 1 of the roadmap is materially done: local install, resolve, execute, persist, evidence, and `guild.inspect` all work end to end.
 - Parts of Phase 2 are already real: composite execution, alias-scoped child invocation, and durable child lineage are working.
