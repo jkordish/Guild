@@ -16,18 +16,27 @@ Canonical local proof flow:
 
 ```bash
 cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution install examples/skills/hello-inspect
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution inspect skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution read guild://executions/<execution-id>
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution run skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution install examples/skills/explain-execution
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution run skill://example/explain-execution@^0.1 --input-json '{"execution_uri":"guild://executions/<execution-id>","include_first_evidence":true}' --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/","guild://objects/records/"],"resource_kinds":["execution","object"]}}]}'
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution get guild://executions/<execution-id>
+```
+
+Replace `<execution-id>` with the durable execution id returned by the `hello-inspect` run receipt.
+
+Deterministic helper proofs:
+
+```bash
 cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
 cargo run -p guild-mcp --example explain_execution_local
 cargo run -p guild-mcp --example explain_failure_local
 cargo run -p guild-mcp --example codex_explain_execution_local
 ```
 
-That command:
+That flow:
 
 1. installs `hello-inspect`
-2. runs `guild inspect` to produce a stored `guild://executions/...` URI
+2. runs `guild run` to produce a stored `guild://executions/...` URI
 3. installs `explain-execution`
 4. executes `explain-execution` against the stored URI through the same Wasmtime-backed path
 

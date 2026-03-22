@@ -683,6 +683,39 @@ impl LocalRegistry {
             .collect())
     }
 
+    /// List recent evidence-record metadata from the local object store.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the evidence-record store cannot be scanned or a
+    /// persisted metadata record cannot be read and parsed.
+    pub fn list_recent_evidence_records(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<EvidenceRecord>, RegistryError> {
+        Ok(load_evidence_records_sorted(&self.root)?
+            .into_iter()
+            .take(limit)
+            .collect())
+    }
+
+    /// List stored content-addressed object-blob metadata from the local object
+    /// store.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the object-blob store cannot be scanned or a blob
+    /// metadata record cannot be read and parsed.
+    pub fn list_object_blobs(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<EvidenceBlobRecord>, RegistryError> {
+        Ok(load_object_blobs_sorted(&self.root)?
+            .into_iter()
+            .take(limit)
+            .collect())
+    }
+
     /// Execute a bounded local query over persisted execution records.
     ///
     /// # Errors
@@ -1541,6 +1574,62 @@ fn load_execution_records_sorted(root: &Path) -> Result<Vec<ExecutionRecord>, Re
     Ok(records)
 }
 
+fn load_evidence_records_sorted(root: &Path) -> Result<Vec<EvidenceRecord>, RegistryError> {
+    let records_root = object_records_root(root);
+    if !records_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut records = Vec::new();
+    for entry in WalkDir::new(&records_root).min_depth(1).max_depth(1) {
+        let entry = entry.map_err(|error| {
+            RegistryError::new(
+                "object-record-scan-failed",
+                "failed while scanning evidence record metadata",
+            )
+            .with_detail(error.to_string())
+        })?;
+
+        if !entry.file_type().is_file() || !entry.file_name().to_string_lossy().ends_with(".json") {
+            continue;
+        }
+
+        let metadata = load_evidence_record_from_path(entry.path())?;
+        records.push(metadata);
+    }
+
+    records.sort_by(compare_evidence_records_desc);
+    Ok(records)
+}
+
+fn load_object_blobs_sorted(root: &Path) -> Result<Vec<EvidenceBlobRecord>, RegistryError> {
+    let blobs_root = object_blobs_root(root);
+    if !blobs_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut records = Vec::new();
+    for entry in WalkDir::new(&blobs_root).min_depth(1).max_depth(1) {
+        let entry = entry.map_err(|error| {
+            RegistryError::new(
+                "object-blob-scan-failed",
+                "failed while scanning object blobs",
+            )
+            .with_detail(error.to_string())
+        })?;
+
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+
+        let metadata = read_blob_metadata(&entry.path().join("blob.json"))?;
+        records.push(metadata);
+    }
+
+    records.sort_by(compare_object_blobs_desc);
+    Ok(records)
+}
+
 fn execution_record_matches_query(
     record: &ExecutionRecord,
     query: &ExecutionQueryResource,
@@ -1587,6 +1676,14 @@ fn compare_optional_timestamps_desc(left: Option<&str>, right: Option<&str>) -> 
         (None, Some(_)) => Ordering::Greater,
         (None, None) => Ordering::Equal,
     }
+}
+
+fn compare_evidence_records_desc(left: &EvidenceRecord, right: &EvidenceRecord) -> Ordering {
+    right.uri.cmp(&left.uri)
+}
+
+fn compare_object_blobs_desc(left: &EvidenceBlobRecord, right: &EvidenceBlobRecord) -> Ordering {
+    right.sha256.cmp(&left.sha256)
 }
 
 fn compare_rfc3339_timestamps_desc(left: &str, right: &str) -> Ordering {
@@ -1827,7 +1924,25 @@ fn load_evidence_record_from_root(root: &Path, uri: &str) -> Result<EvidenceReco
         }
     })?;
 
-    serde_json::from_str(&contents).map_err(|error| {
+    parse_evidence_record_contents(&contents)
+}
+
+fn load_evidence_record_from_path(path: &Path) -> Result<EvidenceRecord, RegistryError> {
+    let contents = fs::read_to_string(path).map_err(|error| {
+        RegistryError::new(
+            "object-metadata-read-failed",
+            "failed to read evidence record metadata",
+        )
+        .with_detail(serde_json::json!({
+            "path": path.display().to_string(),
+            "cause": error.to_string(),
+        }))
+    })?;
+    parse_evidence_record_contents(&contents)
+}
+
+fn parse_evidence_record_contents(contents: &str) -> Result<EvidenceRecord, RegistryError> {
+    serde_json::from_str(contents).map_err(|error| {
         RegistryError::new(
             "object-metadata-parse-failed",
             "failed to parse evidence record metadata",

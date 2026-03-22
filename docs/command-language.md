@@ -22,9 +22,12 @@ This document is the source of truth for Guild's public command and URI grammar.
 Guild's first-class local verbs are:
 
 - `guild init`
-- `guild inspect`
-- `guild read`
-- `guild list`
+- `guild show`
+- `guild run`
+- `guild ls`
+- `guild get`
+- `guild why`
+- `guild verify`
 - `guild install`
 - `guild export`
 - `guild import`
@@ -33,6 +36,12 @@ Guild's first-class local verbs are:
 - `guild trust ...`
 - `guild codex ...`
 - `guild mcp serve --stdio`
+
+Legacy aliases remain supported in this milestone for compatibility:
+
+- `guild inspect` -> `guild run`
+- `guild read` -> `guild get`
+- `guild list` -> `guild ls`
 
 Intentionally deferred in this milestone:
 
@@ -70,6 +79,8 @@ Canonical public skill syntax uses:
 
 The CLI also accepts bare `<namespace>/<name>@<version-or-range>` as operator convenience syntax, but docs, examples, and future site snippets should prefer the canonical `skill://...` form.
 
+When unambiguous across installed skills, the CLI also accepts short `<name>@<version-or-range>` refs such as `hello-inspect@^0.1`.
+
 ## Registry Roots
 
 Registry root selection is local-first and overrideable:
@@ -83,6 +94,47 @@ Registry root selection is local-first and overrideable:
 - read-only commands do not initialize a missing root
 - write-oriented commands may create the selected root honestly
 
+## Output Contract
+
+Default human output is compact and status-forward:
+
+- one-screen by default for common `show`, `run`, `why`, and `ls` cases
+- short refs and short ids by default rather than full digest and URI dumps
+- stable vocabulary across commands:
+  - `proof-backed`
+  - `upper-bound`
+  - `linked`
+  - `unlinked`
+  - `bounded`
+  - `not_proven`
+  - `refused`
+
+Shared output controls for the human-summary commands (`show`, `run`, `ls`, `why`, and `verify`):
+
+- `--json` for structured machine-readable output
+- `--porcelain` for stable one-line machine-readable output
+- `-v` for important ids, digests, and source details
+- `-vv` for deeper technical detail
+- `--debug` for full internal detail
+- `--color auto|always|never`
+- `NO_COLOR` disables ANSI color even when the terminal would otherwise allow it
+
+`guild get` stays a raw resource-read path rather than a styled summary view. It supports `--json`, `--porcelain`, and `--output <path>`.
+
+Color is semantic only and never the only signal:
+
+- green: success, verified, proven
+- yellow: bounded, fallback, partial
+- red: refused, invalid, unsupported
+- cyan: refs and ids
+- magenta: runtime and type
+- dim: metadata
+
+`guild run` keeps payload and human status separate:
+
+- stdout carries the payload or structured result
+- stderr carries the human execution summary
+
 ## Trust Scope
 
 `guild trust ...` uses the current local trust model only:
@@ -94,18 +146,48 @@ Registry root selection is local-first and overrideable:
 - no transparency-log semantics
 - no remote publisher policy management
 
-## List
+## Primary Views
 
-`guild list` is the thin local summary view for state already owned by the registry:
+`guild show` is the primary non-executing inspection view:
 
-- `guild list`
-  Shows installed skills plus recent persisted executions.
-- `guild list skills`
+- `guild show skill://example/hello-inspect@^0.1`
+- `guild show hello-inspect@^0.1`
+- `guild show exec:<id-prefix>`
+- `guild show evidence:<id-prefix>`
+- `guild show obj:<sha-prefix>`
+
+`guild ls` is the thin local summary view for state already owned by the registry:
+
+- `guild ls`
+  Shows a compact summary of installed skills plus recent persisted executions.
+- `guild ls skills`
   Shows installed skills only.
-- `guild list executions --limit 20`
+- `guild ls runs --limit 20`
   Shows recent persisted execution activity only.
+- `guild ls evidence --limit 20`
+  Shows stored evidence records only.
+- `guild ls objects --limit 20`
+  Shows stored content-addressed objects only.
 
-Guild does not currently expose a live loaded-runtime module registry. The honest current answer to "what is loaded here?" is recent persisted execution activity.
+Guild does not currently expose a live loaded-runtime module registry. The honest current answer to "what is loaded here?" is installed executable state plus durable records that already exist.
+
+`guild get` is the machine-facing resource read path:
+
+- `guild get guild://executions/<id>`
+- `guild get exec:<id-prefix>`
+- `guild get evidence:<id-prefix>`
+- `guild get obj:<sha-prefix>`
+
+`guild why` is the persisted execution explanation path:
+
+- `guild why exec:<id-prefix>`
+- `guild why guild://executions/<id>`
+
+`guild verify` stays intentionally narrow:
+
+- `guild verify skill://example/hello-inspect@^0.1`
+
+Signed-plan verification remains under `guild trust verify-plan`.
 
 ## Hero Flows
 
@@ -114,20 +196,27 @@ Happy path:
 ```bash
 guild init
 guild install examples/skills/hello-inspect
-guild inspect \
+guild show skill://example/hello-inspect@^0.1
+guild run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
   --json
-guild read guild://executions/<execution-id>
+guild ls runs --limit 5
+guild why exec:<execution-id-prefix>
+guild get guild://executions/<execution-id>
+guild verify skill://example/hello-inspect@^0.1
 ```
 
 What this teaches:
 
 - install is source-to-installed, not source-to-runtime bypass
-- inspect executes a `skill://...` ref, not an ambient tool name
+- show is the primary non-executing summary path for installed skills and stored Guild refs
+- run executes a `skill://...` ref, not an ambient tool name
 - success produces a durable `guild://executions/...` receipt
-- read goes back through the same Guild resource backend used by MCP and guest `read-resource`
+- why explains one stored execution record through host-owned durable state
+- get goes back through the same Guild resource backend used by MCP and guest `read-resource`
+- verify reports installed trust and verification state for skill refs only
 
 For deterministic local proofs and CI, continue to pass an explicit temp or target root:
 
@@ -140,6 +229,14 @@ Host-owned denial:
 
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/hero
+cargo run -q -p guild-mcp --bin guild -- run \
+  skill://example/hello-inspect@^0.1 \
+  --input-json '{"name":"Ada"}'
+```
+
+Legacy alias form:
+
+```bash
 cargo run -q -p guild-mcp --bin guild -- inspect \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}'
@@ -200,9 +297,15 @@ What this teaches:
 The CLI is intentionally thin:
 
 - `guild init` creates the selected local registry layout and may explicitly fold in Codex config writes against the running `guild` binary
-- `guild inspect` uses the same `GuildMcpFacade::inspect` path used by `guild.inspect`
-- `guild read` uses the same local resource backend used by MCP `resources/read` and guest `read-resource`
-- `guild list` uses the local registry's installed-skill view plus recent persisted execution records
+- `guild show` summarizes installed skills and stored Guild refs without creating a second inspection substrate
+- `guild run` uses the same `GuildMcpFacade::inspect` path used by `guild.inspect`
+- `guild inspect` remains a legacy alias for that same execution path
+- `guild get` uses the same local resource backend used by MCP `resources/read` and guest `read-resource`
+- `guild read` remains a legacy alias for that same resource path
+- `guild ls` uses the local registry's installed-skill view plus persisted execution/evidence/object records
+- `guild list` remains a legacy alias for that same listing path
+- `guild why` reads one persisted execution record directly from durable host-owned data
+- `guild verify` summarizes installed verification and trust state for skill refs only
 - `guild install` uses `LocalSourceInstaller`
 - `guild export` and `guild push` export signed installed state from `LocalRegistry`
 - `guild import` and `guild pull` re-run the existing trust, signature, and install checks

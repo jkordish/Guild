@@ -1,10 +1,10 @@
 use std::fmt::Write as _;
 use std::fs;
-use std::io;
+use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
-use guild_manifest::PublisherRef;
+use guild_manifest::{PublisherRef, SkillManifest};
 use guild_registry::{
     ExecutionPlanSignatureEnvelope, ExecutionPlanVerification, InstalledSkill,
     InstalledTrustMetadata, InstalledVerificationRecord, LocalPublisherIdentity, LocalRegistry,
@@ -14,12 +14,22 @@ use guild_registry::{
 };
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
-    CapabilityGrantSet, ExecutionRecord, ExecutionStatus, InstalledVerificationState,
-    LocalTrustTier, RequestedSkillRef, ResourceReadResult,
+    CapabilityGrantSet, EvidenceBlobRecord, EvidenceRecord, ExecutionRecord, ExecutionStatus,
+    GuildResourceUri, InstalledVerificationState, LocalTrustTier, RequestedSkillRef,
+    ResourceReadResult, SkillKey, VersionRequirement,
 };
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::cli_presenter::{
+    PresentationOptions, StreamKind, SupportSummary, WhySummary, color_mode, render_evidence_list,
+    render_evidence_show, render_execution_show, render_execution_why, render_object_show,
+    render_objects_list, render_run_porcelain, render_run_status, render_runs_list,
+    render_skill_porcelain, render_skill_show, render_skill_verify, render_skills_list,
+    render_verify_porcelain, render_why_porcelain,
+    resolved_skill_ref as presenter_resolved_skill_ref, runtime_label as presenter_runtime_label,
+    short_execution_ref, support_summary_for_execution, support_summary_for_skill, why_summary,
+};
 use crate::codex::{
     CodexConfigWriteResult, CodexServerConfig, DEFAULT_CODEX_SERVER_NAME,
     installed_guild_server_config, running_guild_binary, write_codex_config,
@@ -27,7 +37,7 @@ use crate::codex::{
 use crate::codex_cli::{print_setup_details, project_codex_config_path};
 use crate::paths;
 use crate::server::{GuildMcpServer, ServerStartupError};
-use crate::{CLI_BINARY_NAME, GuildMcpFacade, InspectRequest, InspectResponse, McpError};
+use crate::{CLI_BINARY_NAME, GuildMcpFacade, InspectRequest, McpError};
 
 const DEFAULT_TENANT_ID: &str = "local";
 const DEFAULT_ACTOR_ID: &str = "guild-cli";
@@ -84,6 +94,15 @@ struct GlobalOptions {
     registry_root: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct RenderFlags {
+    json_output: bool,
+    porcelain_output: bool,
+    verbosity: u8,
+    debug: bool,
+    color: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct InitCodexOutput {
     guild_binary: String,
@@ -102,6 +121,50 @@ struct InitCommandOutput {
 struct InspectCommandOutput {
     summary: String,
     record: ExecutionRecord,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ShowSkillCommandOutput {
+    requested_ref: String,
+    resolved_skill: String,
+    display_name: String,
+    description: String,
+    runtime: String,
+    support: SupportSummary,
+    trust: InstalledTrustMetadata,
+    verification: Option<InstalledVerificationRecord>,
+    manifest: SkillManifest,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ShowExecutionCommandOutput {
+    summary: String,
+    support: SupportSummary,
+    record: ExecutionRecord,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ShowEvidenceCommandOutput {
+    record: EvidenceRecord,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ShowObjectCommandOutput {
+    record: EvidenceBlobRecord,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct WhyCommandOutput {
+    summary: WhySummary,
+    record: ExecutionRecord,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct VerifySkillCommandOutput {
+    requested_ref: String,
+    resolved_skill: String,
+    trust: InstalledTrustMetadata,
+    verification: Option<InstalledVerificationRecord>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -155,6 +218,38 @@ struct ListExecutionsOutput {
     limit: usize,
     execution_count: usize,
     executions: Vec<ListedExecutionOutput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ListedEvidenceOutput {
+    uri: String,
+    produced_by_execution: Option<String>,
+    mime_type: String,
+    sha256: String,
+    size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ListedObjectOutput {
+    uri: String,
+    sha256: String,
+    size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ListEvidenceOutput {
+    registry_root: String,
+    limit: usize,
+    evidence_count: usize,
+    evidence: Vec<ListedEvidenceOutput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ListObjectsOutput {
+    registry_root: String,
+    limit: usize,
+    object_count: usize,
+    objects: Vec<ListedObjectOutput>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -229,6 +324,17 @@ struct TrustVerifyPlanOutput {
     signed_digest: StructuredDigest,
 }
 
+#[derive(Debug, Clone)]
+enum ShowTarget {
+    Skill {
+        requested: String,
+        installed: InstalledSkill,
+    },
+    Execution(ExecutionRecord),
+    Evidence(EvidenceRecord),
+    Object(EvidenceBlobRecord),
+}
+
 /// Run the first-class local `guild` CLI against the current process args.
 ///
 /// # Errors
@@ -250,10 +356,13 @@ pub fn run(
             print_usage();
             Ok(())
         }
+        "show" => run_show(&args[1..], &global, env_registry_root),
+        "run" | "inspect" => run_run_command(&args[1..], &global, env_registry_root),
+        "ls" | "list" => run_ls(&args[1..], &global, env_registry_root),
+        "get" | "read" => run_get(&args[1..], &global, env_registry_root),
+        "why" => run_why(&args[1..], &global, env_registry_root),
+        "verify" => run_verify(&args[1..], &global, env_registry_root),
         "init" => run_init(&args[1..], &global, env_registry_root),
-        "inspect" => run_inspect(&args[1..], &global, env_registry_root),
-        "read" => run_read(&args[1..], &global, env_registry_root),
-        "list" => run_list(&args[1..], &global, env_registry_root),
         "install" => run_install(&args[1..], &global, env_registry_root),
         "export" => run_export(&args[1..], &global, env_registry_root),
         "import" => run_import(&args[1..], &global, env_registry_root),
@@ -288,6 +397,732 @@ fn parse_global_options(
     }
 
     Ok((GlobalOptions { registry_root }, remaining))
+}
+
+fn run_show(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if args.is_empty() || is_help(args[0].as_str()) {
+        print_show_usage();
+        return Ok(());
+    }
+
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    let registry = build_existing_registry(&registry_root)?;
+    let (render, positional) = parse_render_flags(args)?;
+    if positional.len() != 1 {
+        return Err(CliError::new("`guild show` requires exactly one ref"));
+    }
+
+    let target = resolve_show_target(&registry, &positional[0])?;
+    if render.json_output {
+        match target {
+            ShowTarget::Skill {
+                requested,
+                installed,
+            } => {
+                print_json(&ShowSkillCommandOutput {
+                    requested_ref: requested,
+                    resolved_skill: presenter_resolved_skill_ref(&installed.resolved_ref),
+                    display_name: installed.manifest.display_name.clone(),
+                    description: installed.manifest.description.clone(),
+                    runtime: presenter_runtime_label(&installed.manifest),
+                    support: support_summary_for_skill(&installed),
+                    trust: installed.trust.clone(),
+                    verification: installed.verification.clone(),
+                    manifest: installed.manifest.clone(),
+                })?;
+            }
+            ShowTarget::Execution(record) => {
+                print_json(&ShowExecutionCommandOutput {
+                    summary: record.output.as_ref().map_or_else(
+                        || record.policy_decision.summary.clone(),
+                        |output| output.summary.clone(),
+                    ),
+                    support: support_summary_for_execution(&record),
+                    record,
+                })?;
+            }
+            ShowTarget::Evidence(record) => print_json(&ShowEvidenceCommandOutput { record })?,
+            ShowTarget::Object(record) => print_json(&ShowObjectCommandOutput { record })?,
+        }
+        return Ok(());
+    }
+
+    if render.porcelain_output {
+        let line = match target {
+            ShowTarget::Skill { installed, .. } => render_skill_porcelain(&installed),
+            ShowTarget::Execution(record) => format!(
+                "show\texec\t{}\t{}\t{}",
+                record.receipt.execution_id,
+                status_label(&record.status),
+                short_execution_ref(&record)
+            ),
+            ShowTarget::Evidence(record) => format!(
+                "show\tevidence\t{}\t{}\t{}",
+                record.uri, record.mime_type, record.size_bytes
+            ),
+            ShowTarget::Object(record) => {
+                format!("show\tobject\t{}\t{}", record.sha256, record.size_bytes)
+            }
+        };
+        println!("{line}");
+        return Ok(());
+    }
+
+    let presentation = presentation_options(&render);
+    let text = match target {
+        ShowTarget::Skill {
+            requested,
+            installed,
+        } => render_skill_show(&installed, &requested, presentation, StreamKind::Stdout),
+        ShowTarget::Execution(record) => {
+            render_execution_show(&record, presentation, StreamKind::Stdout)
+        }
+        ShowTarget::Evidence(record) => {
+            render_evidence_show(&record, presentation, StreamKind::Stdout)
+        }
+        ShowTarget::Object(record) => render_object_show(&record, presentation, StreamKind::Stdout),
+    };
+    print!("{text}");
+    Ok(())
+}
+
+fn run_run_command(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if args.is_empty() || is_help(args[0].as_str()) {
+        print_run_usage();
+        return Ok(());
+    }
+
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    let mut render = RenderFlags::default();
+    let mut skill_ref = None;
+    let mut positional_input = None;
+    let mut input_json = None;
+    let mut input_file = None;
+    let mut grants_json = None;
+    let mut grants_file = None;
+    let mut tenant_id = DEFAULT_TENANT_ID.to_owned();
+    let mut actor_id = DEFAULT_ACTOR_ID.to_owned();
+    let mut index = 0;
+
+    while index < args.len() {
+        if consume_render_flag(args, &mut index, &mut render)? {
+            index += 1;
+            continue;
+        }
+
+        match args[index].as_str() {
+            "--input-json" => {
+                input_json = Some(next_value(args, &mut index, "--input-json")?.to_owned());
+            }
+            "--input-file" => {
+                input_file = Some(PathBuf::from(
+                    next_value(args, &mut index, "--input-file")?.to_owned(),
+                ));
+            }
+            "--grants-json" => {
+                grants_json = Some(next_value(args, &mut index, "--grants-json")?.to_owned());
+            }
+            "--grants-file" => {
+                grants_file = Some(PathBuf::from(
+                    next_value(args, &mut index, "--grants-file")?.to_owned(),
+                ));
+            }
+            "--tenant-id" => {
+                next_value(args, &mut index, "--tenant-id")?.clone_into(&mut tenant_id);
+            }
+            "--actor-id" => {
+                next_value(args, &mut index, "--actor-id")?.clone_into(&mut actor_id);
+            }
+            other if skill_ref.is_none() => {
+                skill_ref = Some(other.to_owned());
+            }
+            other if positional_input.is_none() => {
+                positional_input = Some(PathBuf::from(other));
+            }
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild run`: `{other}`"
+                )));
+            }
+        }
+        index += 1;
+    }
+
+    validate_render_flags(&render)?;
+    let requested = skill_ref.ok_or_else(|| CliError::new("`guild run` requires a skill ref"))?;
+    let registry = build_existing_registry(&registry_root)?;
+    let skill = resolve_requested_skill_ref(&registry, &requested)?;
+
+    if input_json.is_some() && input_file.is_some() {
+        return Err(CliError::new(
+            "use either --input-json or --input-file, not both",
+        ));
+    }
+    if grants_json.is_some() && grants_file.is_some() {
+        return Err(CliError::new(
+            "use either --grants-json or --grants-file, not both",
+        ));
+    }
+
+    let input = if let Some(path) = positional_input.as_deref() {
+        positional_input_value(path)?
+    } else {
+        read_json_input(input_json.as_deref(), input_file.as_deref())?
+            .unwrap_or_else(|| serde_json::json!({}))
+    };
+    let grants = read_json_value(grants_json.as_deref(), grants_file.as_deref())?
+        .map(parse_capability_grants)
+        .transpose()?
+        .unwrap_or_default();
+
+    let facade = build_facade(&registry_root)?;
+    let response = facade
+        .inspect(InspectRequest::new(
+            skill, input, tenant_id, actor_id, grants,
+        ))
+        .map_err(cli_error_from_mcp)?;
+
+    let output = InspectCommandOutput {
+        summary: response.summary.clone(),
+        record: response.structured_content.clone(),
+    };
+
+    if render.json_output {
+        print_json(&output)?;
+        return Ok(());
+    }
+
+    let payload = run_payload_text(&response.structured_content)?;
+    if !payload.is_empty() {
+        print!("{payload}");
+        if !payload.ends_with('\n') {
+            println!();
+        }
+    }
+
+    let presentation = presentation_options(&render);
+    let status = if render.porcelain_output {
+        render_run_porcelain(&response.structured_content)
+    } else {
+        render_run_status(
+            &response.structured_content,
+            presentation,
+            StreamKind::Stderr,
+        )
+    };
+    eprintln!("{status}");
+    Ok(())
+}
+
+fn run_ls(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if !args.is_empty() && is_help(args[0].as_str()) {
+        print_ls_usage();
+        return Ok(());
+    }
+
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    let registry = build_existing_registry(&registry_root)?;
+    let (render, positional, limit) = parse_ls_args(args)?;
+    match positional.first().map(String::as_str) {
+        Some("skills") => run_ls_skills(&registry, &registry_root, &render),
+        Some("runs") | Some("executions") => run_ls_runs(&registry, &registry_root, &render, limit),
+        Some("objects") => run_ls_objects(&registry, &registry_root, &render, limit),
+        Some("evidence") => run_ls_evidence(&registry, &registry_root, &render, limit),
+        None => run_ls_summary(&registry, &registry_root, &render),
+        Some(other) => Err(CliError::new(format!("unknown ls category `{other}`"))),
+    }
+}
+
+fn run_get(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if args.is_empty() || is_help(args[0].as_str()) {
+        print_get_usage();
+        return Ok(());
+    }
+
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    let registry = build_existing_registry(&registry_root)?;
+    let mut render = RenderFlags::default();
+    let mut output_path = None;
+    let mut ref_input = None;
+    let mut index = 0;
+
+    while index < args.len() {
+        if consume_render_flag(args, &mut index, &mut render)? {
+            index += 1;
+            continue;
+        }
+        match args[index].as_str() {
+            "--output" => {
+                output_path = Some(PathBuf::from(next_value(args, &mut index, "--output")?));
+            }
+            other if ref_input.is_none() => ref_input = Some(other.to_owned()),
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild get`: `{other}`"
+                )));
+            }
+        }
+        index += 1;
+    }
+
+    validate_render_flags(&render)?;
+    let ref_input = ref_input.ok_or_else(|| CliError::new("`guild get` requires a ref"))?;
+    let uri = resolve_resource_ref(&registry, &ref_input)?;
+    let resource = registry.read_resource(&uri)?;
+
+    if let Some(path) = output_path {
+        fs::write(&path, &resource.bytes)?;
+        if render.json_output {
+            let output = ReadCommandOutput {
+                uri: resource.uri,
+                mime_type: resource.mime_type,
+                sha256: resource.sha256,
+                text: None,
+                bytes_base64: None,
+                output_path: Some(path.display().to_string()),
+            };
+            print_json(&output)?;
+        } else if render.porcelain_output {
+            println!("get\t{}\t{}", uri, path.display());
+        } else {
+            println!("wrote {} to {}", uri, path.display());
+        }
+        return Ok(());
+    }
+
+    if render.json_output {
+        let text = String::from_utf8(resource.bytes.clone()).ok();
+        let output = ReadCommandOutput {
+            uri: resource.uri,
+            mime_type: resource.mime_type,
+            sha256: resource.sha256,
+            text,
+            bytes_base64: Some(base64::engine::general_purpose::STANDARD.encode(resource.bytes)),
+            output_path: None,
+        };
+        print_json(&output)?;
+    } else if render.porcelain_output {
+        println!(
+            "get\t{}\t{}\t{}",
+            resource.uri,
+            resource.mime_type,
+            resource.bytes.len()
+        );
+    } else {
+        print_read_text(&resource)?;
+    }
+    Ok(())
+}
+
+fn run_why(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if args.is_empty() || is_help(args[0].as_str()) {
+        print_why_usage();
+        return Ok(());
+    }
+
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    let registry = build_existing_registry(&registry_root)?;
+    let (render, positional) = parse_render_flags(args)?;
+    if positional.len() != 1 {
+        return Err(CliError::new(
+            "`guild why` requires exactly one execution ref",
+        ));
+    }
+
+    let uri = resolve_execution_ref(&registry, &positional[0])?;
+    let execution_id = execution_id_from_uri(&uri)?;
+    let record = registry.load_execution_record(&execution_id)?;
+
+    if render.json_output {
+        print_json(&WhyCommandOutput {
+            summary: why_summary(&record),
+            record,
+        })?;
+    } else if render.porcelain_output {
+        println!("{}", render_why_porcelain(&record));
+    } else {
+        let presentation = presentation_options(&render);
+        print!(
+            "{}",
+            render_execution_why(&record, presentation, StreamKind::Stdout)
+        );
+    }
+    Ok(())
+}
+
+fn run_verify(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if args.is_empty() || is_help(args[0].as_str()) {
+        print_verify_usage();
+        return Ok(());
+    }
+
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    let registry = build_existing_registry(&registry_root)?;
+    let (render, positional) = parse_render_flags(args)?;
+    if positional.len() != 1 {
+        return Err(CliError::new(
+            "`guild verify` requires exactly one skill ref",
+        ));
+    }
+
+    let requested = positional[0].clone();
+    let skill = resolve_requested_skill_ref(&registry, &requested)?;
+    let installed = registry.resolve(&skill)?;
+
+    if render.json_output {
+        print_json(&VerifySkillCommandOutput {
+            requested_ref: requested,
+            resolved_skill: presenter_resolved_skill_ref(&installed.resolved_ref),
+            trust: installed.trust.clone(),
+            verification: installed.verification.clone(),
+        })?;
+    } else if render.porcelain_output {
+        println!("{}", render_verify_porcelain(&installed));
+    } else {
+        let presentation = presentation_options(&render);
+        print!(
+            "{}",
+            render_skill_verify(&installed, presentation, StreamKind::Stdout)
+        );
+    }
+    Ok(())
+}
+
+fn parse_ls_args(args: &[String]) -> Result<(RenderFlags, Vec<String>, usize), CliError> {
+    let mut render = RenderFlags::default();
+    let mut positional = Vec::new();
+    let mut limit = DEFAULT_LIST_EXECUTIONS_LIMIT;
+    let mut index = 0;
+
+    while index < args.len() {
+        if consume_render_flag(args, &mut index, &mut render)? {
+            index += 1;
+            continue;
+        }
+
+        match args[index].as_str() {
+            "--limit" => {
+                let value = next_value(args, &mut index, "--limit")?;
+                limit = value.parse::<usize>().map_err(|_| {
+                    CliError::new(format!(
+                        "invalid value for `--limit`: `{value}` is not a positive integer"
+                    ))
+                })?;
+                if limit == 0 {
+                    return Err(CliError::new("`guild ls` requires --limit > 0"));
+                }
+            }
+            other => positional.push(other.to_owned()),
+        }
+        index += 1;
+    }
+
+    validate_render_flags(&render)?;
+    Ok((render, positional, limit))
+}
+
+fn parse_render_flags(args: &[String]) -> Result<(RenderFlags, Vec<String>), CliError> {
+    let mut render = RenderFlags::default();
+    let mut positional = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        if consume_render_flag(args, &mut index, &mut render)? {
+            index += 1;
+            continue;
+        }
+        positional.push(args[index].clone());
+        index += 1;
+    }
+    validate_render_flags(&render)?;
+    Ok((render, positional))
+}
+
+fn consume_render_flag(
+    args: &[String],
+    index: &mut usize,
+    render: &mut RenderFlags,
+) -> Result<bool, CliError> {
+    let argument = args[*index].as_str();
+    match argument {
+        "--json" => {
+            render.json_output = true;
+            Ok(true)
+        }
+        "--porcelain" => {
+            render.porcelain_output = true;
+            Ok(true)
+        }
+        "--debug" => {
+            render.debug = true;
+            Ok(true)
+        }
+        "--color" => {
+            render.color = Some(next_value(args, index, "--color")?.to_owned());
+            Ok(true)
+        }
+        _ if argument.starts_with("--color=") => {
+            render.color = Some(argument.trim_start_matches("--color=").to_owned());
+            Ok(true)
+        }
+        _ if argument.starts_with("-v") && argument.chars().skip(1).all(|ch| ch == 'v') => {
+            render.verbosity = render
+                .verbosity
+                .saturating_add((argument.len().saturating_sub(1)) as u8);
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn validate_render_flags(render: &RenderFlags) -> Result<(), CliError> {
+    if render.json_output && render.porcelain_output {
+        return Err(CliError::new("use either --json or --porcelain, not both"));
+    }
+    if let Some(color) = render.color.as_deref()
+        && !matches!(color, "auto" | "always" | "never")
+    {
+        return Err(CliError::new(format!(
+            "unsupported --color mode `{color}`; expected auto, always, or never"
+        )));
+    }
+    Ok(())
+}
+
+fn presentation_options(render: &RenderFlags) -> PresentationOptions {
+    PresentationOptions {
+        verbosity: render.verbosity,
+        debug: render.debug,
+        color: color_mode(
+            std::env::var_os("NO_COLOR").is_some(),
+            render.color.as_deref(),
+        ),
+        stdout_is_terminal: io::stdout().is_terminal(),
+        stderr_is_terminal: io::stderr().is_terminal(),
+    }
+}
+
+fn run_ls_summary(
+    registry: &LocalRegistry,
+    registry_root: &Path,
+    render: &RenderFlags,
+) -> Result<(), CliError> {
+    let installed = registry.installed();
+    let records = registry.list_recent_execution_records(DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT)?;
+    if render.json_output {
+        let output = ListSummaryOutput {
+            registry_root: registry_root.display().to_string(),
+            installed_count: installed.len(),
+            installed: summarize_listed_installed_skills(installed),
+            recent_execution_limit: DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT,
+            recent_execution_count: records.len(),
+            recent_executions: summarize_listed_executions(&records),
+        };
+        print_json(&output)
+    } else if render.porcelain_output {
+        for skill in installed {
+            println!("{}", render_skill_porcelain(skill));
+        }
+        for record in &records {
+            println!("{}", render_run_porcelain(record));
+        }
+        Ok(())
+    } else {
+        let presentation = presentation_options(render);
+        println!("skills");
+        print!(
+            "{}",
+            render_skills_list(installed, presentation, StreamKind::Stdout)
+        );
+        println!("runs");
+        print!(
+            "{}",
+            render_runs_list(&records, presentation, StreamKind::Stdout)
+        );
+        Ok(())
+    }
+}
+
+fn run_ls_skills(
+    registry: &LocalRegistry,
+    registry_root: &Path,
+    render: &RenderFlags,
+) -> Result<(), CliError> {
+    let installed = registry.installed();
+    if render.json_output {
+        let output = ListSkillsOutput {
+            registry_root: registry_root.display().to_string(),
+            installed_count: installed.len(),
+            installed: summarize_listed_installed_skills(installed),
+        };
+        print_json(&output)
+    } else if render.porcelain_output {
+        for skill in installed {
+            println!("{}", render_skill_porcelain(skill));
+        }
+        Ok(())
+    } else {
+        let presentation = presentation_options(render);
+        print!(
+            "{}",
+            render_skills_list(installed, presentation, StreamKind::Stdout)
+        );
+        Ok(())
+    }
+}
+
+fn run_ls_runs(
+    registry: &LocalRegistry,
+    registry_root: &Path,
+    render: &RenderFlags,
+    limit: usize,
+) -> Result<(), CliError> {
+    let records = registry.list_recent_execution_records(limit)?;
+    if render.json_output {
+        let output = ListExecutionsOutput {
+            registry_root: registry_root.display().to_string(),
+            limit,
+            execution_count: records.len(),
+            executions: summarize_listed_executions(&records),
+        };
+        print_json(&output)
+    } else if render.porcelain_output {
+        for record in &records {
+            println!("{}", render_run_porcelain(record));
+        }
+        Ok(())
+    } else {
+        let presentation = presentation_options(render);
+        print!(
+            "{}",
+            render_runs_list(&records, presentation, StreamKind::Stdout)
+        );
+        Ok(())
+    }
+}
+
+fn run_ls_evidence(
+    registry: &LocalRegistry,
+    registry_root: &Path,
+    render: &RenderFlags,
+    limit: usize,
+) -> Result<(), CliError> {
+    let records = registry.list_recent_evidence_records(limit)?;
+    if render.json_output {
+        let output = ListEvidenceOutput {
+            registry_root: registry_root.display().to_string(),
+            limit,
+            evidence_count: records.len(),
+            evidence: records
+                .iter()
+                .map(|record| ListedEvidenceOutput {
+                    uri: record.uri.clone(),
+                    produced_by_execution: record.produced_by_execution.clone(),
+                    mime_type: record.mime_type.clone(),
+                    sha256: record.sha256.clone(),
+                    size_bytes: record.size_bytes,
+                })
+                .collect(),
+        };
+        print_json(&output)
+    } else if render.porcelain_output {
+        for record in &records {
+            println!(
+                "evidence\t{}\t{}\t{}",
+                record.uri, record.mime_type, record.size_bytes
+            );
+        }
+        Ok(())
+    } else {
+        let presentation = presentation_options(render);
+        print!(
+            "{}",
+            render_evidence_list(&records, presentation, StreamKind::Stdout)
+        );
+        Ok(())
+    }
+}
+
+fn run_ls_objects(
+    registry: &LocalRegistry,
+    registry_root: &Path,
+    render: &RenderFlags,
+    limit: usize,
+) -> Result<(), CliError> {
+    let records = registry.list_object_blobs(limit)?;
+    if render.json_output {
+        let output = ListObjectsOutput {
+            registry_root: registry_root.display().to_string(),
+            limit,
+            object_count: records.len(),
+            objects: records
+                .iter()
+                .map(|record| ListedObjectOutput {
+                    uri: record.uri.clone(),
+                    sha256: record.sha256.clone(),
+                    size_bytes: record.size_bytes,
+                })
+                .collect(),
+        };
+        print_json(&output)
+    } else if render.porcelain_output {
+        for record in &records {
+            println!("object\t{}\t{}", record.sha256, record.size_bytes);
+        }
+        Ok(())
+    } else {
+        let presentation = presentation_options(render);
+        print!(
+            "{}",
+            render_objects_list(&records, presentation, StreamKind::Stdout)
+        );
+        Ok(())
+    }
+}
+
+fn run_payload_text(record: &ExecutionRecord) -> Result<String, CliError> {
+    let Some(output) = &record.output else {
+        return Ok(String::new());
+    };
+    match &output.structured {
+        Value::Null => Ok(String::new()),
+        Value::String(text) => Ok(text.clone()),
+        value => serde_json::to_string_pretty(value).map_err(CliError::from),
+    }
+}
+
+fn positional_input_value(path: &Path) -> Result<Value, CliError> {
+    let bytes = fs::read(path)?;
+    let text = String::from_utf8(bytes).map_err(|_| {
+        CliError::new("positional run input files must be valid UTF-8 or use --input-json")
+    })?;
+    match serde_json::from_str::<Value>(&text) {
+        Ok(value) => Ok(value),
+        Err(_) => Ok(Value::String(text)),
+    }
 }
 
 fn run_init(
@@ -366,317 +1201,6 @@ fn run_init(
     }
 
     Ok(())
-}
-
-fn run_list(
-    args: &[String],
-    global: &GlobalOptions,
-    env_registry_root: Option<String>,
-) -> Result<(), CliError> {
-    if !args.is_empty() && is_help(args[0].as_str()) {
-        print_list_usage();
-        return Ok(());
-    }
-
-    let registry_root = resolve_registry_root(global, env_registry_root)?;
-    match args.first().map(String::as_str) {
-        Some("skills") => run_list_skills(&args[1..], &registry_root),
-        Some("executions") => run_list_executions(&args[1..], &registry_root),
-        None | Some(_) => run_list_summary(args, &registry_root),
-    }
-}
-
-fn run_list_summary(args: &[String], registry_root: &Path) -> Result<(), CliError> {
-    let mut json_output = false;
-
-    for argument in args {
-        match argument.as_str() {
-            "--json" => json_output = true,
-            other => {
-                return Err(CliError::new(format!(
-                    "unexpected argument for `guild list`: `{other}`"
-                )));
-            }
-        }
-    }
-
-    let registry = build_existing_registry(registry_root)?;
-    let installed = summarize_listed_installed_skills(registry.installed());
-    let recent_records =
-        registry.list_recent_execution_records(DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT)?;
-    let recent_executions = summarize_listed_executions(&recent_records);
-    let output = ListSummaryOutput {
-        registry_root: registry_root.display().to_string(),
-        installed_count: installed.len(),
-        installed,
-        recent_execution_limit: DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT,
-        recent_execution_count: recent_executions.len(),
-        recent_executions,
-    };
-
-    if json_output {
-        print_json(&output)?;
-    } else {
-        print_list_summary_text(&output);
-    }
-
-    Ok(())
-}
-
-fn run_list_skills(args: &[String], registry_root: &Path) -> Result<(), CliError> {
-    let mut json_output = false;
-
-    for argument in args {
-        match argument.as_str() {
-            "--json" => json_output = true,
-            "--help" | "-h" => {
-                print_list_skills_usage();
-                return Ok(());
-            }
-            other => {
-                return Err(CliError::new(format!(
-                    "unexpected argument for `guild list skills`: `{other}`"
-                )));
-            }
-        }
-    }
-
-    let registry = build_existing_registry(registry_root)?;
-    let installed = summarize_listed_installed_skills(registry.installed());
-    let output = ListSkillsOutput {
-        registry_root: registry_root.display().to_string(),
-        installed_count: installed.len(),
-        installed,
-    };
-
-    if json_output {
-        print_json(&output)?;
-    } else {
-        print_list_skills_text(&output);
-    }
-
-    Ok(())
-}
-
-fn run_list_executions(args: &[String], registry_root: &Path) -> Result<(), CliError> {
-    let mut json_output = false;
-    let mut limit = DEFAULT_LIST_EXECUTIONS_LIMIT;
-    let mut index = 0;
-
-    while index < args.len() {
-        match args[index].as_str() {
-            "--limit" => {
-                let value = next_value(args, &mut index, "--limit")?;
-                limit = value.parse::<usize>().map_err(|_| {
-                    CliError::new(format!(
-                        "invalid value for `--limit`: `{value}` is not a positive integer"
-                    ))
-                })?;
-                if limit == 0 {
-                    return Err(CliError::new(
-                        "`guild list executions` requires --limit to be greater than zero",
-                    ));
-                }
-            }
-            "--json" => json_output = true,
-            "--help" | "-h" => {
-                print_list_executions_usage();
-                return Ok(());
-            }
-            other => {
-                return Err(CliError::new(format!(
-                    "unexpected argument for `guild list executions`: `{other}`"
-                )));
-            }
-        }
-        index += 1;
-    }
-
-    let registry = build_existing_registry(registry_root)?;
-    let records = registry.list_recent_execution_records(limit)?;
-    let executions = summarize_listed_executions(&records);
-    let output = ListExecutionsOutput {
-        registry_root: registry_root.display().to_string(),
-        limit,
-        execution_count: executions.len(),
-        executions,
-    };
-
-    if json_output {
-        print_json(&output)?;
-    } else {
-        print_list_executions_text(&output);
-    }
-
-    Ok(())
-}
-
-fn run_inspect(
-    args: &[String],
-    global: &GlobalOptions,
-    env_registry_root: Option<String>,
-) -> Result<(), CliError> {
-    if args.is_empty() || is_help(args[0].as_str()) {
-        print_inspect_usage();
-        return Ok(());
-    }
-
-    let registry_root = resolve_registry_root(global, env_registry_root)?;
-    let skill = parse_skill_ref(&args[0])?;
-    let mut input_json = None;
-    let mut input_file = None;
-    let mut grants_json = None;
-    let mut grants_file = None;
-    let mut tenant_id = DEFAULT_TENANT_ID.to_owned();
-    let mut actor_id = DEFAULT_ACTOR_ID.to_owned();
-    let mut json_output = false;
-    let mut index = 1;
-
-    while index < args.len() {
-        match args[index].as_str() {
-            "--input-json" => {
-                input_json = Some(next_value(args, &mut index, "--input-json")?.to_owned());
-            }
-            "--input-file" => {
-                input_file = Some(PathBuf::from(
-                    next_value(args, &mut index, "--input-file")?.to_owned(),
-                ));
-            }
-            "--grants-json" => {
-                grants_json = Some(next_value(args, &mut index, "--grants-json")?.to_owned());
-            }
-            "--grants-file" => {
-                grants_file = Some(PathBuf::from(
-                    next_value(args, &mut index, "--grants-file")?.to_owned(),
-                ));
-            }
-            "--tenant-id" => {
-                next_value(args, &mut index, "--tenant-id")?.clone_into(&mut tenant_id);
-            }
-            "--actor-id" => {
-                next_value(args, &mut index, "--actor-id")?.clone_into(&mut actor_id);
-            }
-            "--json" => {
-                json_output = true;
-            }
-            other => {
-                return Err(CliError::new(format!(
-                    "unexpected argument for `guild inspect`: `{other}`"
-                )));
-            }
-        }
-        index += 1;
-    }
-
-    if input_json.is_some() && input_file.is_some() {
-        return Err(CliError::new(
-            "use either --input-json or --input-file, not both",
-        ));
-    }
-
-    if grants_json.is_some() && grants_file.is_some() {
-        return Err(CliError::new(
-            "use either --grants-json or --grants-file, not both",
-        ));
-    }
-
-    let input = read_json_input(input_json.as_deref(), input_file.as_deref())?
-        .unwrap_or_else(|| serde_json::json!({}));
-    let grants = read_json_value(grants_json.as_deref(), grants_file.as_deref())?
-        .map(parse_capability_grants)
-        .transpose()?
-        .unwrap_or_default();
-
-    let facade = build_facade(&registry_root)?;
-    let response = facade
-        .inspect(InspectRequest::new(
-            skill, input, tenant_id, actor_id, grants,
-        ))
-        .map_err(cli_error_from_mcp)?;
-
-    let output = InspectCommandOutput {
-        summary: response.summary.clone(),
-        record: response.structured_content.clone(),
-    };
-
-    if json_output {
-        print_json(&output)?;
-    } else {
-        print_inspect_text(&response);
-    }
-
-    Ok(())
-}
-
-fn run_read(
-    args: &[String],
-    global: &GlobalOptions,
-    env_registry_root: Option<String>,
-) -> Result<(), CliError> {
-    if args.is_empty() || is_help(args[0].as_str()) {
-        print_read_usage();
-        return Ok(());
-    }
-
-    let registry_root = resolve_registry_root(global, env_registry_root)?;
-    let uri = args[0].clone();
-    let mut output_path = None;
-    let mut json_output = false;
-    let mut index = 1;
-
-    while index < args.len() {
-        match args[index].as_str() {
-            "--output" => {
-                output_path = Some(PathBuf::from(next_value(args, &mut index, "--output")?));
-            }
-            "--json" => {
-                json_output = true;
-            }
-            other => {
-                return Err(CliError::new(format!(
-                    "unexpected argument for `guild read`: `{other}`"
-                )));
-            }
-        }
-        index += 1;
-    }
-
-    let registry = build_existing_registry(&registry_root)?;
-    let resource = registry.read_resource(&uri).map_err(CliError::from)?;
-
-    if let Some(path) = output_path {
-        fs::write(&path, &resource.bytes)?;
-        if json_output {
-            let output = ReadCommandOutput {
-                uri: resource.uri,
-                mime_type: resource.mime_type,
-                sha256: resource.sha256,
-                text: None,
-                bytes_base64: None,
-                output_path: Some(path.display().to_string()),
-            };
-            print_json(&output)?;
-        } else {
-            println!("wrote {} to {}", uri, path.display());
-        }
-        return Ok(());
-    }
-
-    if json_output {
-        let text = String::from_utf8(resource.bytes.clone()).ok();
-        let output = ReadCommandOutput {
-            uri: resource.uri,
-            mime_type: resource.mime_type,
-            sha256: resource.sha256,
-            text,
-            bytes_base64: Some(base64::engine::general_purpose::STANDARD.encode(resource.bytes)),
-            output_path: None,
-        };
-        print_json(&output)?;
-        return Ok(());
-    }
-
-    print_read_text(&resource)
 }
 
 fn run_install(
@@ -1594,6 +2118,313 @@ fn parse_skill_ref(input: &str) -> Result<RequestedSkillRef, CliError> {
         .map_err(|error| CliError::new(error.to_string()))
 }
 
+fn resolve_requested_skill_ref(
+    registry: &LocalRegistry,
+    input: &str,
+) -> Result<RequestedSkillRef, CliError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(CliError::new("skill reference cannot be empty"));
+    }
+
+    if let Ok(skill) = parse_skill_ref(trimmed) {
+        return Ok(skill);
+    }
+
+    let short = trimmed.strip_prefix("skill://").unwrap_or(trimmed);
+    let Some((name, version_req_raw)) = short.rsplit_once('@') else {
+        return parse_skill_ref(trimmed);
+    };
+    if name.contains('/') {
+        return parse_skill_ref(trimmed);
+    }
+
+    let version_req = VersionRequirement::parse(version_req_raw).map_err(|error| {
+        CliError::new(format!("skill version requirement was invalid: {error}"))
+    })?;
+
+    let mut namespaces = registry
+        .installed()
+        .iter()
+        .filter(|installed| installed.manifest.key.name == name)
+        .filter(|installed| {
+            version_req
+                .as_semver()
+                .matches(installed.resolved_ref.version.as_semver())
+        })
+        .map(|installed| installed.manifest.key.namespace.clone())
+        .collect::<Vec<_>>();
+    namespaces.sort();
+    namespaces.dedup();
+
+    match namespaces.as_slice() {
+        [] => Err(CliError::new(format!(
+            "short skill ref `{trimmed}` did not match any installed skill"
+        ))),
+        [namespace] => Ok(RequestedSkillRef {
+            key: SkillKey {
+                namespace: namespace.clone(),
+                name: name.to_owned(),
+            },
+            version_req,
+        }),
+        _ => Err(CliError::new(format!(
+            "short skill ref `{trimmed}` was ambiguous across namespaces: {}",
+            namespaces.join(", ")
+        ))),
+    }
+}
+
+fn resolve_show_target(registry: &LocalRegistry, input: &str) -> Result<ShowTarget, CliError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(CliError::new("`guild show` requires a non-empty ref"));
+    }
+
+    if trimmed.starts_with("guild://")
+        || trimmed.starts_with("exec:")
+        || trimmed.starts_with("evidence:")
+        || trimmed.starts_with("obj:")
+    {
+        return resolve_show_resource_target(registry, trimmed);
+    }
+
+    let requested = resolve_requested_skill_ref(registry, trimmed)?;
+    let installed = registry.resolve(&requested)?;
+    Ok(ShowTarget::Skill {
+        requested: trimmed.to_owned(),
+        installed,
+    })
+}
+
+fn resolve_show_resource_target(
+    registry: &LocalRegistry,
+    input: &str,
+) -> Result<ShowTarget, CliError> {
+    if let Some(prefix) = input.strip_prefix("exec:") {
+        let uri = resolve_execution_prefix(registry, prefix)?;
+        let execution_id = execution_id_from_uri(&uri)?;
+        return registry
+            .load_execution_record(&execution_id)
+            .map(ShowTarget::Execution)
+            .map_err(CliError::from);
+    }
+
+    if let Some(prefix) = input.strip_prefix("evidence:") {
+        return resolve_evidence_record_by_prefix(registry, prefix).map(ShowTarget::Evidence);
+    }
+
+    if let Some(prefix) = input.strip_prefix("obj:") {
+        return resolve_object_blob_by_prefix(registry, prefix).map(ShowTarget::Object);
+    }
+
+    let parsed =
+        GuildResourceUri::parse(input).map_err(|error| CliError::new(error.to_string()))?;
+    match parsed {
+        GuildResourceUri::Execution { execution_id } => registry
+            .load_execution_record(&execution_id)
+            .map(ShowTarget::Execution)
+            .map_err(CliError::from),
+        GuildResourceUri::ObjectRecord { .. } | GuildResourceUri::ObjectRecordMetadata { .. } => {
+            registry
+                .load_evidence_record(input)
+                .map(ShowTarget::Evidence)
+                .map_err(CliError::from)
+        }
+        GuildResourceUri::ObjectBlob { digest_hex } => {
+            resolve_object_blob_exact(registry, &digest_hex).map(ShowTarget::Object)
+        }
+        GuildResourceUri::ExecutionQuery { .. } => Err(CliError::new(
+            "`guild show` does not support execution-query refs; use `guild get`",
+        )),
+    }
+}
+
+fn resolve_resource_ref(registry: &LocalRegistry, input: &str) -> Result<String, CliError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(CliError::new("`guild get` requires a non-empty ref"));
+    }
+
+    if trimmed.starts_with("guild://") {
+        GuildResourceUri::parse(trimmed).map_err(|error| CliError::new(error.to_string()))?;
+        return Ok(trimmed.to_owned());
+    }
+    if let Some(prefix) = trimmed.strip_prefix("exec:") {
+        return resolve_execution_prefix(registry, prefix);
+    }
+    if let Some(prefix) = trimmed.strip_prefix("evidence:") {
+        return resolve_evidence_record_uri_by_prefix(registry, prefix);
+    }
+    if let Some(prefix) = trimmed.strip_prefix("obj:") {
+        return resolve_object_uri_by_prefix(registry, prefix);
+    }
+
+    Err(CliError::new(format!(
+        "unsupported resource ref `{trimmed}`; use guild://..., exec:..., evidence:..., or obj:..."
+    )))
+}
+
+fn resolve_execution_ref(registry: &LocalRegistry, input: &str) -> Result<String, CliError> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err(CliError::new("execution ref cannot be empty"));
+    }
+
+    if trimmed.starts_with("guild://") {
+        match GuildResourceUri::parse(trimmed).map_err(|error| CliError::new(error.to_string()))? {
+            GuildResourceUri::Execution { .. } => return Ok(trimmed.to_owned()),
+            _ => {
+                return Err(CliError::new(format!(
+                    "`{trimmed}` is not an execution ref"
+                )));
+            }
+        }
+    }
+
+    if let Some(prefix) = trimmed.strip_prefix("exec:") {
+        return resolve_execution_prefix(registry, prefix);
+    }
+
+    Err(CliError::new(format!(
+        "unsupported execution ref `{trimmed}`; use guild://executions/... or exec:..."
+    )))
+}
+
+fn execution_id_from_uri(uri: &str) -> Result<String, CliError> {
+    match GuildResourceUri::parse(uri).map_err(|error| CliError::new(error.to_string()))? {
+        GuildResourceUri::Execution { execution_id } => Ok(execution_id),
+        _ => Err(CliError::new(format!("`{uri}` is not an execution URI"))),
+    }
+}
+
+fn resolve_execution_prefix(registry: &LocalRegistry, prefix: &str) -> Result<String, CliError> {
+    let prefix = non_empty_prefix("exec", prefix)?;
+    let records = registry.list_recent_execution_records(usize::MAX)?;
+    let matches = records
+        .into_iter()
+        .filter(|record| record.receipt.execution_id.starts_with(prefix))
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [] => Err(CliError::new(format!(
+            "execution ref `exec:{prefix}` did not match any persisted execution"
+        ))),
+        [record] => Ok(record.receipt.uri.clone()),
+        _ => Err(CliError::new(format!(
+            "execution ref `exec:{prefix}` was ambiguous: {}",
+            matches
+                .iter()
+                .take(5)
+                .map(|record| short_execution_ref(record))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+    }
+}
+
+fn resolve_evidence_record_by_prefix(
+    registry: &LocalRegistry,
+    prefix: &str,
+) -> Result<EvidenceRecord, CliError> {
+    let prefix = non_empty_prefix("evidence", prefix)?;
+    let records = registry.list_recent_evidence_records(usize::MAX)?;
+    let matches = records
+        .into_iter()
+        .filter(|record| evidence_record_id(record).starts_with(prefix))
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [] => Err(CliError::new(format!(
+            "evidence ref `evidence:{prefix}` did not match any stored evidence record"
+        ))),
+        [record] => Ok(record.clone()),
+        _ => Err(CliError::new(format!(
+            "evidence ref `evidence:{prefix}` was ambiguous: {}",
+            matches
+                .iter()
+                .take(5)
+                .map(|record| format!(
+                    "evidence:{}",
+                    shorten_prefix_match(evidence_record_id(record))
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+    }
+}
+
+fn resolve_evidence_record_uri_by_prefix(
+    registry: &LocalRegistry,
+    prefix: &str,
+) -> Result<String, CliError> {
+    resolve_evidence_record_by_prefix(registry, prefix).map(|record| record.uri)
+}
+
+fn resolve_object_blob_exact(
+    registry: &LocalRegistry,
+    digest_hex: &str,
+) -> Result<EvidenceBlobRecord, CliError> {
+    let records = registry.list_object_blobs(usize::MAX)?;
+    records
+        .into_iter()
+        .find(|record| record.sha256 == digest_hex)
+        .ok_or_else(|| {
+            CliError::new(format!(
+                "object ref `guild://objects/sha256/{digest_hex}` did not match any stored object"
+            ))
+        })
+}
+
+fn resolve_object_blob_by_prefix(
+    registry: &LocalRegistry,
+    prefix: &str,
+) -> Result<EvidenceBlobRecord, CliError> {
+    let prefix = non_empty_prefix("obj", prefix)?;
+    let records = registry.list_object_blobs(usize::MAX)?;
+    let matches = records
+        .into_iter()
+        .filter(|record| record.sha256.starts_with(prefix))
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [] => Err(CliError::new(format!(
+            "object ref `obj:{prefix}` did not match any stored object"
+        ))),
+        [record] => Ok(record.clone()),
+        _ => Err(CliError::new(format!(
+            "object ref `obj:{prefix}` was ambiguous: {}",
+            matches
+                .iter()
+                .take(5)
+                .map(|record| format!("obj:{}", shorten_prefix_match(&record.sha256)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+    }
+}
+
+fn resolve_object_uri_by_prefix(
+    registry: &LocalRegistry,
+    prefix: &str,
+) -> Result<String, CliError> {
+    resolve_object_blob_by_prefix(registry, prefix).map(|record| record.uri)
+}
+
+fn evidence_record_id(record: &EvidenceRecord) -> &str {
+    record.uri.rsplit('/').next().unwrap_or(record.uri.as_str())
+}
+
+fn shorten_prefix_match(value: &str) -> String {
+    value.chars().take(12).collect()
+}
+
+fn non_empty_prefix<'a>(kind: &str, prefix: &'a str) -> Result<&'a str, CliError> {
+    let trimmed = prefix.trim();
+    if trimmed.is_empty() {
+        Err(CliError::new(format!("{kind} ref prefix cannot be empty")))
+    } else {
+        Ok(trimmed)
+    }
+}
+
 fn resolve_installed_skill(
     registry: &LocalRegistry,
     skill: &str,
@@ -1758,21 +2589,6 @@ fn trust_verify_output(
     }
 }
 
-fn print_inspect_text(response: &InspectResponse) {
-    println!("{}", response.summary);
-    println!("execution: {}", response.structured_content.receipt.uri);
-    println!(
-        "status: {}",
-        status_label(&response.structured_content.status)
-    );
-    if !response.structured_content.emitted_evidence.is_empty() {
-        println!("evidence:");
-        for evidence in &response.structured_content.emitted_evidence {
-            println!("  {}", evidence.uri);
-        }
-    }
-}
-
 fn print_read_text(resource: &ResourceReadResult) -> Result<(), CliError> {
     match String::from_utf8(resource.bytes.clone()) {
         Ok(text) => {
@@ -1817,92 +2633,17 @@ fn print_import_text(output: &ImportCommandOutput) {
     }
 }
 
-fn print_list_summary_text(output: &ListSummaryOutput) {
-    print_list_skills_lines(&output.installed, output.installed_count);
-    println!();
-    print_list_execution_lines(
-        &output.recent_executions,
-        output.recent_execution_count,
-        Some(output.recent_execution_limit),
-    );
-}
-
-fn print_list_skills_text(output: &ListSkillsOutput) {
-    print_list_skills_lines(&output.installed, output.installed_count);
-}
-
-fn print_list_executions_text(output: &ListExecutionsOutput) {
-    print_list_execution_lines(
-        &output.executions,
-        output.execution_count,
-        Some(output.limit),
-    );
-}
-
-fn print_list_skills_lines(skills: &[ListedInstalledSkillOutput], installed_count: usize) {
-    println!("installed skills ({installed_count}):");
-    if skills.is_empty() {
-        println!("  none");
-        return;
-    }
-
-    for skill in skills {
-        println!("  {}", skill.resolved_skill);
-        println!("    digest: {}", skill.digest);
-        println!(
-            "    trust: {} / {}",
-            skill.trust_tier,
-            verification_state_label(&skill.verification_state)
-        );
-    }
-}
-
-fn print_list_execution_lines(
-    executions: &[ListedExecutionOutput],
-    execution_count: usize,
-    limit: Option<usize>,
-) {
-    match limit {
-        Some(limit) => println!("recent executions ({execution_count}, limit {limit}):"),
-        None => println!("recent executions ({execution_count}):"),
-    }
-
-    if executions.is_empty() {
-        println!("  none");
-        return;
-    }
-
-    for execution in executions {
-        println!(
-            "  {}  {}",
-            status_label(&execution.status),
-            execution.resolved_skill
-        );
-        println!("    execution: {}", execution.uri);
-        if let Some(started_at) = &execution.started_at_utc {
-            println!("    started: {started_at}");
-        }
-        if let Some(finished_at) = &execution.finished_at_utc {
-            println!("    finished: {finished_at}");
-        }
-    }
-}
-
-fn verification_state_label(state: &InstalledVerificationState) -> &'static str {
-    match state {
-        InstalledVerificationState::LocalSource => "local-source",
-        InstalledVerificationState::VerifiedImport => "verified-import",
-    }
-}
-
 fn print_usage() {
     println!("usage: guild [--registry-root <path>] <command> [options]");
     println!();
     println!("commands:");
     println!("  init         create the selected Guild root and print or write Codex setup");
-    println!("  inspect      execute a skill through the local inspect path");
-    println!("  read         read a Guild resource URI");
-    println!("  list         list installed skills and recent persisted executions");
+    println!("  show         summarize an installed skill or persisted Guild ref");
+    println!("  run          execute a skill through the local inspect path");
+    println!("  ls           list skills, runs, objects, or evidence");
+    println!("  get          read a Guild resource ref");
+    println!("  why          explain one persisted execution record");
+    println!("  verify       summarize installed trust and verification state");
     println!("  install      install a source skill into a Guild root");
     println!("  export       export installed state as a signed bundle or OCI layout");
     println!("  import       import a signed bundle or OCI layout into a Guild root");
@@ -1916,47 +2657,68 @@ fn print_usage() {
         "registry roots resolve as `--registry-root`, then `GUILD_REGISTRY_ROOT`, then `~/.guild`; there is no cwd-local `.guild/` fallback."
     );
     println!(
-        "canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` is accepted as operator convenience."
+        "canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` and short `<name>@<version>` are accepted when unambiguous."
     );
+    println!("legacy aliases: `inspect` -> `run`, `list` -> `ls`, `read` -> `get`.");
     println!("`guild trust ...` manages local trust-store state only.");
     println!("deferred: `guild build` and `guild deploy` are intentionally not implemented.");
+}
+
+fn print_show_usage() {
+    println!(
+        "usage: guild [--registry-root <path>] show <ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
+    );
+    println!("`guild show` is the primary non-executing inspection command.");
+    println!(
+        "accepted refs: skill refs, `exec:<id-prefix>`, `evidence:<id-prefix>`, `obj:<sha-prefix>`, and full `guild://...` URIs."
+    );
+}
+
+fn print_run_usage() {
+    println!(
+        "usage: guild [--registry-root <path>] run <skill-ref> [input-file] [--input-json <json> | --input-file <path>] [--grants-json <json> | --grants-file <path>] [--tenant-id <id>] [--actor-id <id>] [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
+    );
+    println!("`guild run` is the primary execution command.");
+    println!("legacy alias: `guild inspect ...`.");
+    println!("stdout carries the result payload; stderr carries the human status summary.");
+}
+
+fn print_ls_usage() {
+    println!(
+        "usage: guild [--registry-root <path>] ls [skills|runs|objects|evidence] [--limit <n>] [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
+    );
+    println!("legacy alias: `guild list ...`.");
+}
+
+fn print_get_usage() {
+    println!(
+        "usage: guild [--registry-root <path>] get <ref> [--output <path>] [--json | --porcelain]"
+    );
+    println!(
+        "accepted refs: full `guild://...` URIs plus `exec:<id-prefix>`, `evidence:<id-prefix>`, and `obj:<sha-prefix>`."
+    );
+    println!("legacy alias: `guild read ...`.");
+}
+
+fn print_why_usage() {
+    println!(
+        "usage: guild [--registry-root <path>] why <exec-ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
+    );
+    println!("accepted refs: `exec:<id-prefix>` and full execution URIs.");
+}
+
+fn print_verify_usage() {
+    println!(
+        "usage: guild [--registry-root <path>] verify <skill-ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
+    );
+    println!("`guild verify` is intentionally limited to installed skill refs.");
+    println!("signed plan verification remains under `guild trust verify-plan`.");
 }
 
 fn print_init_usage() {
     println!(
         "usage: guild [--registry-root <path>] init [--global] [--project] [--name <server>] [--json]"
     );
-}
-
-fn print_inspect_usage() {
-    println!(
-        "usage: guild [--registry-root <path>] inspect <skill-ref> [--input-json <json> | --input-file <path>] [--grants-json <json> | --grants-file <path>] [--tenant-id <id>] [--actor-id <id>] [--json]"
-    );
-    println!(
-        "note: canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` is accepted as convenience."
-    );
-}
-
-fn print_read_usage() {
-    println!("usage: guild [--registry-root <path>] read <guild-uri> [--output <path>] [--json]");
-}
-
-fn print_list_usage() {
-    println!("usage: guild [--registry-root <path>] list [skills|executions] [options]");
-    println!();
-    println!("`guild list` prints a summary of installed skills plus recent persisted executions.");
-    println!("`guild list skills` shows installed skills only.");
-    println!(
-        "`guild list executions` shows recent persisted execution activity; Guild does not currently expose a live loaded-runtime module registry."
-    );
-}
-
-fn print_list_skills_usage() {
-    println!("usage: guild [--registry-root <path>] list skills [--json]");
-}
-
-fn print_list_executions_usage() {
-    println!("usage: guild [--registry-root <path>] list executions [--limit <n>] [--json]");
 }
 
 fn print_install_usage() {

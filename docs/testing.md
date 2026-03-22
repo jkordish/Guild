@@ -203,16 +203,20 @@ export GUILD_REGISTRY_ROOT=target/dev-local-registry/cli-local
 
 cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
 
-cargo run -q -p guild-mcp --bin guild -- list
+cargo run -q -p guild-mcp --bin guild -- show skill://example/hello-inspect@^0.1
 
-cargo run -q -p guild-mcp --bin guild -- inspect \
+cargo run -q -p guild-mcp --bin guild -- run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
 
-cargo run -q -p guild-mcp --bin guild -- list executions --limit 5
+cargo run -q -p guild-mcp --bin guild -- ls runs --limit 5
 
-cargo run -q -p guild-mcp --bin guild -- read guild://executions/<execution-id>
+cargo run -q -p guild-mcp --bin guild -- why exec:<execution-id-prefix>
+
+cargo run -q -p guild-mcp --bin guild -- get guild://executions/<execution-id>
+
+cargo run -q -p guild-mcp --bin guild -- verify skill://example/hello-inspect@^0.1
 
 cargo run -q -p guild-mcp --bin guild -- mcp serve --stdio
 ```

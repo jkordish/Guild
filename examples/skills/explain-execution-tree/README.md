@@ -28,17 +28,26 @@ Canonical local proof flow:
 ```bash
 cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/hello-inspect
 cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/hello-composite
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree inspect skill://example/hello-composite@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"invoke-skill","access":"write","constraints":{"aliases":["hello"]}},{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree run skill://example/hello-composite@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"invoke-skill","access":"write","constraints":{"aliases":["hello"]}},{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/explain-execution-tree
+cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree run skill://example/explain-execution-tree@^0.1 --input-json '{"execution_uri":"guild://executions/<root-execution-id>","max_depth":4,"max_nodes":32,"include_evidence_resources":true}' --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/","guild://objects/records/"],"resource_kinds":["execution","object"]}}]}'
+```
+
+Replace `<root-execution-id>` with the durable execution id returned by the `hello-composite` run receipt.
+
+Deterministic helper proofs:
+
+```bash
 cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example codex_explain_execution_tree_local
 ```
 
-That command:
+That flow:
 
 1. installs `hello-inspect`
 2. installs `hello-composite`
-3. runs `guild inspect` to produce a stored parent and child execution tree under durable `guild://executions/...` URIs
+3. runs `guild run` to produce a stored parent and child execution tree under durable `guild://executions/...` URIs
 4. installs `explain-execution-tree`
 5. executes `explain-execution-tree` against the stored root execution URI through the same Wasmtime-backed path
 

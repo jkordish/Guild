@@ -143,6 +143,17 @@ fn run_guild_success(args: &[&str], env_registry_root: Option<&Path>) -> String 
     String::from_utf8(output.stdout).unwrap()
 }
 
+fn run_guild_success_output(args: &[&str], env_registry_root: Option<&Path>) -> Output {
+    let output = run_guild(args, env_registry_root);
+    assert!(
+        output.status.success(),
+        "guild command failed\nargs: {args:?}\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    output
+}
+
 fn run_guild_success_with_home(args: &[&str], home_dir: &Path) -> String {
     let output = run_guild_with_home(args, home_dir);
     assert!(
@@ -281,6 +292,235 @@ fn read_command_distinguishes_evidence_payload_and_metadata_resources() {
             .as_str()
             .unwrap()
             .starts_with("guild://objects/sha256/")
+    );
+}
+
+#[test]
+fn primary_show_and_verify_commands_render_compact_human_output() {
+    let temp = TempFixtureDir::new("guild-cli-show-verify");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let show_output = run_guild_success(
+        &["show", "hello-inspect@^0.1", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert_eq!(
+        show_output,
+        concat!(
+            "example/hello-inspect@0.1.0  Hello Inspect\n",
+            "status: local-source / local-dev\n",
+            "support: proof-backed(log-write) not_proven(emit-evidence)\n",
+            "runtime: wasm-component / guild-skill-inspect-v1\n",
+            "caps: emit-evidence(write,required) log-write(write)\n",
+        )
+    );
+
+    let verify_output = run_guild_success(
+        &["verify", "hello-inspect@^0.1", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert_eq!(
+        verify_output,
+        concat!(
+            "example/hello-inspect@0.1.0\n",
+            "verification: local-source\n",
+            "trust: local-dev\n",
+        )
+    );
+}
+
+#[test]
+fn primary_run_command_keeps_payload_on_stdout_and_status_on_stderr() {
+    let temp = TempFixtureDir::new("guild-cli-run-stdio");
+    let registry_root = temp.path().join("registry");
+    let input_path = temp.path().join("input.json");
+    install_with_cli(&registry_root);
+    fs::write(&input_path, "{\n  \"name\": \"Ada\"\n}\n").unwrap();
+
+    let grants_json = emit_evidence_grants_json();
+    let input = input_path.display().to_string();
+    let output = run_guild_success_output(
+        &[
+            "run",
+            "hello-inspect@^0.1",
+            &input,
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let payload: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(payload["message"].as_str(), Some("Hello, Ada"));
+    assert_eq!(payload["mode"].as_str(), Some("inspect"));
+    assert!(stderr.contains("ok  not_proven  exec:"), "{stderr}");
+    assert!(stderr.contains("example/hello-inspect@0.1.0"), "{stderr}");
+    assert!(!stdout.contains("exec:"), "{stdout}");
+    assert!(!stderr.contains("\"message\""), "{stderr}");
+}
+
+#[test]
+fn primary_commands_support_short_refs_and_machine_output_flags() {
+    let temp = TempFixtureDir::new("guild-cli-primary-machine");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let show_json = run_guild_success(
+        &["show", "hello-inspect@^0.1", "--json"],
+        Some(&registry_root),
+    );
+    let show_value: Value = parse_json_stdout(&show_json);
+    assert_eq!(
+        show_value["requested_ref"].as_str(),
+        Some("hello-inspect@^0.1")
+    );
+    assert_eq!(
+        show_value["support"]["overall"].as_str(),
+        Some("not_proven")
+    );
+    assert_eq!(
+        show_value["runtime"].as_str(),
+        Some("wasm-component / guild-skill-inspect-v1")
+    );
+
+    let show_porcelain = run_guild_success(
+        &["show", "hello-inspect@^0.1", "--porcelain"],
+        Some(&registry_root),
+    );
+    assert_eq!(
+        show_porcelain,
+        "skill\texample/hello-inspect@0.1.0\tlocal-source\tlocal-dev\tnot_proven\n"
+    );
+
+    let verify_porcelain = run_guild_success(
+        &["verify", "hello-inspect@^0.1", "--porcelain"],
+        Some(&registry_root),
+    );
+    assert_eq!(
+        verify_porcelain,
+        "verify\texample/hello-inspect@0.1.0\tlocal-source\tlocal-dev\n"
+    );
+
+    let grants_json = emit_evidence_grants_json();
+    let run_json = run_guild_success(
+        &[
+            "run",
+            "hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &grants_json,
+            "--json",
+        ],
+        Some(&registry_root),
+    );
+    let run_value: Value = parse_json_stdout(&run_json);
+    let execution_id = run_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+
+    let why_json = run_guild_success(&["why", &exec_prefix, "--json"], Some(&registry_root));
+    let why_value: Value = parse_json_stdout(&why_json);
+    assert_eq!(why_value["summary"]["plan"].as_str(), Some("upper-bound"));
+    assert_eq!(why_value["summary"]["proof"].as_str(), Some("not_proven"));
+    assert_eq!(why_value["summary"]["token"].as_str(), Some("upper-bound"));
+    assert_eq!(why_value["summary"]["witness"].as_str(), Some("unlinked"));
+
+    let why_porcelain =
+        run_guild_success(&["why", &exec_prefix, "--porcelain"], Some(&registry_root));
+    assert!(
+        why_porcelain.starts_with(&format!(
+            "why\t{}\tupper-bound\tnot_proven\tupper-bound\tunlinked\t",
+            execution_id
+        )),
+        "{why_porcelain}"
+    );
+}
+
+#[test]
+fn primary_get_ls_and_show_commands_accept_short_resource_refs() {
+    let temp = TempFixtureDir::new("guild-cli-resource-short-refs");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let inspect_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let execution_id = inspect_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let execution_uri = inspect_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let evidence_uri = inspect_value["record"]["emitted_evidence"][0]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let blob_uri = inspect_value["record"]["emitted_evidence"][0]["blob_uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let blob_sha = inspect_value["record"]["emitted_evidence"][0]["sha256"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+    let evidence_id = evidence_uri.rsplit('/').next().unwrap().to_owned();
+    let evidence_prefix = format!("evidence:{}", &evidence_id[..12]);
+    let object_prefix = format!("obj:{}", &blob_sha[..12]);
+
+    let get_execution = run_guild_success(&["get", &exec_prefix, "--json"], Some(&registry_root));
+    let get_execution_value: Value = parse_json_stdout(&get_execution);
+    assert_eq!(
+        get_execution_value["uri"].as_str(),
+        Some(execution_uri.as_str())
+    );
+
+    let show_execution = run_guild_success(&["show", &exec_prefix, "--json"], Some(&registry_root));
+    let show_execution_value: Value = parse_json_stdout(&show_execution);
+    assert_eq!(
+        show_execution_value["record"]["receipt"]["uri"].as_str(),
+        Some(execution_uri.as_str())
+    );
+
+    let evidence_list = run_guild_success(&["ls", "evidence", "--json"], Some(&registry_root));
+    let evidence_list_value: Value = parse_json_stdout(&evidence_list);
+    assert_eq!(evidence_list_value["evidence_count"].as_u64(), Some(1));
+    assert_eq!(
+        evidence_list_value["evidence"][0]["uri"].as_str(),
+        Some(evidence_uri.as_str())
+    );
+
+    let objects_list = run_guild_success(&["ls", "objects", "--json"], Some(&registry_root));
+    let objects_list_value: Value = parse_json_stdout(&objects_list);
+    assert_eq!(objects_list_value["object_count"].as_u64(), Some(1));
+    assert_eq!(
+        objects_list_value["objects"][0]["sha256"].as_str(),
+        Some(blob_sha.as_str())
+    );
+
+    let show_evidence =
+        run_guild_success(&["show", &evidence_prefix, "--json"], Some(&registry_root));
+    let show_evidence_value: Value = parse_json_stdout(&show_evidence);
+    assert_eq!(
+        show_evidence_value["record"]["uri"].as_str(),
+        Some(evidence_uri.as_str())
+    );
+
+    let show_object = run_guild_success(&["show", &object_prefix, "--json"], Some(&registry_root));
+    let show_object_value: Value = parse_json_stdout(&show_object);
+    assert_eq!(
+        show_object_value["record"]["uri"].as_str(),
+        Some(blob_uri.as_str())
     );
 }
 
@@ -1086,6 +1326,13 @@ fn top_level_help_lists_init_as_a_first_class_command() {
     let stdout = run_guild_success(&["--help"], None);
     assert!(stdout.contains("init"));
     assert!(stdout.contains("create the selected Guild root"));
+    assert!(stdout.contains("show"));
+    assert!(stdout.contains("run"));
+    assert!(stdout.contains("ls"));
+    assert!(stdout.contains("get"));
+    assert!(stdout.contains("why"));
+    assert!(stdout.contains("verify"));
+    assert!(stdout.contains("legacy aliases: `inspect` -> `run`"));
 }
 
 #[test]

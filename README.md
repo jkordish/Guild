@@ -57,9 +57,12 @@ cargo run -q -p guild-mcp --bin guild -- ...
 The current local command surface is:
 
 - `guild init`
-- `guild inspect`
-- `guild read`
-- `guild list`
+- `guild show`
+- `guild run`
+- `guild ls`
+- `guild get`
+- `guild why`
+- `guild verify`
 - `guild install`
 - `guild export`
 - `guild import`
@@ -68,6 +71,12 @@ The current local command surface is:
 - `guild trust ...`
 - `guild codex ...`
 - `guild mcp serve --stdio`
+
+Legacy aliases remain supported in this milestone for script compatibility:
+
+- `guild inspect` -> `guild run`
+- `guild read` -> `guild get`
+- `guild list` -> `guild ls`
 
 Intentionally deferred:
 
@@ -85,35 +94,44 @@ Guild now has one sane local root rule for the operator-facing CLI:
 - otherwise `GUILD_REGISTRY_ROOT`
 - otherwise Guild uses `~/.guild`
 
-Guild does not create a cwd-local `.guild/` directory. Read-only commands fail clearly if the selected root does not exist yet. `guild init` is the explicit way to create the selected root up front, and write-oriented commands such as `install`, `inspect`, `import`, `pull`, and the setup/bootstrap helpers can also create the selected root honestly when they are already doing real work.
+Guild does not create a cwd-local `.guild/` directory. Read-only commands fail clearly if the selected root does not exist yet. `guild init` is the explicit way to create the selected root up front, and write-oriented commands such as `install`, `run`, `import`, `pull`, and the setup/bootstrap helpers can also create the selected root honestly when they are already doing real work.
 
-### Install, List, Inspect, Read
+### Install, Show, Run, Why, Get, Verify
 
 ```bash
 guild init
 
 guild install examples/skills/hello-inspect
 
-guild list
+guild show skill://example/hello-inspect@^0.1
 
-guild inspect \
+guild run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
   --json
 
-guild list executions --limit 5
+guild ls runs --limit 5
 
-guild read guild://executions/<execution-id>
+guild why exec:<execution-id-prefix>
+
+guild get guild://executions/<execution-id>
+
+guild verify skill://example/hello-inspect@^0.1
 ```
 
 What that flow shows:
 
 - `install` builds source into installed executable state
-- `list` shows what is installed here and what has run recently, without pretending Guild already has a live loaded-module registry
-- `inspect` executes a human-facing `skill://...` ref through the real Guild path
+- `show` is the primary non-executing summary path for installed skills and stored Guild refs
+- `run` executes a human-facing `skill://...` ref through the real Guild path
+- `ls` shows what is installed here and what has run recently, without pretending Guild already has a live loaded-module registry
 - success returns a durable `guild://executions/...` receipt
-- `read` goes back through the same resource backend used by MCP and guest `read-resource`
+- `why` explains one persisted execution record without widening runtime semantics
+- `get` goes back through the same resource backend used by MCP and guest `read-resource`
+- `verify` stays narrow and reports installed trust and verification state for skill refs only
+
+`guild run` keeps payload on stdout and writes the human execution summary to stderr. `guild get` stays the raw resource-read path and supports `--json`, `--porcelain`, and `--output <path>` when you want machine-stable reads instead of styled summaries. `guild inspect`, `guild list`, and `guild read` remain as legacy aliases for existing scripts, but docs now teach the primary verbs first.
 
 If you want an explicit non-default root for local proofs or CI, keep passing it:
 

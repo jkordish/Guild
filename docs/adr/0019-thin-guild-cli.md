@@ -30,9 +30,12 @@ The normal operator install path is:
 The stable v1 command surface is:
 
 - `guild init`
-- `guild inspect`
-- `guild read`
-- `guild list`
+- `guild show`
+- `guild run`
+- `guild ls`
+- `guild get`
+- `guild why`
+- `guild verify`
 - `guild install`
 - `guild export`
 - `guild import`
@@ -50,12 +53,23 @@ The canonical public URI families are:
 
 The CLI is intentionally substrate-backed rather than a second runtime layer:
 
-- `guild inspect` delegates to the same inspect path used by `guild.inspect`
-- `guild read` delegates to the same resource backend used by MCP `resources/read` and guest `read-resource`
+- `guild show` is a non-executing summary surface over installed skills and stored Guild refs
+- `guild run` delegates to the same inspect path used by `guild.inspect`
+- `guild get` delegates to the same resource backend used by MCP `resources/read` and guest `read-resource`
+- `guild why` reads one persisted execution record directly from host-owned durable state
+- `guild verify` summarizes installed trust and verification state for skill refs only
 - install/export/import/push/pull delegate to the current registry and installer substrate
 - `guild init` creates the selected local root and may explicitly fold in local setup tasks such as Codex config writes without inventing a second state model
 - `guild codex` delegates to the existing Codex bootstrap/config/scenario/smoke helpers without creating a second server model
 - `guild mcp serve --stdio` launches the current stdio MCP server without widening the MCP surface
+
+Legacy aliases remain supported for backward compatibility:
+
+- `guild inspect` -> `guild run`
+- `guild read` -> `guild get`
+- `guild list` -> `guild ls`
+
+Those aliases remain supported through M8e and until a later explicit deprecation decision replaces them. They should be documented as legacy aliases rather than taught as the primary happy path.
 
 Registry root selection is now local-first with one intentional default:
 
@@ -77,6 +91,10 @@ For operator convenience, the CLI also accepts the bare alias form:
 
 - `<namespace>/<name>@<version-or-range>`
 
+When unambiguous across installed skills, the CLI also accepts:
+
+- `<name>@<version-or-range>`
+
 Docs, examples, and site snippets should prefer the canonical `skill://...` form rather than teaching the bare alias form as public syntax.
 
 `guild trust ...` refers only to current local trust-store operations:
@@ -87,11 +105,13 @@ Docs, examples, and site snippets should prefer the canonical `skill://...` form
 - it does not imply transparency-log semantics
 - it does not imply remote publisher policy management
 
-`guild list` is the thin local operator view for local state:
+`guild ls` is the thin local operator view for local state:
 
-- `guild list` shows installed skills plus recent persisted executions
-- `guild list skills` shows installed skills only
-- `guild list executions` shows recent persisted execution activity
+- `guild ls` shows installed skills plus recent persisted executions
+- `guild ls skills` shows installed skills only
+- `guild ls runs` shows recent persisted execution activity
+- `guild ls evidence` shows stored evidence records
+- `guild ls objects` shows stored content-addressed object records
 - it does not imply a live loaded-runtime module registry or a broader search/indexing surface
 
 `guild init` is the explicit local bootstrap workflow:

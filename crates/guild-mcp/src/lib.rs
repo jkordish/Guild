@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub mod cli;
+pub mod cli_presenter;
 pub mod codex;
 pub mod codex_cli;
 pub mod paths;
