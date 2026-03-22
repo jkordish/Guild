@@ -44,9 +44,9 @@ use url::Url;
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable, types::ComponentItem};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
-use wasmtime_wasi_http::bindings::http::types::ErrorCode as WasiHttpErrorCode;
-use wasmtime_wasi_http::body::HyperOutgoingBody;
-use wasmtime_wasi_http::types::{OutgoingRequestConfig, default_send_request_handler};
+use wasmtime_wasi_http::p2::bindings::http::types::ErrorCode as WasiHttpErrorCode;
+use wasmtime_wasi_http::p2::body::HyperOutgoingBody;
+use wasmtime_wasi_http::p2::{default_send_request_handler, types::OutgoingRequestConfig};
 
 mod bindings {
     wasmtime::component::bindgen!({
