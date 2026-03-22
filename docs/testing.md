@@ -24,66 +24,47 @@ These proof flows intentionally keep using explicit temp or `target/dev-local-re
 
 ## Draft Schema Bundle Validation
 
-The draft admission bundle under `docs/schemas/draft-v1/` now has its own focused validation path:
+The migrated draft-v1 truth path under `docs/schemas/draft-v1/` is now Rust-native and repo-native:
 
 ```bash
-python3 -m venv /tmp/guild-schema-venv
-/tmp/guild-schema-venv/bin/pip install -r docs/schemas/draft-v1/requirements.txt
-/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/validate_examples.py
-/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/compatibility_check.py
+cargo run -q -p xtask -- draft-v1 truth check
 ```
 
-`validate_examples.py` covers schema validation plus the checked-in `admit`, `downgrade`, `migrate`, and `refuse` execution-plan examples. `compatibility_check.py` remains the narrower hard-requirement precheck and regenerates `docs/schemas/draft-v1/compatibility_matrix.md`.
+That standard truth command now covers:
 
-For M8c, that validation path now also checks the live-runtime alignment layer explicitly:
+- schema validation for the checked contract, runtime, request, plan, proof, token, and witness examples in `docs/schemas/draft-v1/examples/`
+- negative schema probes for omitted and invalid runtime guarantee fields
+- exact `family_support_matrix.json` regeneration or drift detection
+- exact `compatibility_matrix.md` regeneration or drift detection plus the fail-closed `wit_worlds` probes
+- benchmark artifact schema and report validation plus live scenario alignment against the real Rust runner
 
-- bundled contracts and runtimes now align on the real inspect world `guild-skill-inspect-v1`
-- the draft runtime examples publish both `supported_effect_classes` for draft compatibility and `supported_canonical_families` for live-runtime truth
-- live Rust `authority_observations` fixtures are normalized into draft-v1 witnesses without silently widening vocabulary
-- direct canonical `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations now stay direct through plan, token, and witness handling
-- a real bounded live `read-resource` proof is generated through the Rust runtime and then consumed by the draft token and witness layers
-- a real bounded `http-request` live proof is generated for six deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus explicit-port `localhost` `GET` and `HEAD` with deterministic loopback-only resolution bindings, and unsupported redirect or no-replay cases stay fail-closed
-- a real live `log-write` family proof is checked over the observed discrete log-level slice without pretending that `emit-evidence` became proven at the same time
-- legacy `net.connect` and `component.invoke` compatibility paths are still checked explicitly as deprecated narrowing-only aliases rather than being treated as canonical support
+The checked truth-output commands are:
 
-It now also covers the draft-bundle M5 examples:
+```bash
+cargo run -q -p xtask -- draft-v1 support-matrix check
+cargo run -q -p xtask -- draft-v1 compatibility check
+cargo run -q -p xtask -- draft-v1 benchmark check
+```
 
-- exact reduction
-- cache-hit reuse
-- comparator-unavailable fail-closed behavior
-- exact no-reduction
-- bounded-minimal scope shrinking
-- zero-authority exact minimality
-- strict cache bypass when runtime, comparator, or plan identity changes
+The artifact-regeneration commands are:
 
-It now also covers the draft-bundle M6 examples:
+```bash
+cargo run -q -p xtask -- draft-v1 support-matrix write
+cargo run -q -p xtask -- draft-v1 compatibility write
+cargo run -q -p xtask -- draft-v1 benchmark write
+```
 
-- proof-backed root issuance from an acceptable M5 proof
-- explicit upper-bound issuance only when policy allows it
-- explicit refusal by default when proof-backed issuance is unavailable and upper-bound issuance is not enabled
-- one-hop delegated child issuance with narrower scope, audience, and TTL
-- explicit empty-capability token issuance for zero-authority invocations
-- fail-closed verification for replay, audience mismatch, holder mismatch, passthrough attempts, parent-child broadening, runtime mismatch, call-chain mismatch, and expiry
+No Python virtualenv is required for those migrated truth flows anymore. The remaining direct Python engines later in this document are legacy draft-harness utilities for manual inspection and development work, not the standard repo truth path.
 
-The current M6 protection mechanism in this draft harness is a shared-secret HMAC MAC over canonical JSON claims. It is not a public-key signature flow, and the replay/revocation checks are local verifier-state mechanisms only.
+The Rust-native truth gate now checks the current repo-backed draft-v1 truth surface conservatively:
 
-It now also covers the draft-bundle M7 witness examples:
+- bundled schemas and checked examples still validate structurally
+- bundled runtimes and contracts still line up on the active inspect world `guild-skill-inspect-v1`
+- `family_support_matrix.json` stays aligned with the canonical live-family vocabulary and the current bounded draft-v1 layer statuses
+- `compatibility_matrix.md` stays aligned with the fail-closed hard-requirement precheck logic, including the omitted and unsupported `wit_worlds` probes
+- `benchmark_matrix.json` and `m8-real-path-benchmark.md` stay aligned with the real Rust live-proof scenarios, including supported slices, unsupported fallback slices, and explicit fail-closed walls
 
-- proof-backed within-envelope witnessing over actual exercised authority
-- explicit out-of-envelope witnessing when observed authority escapes the admissible or tokenized envelope
-- coverage-limited witnessing where negative claims fail closed
-- redacted witness claim success and redaction-blocked claim failure
-- blocked-attempt tracking distinct from exercised authority
-- delegation-chain witnessing over checked child-token linkage
-- zero-authority witnessing with explicit negative-claim semantics
-- runtime-binding mismatch verification failure
-- vocabulary-mapping limitation handling that stays coverage-limited rather than pretending the unmapped effect did not happen
-- live-runtime alignment cases for bounded live `read-resource` proof-backed linkage, bounded live `http-request` proof-backed linkage over the replay-fixtured loopback IP `GET` and `HEAD` slices with either an explicit port or the implicit default HTTP port plus the explicit-port `localhost` `GET` and `HEAD` slices with deterministic loopback-only resolution bindings, bounded live `invoke-skill` proof-backed linkage for the exact single-child zero-authority inspect slice, unsupported multi-child `invoke-skill` fail-closed behavior, unsupported redirect and no-replay `http-request` fail-closed behavior, and exact live `log-write` family proof support
-- explicit alias deprecation or rejection checks for `net.connect`, `component.invoke`, and `net.resolve`
-- deterministic normalization of identical runtime-native inputs
-- fail-closed live proof prerequisite behavior
-
-The current M7 protection mechanism in this draft harness is also a shared-secret HMAC MAC over canonical JSON claims. It is not public-key attestation, and the bounded harness and fixture paths do not imply runtime-general witness completeness.
+The older draft-harness M5, M6, and M7 Python engines still exist for manual example work, but they are no longer the standard repo truth gate. Their shared-secret HMAC MAC model and bounded fixture behavior remain draft-local rather than runtime-general.
 
 Current live-runtime claim status after M8c is explicit and per family:
 
@@ -97,11 +78,11 @@ Current live-runtime claim status after M8c is explicit and per family:
 - M7 witness linkage now stays proof-linked only where the supplied proof is a real live-runtime proof and otherwise remains explicitly unlinked
 - per-family, per-layer machine-readable status now lives in `docs/schemas/draft-v1/family_support_matrix.json`
 
-The M8-proper real-path benchmark is separate from the schema examples and can be rerun locally with:
+The M8-proper real-path benchmark is still separate from the schema examples and can be rerun locally with:
 
 ```bash
-/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/benchmark_real_path.py
-/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/benchmark_real_path.py --check-artifacts
+cargo run -q -p xtask -- draft-v1 benchmark write
+cargo run -q -p xtask -- draft-v1 benchmark check
 ```
 
 That benchmark writes:
@@ -115,7 +96,7 @@ Current measured benchmark truth on the checked path is:
 - supported proof-only slice: `log-write` observed `info` level through M4 plus M5 only
 - benchmarked unsupported slices: redirect `http-request`, multi-child `invoke-skill`, and replay-unavailable `emit-evidence`, each with `10/10` default refusal, `10/10` explicit upper-bound fallback issuance, and `10/10` unlinked witness generation
 - benchmarked fail-closed walls: `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use, each triggered `10/10` in the checked scenarios
-- measured overheads: M4 admission about `12.5` to `17.0 ms`; M5 proof search about `6.8 s` for `read-resource`, `7.3` to `7.5 s` for the supported `http-request` slices, `10.3 s` for the supported `invoke-skill` slice, `9.0 s` for `log-write`, and `3.0` to `7.7 s` for the benchmarked unsupported slices or walls; proof-backed token issuance about `20` to `24 ms`; token verification about `31` to `34 ms`; witness generation about `77` to `88 ms`; witness verification about `119` to `133 ms`
+- measured overhead distributions now live in the checked `benchmark_matrix.json` and paired Markdown report; the Rust-native benchmark generator owns those values directly
 - negative-claim checks remain coverage-limited in the checked scenarios: every measured non-`log-write` slice recorded `0` success, `0` fail, and `3` coverage-limited outcomes
 
 If you touched the live Rust proof path, run the focused integration suite explicitly:
@@ -124,20 +105,22 @@ If you touched the live Rust proof path, run the focused integration suite expli
 cargo test -p guild-runner --test live_proofs -- --nocapture
 ```
 
-If you want one direct M4 admission run:
+If you want to use the remaining legacy draft-harness engines directly, make sure their local Python dependencies are installed first. They are no longer part of the standard repo truth path.
+
+If you want one direct M4 admission run through the remaining draft-harness engine:
 
 ```bash
-/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/admission_engine.py \
+python3 docs/schemas/draft-v1/admission_engine.py \
   --contract docs/schemas/draft-v1/examples/zero-authority.contract.json \
   --request docs/schemas/draft-v1/examples/zero-authority.migrate.request.json \
   --runtime docs/schemas/draft-v1/examples/node-wasi-basic.runtime.json \
   --runtime docs/schemas/draft-v1/examples/wasmtime-strict.runtime.json
 ```
 
-If you want one direct M5 proof run over an already-admissible plan:
+If you want one direct M5 proof run over an already-admissible plan through the remaining draft-harness engine:
 
 ```bash
-/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/minimization_engine.py \
+python3 docs/schemas/draft-v1/minimization_engine.py \
   --plan docs/schemas/draft-v1/examples/local-log-analyzer.admit.plan.json \
   --contract docs/schemas/draft-v1/examples/local-log-analyzer.contract.json \
   --request docs/schemas/draft-v1/examples/local-log-analyzer.admit.request.json \
@@ -148,10 +131,10 @@ If you want one direct M5 proof run over an already-admissible plan:
   --cache-dir /tmp/guild-m5-cache
 ```
 
-If you want one direct M6 root-issuance run:
+If you want one direct M6 root-issuance run through the remaining draft-harness engine:
 
 ```bash
-/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/token_engine.py issue-root \
+python3 docs/schemas/draft-v1/token_engine.py issue-root \
   --plan docs/schemas/draft-v1/examples/local-log-analyzer.admit.plan.json \
   --contract docs/schemas/draft-v1/examples/local-log-analyzer.contract.json \
   --proof docs/schemas/draft-v1/examples/local-log-analyzer.proof.json \
@@ -164,10 +147,10 @@ If you want one direct M6 root-issuance run:
   --token-id urn:guild:token:local-log-analyzer:root:v1
 ```
 
-If you want one direct M6 verification run over the checked delegated-child example:
+If you want one direct M6 verification run over the checked delegated-child example through the remaining draft-harness engine:
 
 ```bash
-/tmp/guild-schema-venv/bin/python docs/schemas/draft-v1/token_engine.py verify \
+python3 docs/schemas/draft-v1/token_engine.py verify \
   --token docs/schemas/draft-v1/examples/cluster-rollout.child-token.json \
   --issuer-id urn:guild:issuer:draft-control-plane:v1 \
   --key-id draft-hmac-2026-03 \
@@ -187,7 +170,7 @@ If you want one direct M6 verification run over the checked delegated-child exam
   --replay-state-dir /tmp/guild-m6-replay
 ```
 
-`docs/schemas/draft-v1/validate_examples.py` is now the end-to-end proof path for the checked M7 witness bundle. It regenerates the stored witness examples, re-verifies them, re-checks fixed claims, and confirms that negative claims fail closed under partial coverage or redaction.
+The standard repo truth path is now `cargo run -q -p xtask -- draft-v1 truth check`. The remaining direct Python engines below are legacy draft-harness tools and are no longer required for support-matrix, compatibility, or benchmark validation.
 
 If you want one explicit sign-and-verify pass for a generated M4 plan:
 

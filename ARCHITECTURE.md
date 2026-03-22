@@ -311,7 +311,7 @@ M8-proper now adds a measured slice-aware benchmark on top of that shape. The ma
 - one proof-only `log-write` slice through M4 plus M5 only, with no claimed checked real-path M6 or M7 linkage
 - unsupported redirect `http-request`, multi-child `invoke-skill`, and replay-unavailable `emit-evidence` slices as explicit refusal or fallback cases, not hidden failure noise
 - extra fail-closed walls for `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use
-- measured overheads of about `12.5` to `17.0 ms` for M4 admission, `6.8 s` for `read-resource` live proof search, `7.3` to `7.5 s` for the bounded `http-request` live proof slices, `10.3 s` for the bounded `invoke-skill` slice, `9.0 s` for the proof-only `log-write` slice, and `3.0` to `7.7 s` for the benchmarked unsupported slices or walls
+- measured overhead distributions in the checked `benchmark_matrix.json` and paired report, generated through the Rust-native benchmark tooling rather than a separate Python truth path
 - coverage-limited negative-claim outcomes across the checked non-`log-write` slices rather than synthetic success counts
 
 That draft mapping is intentionally explicit:
@@ -335,7 +335,7 @@ This is why the schema bundle remains marked draft: component portability and ef
 
 That draft bundle now also contains a real M4 admission layer for its own vocabulary:
 
-- `compatibility_check.py` is the hard-requirement precheck layer only
+- the Rust-native compatibility flow under `xtask` and `crates/guild-draft-truth` is the hard-requirement precheck layer only
 - `admission_engine.py` consumes one contract, one admission request, and one or more runtime guarantees
 - `execution_plan` is the resulting safe upper-bound invocation plan
 

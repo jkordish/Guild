@@ -1,118 +1,34 @@
-from copy import deepcopy
+#!/usr/bin/env python3
+"""Deprecated draft-v1 compatibility entrypoint.
+
+The authoritative repo-native path now lives in Rust under:
+
+    cargo run -q -p xtask -- draft-v1 compatibility check
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
 from pathlib import Path
 
-from admission_core import load_json, match_hard_requirements
 
-BASE = Path(__file__).resolve().parent
-
-SKILLS = [
-    "examples/local-log-analyzer.contract.json",
-    "examples/zero-authority.contract.json",
-    "examples/fetch-transform.contract.json",
-    "examples/cluster-rollout.contract.json",
-    "examples/runtime-http-read.contract.json",
-    "examples/runtime-http-read-default-port.contract.json",
-    "examples/runtime-http-localhost.contract.json",
-    "examples/runtime-http-localhost-head.contract.json",
-    "examples/runtime-http-head.contract.json",
-    "examples/runtime-http-head-default-port.contract.json",
-    "examples/runtime-http-redirect.contract.json",
-    "examples/runtime-read-resource.contract.json",
-    "examples/runtime-invoke-skill.contract.json",
-    "examples/runtime-emit-evidence-zero.contract.json",
-    "examples/runtime-log-write.contract.json",
-]
-RUNTIMES = [
-    "examples/wasmtime-strict.runtime.json",
-    "examples/node-wasi-basic.runtime.json",
-]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def build_matrix_lines(skills: list[tuple[str, dict]], runtimes: list[tuple[str, dict]]) -> list[str]:
-    lines = [
-        "# Compatibility Matrix",
-        "",
-        "Deterministic hard-requirement precheck for the bundled examples.",
-        "",
-        "This matrix is intentionally narrower than full M4 admission. It covers the shared fail-closed hard-requirement path used by `admission_engine.py`, not request-time narrowing, runtime migration, or final execution-plan derivation.",
-        "",
-        "Per-family M8c layer status now lives in `family_support_matrix.json`. This derived file is only the M4 hard-requirement precheck view.",
-        "",
-        "The precheck enforces component-model compatibility, explicit WIT-world publication, required authority-selector support, required-effect enforceability, and the published runtime guarantee thresholds.",
-        "",
-        "Bundled runtime examples now publish two different vocabulary surfaces on purpose: `supported_canonical_families` is the live runtime truth surface, while `supported_effect_classes` remains the legacy draft-v1 compatibility surface needed by the older bounded examples.",
-        "",
-        "This table therefore mixes both surfaces on purpose: the new runtime-* fixtures exercise direct canonical family support, while the older bounded fixtures still prove the explicit compatibility paths that remain in scope after M8c.",
-        "",
-        "All bundled contracts in this directory now declare the live inspect world `guild-skill-inspect-v1`, so WIT-world checks here are aligned to the real Rust inspect entrypoint rather than the older example-local names.",
-        "",
-        "Published `witness_support` values in this table are M4 hard-requirement inputs only. They do not by themselves imply runtime-general M7 observation completeness.",
-        "",
-        "Negative fail-closed probes for omitted and unsupported `wit_worlds` declarations are asserted by `compatibility_check.py` but omitted from this table because they mutate the base runtime examples.",
-        "",
-        "| Skill contract | Runtime | Result | Notes |",
-        "|---|---|---|---|",
-    ]
-
-    for skill_path, skill in skills:
-        for runtime_path, runtime in runtimes:
-            result = match_hard_requirements(skill, runtime)
-            notes = (
-                "; ".join(item["reason"]["message"] for item in result["unsatisfied_requirements"])
-                if result["unsatisfied_requirements"]
-                else "all hard requirements satisfied"
-            )
-            lines.append(
-                f"| `{Path(skill_path).name}` | `{Path(runtime_path).name}` | "
-                f"{'PASS' if result['ok'] else 'FAIL'} | {notes} |"
-            )
-
-    return lines
-
-
-def assert_reason(result: dict, expected: str) -> None:
-    reason_codes = {item["reason"]["reason_code"] for item in result["unsatisfied_requirements"]}
-    if expected not in reason_codes:
-        raise SystemExit(f"Expected reason code {expected!r}, got: {sorted(reason_codes)}")
-
-
-def verify_fail_closed_wit_world_probes() -> None:
-    skill = load_json("examples/local-log-analyzer.contract.json")
-    runtime = load_json("examples/wasmtime-strict.runtime.json")
-
-    omitted_worlds = deepcopy(runtime)
-    del omitted_worlds["component_model_support"]["wit_worlds"]
-    result = match_hard_requirements(skill, omitted_worlds)
-    if result["ok"]:
-        raise SystemExit("Fail-closed probe failed: omitted component_model_support.wit_worlds unexpectedly passed")
-    assert_reason(result, "RUNTIME_WIT_WORLD_UNDECLARED")
-
-    empty_worlds = deepcopy(runtime)
-    empty_worlds["component_model_support"]["wit_worlds"] = []
-    result = match_hard_requirements(skill, empty_worlds)
-    if result["ok"]:
-        raise SystemExit("Fail-closed probe failed: empty component_model_support.wit_worlds unexpectedly passed")
-    assert_reason(result, "RUNTIME_WIT_WORLD_UNSUPPORTED")
-
-    unsupported_world = deepcopy(runtime)
-    unsupported_world["component_model_support"]["wit_worlds"] = ["different-world"]
-    result = match_hard_requirements(skill, unsupported_world)
-    if result["ok"]:
-        raise SystemExit("Fail-closed probe failed: unsupported WIT world unexpectedly passed")
-    assert_reason(result, "RUNTIME_WIT_WORLD_UNSUPPORTED")
-
-
-def main() -> None:
-    skills = [(path, load_json(path)) for path in SKILLS]
-    runtimes = [(path, load_json(path)) for path in RUNTIMES]
-    lines = build_matrix_lines(skills, runtimes)
-
-    output = "\n".join(lines) + "\n"
-    (BASE / "compatibility_matrix.md").write_text(output)
-    print(output)
-    verify_fail_closed_wit_world_probes()
-    print("Verified fail-closed WIT-world compatibility probes.")
+def main() -> int:
+    print(
+        "compatibility_check.py is deprecated. "
+        "Use `cargo run -q -p xtask -- draft-v1 compatibility check` instead.",
+        file=sys.stderr,
+    )
+    result = subprocess.run(
+        ["cargo", "run", "-q", "-p", "xtask", "--", "draft-v1", "compatibility", "check"],
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    return result.returncode
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

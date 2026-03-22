@@ -22,6 +22,7 @@ MCP is only the transport facade here. Guild is the layer that admits, runs, del
 > - `M8b`: complete for the active canonical families in draft-v1
 > - `M8c`: partial; `read-resource` has bounded live proof with checked plan -> proof -> token -> witness linkage, `log-write` has real live family proof, `http-request` has bounded live proof only for six deterministic replay-fixtured slices over `http`, and `invoke-skill` now has one bounded live-proof-backed exact single-child slice only: one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, a child-aware comparator, and zero nested child executions
 > - `M8-proper`: complete as a slice-aware real-path benchmark under `docs/schemas/draft-v1/benchmark_matrix.json` and `docs/benchmarking/m8-real-path-benchmark.md`
+> - the standard draft-v1 truth path is now Rust-native and repo-native through `cargo run -q -p xtask -- draft-v1 ...`; the checked JSON and Markdown artifacts remain outputs, and `docs/schemas/draft-v1/` remains draft rather than a public stable CLI surface
 > - broader `http-request` shapes, including `localhost` default-port `GET`, `localhost` default-port `HEAD`, other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, plus broader `invoke-skill` shapes such as dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, non-inspect child targets, and all current `emit-evidence` flows, remain outside the live-proof envelope; `emit-evidence` now binds a fixed local-object-store sink descriptor and uses a dedicated comparator profile in the runtime, but the tested exact single-emission shrink still fails closed on replay, so there is still no honest proof-backed linkage
 > - `M9` and `M10`: not started
 
@@ -204,6 +205,15 @@ cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/
 
 The slice-aware benchmark artifacts now live at [`docs/schemas/draft-v1/benchmark_matrix.json`](docs/schemas/draft-v1/benchmark_matrix.json) and [`docs/benchmarking/m8-real-path-benchmark.md`](docs/benchmarking/m8-real-path-benchmark.md).
 
+The standard repo truth commands for that draft bundle are now:
+
+```bash
+cargo run -q -p xtask -- draft-v1 truth check
+cargo run -q -p xtask -- draft-v1 truth write
+```
+
+Those Rust-native commands replace the old Python-via-venv truth pipeline for validation, compatibility checking, support-matrix generation, and benchmark artifact generation. The checked JSON and Markdown files remain outputs in the repository, and the narrower `support-matrix`, `compatibility`, and `benchmark` subcommands remain available under `xtask` when you only want one slice of the truth path.
+
 The measured supported slices are exactly:
 
 - `read-resource`: immutable `guild://executions/` and `guild://objects/records/` roots, with measured narrowing from the admitted upper bound
@@ -218,12 +228,7 @@ The measured unsupported or fail-closed slices are exactly:
 - `emit-evidence` single-emission replay-unavailable
 - extra fail-closed walls for unsupported `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use
 
-The measured timing story is narrow and specific, not global:
-
-- M4 admission in the checked scenarios is about `12.5` to `17.0 ms`
-- M5 live proof search is about `6.8 s` for `read-resource`, `7.3` to `7.5 s` for the supported `http-request` slices, `10.3 s` for the supported `invoke-skill` slice, `9.0 s` for the measured `log-write` slice, and `3.0` to `7.7 s` for the benchmarked unsupported slices and walls
-- on the proof-linked supported slices, proof-backed M6 issuance is about `20` to `24 ms`, token verification about `31` to `34 ms`, witness generation about `77` to `88 ms`, and witness verification about `119` to `133 ms`
-- on the benchmarked unsupported fallback path, explicit upper-bound M6 issuance is about `20` to `21 ms`, default refusal about `14.7` to `15.3 ms`, and unlinked witness verification about `112` to `124 ms`
+The measured timing story is narrow and specific, not global. The checked timing distributions now live in the benchmark artifacts themselves, and the Rust-native benchmark generator owns those values directly.
 
 The measured behavioral split is also explicit:
 
@@ -231,7 +236,7 @@ The measured behavioral split is also explicit:
 - the benchmarked unsupported slices refused by default `10/10`, issued upper-bound fallback tokens `10/10` when explicitly allowed, and produced only unlinked witnesses `10/10`
 - the extra fail-closed walls triggered `10/10` in the checked scenarios
 - the checked negative-claim probes were coverage-limited in every measured non-`log-write` slice: `0` success, `0` fail, `3` coverage-limited outcomes per slice
-- the benchmark artifact itself is now part of the checked draft-v1 validation path, so stale matrix or report output fails `docs/schemas/draft-v1/validate_examples.py`
+- the benchmark artifact itself is now part of the checked draft-v1 validation path, so stale matrix or report output fails `cargo run -q -p xtask -- draft-v1 truth check`
 
 ## What Is Real Today
 

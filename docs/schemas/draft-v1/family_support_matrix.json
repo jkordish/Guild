@@ -1,32 +1,427 @@
 {
-  "kind": "guild.family_support_matrix",
-  "version": "1.0.0",
   "canonical_runtime_vocabulary": true,
-  "notes": [
-    "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
-    "The slice-aware measured source for M8-proper is docs/schemas/draft-v1/benchmark_matrix.json with the paired human report at docs/benchmarking/m8-real-path-benchmark.md. That benchmark keeps supported slices, fallback or refusal paths, and fail-closed walls separate instead of averaging them together.",
-    "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
-    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for six deterministic slices, and one bounded invoke-skill slice for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions.",
-    "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
-  ],
-  "layers": [
-    "admission_runtime_guarantee_matching",
-    "execution_plan_representation",
-    "live_minimization_proof",
-    "token_issuance_basis",
-    "token_verification",
-    "witness_generation",
-    "witness_verification",
-    "positive_claim_verification",
-    "negative_claim_verification",
-    "plan_proof_token_linkage",
-    "proof_witness_linkage"
-  ],
+  "compatibility_aliases": {
+    "component.invoke": {
+      "maps_to": "invoke-skill",
+      "notes": "Legacy component.invoke stays as an explicit narrowing-only compatibility alias to alias-scoped invoke-skill.",
+      "reason_codes": [
+        "COMPAT_ALIAS_USED",
+        "COMPAT_ALIAS_DEPRECATED",
+        "VOCABULARY_MAPPING_NARROWING"
+      ],
+      "status": "partial"
+    },
+    "net.connect": {
+      "maps_to": "http-request",
+      "notes": "Legacy net.connect stays as an explicit narrowing-only compatibility alias for safe HTTP(S) GET or HEAD scopes.",
+      "reason_codes": [
+        "COMPAT_ALIAS_USED",
+        "COMPAT_ALIAS_DEPRECATED",
+        "VOCABULARY_MAPPING_NARROWING"
+      ],
+      "status": "partial"
+    },
+    "net.resolve": {
+      "maps_to": null,
+      "notes": "The live runtime does not expose a standalone DNS-resolution family in the active inspect slice.",
+      "reason_codes": [
+        "VOCABULARY_MAPPING_UNSUPPORTED",
+        "CANONICAL_FAMILY_UNSUPPORTED"
+      ],
+      "status": "unsupported"
+    }
+  },
   "families": {
-    "http-request": {
+    "emit-evidence": {
+      "layers": {
+        "admission_runtime_guarantee_matching": {
+          "notes": "Direct canonical emit-evidence grants match the active runtime vocabulary.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "execution_plan_representation": {
+          "notes": "M4 plans carry canonical emit-evidence scopes directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "live_minimization_proof": {
+          "notes": "Emit-evidence remains not_proven because the tested exact single-emission replay still fails closed.",
+          "reason_codes": [
+            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"
+          ],
+          "status": "not_proven"
+        },
+        "negative_claim_verification": {
+          "notes": "Scope-only negative claims stay supported when coverage is complete.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "plan_proof_token_linkage": {
+          "notes": "Plan -> proof -> token linkage remains fail-closed while emit-evidence is not_proven.",
+          "reason_codes": [
+            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"
+          ],
+          "status": "not_proven"
+        },
+        "positive_claim_verification": {
+          "notes": "Positive observed-fact claim vocabulary is still unavailable.",
+          "reason_codes": [
+            "POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"
+          ],
+          "status": "unsupported"
+        },
+        "proof_witness_linkage": {
+          "notes": "Proof -> witness linkage remains fail-closed while emit-evidence is not_proven.",
+          "reason_codes": [
+            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"
+          ],
+          "status": "not_proven"
+        },
+        "token_issuance_basis": {
+          "notes": "M6 can still issue upper-bound emit-evidence scopes as a draft-local token layer.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "token_verification": {
+          "notes": "Canonical emit-evidence bindings verify directly against emit-evidence scopes.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_generation": {
+          "notes": "Live emit-evidence observations normalize directly into canonical witness effects.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_verification": {
+          "notes": "Canonical emit-evidence witnesses verify directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        }
+      },
+      "not_proven_shapes": [
+        {
+          "notes": "The tested exact single-emission local-object-store replay still fails closed.",
+          "reason_codes": [
+            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"
+          ],
+          "shape_id": "single-emission-local-object-store-replay-mismatch"
+        },
+        {
+          "notes": "Dynamic or unstable sink semantics remain not_proven.",
+          "reason_codes": [
+            "EMIT_EVIDENCE_LINKAGE_MODEL_UNAVAILABLE"
+          ],
+          "shape_id": "dynamic-or-unstable-sink-semantics"
+        },
+        {
+          "notes": "Multiple emissions or fan-out remain not_proven.",
+          "reason_codes": [
+            "EMIT_EVIDENCE_MULTI_EMISSION_UNSUPPORTED"
+          ],
+          "shape_id": "multiple-emissions-or-fan-out"
+        },
+        {
+          "notes": "Nondeterministic or unreadable payloads remain not_proven.",
+          "reason_codes": [
+            "EMIT_EVIDENCE_PAYLOAD_UNSUPPORTED"
+          ],
+          "shape_id": "nondeterministic-or-unreadable-payload"
+        },
+        {
+          "notes": "Host-side emission failures remain not_proven.",
+          "reason_codes": [
+            "EMIT_EVIDENCE_HOST_ERROR_UNSUPPORTED"
+          ],
+          "shape_id": "host-result-error-on-emission"
+        }
+      ],
+      "proven_slices": [],
       "scope_shape": {
-        "kind": "network",
+        "fields": [
+          "max_bytes",
+          "audiences",
+          "redactions"
+        ],
+        "kind": "evidence"
+      }
+    },
+    "http-request": {
+      "layers": {
+        "admission_runtime_guarantee_matching": {
+          "notes": "Direct canonical http-request grants match the live runtime vocabulary and URL-granularity runtime guarantee checks.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "execution_plan_representation": {
+          "notes": "M4 plans carry canonical http-request scopes directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "live_minimization_proof": {
+          "notes": "M8c now has bounded live proof for exactly six deterministic replay-fixtured http-request slices: exercised GET and HEAD over http to a loopback IP-literal host, each with an explicit port form and an implicit default HTTP port form, plus explicit-port localhost GET and HEAD when the proof basis carries deterministic loopback-only resolution bindings. All six remain exact-path, query-free, redirect-free, single-request slices under the normalized inspect-output comparator only. Broader http-request shapes stay not_proven.",
+          "reason_codes": [
+            "HTTP_LIVE_PROOF_BOUNDED",
+            "LIVE_PROOF_BOUNDED",
+            "LIVE_PROOF_SUPPORTED"
+          ],
+          "status": "bounded"
+        },
+        "negative_claim_verification": {
+          "notes": "Scope-only negative claims stay supported when coverage is complete.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "plan_proof_token_linkage": {
+          "notes": "Plan -> proof -> token linkage is bounded to the six replay-backed live proof slices only.",
+          "reason_codes": [
+            "HTTP_LIVE_PROOF_BOUNDED",
+            "TOKEN_PROOF_BASIS_LIVE"
+          ],
+          "status": "bounded"
+        },
+        "positive_claim_verification": {
+          "notes": "Draft-v1 still does not carry a fixed positive observed-fact claim vocabulary for canonical http-request facts.",
+          "reason_codes": [
+            "POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"
+          ],
+          "status": "unsupported"
+        },
+        "proof_witness_linkage": {
+          "notes": "Proof -> witness linkage is bounded to the six replay-backed live proof slices only.",
+          "reason_codes": [
+            "HTTP_LIVE_PROOF_BOUNDED",
+            "LIVE_PROOF_LINKED_WITNESS"
+          ],
+          "status": "bounded"
+        },
+        "token_issuance_basis": {
+          "notes": "M6 still issues direct canonical http-request scopes, and it can now consume the bounded live proof for the replay-fixtured loopback IP and explicit-port localhost slices. Unsupported http-request shapes still fall back to explicit upper-bound issuance or refusal.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED",
+            "TOKEN_PROOF_BASIS_LIVE"
+          ],
+          "status": "supported"
+        },
+        "token_verification": {
+          "notes": "Canonical METHOD:scheme://host:port/path resource bindings verify directly against http-request scopes.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_generation": {
+          "notes": "Live exercised and blocked http-request observations still normalize directly into canonical witness effects.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_verification": {
+          "notes": "Canonical http-request witnesses verify directly against plans and tokens.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        }
+      },
+      "not_proven_shapes": [
+        {
+          "notes": "Only explicit-port localhost GET and HEAD with deterministic loopback-only resolution bindings are proven among hostname forms. Localhost default-port GET, localhost default-port HEAD, and all other hostname forms remain outside the honest replay-backed proof slice.",
+          "reason_codes": [
+            "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
+            "HTTP_HOST_RESOLUTION_BINDING_UNAVAILABLE",
+            "HTTP_HOST_RESOLUTION_BINDING_UNSAFE"
+          ],
+          "shape_id": "hostname-forms-beyond-explicit-port-localhost-get-or-head"
+        },
+        {
+          "notes": "Query and fragment components remain not_proven because the bounded live proof slice does not replay or compare them conservatively.",
+          "reason_codes": [
+            "HTTP_QUERY_UNSUPPORTED"
+          ],
+          "shape_id": "query-or-fragment"
+        },
+        {
+          "notes": "Redirect responses and redirect-following executions remain outside the honest live proof slice.",
+          "reason_codes": [
+            "HTTP_REDIRECTS_UNSUPPORTED"
+          ],
+          "shape_id": "redirect-driven-execution"
+        },
+        {
+          "notes": "Baseline executions with more than one exercised HTTP request remain not_proven.",
+          "reason_codes": [
+            "HTTP_MULTI_REQUEST_UNSUPPORTED"
+          ],
+          "shape_id": "multiple-exercised-requests"
+        },
+        {
+          "notes": "HTTPS remains outside the current replay-backed live proof slice.",
+          "reason_codes": [
+            "HTTP_SCHEME_UNSUPPORTED_FOR_LIVE_PROOF"
+          ],
+          "shape_id": "https-loopback"
+        }
+      ],
+      "proven_slices": [
+        {
+          "notes": "Bounded live proof is real for the loopback-ip-get-explicit-port slice only.",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "proof_status": "bounded_minimal",
+          "request_shape": {
+            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
+            "host_form": "loopback-ip-literal",
+            "max_exercised_requests": 1,
+            "method": "GET",
+            "path_match": "exact_observed_path",
+            "port_form": "explicit",
+            "query": "forbidden",
+            "redirects": "forbidden",
+            "replay": "required",
+            "scheme": "http"
+          },
+          "slice_id": "loopback-ip-get-explicit-port"
+        },
+        {
+          "notes": "Bounded live proof is real for the loopback-ip-get-default-port slice only.",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "proof_status": "bounded_minimal",
+          "request_shape": {
+            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
+            "host_form": "loopback-ip-literal",
+            "max_exercised_requests": 1,
+            "method": "GET",
+            "path_match": "exact_observed_path",
+            "port_form": "implicit_default_http_port",
+            "query": "forbidden",
+            "redirects": "forbidden",
+            "replay": "required",
+            "scheme": "http"
+          },
+          "slice_id": "loopback-ip-get-default-port"
+        },
+        {
+          "notes": "Bounded live proof is real for the loopback-ip-head-explicit-port slice only.",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "proof_status": "bounded_minimal",
+          "request_shape": {
+            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
+            "host_form": "loopback-ip-literal",
+            "max_exercised_requests": 1,
+            "method": "HEAD",
+            "path_match": "exact_observed_path",
+            "port_form": "explicit",
+            "query": "forbidden",
+            "redirects": "forbidden",
+            "replay": "required",
+            "scheme": "http"
+          },
+          "slice_id": "loopback-ip-head-explicit-port"
+        },
+        {
+          "notes": "Bounded live proof is real for the loopback-ip-head-default-port slice only.",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "proof_status": "bounded_minimal",
+          "request_shape": {
+            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
+            "host_form": "loopback-ip-literal",
+            "max_exercised_requests": 1,
+            "method": "HEAD",
+            "path_match": "exact_observed_path",
+            "port_form": "implicit_default_http_port",
+            "query": "forbidden",
+            "redirects": "forbidden",
+            "replay": "required",
+            "scheme": "http"
+          },
+          "slice_id": "loopback-ip-head-default-port"
+        },
+        {
+          "notes": "Bounded live proof is real for the localhost-get-explicit-port slice only.",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "proof_status": "bounded_minimal",
+          "request_shape": {
+            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
+            "host_form": "loopback-hostname-localhost",
+            "max_exercised_requests": 1,
+            "method": "GET",
+            "path_match": "exact_observed_path",
+            "port_form": "explicit",
+            "query": "forbidden",
+            "redirects": "forbidden",
+            "replay": "required",
+            "resolution_binding": "required",
+            "resolution_scope": "literal_host_explicit_port_resolved_addresses_address_families_loopback_only",
+            "scheme": "http"
+          },
+          "slice_id": "localhost-get-explicit-port"
+        },
+        {
+          "notes": "Bounded live proof is real for the localhost-head-explicit-port slice only.",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "proof_status": "bounded_minimal",
+          "request_shape": {
+            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
+            "host_form": "loopback-hostname-localhost",
+            "max_exercised_requests": 1,
+            "method": "HEAD",
+            "path_match": "exact_observed_path",
+            "port_form": "explicit",
+            "query": "forbidden",
+            "redirects": "forbidden",
+            "replay": "required",
+            "resolution_binding": "required",
+            "resolution_scope": "literal_host_explicit_port_resolved_addresses_address_families_loopback_only",
+            "scheme": "http"
+          },
+          "slice_id": "localhost-head-explicit-port"
+        }
+      ],
+      "scope_shape": {
         "fields": [
           "allowed_schemes",
           "allowed_hosts",
@@ -42,669 +437,404 @@
           "allow_link_local",
           "allow_private_networks",
           "allow_ip_literals"
-        ]
-      },
-      "proven_slices": [
-        {
-          "slice_id": "loopback-ip-get-explicit-port",
-          "proof_status": "bounded_minimal",
-          "proof_backed_layers": [
-            "live_minimization_proof",
-            "plan_proof_token_linkage",
-            "proof_witness_linkage"
-          ],
-          "request_shape": {
-            "max_exercised_requests": 1,
-            "method": "GET",
-            "scheme": "http",
-            "host_form": "loopback-ip-literal",
-            "port_form": "explicit",
-            "path_match": "exact_observed_path",
-            "query": "forbidden",
-            "redirects": "forbidden",
-            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
-            "replay": "required"
-          },
-          "notes": "Bounded live proof is real for one replay-fixtured loopback IP GET request with an explicit port and exact observed path only."
-        },
-        {
-          "slice_id": "loopback-ip-get-default-port",
-          "proof_status": "bounded_minimal",
-          "proof_backed_layers": [
-            "live_minimization_proof",
-            "plan_proof_token_linkage",
-            "proof_witness_linkage"
-          ],
-          "request_shape": {
-            "max_exercised_requests": 1,
-            "method": "GET",
-            "scheme": "http",
-            "host_form": "loopback-ip-literal",
-            "port_form": "implicit_default_http_port",
-            "path_match": "exact_observed_path",
-            "query": "forbidden",
-            "redirects": "forbidden",
-            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
-            "replay": "required"
-          },
-          "notes": "Bounded live proof is also real for the same loopback IP GET request shape when the URL omits the port and the runtime normalizes it to port 80."
-        },
-        {
-          "slice_id": "loopback-ip-head-explicit-port",
-          "proof_status": "bounded_minimal",
-          "proof_backed_layers": [
-            "live_minimization_proof",
-            "plan_proof_token_linkage",
-            "proof_witness_linkage"
-          ],
-          "request_shape": {
-            "max_exercised_requests": 1,
-            "method": "HEAD",
-            "scheme": "http",
-            "host_form": "loopback-ip-literal",
-            "port_form": "explicit",
-            "path_match": "exact_observed_path",
-            "query": "forbidden",
-            "redirects": "forbidden",
-            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
-            "replay": "required"
-          },
-          "notes": "Bounded live proof is real for one replay-fixtured loopback IP HEAD request with an explicit port and exact observed path only."
-        },
-        {
-          "slice_id": "loopback-ip-head-default-port",
-          "proof_status": "bounded_minimal",
-          "proof_backed_layers": [
-            "live_minimization_proof",
-            "plan_proof_token_linkage",
-            "proof_witness_linkage"
-          ],
-          "request_shape": {
-            "max_exercised_requests": 1,
-            "method": "HEAD",
-            "scheme": "http",
-            "host_form": "loopback-ip-literal",
-            "port_form": "implicit_default_http_port",
-            "path_match": "exact_observed_path",
-            "query": "forbidden",
-            "redirects": "forbidden",
-            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
-            "replay": "required"
-          },
-          "notes": "Bounded live proof is also real for the same loopback IP HEAD request shape when the URL omits the port and the runtime normalizes it to port 80."
-        },
-        {
-          "slice_id": "localhost-get-explicit-port",
-          "proof_status": "bounded_minimal",
-          "proof_backed_layers": [
-            "live_minimization_proof",
-            "plan_proof_token_linkage",
-            "proof_witness_linkage"
-          ],
-          "request_shape": {
-            "max_exercised_requests": 1,
-            "method": "GET",
-            "scheme": "http",
-            "host_form": "loopback-hostname-localhost",
-            "port_form": "explicit",
-            "path_match": "exact_observed_path",
-            "query": "forbidden",
-            "redirects": "forbidden",
-            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
-            "replay": "required",
-            "resolution_binding": "required",
-            "resolution_scope": "literal_host_explicit_port_resolved_addresses_address_families_loopback_only"
-          },
-          "notes": "Bounded live proof is real for one replay-fixtured explicit-port localhost GET request only when the proof basis binds the literal host string, explicit port, resolved addresses and address families, loopback-only resolution semantics, and replay invalidation inputs for that binding."
-        },
-        {
-          "slice_id": "localhost-head-explicit-port",
-          "proof_status": "bounded_minimal",
-          "proof_backed_layers": [
-            "live_minimization_proof",
-            "plan_proof_token_linkage",
-            "proof_witness_linkage"
-          ],
-          "request_shape": {
-            "max_exercised_requests": 1,
-            "method": "HEAD",
-            "scheme": "http",
-            "host_form": "loopback-hostname-localhost",
-            "port_form": "explicit",
-            "path_match": "exact_observed_path",
-            "query": "forbidden",
-            "redirects": "forbidden",
-            "comparator": "guild.runner.live-proof.normalized-inspect-output.v1",
-            "replay": "required",
-            "resolution_binding": "required",
-            "resolution_scope": "literal_host_explicit_port_resolved_addresses_address_families_loopback_only"
-          },
-          "notes": "Bounded live proof is real for one replay-fixtured explicit-port localhost HEAD request only when the proof basis binds the literal host string, explicit port, resolved addresses and address families, loopback-only resolution semantics, and replay invalidation inputs for that binding."
-        }
-      ],
-      "not_proven_shapes": [
-        {
-          "shape_id": "hostname-forms-beyond-explicit-port-localhost-get-or-head",
-          "reason_codes": [
-            "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
-            "HTTP_HOST_RESOLUTION_BINDING_UNAVAILABLE",
-            "HTTP_HOST_RESOLUTION_BINDING_UNSAFE"
-          ],
-          "notes": "Only explicit-port localhost GET and HEAD with deterministic loopback-only resolution bindings are proven among hostname forms. Localhost default-port GET, localhost default-port HEAD, and all other hostname forms remain outside the honest replay-backed proof slice."
-        },
-        {
-          "shape_id": "query-or-fragment",
-          "reason_codes": [
-            "HTTP_QUERY_UNSUPPORTED"
-          ],
-          "notes": "Query and fragment components remain not_proven because the bounded live proof slice does not replay or compare them conservatively."
-        },
-        {
-          "shape_id": "redirect-driven-execution",
-          "reason_codes": [
-            "HTTP_REDIRECTS_UNSUPPORTED"
-          ],
-          "notes": "Redirect responses and redirect-following executions remain outside the honest live proof slice."
-        },
-        {
-          "shape_id": "multiple-exercised-requests",
-          "reason_codes": [
-            "HTTP_MULTI_REQUEST_UNSUPPORTED"
-          ],
-          "notes": "Baseline executions with more than one exercised HTTP request remain not_proven."
-        },
-        {
-          "shape_id": "https-loopback",
-          "reason_codes": [
-            "HTTP_SCHEME_UNSUPPORTED_FOR_LIVE_PROOF"
-          ],
-          "notes": "HTTPS remains outside the current replay-backed live proof slice."
-        }
-      ],
+        ],
+        "kind": "network"
+      }
+    },
+    "invoke-skill": {
       "layers": {
         "admission_runtime_guarantee_matching": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Direct canonical http-request grants match the live runtime vocabulary and URL-granularity runtime guarantee checks."
+          "notes": "Direct canonical invoke-skill grants match the active runtime vocabulary.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
         },
         "execution_plan_representation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "M4 plans carry canonical http-request scopes directly."
+          "notes": "M4 plans carry canonical invoke-skill scopes directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
         },
         "live_minimization_proof": {
-          "status": "bounded",
-          "reason_codes": ["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"],
-          "notes": "M8c now has bounded live proof for exactly six deterministic replay-fixtured http-request slices: exercised GET and HEAD over http to a loopback IP-literal host, each with an explicit port form and an implicit default HTTP port form, plus explicit-port localhost GET and HEAD when the proof basis carries deterministic loopback-only resolution bindings. All six remain exact-path, query-free, redirect-free, single-request slices under the normalized inspect-output comparator only. Broader http-request shapes stay not_proven."
-        },
-        "token_issuance_basis": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "M6 still issues direct canonical http-request scopes, and it can now consume the bounded live proof for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings. Unsupported http-request shapes still fall back to explicit upper-bound issuance or refusal."
-        },
-        "token_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Canonical METHOD:scheme://host:port/path resource bindings verify directly against http-request scopes."
-        },
-        "witness_generation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Live exercised and blocked http-request observations still normalize directly into canonical witness effects."
-        },
-        "witness_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Canonical http-request witnesses verify directly against plans and tokens."
-        },
-        "positive_claim_verification": {
-          "status": "unsupported",
-          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
-          "notes": "The witness bundle still does not expose fixed positive observed-fact claim types."
+          "notes": "Invoke-skill live proof is bounded to one exact zero-authority child slice only.",
+          "reason_codes": [
+            "LIVE_PROOF_BOUNDED",
+            "LIVE_PROOF_SUPPORTED"
+          ],
+          "status": "bounded"
         },
         "negative_claim_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Scope-only absence claims remain supported when observation coverage is complete."
+          "notes": "Scope-only negative claims stay supported when coverage is complete.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
         },
         "plan_proof_token_linkage": {
-          "status": "bounded",
-          "reason_codes": ["HTTP_LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "M8c now proves a real bounded plan-to-live-proof-to-proof-backed-token chain for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings only. Unsupported http-request shapes still fail closed back to upper-bound issuance or refusal."
+          "notes": "Plan -> proof -> token linkage is bounded to the exact single-child slice only.",
+          "reason_codes": [
+            "TOKEN_PROOF_BASIS_LIVE"
+          ],
+          "status": "bounded"
+        },
+        "positive_claim_verification": {
+          "notes": "Positive observed-fact claim vocabulary is still unavailable.",
+          "reason_codes": [
+            "POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"
+          ],
+          "status": "unsupported"
         },
         "proof_witness_linkage": {
-          "status": "bounded",
-          "reason_codes": ["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED"],
-          "notes": "Witnesses now link honestly to bounded live proofs only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings. Redirects, unsupported hostname forms, localhost default-port GET, localhost default-port HEAD, queries, multi-request executions, and unsupported comparator or replay conditions stay unlinked and not_proven."
+          "notes": "Proof -> witness linkage is bounded to the exact single-child slice only.",
+          "reason_codes": [
+            "LIVE_PROOF_LINKED_WITNESS"
+          ],
+          "status": "bounded"
+        },
+        "token_issuance_basis": {
+          "notes": "Proof-backed M6 issuance can consume the bounded invoke-skill proof for the exact single-child slice.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED",
+            "TOKEN_PROOF_BASIS_LIVE"
+          ],
+          "status": "supported"
+        },
+        "token_verification": {
+          "notes": "Canonical alias bindings verify directly against invoke-skill scopes.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_generation": {
+          "notes": "Live invoke observations normalize directly into canonical witness effects.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_verification": {
+          "notes": "Canonical invoke-skill witnesses verify directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
         }
+      },
+      "not_proven_shapes": [
+        {
+          "notes": "Dynamic or broader invoke resolution remains not_proven.",
+          "reason_codes": [
+            "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED"
+          ],
+          "shape_id": "dynamic-or-broader-resolution"
+        },
+        {
+          "notes": "Multi-child fan-out remains not_proven.",
+          "reason_codes": [
+            "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
+          ],
+          "shape_id": "multi-child-fan-out"
+        },
+        {
+          "notes": "Recursive or deeper invoke graphs remain not_proven.",
+          "reason_codes": [
+            "INVOKE_SKILL_RECURSION_UNSUPPORTED"
+          ],
+          "shape_id": "recursive-or-deeper-call-graph"
+        },
+        {
+          "notes": "Child-side authority use remains not_proven.",
+          "reason_codes": [
+            "INVOKE_SKILL_CHILD_AUTHORITY_UNSUPPORTED"
+          ],
+          "shape_id": "child-authority-use"
+        },
+        {
+          "notes": "Non-inspect child targets remain not_proven.",
+          "reason_codes": [
+            "INVOKE_SKILL_CHILD_WORLD_UNSUPPORTED"
+          ],
+          "shape_id": "non-inspect-child-world"
+        }
+      ],
+      "proven_slices": [
+        {
+          "invoke_shape": {
+            "alias_binding": "exact_declared_dependency_alias",
+            "child_authority": "forbidden",
+            "child_identity": "installed_dependency_snapshot_exact_digest",
+            "child_result_comparator": "guild.runner.live-proof.normalized-inspect-single-child-invoke.v1",
+            "child_target_world": "guild-skill-inspect-v1",
+            "max_exercised_children": 1,
+            "nested_child_executions": "forbidden"
+          },
+          "notes": "Bounded live proof exists only for the exact single-child zero-authority inspect slice.",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "proof_status": "bounded_minimal",
+          "slice_id": "single-child-zero-authority-inspect-child"
+        }
+      ],
+      "scope_shape": {
+        "fields": [
+          "aliases"
+        ],
+        "kind": "skill"
+      }
+    },
+    "log-write": {
+      "layers": {
+        "admission_runtime_guarantee_matching": {
+          "notes": "Direct canonical log-write grants match the active runtime vocabulary.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "execution_plan_representation": {
+          "notes": "M4 plans carry canonical log-write scopes directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "live_minimization_proof": {
+          "notes": "Log-write has real live proof over the observed discrete level slice.",
+          "reason_codes": [
+            "LIVE_PROOF_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "negative_claim_verification": {
+          "notes": "Scope-only negative claims stay supported when coverage is complete.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "plan_proof_token_linkage": {
+          "notes": "The checked benchmark does not currently claim a real-path token linkage slice for log-write.",
+          "reason_codes": [
+            "BENCHMARK_LINKAGE_NOT_MEASURED"
+          ],
+          "status": "unsupported"
+        },
+        "positive_claim_verification": {
+          "notes": "Positive observed-fact claim vocabulary is still unavailable.",
+          "reason_codes": [
+            "POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"
+          ],
+          "status": "unsupported"
+        },
+        "proof_witness_linkage": {
+          "notes": "The checked benchmark does not currently claim a real-path witness linkage slice for log-write.",
+          "reason_codes": [
+            "BENCHMARK_LINKAGE_NOT_MEASURED"
+          ],
+          "status": "unsupported"
+        },
+        "token_issuance_basis": {
+          "notes": "M6 can issue direct canonical log-write scopes.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "token_verification": {
+          "notes": "Canonical log-write bindings verify directly against log-write scopes.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_generation": {
+          "notes": "Live log observations normalize directly into canonical witness effects.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_verification": {
+          "notes": "Canonical log-write witnesses verify directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        }
+      },
+      "not_proven_shapes": [],
+      "proven_slices": [
+        {
+          "log_shape": {
+            "levels": [
+              "info"
+            ]
+          },
+          "notes": "Log-write live proof exists over the observed discrete level slice.",
+          "proof_backed_layers": [
+            "live_minimization_proof"
+          ],
+          "proof_status": "exact_minimal",
+          "slice_id": "observed-discrete-levels"
+        }
+      ],
+      "scope_shape": {
+        "fields": [
+          "levels"
+        ],
+        "kind": "log"
       }
     },
     "read-resource": {
-      "scope_shape": {
-        "kind": "resource",
-        "fields": [
-          "uri_prefixes",
-          "resource_kinds"
-        ]
+      "layers": {
+        "admission_runtime_guarantee_matching": {
+          "notes": "Direct canonical read-resource grants match the live runtime vocabulary.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "execution_plan_representation": {
+          "notes": "M4 plans carry canonical read-resource scopes directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "live_minimization_proof": {
+          "notes": "Read-resource live proof is bounded to immutable execution/object-record roots.",
+          "reason_codes": [
+            "LIVE_PROOF_BOUNDED",
+            "LIVE_PROOF_SUPPORTED"
+          ],
+          "status": "bounded"
+        },
+        "negative_claim_verification": {
+          "notes": "Scope-only negative claims stay supported when coverage is complete.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "plan_proof_token_linkage": {
+          "notes": "Plan -> proof -> token linkage is bounded to immutable execution/object-record roots.",
+          "reason_codes": [
+            "TOKEN_PROOF_BASIS_LIVE"
+          ],
+          "status": "bounded"
+        },
+        "positive_claim_verification": {
+          "notes": "Positive observed-fact claim vocabulary is still unavailable.",
+          "reason_codes": [
+            "POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"
+          ],
+          "status": "unsupported"
+        },
+        "proof_witness_linkage": {
+          "notes": "Proof -> witness linkage is bounded to immutable execution/object-record roots.",
+          "reason_codes": [
+            "LIVE_PROOF_LINKED_WITNESS"
+          ],
+          "status": "bounded"
+        },
+        "token_issuance_basis": {
+          "notes": "Proof-backed M6 issuance can consume the bounded read-resource proof.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED",
+            "TOKEN_PROOF_BASIS_LIVE"
+          ],
+          "status": "supported"
+        },
+        "token_verification": {
+          "notes": "Canonical Guild resource bindings verify directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_generation": {
+          "notes": "Live read-resource observations normalize directly into canonical witness effects.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        },
+        "witness_verification": {
+          "notes": "Canonical read-resource witnesses verify directly.",
+          "reason_codes": [
+            "CANONICAL_FAMILY_SUPPORTED"
+          ],
+          "status": "supported"
+        }
       },
+      "not_proven_shapes": [
+        {
+          "notes": "Execution-query resources remain outside the honest bounded live shrink envelope.",
+          "reason_codes": [
+            "LIVE_SCOPE_SHRINK_UNSUPPORTED",
+            "READ_RESOURCE_QUERY_UNSUPPORTED"
+          ],
+          "shape_id": "execution-query-shrink"
+        }
+      ],
       "proven_slices": [
         {
-          "slice_id": "immutable-execution-and-object-record-roots",
-          "proof_status": "bounded_minimal",
+          "notes": "Bounded live proof exists over immutable Guild execution and object-record roots only.",
           "proof_backed_layers": [
             "live_minimization_proof",
             "plan_proof_token_linkage",
             "proof_witness_linkage"
           ],
+          "proof_status": "bounded_minimal",
           "request_shape": {
-            "uri_roots": [
-              "guild://executions/",
-              "guild://objects/records/"
-            ],
             "resource_kinds": [
               "execution",
               "object"
             ],
-            "proof_model": "bounded_root_shrink_over_immutable_guild_resources"
+            "uri_prefixes": [
+              "guild://executions/",
+              "guild://objects/records/"
+            ]
           },
-          "notes": "The M8-proper benchmark measures one bounded real-path slice here: immutable Guild execution and object-record roots, with plan -> proof -> token -> witness linkage checked against repo-backed scenarios."
+          "slice_id": "immutable-guild-execution-object-record-roots"
         }
       ],
-      "not_proven_shapes": [
-        {
-          "shape_id": "execution-query-roots",
-          "reason_codes": [
-            "LIVE_SCOPE_SHRINK_UNSUPPORTED"
-          ],
-          "notes": "Execution-query resources remain outside the current bounded read-resource shrink model and stay fail-closed in the M8-proper benchmark."
-        }
-      ],
-      "layers": {
-        "admission_runtime_guarantee_matching": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Direct canonical read-resource grants match the live runtime's typed Guild URI authorization model."
-        },
-        "execution_plan_representation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "M4 plans carry canonical read-resource URI prefixes and resource kinds directly."
-        },
-        "live_minimization_proof": {
-          "status": "bounded",
-          "reason_codes": ["LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"],
-          "notes": "M8c now has bounded live proof for read-resource, but only for immutable Guild execution/object-record roots and only under the conservative root-shrink model."
-        },
-        "token_issuance_basis": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "M6 can now consume bounded live read-resource proofs as an honest proof-backed issuance basis."
-        },
-        "token_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Canonical Guild URI resource bindings verify directly against read-resource scopes."
-        },
-        "witness_generation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Live read-resource observations normalize directly into canonical witness effects."
-        },
-        "witness_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Canonical read-resource witnesses verify directly against plans, tokens, and bounded live proofs."
-        },
-        "positive_claim_verification": {
-          "status": "unsupported",
-          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
-          "notes": "Positive observed-fact claims remain out of scope."
-        },
-        "negative_claim_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Scope-only absence claims remain supported when coverage is complete."
-        },
-        "plan_proof_token_linkage": {
-          "status": "bounded",
-          "reason_codes": ["LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "M8c now proves a real bounded read-resource chain from plan to live proof to proof-backed token."
-        },
-        "proof_witness_linkage": {
-          "status": "bounded",
-          "reason_codes": ["LIVE_PROOF_BOUNDED"],
-          "notes": "M8c now links witnesses honestly to bounded live read-resource proofs without claiming exact minimality."
-        }
-      }
-    },
-    "invoke-skill": {
       "scope_shape": {
-        "kind": "skill",
         "fields": [
-          "aliases"
-        ]
-      },
-      "proven_slices": [
-        {
-          "slice_id": "single-child-zero-authority-inspect-child",
-          "proof_status": "bounded_minimal",
-          "proof_backed_layers": [
-            "live_minimization_proof",
-            "plan_proof_token_linkage",
-            "proof_witness_linkage"
-          ],
-          "invoke_shape": {
-            "max_exercised_children": 1,
-            "alias_binding": "exact_declared_dependency_alias",
-            "child_identity": "installed_dependency_snapshot_exact_digest",
-            "child_target_world": "guild-skill-inspect-v1",
-            "child_input": "exact_canonical_json",
-            "child_result_comparator": "guild.runner.live-proof.normalized-inspect-single-child-invoke.v1",
-            "child_authority": "forbidden",
-            "nested_child_executions": "forbidden"
-          },
-          "notes": "Bounded live proof is real only for one exercised child invocation where the parent alias is declared, the alias resolves through the installed dependency snapshot to one exact child digest, the child stays on guild-skill-inspect-v1, child input is deterministic, the comparator reloads the persisted child execution record, and the child uses no capability families of its own."
-        }
-      ],
-      "not_proven_shapes": [
-        {
-          "shape_id": "multi-child-fan-out",
-          "reason_codes": [
-            "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
-          ],
-          "notes": "Any baseline execution with more than one exercised or persisted child invocation remains not_proven."
-        },
-        {
-          "shape_id": "recursive-or-deeper-call-graph",
-          "reason_codes": [
-            "INVOKE_SKILL_RECURSION_UNSUPPORTED"
-          ],
-          "notes": "Nested child executions and deeper call graphs remain outside the honest live proof slice."
-        },
-        {
-          "shape_id": "child-authority-use",
-          "reason_codes": [
-            "INVOKE_SKILL_CHILD_AUTHORITY_UNSUPPORTED"
-          ],
-          "notes": "If the child itself exercises any capability family or receives non-empty grants, invoke-skill stays not_proven."
-        },
-        {
-          "shape_id": "dynamic-or-broader-resolution",
-          "reason_codes": [
-            "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED",
-            "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
-            "INVOKE_SKILL_REPLAY_UNAVAILABLE"
-          ],
-          "notes": "Broader dispatch behavior, missing child record linkage, or any path that fails to bind the exercised alias to one exact persisted child execution and one exact installed dependency digest remains not_proven."
-        },
-        {
-          "shape_id": "non-inspect-child-world",
-          "reason_codes": [
-            "INVOKE_SKILL_EXPORT_WORLD_UNSUPPORTED"
-          ],
-          "notes": "Child targets outside the fixed guild-skill-inspect-v1 runtime world remain not_proven."
-        }
-      ],
-      "layers": {
-        "admission_runtime_guarantee_matching": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Direct canonical invoke-skill scopes match the live alias-bound runtime family."
-        },
-        "execution_plan_representation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "M4 plans carry the canonical alias-bound invoke-skill scope directly."
-        },
-        "live_minimization_proof": {
-          "status": "bounded",
-          "reason_codes": ["INVOKE_SKILL_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"],
-          "notes": "M8c now has one bounded invoke-skill live proof slice only: exactly one exercised declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1, with deterministic child input, the child-aware normalized inspect comparator, and zero nested child executions. Dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, and non-inspect child targets remain not_proven."
-        },
-        "token_issuance_basis": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "M6 still issues direct canonical invoke-skill scopes. It can now consume the bounded live proof only for the exact single-child zero-authority inspect slice; unsupported invoke-skill shapes still fall back to explicit upper-bound issuance or refusal."
-        },
-        "token_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Alias resource bindings verify directly against invoke-skill scopes."
-        },
-        "witness_generation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Live invoke-skill observations normalize directly into canonical witness effects."
-        },
-        "witness_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Canonical invoke-skill witnesses verify directly against plans and tokens."
-        },
-        "positive_claim_verification": {
-          "status": "unsupported",
-          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
-          "notes": "Positive observed-fact claims remain out of scope."
-        },
-        "negative_claim_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Scope-only absence claims remain supported when coverage is complete."
-        },
-        "plan_proof_token_linkage": {
-          "status": "bounded",
-          "reason_codes": ["INVOKE_SKILL_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "Plan-to-proof-to-token linkage is honest only for the exact single-child zero-authority inspect slice. Unsupported invoke-skill shapes do not receive proof-backed token linkage."
-        },
-        "proof_witness_linkage": {
-          "status": "bounded",
-          "reason_codes": ["INVOKE_SKILL_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED"],
-          "notes": "Witnesses link to live invoke-skill proofs only for the exact single-child zero-authority inspect slice. Unsupported invoke-skill shapes keep witness proof linkage unavailable."
-        }
-      }
-    },
-    "emit-evidence": {
-      "scope_shape": {
-        "kind": "evidence",
-        "fields": [
-          "audiences",
-          "redactions",
-          "max_bytes"
-        ]
-      },
-      "not_proven_shapes": [
-        {
-          "shape_id": "single-emission-local-object-store-replay-mismatch",
-          "reason_codes": [
-            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"
-          ],
-          "notes": "The runtime now binds an explicit host-owned sink descriptor and uses a dedicated comparator profile for the fixed local object-store sink, but the tested exact single-emission shrink still does not re-execute equivalently under that comparator. The slice therefore remains not_proven, and the draft-v1 control-plane does not try to smuggle sink or payload specifics through the coarser emit-evidence fields."
-        },
-        {
-          "shape_id": "dynamic-or-unstable-sink-semantics",
-          "reason_codes": [
-            "EMIT_EVIDENCE_SINK_MODEL_UNAVAILABLE"
-          ],
-          "notes": "Dynamic routing, alternate sink namespaces, unstable storage semantics, or any sink model beyond the fixed local object store remain outside the honest live proof slice."
-        },
-        {
-          "shape_id": "multiple-emissions-or-fan-out",
-          "reason_codes": [
-            "EMIT_EVIDENCE_MULTI_EMIT_UNSUPPORTED"
-          ],
-          "notes": "Baseline executions with blocked emit attempts, more than one exercised emission, fan-out, or append-order-sensitive multi-record behavior remain not_proven."
-        },
-        {
-          "shape_id": "nondeterministic-or-unreadable-payload",
-          "reason_codes": [
-            "EMIT_EVIDENCE_PAYLOAD_NONDETERMINISTIC",
-            "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"
-          ],
-          "notes": "If the payload cannot be re-materialized deterministically and compared against a stable persisted digest, emit-evidence remains not_proven."
-        },
-        {
-          "shape_id": "host-result-error-on-emission",
-          "reason_codes": [
-            "EMIT_EVIDENCE_RESULT_ERROR_UNSUPPORTED"
-          ],
-          "notes": "Exercised emit-evidence observations with host-side result errors remain outside the bounded feasibility slice."
-        }
-      ],
-      "layers": {
-        "admission_runtime_guarantee_matching": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Direct canonical emit-evidence scopes match the live runtime vocabulary."
-        },
-        "execution_plan_representation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "M4 plans carry canonical emit-evidence scopes directly."
-        },
-        "live_minimization_proof": {
-          "status": "not_proven",
-          "reason_codes": ["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"],
-          "notes": "M8c now binds explicit sink identity and uses a dedicated comparator profile for one fixed local-object-store single-emission candidate, but the tested exact single-emission shrink still does not re-execute equivalently under that comparator. The family therefore remains not_proven and fail-closed."
-        },
-        "token_issuance_basis": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "M6 still issues canonical emit-evidence scopes, but proof-backed issuance remains unavailable because no honest live emit-evidence proof exists for the tested exact single-emission slice. The current coarse scope model also does not justify smuggling sink or payload specifics into proof-backed issuance."
-        },
-        "token_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Canonical emit-evidence resource bindings verify directly against the current scope model."
-        },
-        "witness_generation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Live emit-evidence observations normalize directly into canonical witness effects."
-        },
-        "witness_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Canonical emit-evidence witnesses verify directly against plans and tokens."
-        },
-        "positive_claim_verification": {
-          "status": "unsupported",
-          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
-          "notes": "Positive observed-fact claims remain out of scope."
-        },
-        "negative_claim_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Scope-only absence claims remain supported when coverage is complete."
-        },
-        "plan_proof_token_linkage": {
-          "status": "not_proven",
-          "reason_codes": ["PROOF_LINKAGE_UNAVAILABLE", "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"],
-          "notes": "M8c does not claim emit-evidence proof-backed token linkage. The tested exact single-emission shrink did not replay equivalently under the dedicated comparator, so linkage stays fail-closed. The current coarse emit-evidence scope fields are not used to smuggle sink or payload specifics around that failure."
-        },
-        "proof_witness_linkage": {
-          "status": "not_proven",
-          "reason_codes": ["WITNESS_PROOF_LINKAGE_UNAVAILABLE", "EMIT_EVIDENCE_REPLAY_UNAVAILABLE"],
-          "notes": "M8c does not link emit-evidence witnesses to live proofs. Witnesses keep the direct observed canonical family facts, but live-proof linkage stays unavailable because the tested exact single-emission shrink did not replay equivalently under the dedicated comparator."
-        }
-      }
-    },
-    "log-write": {
-      "scope_shape": {
-        "kind": "log",
-        "fields": [
-          "levels"
-        ]
-      },
-      "proven_slices": [
-        {
-          "slice_id": "observed-info-level",
-          "proof_status": "exact_minimal",
-          "proof_backed_layers": [
-            "live_minimization_proof"
-          ],
-          "request_shape": {
-            "levels": [
-              "info"
-            ],
-            "max_calls": 1
-          },
-          "notes": "The M8-proper benchmark measures this slice through M4 plus M5 only. It does not claim a checked real-path token or witness linkage slice for log-write."
-        }
-      ],
-      "layers": {
-        "admission_runtime_guarantee_matching": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Direct canonical log-write scopes match the live runtime's level-only authority shape."
-        },
-        "execution_plan_representation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "M4 plans carry canonical log-write levels directly."
-        },
-        "live_minimization_proof": {
-          "status": "supported",
-          "reason_codes": ["LIVE_PROOF_SUPPORTED"],
-          "notes": "M8c now has exact discrete live proof search for the observed log-write levels."
-        },
-        "token_issuance_basis": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "M6 can consume real log-write live proofs when a plan and proof record align."
-        },
-        "token_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Canonical log-write bindings verify directly against level-only scopes."
-        },
-        "witness_generation": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Live log-write observations normalize directly into canonical witness effects."
-        },
-        "witness_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Canonical log-write witnesses verify directly against plans, tokens, and live proofs when present."
-        },
-        "positive_claim_verification": {
-          "status": "unsupported",
-          "reason_codes": ["CANONICAL_FAMILY_UNSUPPORTED"],
-          "notes": "Positive observed-fact claims remain out of scope."
-        },
-        "negative_claim_verification": {
-          "status": "supported",
-          "reason_codes": ["CANONICAL_FAMILY_SUPPORTED"],
-          "notes": "Scope-only absence claims remain supported when coverage is complete."
-        },
-        "plan_proof_token_linkage": {
-          "status": "supported",
-          "reason_codes": ["LIVE_PROOF_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"],
-          "notes": "The draft M6 layer can consume a real log-write live proof record, but the M8-proper benchmark does not claim a checked real-path log-write issuance slice yet."
-        },
-        "proof_witness_linkage": {
-          "status": "supported",
-          "reason_codes": ["LIVE_PROOF_SUPPORTED"],
-          "notes": "The draft M7 layer can link witnesses to a real log-write live proof when provided, but the M8-proper benchmark does not claim a checked real-path log-write witness slice yet."
-        }
+          "uri_prefixes",
+          "resource_kinds"
+        ],
+        "kind": "resource"
       }
     }
   },
-  "compatibility_aliases": {
-    "net.connect": {
-      "status": "partial",
-      "maps_to_family": "http-request",
-      "notes": "Legacy net.connect remains only a conservative compatibility alias. Direct canonical http-request is the supported runtime vocabulary."
-    },
-    "component.invoke": {
-      "status": "partial",
-      "maps_to_family": "invoke-skill",
-      "notes": "Legacy component.invoke remains only a conservative compatibility alias. Direct canonical invoke-skill is the supported runtime vocabulary."
-    },
-    "net.resolve": {
-      "status": "unsupported",
-      "maps_to_family": null,
-      "notes": "The live runtime does not expose a standalone DNS resolution family."
-    }
-  }
+  "kind": "guild.family_support_matrix",
+  "layers": [
+    "admission_runtime_guarantee_matching",
+    "execution_plan_representation",
+    "live_minimization_proof",
+    "token_issuance_basis",
+    "token_verification",
+    "witness_generation",
+    "witness_verification",
+    "positive_claim_verification",
+    "negative_claim_verification",
+    "plan_proof_token_linkage",
+    "proof_witness_linkage"
+  ],
+  "notes": [
+    "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
+    "The slice-aware measured source for M8-proper is docs/schemas/draft-v1/benchmark_matrix.json with the paired human report at docs/benchmarking/m8-real-path-benchmark.md. That benchmark keeps supported slices, fallback or refusal paths, and fail-closed walls separate instead of averaging them together.",
+    "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
+    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for six deterministic slices, and one bounded invoke-skill slice for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions.",
+    "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
+    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
+  ],
+  "version": "1.0.0"
 }

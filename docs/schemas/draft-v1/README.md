@@ -67,7 +67,7 @@ Current M8-proper benchmark truth is explicit and slice-aware:
 - supported proof-only slice: one exact `log-write` observed `info`-level slice through M4 plus M5 only
 - benchmarked unsupported slices: redirect `http-request`, multi-child `invoke-skill`, and replay-unavailable `emit-evidence`, each with `10/10` default refusal, `10/10` explicit upper-bound fallback issuance, and `10/10` unlinked witness generation
 - benchmarked extra fail-closed walls: `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use, each triggering `10/10` in the checked scenarios
-- measured overhead ranges on the checked path: M4 admission about `12.5` to `17.0 ms`; M5 proof search about `6.8 s` for `read-resource`, `7.3` to `7.5 s` for the supported `http-request` slices, `10.3 s` for the supported `invoke-skill` slice, `9.0 s` for `log-write`, and `3.0` to `7.7 s` for the benchmarked unsupported slices or walls; proof-backed issuance about `20` to `24 ms`; token verification about `31` to `34 ms`; witness generation about `77` to `88 ms`; witness verification about `119` to `133 ms`
+- measured overhead distributions now live in the checked `benchmark_matrix.json` and paired Markdown report; the Rust-native benchmark generator owns those values directly
 - negative-claim checks are still coverage-limited in the checked scenarios: every measured non-`log-write` slice recorded `0` success, `0` fail, and `3` coverage-limited outcomes
 
 ## Design stance
@@ -131,7 +131,7 @@ These orderings are not enforced by JSON Schema itself. The admission engine mus
 
 ### Hard requirements
 
-The hard-requirement path is shared by `compatibility_check.py` and `admission_engine.py`.
+The hard-requirement path is shared by the Rust-native compatibility flow and `admission_engine.py`.
 
 It currently enforces:
 
@@ -377,8 +377,7 @@ Its current limits are also explicit:
 
 - `admission_engine.py`
 - `minimization_engine.py`
-- `compatibility_check.py`
-- `validate_examples.py`
+- Rust-native truth tooling under `xtask/` and `crates/guild-draft-truth/`
 - `family_support_matrix.json`
 - `minimization_core.py`
 - `token_core.py`
@@ -464,42 +463,49 @@ The draft-v1 M7 witness path reuses that same narrow protection model:
 
 ## Validation status
 
-All bundled examples validate cleanly against the bundled schemas when run with the directory-local validation dependencies installed.
+The standard repo truth path for this draft bundle is now Rust-native:
 
-`validate_examples.py` now verifies:
+```bash
+cargo run -q -p xtask -- draft-v1 truth check
+```
 
-- schema validation for the bundled contracts, runtimes, comparator profiles, requests, plans, proof, and witness examples
-- exact expected-plan output for the `admit`, `downgrade`, `migrate`, and `refuse` admission examples
-- deterministic repeated execution-plan output for the same inputs
-- exact checked proof output for the bundled M5 reduction, no-reduction, bounded-minimal, zero-authority, comparator-unavailable, and cache-hit cases
-- strict cache-bypass probes when runtime, comparator, or plan identity changes
-- explicit negative probes for omitted and invalid runtime guarantees
-- exact checked M6 token output for proof-backed root issuance, explicit upper-bound issuance, delegated child issuance, upper-bound refusal, and zero-authority empty-token issuance
-- verification success and fail-closed denial for replay, wrong audience, wrong holder, passthrough attempts, chain mismatch, runtime mismatch, broadening, and expiry cases
-- deterministic repeated M6 issuance for identical claims and key material
-- exact checked M7 witness output for within-envelope, out-of-envelope, coverage-limited, redacted-claim-blocked, blocked-attempt, delegation-chain, zero-authority, runtime-mapping-limited, and runtime-binding-mismatch cases
-- witness verification success for authentic within-envelope, coverage-limited, zero-authority, and delegation-chain records
-- witness verification fail-closed behavior for runtime-binding mismatch
-- fixed-claim evaluation success for proof-backed token absence and bounded delegation claims
-- explicit non-success for negative claims blocked by incomplete coverage or redaction
-- deterministic repeated M7 witness generation and MAC output for identical inputs
-- live-runtime alignment cases covering bounded live `read-resource` proof with proof-backed token and proof-linked witness, bounded live `http-request` proof with proof-backed token and proof-linked witness for the replay-fixtured loopback IP `GET` and `HEAD` slices with either an explicit port or the implicit default HTTP port plus the explicit-port `localhost` `GET` and `HEAD` slices with deterministic loopback-only resolution bindings, bounded live `invoke-skill` proof with proof-backed token and proof-linked witness for the exact single-child zero-authority inspect slice, unsupported multi-child `invoke-skill` fail-closed behavior, unsupported redirect and no-replay `http-request` fail-closed behavior, exact live `log-write` family proof over the observed level slice, deterministic canonicalization, and explicit alias deprecation or rejection
+That truth command now verifies:
 
-`compatibility_check.py` regenerates the derived hard-requirement compatibility matrix and asserts the fail-closed negative probes for omitted and unsupported `wit_worlds` support.
+- schema validation for the checked contracts, runtimes, comparator profiles, requests, plans, proof examples, token examples, and witness examples
+- fail-closed negative probes for omitted and invalid runtime guarantee fields
+- exact `family_support_matrix.json` regeneration or drift detection
+- exact `compatibility_matrix.md` regeneration or drift detection plus the fail-closed omitted or unsupported `wit_worlds` probes
+- benchmark artifact schema and report validation plus live scenario alignment against the real Rust runner
+
+The checked-output commands are:
+
+```bash
+cargo run -q -p xtask -- draft-v1 support-matrix check
+cargo run -q -p xtask -- draft-v1 compatibility check
+cargo run -q -p xtask -- draft-v1 benchmark check
+```
+
+The artifact-regeneration commands are:
+
+```bash
+cargo run -q -p xtask -- draft-v1 support-matrix write
+cargo run -q -p xtask -- draft-v1 compatibility write
+cargo run -q -p xtask -- draft-v1 benchmark write
+```
+
+Those migrated flows no longer require a Python virtualenv. The remaining direct Python engines in this directory are legacy draft-harness utilities for manual inspection and development work, not the standard repo truth path.
 
 ### Reproducible validation
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-python3 validate_examples.py
-python3 compatibility_check.py
+cargo run -q -p xtask -- draft-v1 truth check
+
 python3 admission_engine.py \
   --contract examples/zero-authority.contract.json \
   --request examples/zero-authority.migrate.request.json \
   --runtime examples/node-wasi-basic.runtime.json \
   --runtime examples/wasmtime-strict.runtime.json
+
 python3 minimization_engine.py \
   --plan examples/local-log-analyzer.admit.plan.json \
   --contract examples/local-log-analyzer.contract.json \
@@ -509,6 +515,7 @@ python3 minimization_engine.py \
   --comparator-profile examples/local-log-analyzer.canonical-json.comparator.json \
   --created-at 2026-03-20T12:10:00Z \
   --cache-dir /tmp/guild-m5-cache
+
 python3 token_engine.py issue-root \
   --plan examples/local-log-analyzer.admit.plan.json \
   --contract examples/local-log-analyzer.contract.json \
@@ -520,6 +527,7 @@ python3 token_engine.py issue-root \
   --issuer-epoch 3 \
   --issued-at 2026-03-20T13:00:00Z \
   --token-id urn:guild:token:local-log-analyzer:root:v1
+
 python3 token_engine.py verify \
   --token examples/cluster-rollout.child-token.json \
   --issuer-id urn:guild:issuer:draft-control-plane:v1 \
@@ -543,17 +551,17 @@ guild trust generate \
   --publisher-id local.example \
   --display-name "Local Example" \
   --output /tmp/guild-plan-signer.json
+
 guild --registry-root /tmp/guild-plan-registry trust add \
   --identity-file /tmp/guild-plan-signer.json
+
 guild trust sign-plan \
   --plan examples/zero-authority.admit.plan.json \
   --identity-file /tmp/guild-plan-signer.json \
   --output /tmp/zero-authority.admit.signed.plan.json
+
 guild --registry-root /tmp/guild-plan-registry trust verify-plan \
   --plan /tmp/zero-authority.admit.signed.plan.json
-
-# `validate_examples.py` also covers the checked M7 witness generation,
-# verification, and claim-evaluation cases end to end.
 ```
 
 ## Next build target
