@@ -2,11 +2,13 @@
 
 Guild is a contracts-first Rust/Wasm runtime and control plane for portable AI skills.
 
-It gives you a local CLI, a small MCP surface, and explicit host-owned execution, trust, and evidence records. The main path today is straightforward: install a skill, run it locally, inspect what happened, and move installed state through signed bundles or OCI transport.
+It gives you a local CLI, a small MCP surface, and explicit host-owned execution, trust, and evidence records. The main path today is straightforward: install a skill, run it locally, read back what happened, and move installed state through signed bundles or OCI transport.
 
 > Status: pre-alpha.
 >
 > Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
+>
+> If you want the short daily-user model first, start with [`docs/how-guild-works.md`](docs/how-guild-works.md).
 
 ## Why Guild
 
@@ -24,7 +26,7 @@ The goal is not a loose agent wrapper. It is a portable skill system where execu
 
 Guild already has:
 
-- a real local `guild` CLI for install, run, show, list, read, explain, verify, trust, transport, and MCP setup
+- a real local `guild` CLI for install, show, run, ls, get, why, verify, trust, transport, and MCP setup
 - a local registry root with durable execution and evidence records under `guild://...`
 - signed bundle export and import with local trust verification
 - OCI image layout and OCI registry transport for installed signed bundles
@@ -82,6 +84,17 @@ guild show -v skill://example/hello-inspect@^0.1
 
 That verbose view prints the requested ref, the resolved ref, the resolved digest, and the installed path together so you can see what you asked for, what Guild installed, and what exact executable identity Guild selected.
 
+## Authority Lifecycle
+
+Guild also uses one authority lifecycle in normal operator workflows:
+
+- declared authority: capabilities declared by the installed manifest and visible in `guild show`
+- requested authority: caller-requested grants passed to `guild run`
+- granted authority: the final capability slice the host policy allows for this run
+- effective at runtime: the authority the guest can actually exercise during execution
+
+Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.
+
 ## Quickstart
 
 Guild chooses a local root in this order:
@@ -92,7 +105,7 @@ Guild chooses a local root in this order:
 
 There is no cwd-local `.guild/` fallback. `guild init` is the explicit root-creation workflow, and read-only commands do not silently create a missing root.
 
-### Install, Run, Inspect, Explain
+### Install, Show, Run, And Read Back
 
 ```bash
 guild init
@@ -121,7 +134,7 @@ What that flow shows:
 - `install` builds source into installed executable state
 - `show` is the primary non-executing summary path
 - `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
-- `run` executes a human-facing `skill://...` ref through the real Guild path
+- `run` executes a human-facing `skill://...` ref through the real Guild path using caller-requested grants filtered through host policy into final runtime authority
 - `ls` shows installed skills and recent persisted activity
 - successful runs return a durable `guild://executions/...` receipt
 - `why` explains a persisted execution record
@@ -225,6 +238,7 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 
 ## Canonical Docs
 
+- `docs/how-guild-works.md` - short daily-user mental model for identity, authority, and the main CLI surfaces
 - `docs/command-language.md` - public CLI verbs, grouped workflows, and ref grammar
 - `docs/testing.md` - verification commands, proof workflows, and smoke paths
 - `SPECS.md` - normative contract and conformance language

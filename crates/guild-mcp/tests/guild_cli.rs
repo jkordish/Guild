@@ -62,6 +62,23 @@ fn assert_markdown_uses_installed_guild_cli(path: &Path) {
     );
 }
 
+fn assert_markdown_keeps_legacy_alias_commands_out_of_examples(path: &Path) {
+    let contents = fs::read_to_string(path).unwrap();
+    for (index, line) in contents.lines().enumerate() {
+        let trimmed = line.trim_start();
+        assert!(
+            !trimmed.starts_with("guild inspect")
+                && !trimmed.starts_with("guild read")
+                && !trimmed.starts_with("guild list")
+                && !trimmed.starts_with("guild explain"),
+            "{} teaches a legacy alias as a command example on line {}: {}",
+            path.display(),
+            index + 1,
+            line
+        );
+    }
+}
+
 fn emit_evidence_grants_json() -> String {
     serde_json::to_string(&CapabilityGrantSet {
         grants: vec![GrantedCapability {
@@ -1789,6 +1806,7 @@ fn show_help_points_to_ref_topics() {
     let stdout = run_guild_success(&["show", "--help"], None);
     assert!(stdout.contains("Show a skill, run, object, or evidence summary"));
     assert!(stdout.contains("Accepted refs:"));
+    assert!(stdout.contains("does not run a skill"));
     assert!(stdout.contains("Use -v with a skill ref"));
     assert!(stdout.contains("guild help refs"));
 }
@@ -1799,14 +1817,30 @@ fn run_help_uses_input_file_flag_and_ref_topic() {
     assert!(stdout.contains("Run a skill locally"));
     assert!(stdout.contains("--input-file <PATH>"));
     assert!(!stdout.contains("input-file-path"));
+    assert!(stdout.contains("Authority lifecycle:"));
+    assert!(stdout.contains("declared authority comes from the installed manifest."));
+    assert!(stdout.contains("runtime-effective authority is limited to the final granted set."));
     assert!(stdout.contains("stdout carries the result payload."));
     assert!(stdout.contains("guild help refs"));
 }
 
 #[test]
-fn why_and_verify_help_call_out_scope() {
+fn ls_get_why_and_verify_help_call_out_scope() {
+    let ls_help = run_guild_success(&["ls", "--help"], None);
+    assert!(ls_help.contains("List skills, runs, objects, or evidence"));
+    assert!(ls_help.contains("primary local-state listing command"));
+    assert!(ls_help.contains("Legacy alias:"));
+    assert!(ls_help.contains("guild list ..."));
+
+    let get_help = run_guild_success(&["get", "--help"], None);
+    assert!(get_help.contains("Read a Guild resource"));
+    assert!(get_help.contains("primary raw resource-read command"));
+    assert!(get_help.contains("Legacy alias:"));
+    assert!(get_help.contains("guild read ..."));
+
     let why_help = run_guild_success(&["why", "--help"], None);
     assert!(why_help.contains("Explain a persisted execution"));
+    assert!(why_help.contains("primary persisted-execution explanation command"));
     assert!(why_help.contains("persisted execution record"));
 
     let verify_help = run_guild_success(&["verify", "--help"], None);
@@ -1857,6 +1891,8 @@ fn user_facing_docs_use_installed_guild_cli_after_install() {
     let mut paths = vec![
         repo_root().join("README.md"),
         repo_root().join("docs/command-language.md"),
+        repo_root().join("docs/how-guild-works.md"),
+        repo_root().join("docs/adr/0019-thin-guild-cli.md"),
         repo_root().join("docs/testing.md"),
         repo_root().join("examples/README.md"),
     ];
@@ -1871,5 +1907,6 @@ fn user_facing_docs_use_installed_guild_cli_after_install() {
 
     for path in paths {
         assert_markdown_uses_installed_guild_cli(&path);
+        assert_markdown_keeps_legacy_alias_commands_out_of_examples(&path);
     }
 }

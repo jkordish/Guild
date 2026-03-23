@@ -46,9 +46,11 @@ const DEFAULT_TENANT_ID: &str = "local";
 const DEFAULT_ACTOR_ID: &str = "guild-cli";
 const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
 const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
-const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n\nSee also:\n  guild help refs";
-const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nOutput:\n  stdout carries the result payload.\n  stderr carries the human status summary.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs";
-const WHY_AFTER_HELP: &str = "Accepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nThis command explains a persisted execution record; it does not rerun the skill.";
+const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n\nSee also:\n  guild help refs";
+const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  host policy grants, reduces, or denies that request before guest start.\n  runtime-effective authority is limited to the final granted set.\n\nOutput:\n  stdout carries the result payload.\n  stderr carries the human status summary.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs";
+const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nLegacy alias:\n  guild list ...";
+const GET_AFTER_HELP: &str = "Scope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nLegacy alias:\n  guild read ...";
+const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nThis command explains a persisted execution record; it does not rerun the skill.";
 const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nSee also:\n  guild help trust";
 
 #[derive(Debug)]
@@ -443,9 +445,17 @@ enum CliCommand {
         after_help = RUN_AFTER_HELP
     )]
     Run(RunCliArgs),
-    #[command(about = "List skills, runs, objects, or evidence", alias = "list")]
+    #[command(
+        about = "List skills, runs, objects, or evidence",
+        alias = "list",
+        after_help = LS_AFTER_HELP
+    )]
     Ls(LsCliArgs),
-    #[command(about = "Read a Guild resource", alias = "read")]
+    #[command(
+        about = "Read a Guild resource",
+        alias = "read",
+        after_help = GET_AFTER_HELP
+    )]
     Get(GetCliArgs),
     #[command(about = "Explain a persisted execution", after_help = WHY_AFTER_HELP)]
     Why(WhyCliArgs),
@@ -3568,6 +3578,7 @@ fn print_ls_usage() {
     println!(
         "usage: guild [--registry-root <path>] ls [skills|runs|objects|evidence] [--limit <n>] [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
     );
+    println!("`guild ls` is the primary local-state listing command.");
     println!("legacy alias: `guild list ...`.");
 }
 
@@ -3575,6 +3586,7 @@ fn print_get_usage() {
     println!(
         "usage: guild [--registry-root <path>] get <ref> [--output <path>] [--json | --porcelain]"
     );
+    println!("`guild get` is the primary raw resource-read command.");
     println!(
         "accepted refs: full `guild://...` URIs plus `exec:<id-prefix>`, `evidence:<id-prefix>`, and `obj:<sha-prefix>`."
     );
@@ -3585,6 +3597,7 @@ fn print_why_usage() {
     println!(
         "usage: guild [--registry-root <path>] why <exec-ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
     );
+    println!("`guild why` is the primary persisted-execution explanation command.");
     println!("accepted refs: `exec:<id-prefix>` and full execution URIs.");
 }
 

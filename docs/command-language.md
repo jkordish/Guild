@@ -15,6 +15,8 @@ cargo install --path crates/guild-mcp --bin guild
 After install, the command language uses `guild ...` directly.
 Repo-local proof commands and lower-level developer helpers live in
 `docs/testing.md`.
+If you want the short daily-user mental model first, read
+[`docs/how-guild-works.md`](how-guild-works.md).
 
 The default help is task-oriented:
 
@@ -114,6 +116,22 @@ guild show -v skill://example/hello-inspect@^0.1
 
 That verbose view shows the requested ref, resolved ref, digest, and installed path together. Use it when you need to answer "what did I ask for?" versus "what exact executable did Guild select?"
 
+## Authority Lifecycle
+
+Guild uses one authority lifecycle in day-to-day CLI flows:
+
+- declared authority: capabilities declared by the installed manifest and visible in `guild show`
+- requested authority: caller-requested grants passed to `guild run`
+- granted authority: the final capability slice the host policy allows for that run
+- effective at runtime: the authority the guest can actually exercise during execution
+
+In other words:
+
+- manifests declare the capability envelope
+- callers request a narrower or matching slice for one run
+- host policy may grant, reduce, or deny that request before guest start
+- the guest only sees the final granted set at runtime
+
 ## Root Resolution
 
 Guild chooses a root in this order:
@@ -150,7 +168,7 @@ What this flow teaches:
 - `install` is source-to-installed, not source-to-runtime bypass
 - `show` is the primary non-executing summary path
 - `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
-- `run` executes a `skill://...` ref through the real Guild runtime path
+- `run` executes a `skill://...` ref through the real Guild runtime path after host policy computes the final granted authority for that run
 - success produces a durable `guild://executions/...` receipt
 - `why` explains one stored execution record
 - `get` reads the same backend used by MCP and guest `read-resource`
@@ -244,7 +262,7 @@ Shared output controls for the human-summary commands (`show`, `run`, `ls`, `why
 
 - `--json` for structured machine-readable output
 - `--porcelain` for stable one-line machine-readable output
-- `-v` for important ids, digests, and source details
+- `-v` for important ids, digests, and installed-state details
 - `-vv` for deeper technical detail
 - `--debug` for full internal detail
 - `--color auto|always|never`
