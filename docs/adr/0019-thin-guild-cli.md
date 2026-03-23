@@ -11,7 +11,7 @@ Guild's runtime, registry, trust, and resource behavior is now real enough that 
 
 Before this ADR, the repository already had:
 
-- a real local install, inspect, read, export/import, and OCI transport path
+- a real local install, run, get, export/import, and OCI transport path, with `inspect` and `read` still exposed as compatibility aliases
 - a real stdio MCP server with one public tool, `guild.inspect`
 - repo examples and helper binaries that exercised the real behavior honestly
 

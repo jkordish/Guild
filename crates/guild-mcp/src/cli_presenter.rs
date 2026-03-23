@@ -5,10 +5,11 @@ use guild_registry::{InstalledSkill, SignatureScheme};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
     CapabilityRequirement, EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionPhase,
-    ExecutionRecord, ExecutionStatus, PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED,
-    PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND,
-    RedactionClass, ResolvedSkillRef, RuntimeKind, SUPPORT_STATUS_BOUNDED,
-    SUPPORT_STATUS_NOT_PROVEN, SkillCategory, TerminationDetail, execution_status_label,
+    ExecutionRecord, ExecutionStatus, GUILD_EXECUTION_URI_PREFIX, PRESENTATION_STATUS_LINKED,
+    PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED,
+    PRESENTATION_STATUS_UPPER_BOUND, RedactionClass, ResolvedSkillRef, RuntimeKind,
+    SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN, SkillCategory, TerminationDetail,
+    execution_status_label,
 };
 use serde::Serialize;
 
@@ -227,6 +228,7 @@ pub fn why_summary(record: &ExecutionRecord) -> WhySummary {
 pub fn render_skill_show(
     installed: &InstalledSkill,
     requested: &str,
+    resolution_lines: &[String],
     options: PresentationOptions,
     stream: StreamKind,
 ) -> String {
@@ -272,7 +274,7 @@ pub fn render_skill_show(
         let _ = writeln!(
             output,
             "digest: {}",
-            styler.paint(Tone::Ref, short_hash(&installed.resolved_ref.digest))
+            styler.paint(Tone::Ref, installed.resolved_ref.digest.as_str())
         );
         let _ = writeln!(
             output,
@@ -281,11 +283,17 @@ pub fn render_skill_show(
         );
         let _ = writeln!(
             output,
-            "source: {}",
+            "installed path: {}",
             styler.paint(Tone::Dim, installed.root_dir.display().to_string())
         );
     }
     if options.very_verbose() {
+        if !resolution_lines.is_empty() {
+            let _ = writeln!(output, "resolution:");
+            for line in resolution_lines {
+                let _ = writeln!(output, "  {line}");
+            }
+        }
         let _ = writeln!(output, "description: {}", installed.manifest.description);
         let _ = writeln!(
             output,
@@ -299,6 +307,12 @@ pub fn render_skill_show(
         );
     }
     output
+}
+
+#[must_use]
+pub fn render_skill_show_next_steps(installed: &InstalledSkill) -> String {
+    let resolved = resolved_skill_ref(&installed.resolved_ref);
+    format!("Next: guild verify {resolved}")
 }
 
 #[must_use]
@@ -348,6 +362,14 @@ pub fn render_skill_verify(
         );
     }
     output
+}
+
+#[must_use]
+pub fn render_skill_verify_next_step(installed: &InstalledSkill) -> String {
+    format!(
+        "Next: guild show -v {}",
+        resolved_skill_ref(&installed.resolved_ref)
+    )
 }
 
 #[must_use]
@@ -419,6 +441,11 @@ pub fn render_execution_show(
         );
     }
     output
+}
+
+#[must_use]
+pub fn render_execution_show_next_step(record: &ExecutionRecord) -> String {
+    format!("Next: guild why {}", record.receipt.uri)
 }
 
 #[must_use]
@@ -502,6 +529,18 @@ pub fn render_run_status(
 }
 
 #[must_use]
+pub fn render_run_next_steps(record: &ExecutionRecord) -> Option<String> {
+    if !matches!(record.status, ExecutionStatus::Succeeded) {
+        return None;
+    }
+
+    Some(format!(
+        "Next: guild why {}\nNext: guild get {}",
+        record.receipt.uri, record.receipt.uri
+    ))
+}
+
+#[must_use]
 pub fn render_skills_list(
     skills: &[InstalledSkill],
     options: PresentationOptions,
@@ -551,6 +590,11 @@ pub fn render_runs_list(
         );
     }
     output
+}
+
+#[must_use]
+pub fn render_why_next_step(record: &ExecutionRecord) -> String {
+    format!("Next: guild get {}", record.receipt.uri)
 }
 
 #[must_use]
@@ -641,6 +685,14 @@ pub fn render_evidence_show(
         );
     }
     output
+}
+
+#[must_use]
+pub fn render_evidence_show_next_step(record: &EvidenceRecord) -> Option<String> {
+    record
+        .produced_by_execution
+        .as_deref()
+        .map(|execution| format!("Next: guild why {}", execution_uri(execution)))
 }
 
 #[must_use]
@@ -873,6 +925,10 @@ fn short_hash(value: &str) -> String {
 fn short_prefixed_id(prefix: &str, value: &str) -> String {
     let short: String = value.chars().take(12).collect();
     format!("{prefix}:{short}")
+}
+
+fn execution_uri(execution_id: &str) -> String {
+    format!("{GUILD_EXECUTION_URI_PREFIX}{execution_id}")
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Guild UX Umbrella
+    url: https://github.com/jkordish/Guild/issues/15
+    about: Link new work to the active UX-hardening umbrella and one of its child epics.

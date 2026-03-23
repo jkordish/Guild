@@ -15,6 +15,8 @@ cargo install --path crates/guild-mcp --bin guild
 After install, the command language uses `guild ...` directly.
 Repo-local proof commands and lower-level developer helpers live in
 `docs/testing.md`.
+If you want the short daily-user mental model first, read
+[`docs/how-guild-works.md`](how-guild-works.md).
 
 The default help is task-oriented:
 
@@ -22,6 +24,8 @@ The default help is task-oriented:
 - `guild help refs`
 - `guild help trust`
 - `guild help roots`
+- `guild help doctor`
+- `guild help preview`
 - `guild <command> --help`
 
 ## Command Groups
@@ -98,6 +102,46 @@ Transport and publication use standard OCI references:
 
 Guild intentionally does not use `guild://` for transport publication. Installed transport units move through signed bundle directories, OCI image layouts, and OCI registry references.
 
+## Identity Layers
+
+Guild uses three identity layers in day-to-day CLI flows:
+
+- source skill: the local source directory passed to `guild install`
+- installed executable state: the installed record stored under the selected Guild root
+- resolved executable identity: the exact installed executable selected for use, identified by resolved ref plus artifact digest
+
+The fastest way to trace those layers for one skill is:
+
+```bash
+guild show -v skill://example/hello-inspect@^0.1
+```
+
+That verbose view shows the requested ref, resolved ref, digest, and installed path together. Use it when you need to answer "what did I ask for?" versus "what exact executable did Guild select?"
+
+When the question is "why did this request resolve to that digest?", the first explanation surface is:
+
+```bash
+guild show -vv skill://example/hello-inspect@^0.1
+```
+
+That very verbose view explains how Guild interpreted the request, which installed versions matched it, and why one digest was selected from installed state.
+
+## Authority Lifecycle
+
+Guild uses one authority lifecycle in day-to-day CLI flows:
+
+- declared authority: capabilities declared by the installed manifest and visible in `guild show`
+- requested authority: caller-requested grants passed to `guild run`
+- granted authority: the final capability slice the host policy allows for that run
+- effective at runtime: the authority the guest can actually exercise during execution
+
+In other words:
+
+- manifests declare the capability envelope
+- callers request a narrower or matching slice for one run
+- host policy may grant, reduce, or deny that request before guest start
+- the guest only sees the final granted set at runtime
+
 ## Root Resolution
 
 Guild chooses a root in this order:
@@ -109,6 +153,24 @@ Guild chooses a root in this order:
 There is no cwd-local `.guild/` fallback.
 
 `guild init` is the explicit root-creation workflow. Read-only commands do not initialize a missing root. Write-oriented commands may create the selected root when they are already doing real work.
+
+## Diagnostic Direction
+
+The chosen first read-only diagnostic command direction is `guild doctor`.
+This is a contract-direction decision, not a shipped command yet.
+
+Initial scope:
+
+- selected Guild root resolution and whether the root can be opened read-only
+- installed and persisted state needed by the daily CLI under the selected root
+- local trust-store state relevant to `guild verify` and `guild trust`
+- Guild-specific runtime or setup checks grounded in real Guild reads
+
+Non-goals:
+
+- no root creation, install, config writing, or trust mutation
+- no remote registry probing or generic machine-inspector behavior
+- no hidden bootstrap or repair side effects
 
 ## Primary Workflows
 
@@ -133,11 +195,24 @@ What this flow teaches:
 
 - `install` is source-to-installed, not source-to-runtime bypass
 - `show` is the primary non-executing summary path
-- `run` executes a `skill://...` ref through the real Guild runtime path
+- `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
+- `show -vv` is the first requested-ref explanation path and explains why one digest was selected
+- `run` executes a `skill://...` ref through the real Guild runtime path after host policy computes the final granted authority for that run
 - success produces a durable `guild://executions/...` receipt
 - `why` explains one stored execution record
 - `get` reads the same backend used by MCP and guest `read-resource`
 - `verify` reports installed trust and verification state for skill refs only
+
+### Journey Map
+
+Use the examples and docs in this order when you want the current practical path rather than the full maintainer proof surface:
+
+- Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](../examples/skills/hello-inspect/README.md)
+- Explain what happened: start with `guild why` and `guild get`, then use [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md) or the [`Guild Ops Starter Pack`](../examples/skills/guild-ops-starter/README.md)
+- Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
+- Debug failures and compare runs: use the [`Guild Ops Starter Pack`](../examples/skills/guild-ops-starter/README.md) and the surrounding examples index at [`examples/README.md`](../examples/README.md)
+
+`docs/testing.md` remains the place for deeper proof commands, smoke coverage, and maintainer-oriented verification.
 
 ### Ops Starter Pack
 
@@ -190,6 +265,30 @@ This flow stays within the current trust model:
 - `guild trust ...` manages local trust-store state only
 - OCI transport uses the same installed signed bundle contract through another transport shape
 
+### Preview Direction
+
+The chosen first preflight direction is `--preview`, but the flag is not
+implemented yet.
+
+First scope:
+
+- `guild import bundle`
+- `guild import oci-layout`
+- `guild pull`
+
+Preview output must stay grounded in the real installer and trust model:
+
+- inspect the signed installed-state metadata the import or pull path would use
+- report publisher identity, verification outcome, and local trust posture
+- report the top-level skill ref plus bundled dependency closure scope
+- report whether Guild would import or refuse under the selected root
+
+Non-goals:
+
+- no root creation, staging, installation, or trust-store mutation
+- no fake preview detached from signed bundle and trust verification semantics
+- no preview contract for `export` or `push` in the first slice
+
 ### Execution Plan Signing
 
 ```bash
@@ -214,6 +313,7 @@ Default human output is compact and status-forward:
 
 - one screen by default for common `show`, `run`, `why`, and `ls` cases
 - short refs and short ids by default rather than full digest and URI dumps
+- default human output is for reading, not parsing, and may gain low-noise hints such as `Next: ...`
 - stable vocabulary across commands:
   - `proof-backed`
   - `upper-bound`
@@ -225,20 +325,23 @@ Default human output is compact and status-forward:
 
 Shared output controls for the human-summary commands (`show`, `run`, `ls`, `why`, and `verify`):
 
-- `--json` for structured machine-readable output
-- `--porcelain` for stable one-line machine-readable output
-- `-v` for important ids, digests, and source details
+- `--json` for structured machine-readable output when you want named fields
+- `--porcelain` for stable one-line machine-readable output when you want short script-friendly lines
+- `-v` for important ids, digests, and installed-state details
 - `-vv` for deeper technical detail
 - `--debug` for full internal detail
 - `--color auto|always|never`
 - `NO_COLOR` disables ANSI color even when the terminal would otherwise allow it
+
+Human-only hints and extra readability text do not belong to `--json` or `--porcelain`.
 
 `guild get` stays a raw resource-read path rather than a styled summary view. It supports `--json`, `--porcelain`, and `--output <path>`.
 
 `guild run` keeps payload and human status separate:
 
 - stdout carries the payload or structured result
-- stderr carries the human execution summary
+- stderr carries the human execution summary and any low-noise next-step hints
+- `--json` and `--porcelain` keep those machine surfaces free of human hint text
 
 ## Trust Scope
 

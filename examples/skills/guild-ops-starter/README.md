@@ -6,6 +6,22 @@ The point of the pack is narrow: show useful local operational analysis over rea
 
 If you want one current user-facing Guild workflow, start here.
 
+## Journey Map
+
+This pack is organized around four practical questions:
+
+- explain one stored execution
+- compare two stored executions
+- scan recent failures inside one bounded query
+- inspect one stored evidence record
+
+Keep using the normal CLI around those richer summaries:
+
+- `guild ls` to see recent local activity
+- `guild why` to explain one stored execution
+- `guild get` to read the raw stored resource
+- `guild show` to summarize one stored evidence ref
+
 ## Skills
 
 | Skill | Question it answers | Input | Required capabilities |
@@ -18,7 +34,7 @@ If you want one current user-facing Guild workflow, start here.
 
 `render-report` is the only composition demo in the pack. It is used as an exact single zero-authority child by `incident-brief` and `run-diff`. There is no fan-out, no recursion, and no hidden orchestration.
 
-## Install
+## Install The Pack
 
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/ops-pack
@@ -32,7 +48,7 @@ guild install examples/skills/evidence-summary
 guild verify skill://example/incident-brief@^0.1
 ```
 
-## First Five Minutes
+## Prepare Real Refs
 
 Use the existing deterministic repo-local scenario prep to get real execution and query refs:
 
@@ -49,9 +65,20 @@ That JSON includes:
 
 Use those real refs directly with the pack skills.
 
-Core workflow:
+The repo-local scenario prep is only there to hand you real stored refs quickly.
+The workflows below still use the normal installed `guild` CLI and the same
+durable Guild resources you would read in day-to-day use.
 
-1. Run `incident-brief` on one stored execution ref:
+## Journey 1: Explain One Stored Execution
+
+Start with the primary CLI explanation path:
+
+```bash
+guild why <paste one subject_execution_uri>
+```
+
+Then run `incident-brief` when you want a compact markdown report over that
+same stored execution:
 
 ```bash
 guild run \
@@ -60,7 +87,9 @@ guild run \
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"invoke-skill","access":"invoke","constraints":{"aliases":["renderer"]}}]}'
 ```
 
-2. Run `run-diff` on two stored execution refs:
+## Journey 2: Compare Two Stored Executions
+
+Use `run-diff` when you want one compact report for two stored executions:
 
 ```bash
 guild run \
@@ -69,7 +98,15 @@ guild run \
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"invoke-skill","access":"invoke","constraints":{"aliases":["renderer"]}}]}'
 ```
 
-3. Optionally run `recent-failures` on the bounded query ref:
+## Journey 3: Scan Recent Failures
+
+Start with the raw bounded query if you want to see the stored resource:
+
+```bash
+guild get <paste one query_uri>
+```
+
+Then run `recent-failures` when you want the compact grouped summary:
 
 ```bash
 guild run \
@@ -78,14 +115,17 @@ guild run \
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://queries/executions/"],"resource_kinds":["query"]}},{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}}]}'
 ```
 
-4. Inspect the resulting refs with the normal CLI:
+## Keep Going With The Normal CLI
+
+After any of those runs, keep using the daily CLI to inspect the same refs:
 
 ```bash
 guild ls runs --limit 5
 guild why exec:<execution-id-prefix>
+guild get guild://executions/<execution-id>
 ```
 
-## Evidence Add-On
+## Journey 4: Inspect One Stored Evidence Record
 
 `evidence-summary` needs a real stored evidence ref. One easy way to get one is the existing `hello-inspect` example:
 
@@ -99,7 +139,13 @@ guild run \
   --json
 ```
 
-Take one emitted evidence URI from that JSON and run:
+Start with the normal CLI summary for that evidence ref:
+
+```bash
+guild show <paste one emitted evidence uri>
+```
+
+Then run `evidence-summary` for the richer markdown report:
 
 ```bash
 guild run \

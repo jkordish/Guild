@@ -2,6 +2,10 @@
 
 `explain-execution` is an inspect-only example skill that reads a stored Guild execution resource through the host-mediated `read-resource` import and returns a structured explanation.
 
+Use `guild why` first for the normal compact operator path. Use
+`explain-execution` when you want a reusable skill that reads the same stored
+execution resource and produces a richer structured report.
+
 It proves:
 
 - stored execution records are reusable inputs, not just return values
@@ -12,11 +16,15 @@ It proves:
 
 The skill expects an execution URI and can optionally read the first linked evidence object.
 
-Canonical local proof flow:
+User journey: explain a stored execution.
+
+Start with the primary CLI explanation path, then use the example skill for the
+same stored execution:
 
 ```bash
 guild --registry-root target/dev-local-registry/explain-execution install examples/skills/hello-inspect
-guild --registry-root target/dev-local-registry/explain-execution run skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+guild --registry-root target/dev-local-registry/explain-execution run skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' --json
+guild --registry-root target/dev-local-registry/explain-execution why guild://executions/<execution-id>
 guild --registry-root target/dev-local-registry/explain-execution install examples/skills/explain-execution
 guild --registry-root target/dev-local-registry/explain-execution run skill://example/explain-execution@^0.1 --input-json '{"execution_uri":"guild://executions/<execution-id>","include_first_evidence":true}' --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/","guild://objects/records/"],"resource_kinds":["execution","object"]}}]}'
 guild --registry-root target/dev-local-registry/explain-execution get guild://executions/<execution-id>
@@ -24,7 +32,7 @@ guild --registry-root target/dev-local-registry/explain-execution get guild://ex
 
 Replace `<execution-id>` with the durable execution id returned by the `hello-inspect` run receipt.
 
-Deterministic helper proofs:
+Deep developer proof helpers:
 
 ```bash
 guild codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution

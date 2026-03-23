@@ -34,12 +34,19 @@ This directory is the source fixture for the example skill:
 - `input.schema.json` and `output.schema.json` pin the structured I/O shape
 - `tests/` contains the inspect fixture pair used by repo tests
 
-Run it locally from the repository root with the installed `guild` CLI:
+User journey: install and run a skill locally.
+
+Start with the primary daily CLI path from the repository root:
 
 ```bash
 guild --registry-root target/dev-local-registry/hello-inspect install examples/skills/hello-inspect
-guild --registry-root target/dev-local-registry/hello-inspect run skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+guild --registry-root target/dev-local-registry/hello-inspect show skill://example/hello-inspect@^0.1
+guild --registry-root target/dev-local-registry/hello-inspect run skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' --json
+guild --registry-root target/dev-local-registry/hello-inspect why exec:<execution-id-prefix>
+guild --registry-root target/dev-local-registry/hello-inspect verify skill://example/hello-inspect@^0.1
 ```
+
+Replace `<execution-id-prefix>` with the short execution id prefix from the run receipt.
 
 Deep developer proof helpers:
 
