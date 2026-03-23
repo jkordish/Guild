@@ -153,6 +153,16 @@ impl CliError {
         }
         self
     }
+
+    fn qualify_for_registry_root(mut self, registry_root: &Path) -> Self {
+        if let Some(next_steps) = self.next_steps.take() {
+            self.next_steps = Some(qualify_next_steps_for_registry_root(
+                &next_steps,
+                registry_root,
+            ));
+        }
+        self
+    }
 }
 
 impl std::fmt::Display for CliError {
@@ -315,6 +325,8 @@ fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCatego
         || message.contains("local policy configuration")
     {
         CliErrorCategory::RootSetup
+    } else if code == "bundle-format-unsupported" {
+        CliErrorCategory::RuntimeCompatibility
     } else if is_bundle_integrity_error_code(code) {
         CliErrorCategory::TrustVerification
     } else if code.starts_with("execution-plan-")
@@ -345,7 +357,6 @@ fn is_bundle_integrity_error_code(code: &str) -> bool {
         code,
         "artifact-digest-mismatch"
             | "staged-file-missing"
-            | "bundle-format-unsupported"
             | "bundle-index-invalid"
             | "bundle-entry-mismatch"
             | "bundle-publisher-mismatch"
@@ -390,6 +401,10 @@ fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
         ),
         "bundle-root-missing" | "bundle-root-invalid" | "bundle-root-open-failed" => Some(
             "Next: confirm the bundle directory path exists and points at the exported bundle root before rerunning `guild import bundle <directory>`"
+                .into(),
+        ),
+        "bundle-format-unsupported" => Some(
+            "Next: confirm the target Guild build supports this bundle format version, or re-export with a compatible Guild version before rerunning the import or pull"
                 .into(),
         ),
         "execution-not-found" => Some(
@@ -450,6 +465,10 @@ fn cli_error_from_registry(error: RegistryError) -> CliError {
         cli_error = cli_error.with_next_steps(next_steps);
     }
     cli_error
+}
+
+fn cli_error_from_registry_with_root(error: RegistryError, registry_root: &Path) -> CliError {
+    cli_error_from_registry(error).qualify_for_registry_root(registry_root)
 }
 
 #[derive(Debug, Clone)]
@@ -1570,7 +1589,8 @@ fn run_show(
         return Err(CliError::new("`guild show` requires exactly one ref"));
     }
 
-    let target = resolve_show_target(&registry, &positional[0])?;
+    let target = resolve_show_target(&registry, &positional[0])
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     if render.json_output {
         match target {
             ShowTarget::Skill {
@@ -1736,7 +1756,8 @@ fn run_run_command(
     validate_render_flags(&render)?;
     let requested = skill_ref.ok_or_else(|| CliError::new("`guild run` requires a skill ref"))?;
     let registry = build_existing_registry(&registry_root)?;
-    let skill = resolve_requested_skill_ref(&registry, &requested)?;
+    let skill = resolve_requested_skill_ref(&registry, &requested)
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     let canonical_skill_ref = canonical_requested_skill_ref(&skill);
 
     if input_json.is_some() && input_file.is_some() {
@@ -1902,10 +1923,12 @@ fn run_get(
 
     validate_render_flags(&render)?;
     let ref_input = ref_input.ok_or_else(|| CliError::new("`guild get` requires a ref"))?;
-    let uri = resolve_resource_ref(&registry, &ref_input)?;
-    let resource = registry
-        .read_resource(&uri)
-        .map_err(|error| CliError::from(error).with_preferred_location(uri.clone()))?;
+    let uri = resolve_resource_ref(&registry, &ref_input)
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
+    let resource = registry.read_resource(&uri).map_err(|error| {
+        cli_error_from_registry_with_root(error, &registry_root)
+            .with_preferred_location(uri.clone())
+    })?;
 
     if let Some(path) = output_path {
         fs::write(&path, &resource.bytes)?;
@@ -1970,11 +1993,15 @@ fn run_why(
         ));
     }
 
-    let uri = resolve_execution_ref(&registry, &positional[0])?;
+    let uri = resolve_execution_ref(&registry, &positional[0])
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     let execution_id = execution_id_from_uri(&uri)?;
     let record = registry
         .load_execution_record(&execution_id)
-        .map_err(|error| CliError::from(error).with_preferred_location(uri.clone()))?;
+        .map_err(|error| {
+            cli_error_from_registry_with_root(error, &registry_root)
+                .with_preferred_location(uri.clone())
+        })?;
 
     if render.json_output {
         print_json(&WhyCommandOutput {
@@ -2017,8 +2044,11 @@ fn run_verify(
     }
 
     let requested = positional[0].clone();
-    let skill = resolve_requested_skill_ref(&registry, &requested)?;
-    let installed = registry.resolve(&skill)?;
+    let skill = resolve_requested_skill_ref(&registry, &requested)
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
+    let installed = registry
+        .resolve(&skill)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
 
     if render.json_output {
         print_json(&VerifySkillCommandOutput {
@@ -2463,7 +2493,10 @@ fn run_install(
         index += 1;
     }
 
-    let installed = LocalSourceInstaller::new(&registry_root)?.install(&source_dir)?;
+    let installed = LocalSourceInstaller::new(&registry_root)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?
+        .install(&source_dir)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
     let output = summarize_installed_skill(&installed, &registry_root);
 
     if json_output {
@@ -2508,7 +2541,8 @@ fn run_export_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
     }
 
     let registry = build_existing_registry(registry_root)?;
-    let root = resolve_installed_skill(&registry, &args[0])?;
+    let root = resolve_installed_skill(&registry, &args[0])
+        .map_err(|error| error.qualify_for_registry_root(registry_root))?;
     let mut signer = None;
     let mut output_root = None;
     let mut include_dependencies = false;
@@ -2537,12 +2571,14 @@ fn run_export_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
     let signer = load_signer_identity(signer.as_deref())?;
     let output_root = output_root
         .ok_or_else(|| CliError::new("`guild export bundle` requires --output <directory>"))?;
-    registry.export_bundle(
-        &root.resolved_ref,
-        include_dependencies,
-        &output_root,
-        &signer,
-    )?;
+    registry
+        .export_bundle(
+            &root.resolved_ref,
+            include_dependencies,
+            &output_root,
+            &signer,
+        )
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
 
     let output = ExportCommandOutput {
         format: "bundle",
@@ -2568,7 +2604,8 @@ fn run_export_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
     }
 
     let registry = build_existing_registry(registry_root)?;
-    let root = resolve_installed_skill(&registry, &args[0])?;
+    let root = resolve_installed_skill(&registry, &args[0])
+        .map_err(|error| error.qualify_for_registry_root(registry_root))?;
     let mut signer = None;
     let mut output_root = None;
     let mut include_dependencies = false;
@@ -2597,12 +2634,14 @@ fn run_export_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
     let signer = load_signer_identity(signer.as_deref())?;
     let output_root = output_root
         .ok_or_else(|| CliError::new("`guild export oci-layout` requires --output <directory>"))?;
-    registry.export_oci_layout(
-        &root.resolved_ref,
-        include_dependencies,
-        &output_root,
-        &signer,
-    )?;
+    registry
+        .export_oci_layout(
+            &root.resolved_ref,
+            include_dependencies,
+            &output_root,
+            &signer,
+        )
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
 
     let output = ExportCommandOutput {
         format: "oci-layout",
@@ -2666,7 +2705,8 @@ fn run_import_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
         index += 1;
     }
 
-    let installed = LocalRegistry::import_bundle(registry_root, &source_root)?;
+    let installed = LocalRegistry::import_bundle(registry_root, &source_root)
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
     let output = ImportCommandOutput {
         format: "bundle",
         registry_root: registry_root.display().to_string(),
@@ -2706,7 +2746,8 @@ fn run_import_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
         index += 1;
     }
 
-    let installed = LocalRegistry::import_oci_layout(registry_root, &source_root)?;
+    let installed = LocalRegistry::import_oci_layout(registry_root, &source_root)
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
     let output = ImportCommandOutput {
         format: "oci-layout",
         registry_root: registry_root.display().to_string(),
@@ -2737,7 +2778,8 @@ fn run_push(
 
     let registry_root = resolve_registry_root(global, env_registry_root)?;
     let registry = build_existing_registry(&registry_root)?;
-    let root = resolve_installed_skill(&registry, &args[0])?;
+    let root = resolve_installed_skill(&registry, &args[0])
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     let mut signer = None;
     let mut reference = None;
     let mut include_dependencies = false;
@@ -2772,13 +2814,15 @@ fn run_push(
     let signer = load_signer_identity(signer.as_deref())?;
     let reference =
         reference.ok_or_else(|| CliError::new("`guild push` requires --reference <oci-ref>"))?;
-    let published = registry.push_oci_registry(
-        &root.resolved_ref,
-        include_dependencies,
-        &reference,
-        &oci_transport_options(allow_http),
-        &signer,
-    )?;
+    let published = registry
+        .push_oci_registry(
+            &root.resolved_ref,
+            include_dependencies,
+            &reference,
+            &oci_transport_options(allow_http),
+            &signer,
+        )
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
 
     let output = PushCommandOutput {
         reference: published.reference.to_string(),
@@ -2831,7 +2875,8 @@ fn run_pull(
         &registry_root,
         &reference,
         &oci_transport_options(allow_http),
-    )?;
+    )
+    .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
     let output = ImportCommandOutput {
         format: "oci-registry",
         registry_root: registry_root.display().to_string(),
@@ -3015,7 +3060,8 @@ fn run_trust_add(
         record
     };
 
-    LocalRegistry::trust_publisher(&registry_root, &publisher)?;
+    LocalRegistry::trust_publisher(&registry_root, &publisher)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
 
     let output = TrustAddOutput {
         publisher_id: publisher.publisher.id,
@@ -3060,7 +3106,8 @@ fn run_trust_list(
 
     let output = TrustListOutput {
         registry_root: registry_root.display().to_string(),
-        publishers: LocalRegistry::list_trusted_publishers(&registry_root)?,
+        publishers: LocalRegistry::list_trusted_publishers(&registry_root)
+            .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?,
     };
 
     if json_output {
@@ -3095,7 +3142,8 @@ fn run_trust_remove(
         ));
     }
 
-    let removed = LocalRegistry::remove_trusted_publisher(&registry_root, &publisher_id)?;
+    let removed = LocalRegistry::remove_trusted_publisher(&registry_root, &publisher_id)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
     if !removed {
         return Err(CliError::new(format!(
             "trusted publisher `{publisher_id}` was not present"
@@ -3217,7 +3265,8 @@ fn run_trust_verify_plan(
     })?;
     let plan: Value =
         serde_json::from_str(&fs::read_to_string(&plan_path).map_err(CliError::from)?)?;
-    let verification = verify_execution_plan(&registry_root, &plan)?;
+    let verification = verify_execution_plan(&registry_root, &plan)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
     let output = trust_verify_output(&registry_root, verification);
 
     if json_output {
@@ -3317,10 +3366,12 @@ fn qualify_next_steps_for_registry_root(next_steps: &str, registry_root: &Path) 
     }
 
     let replacement = format!(
-        "Next: guild --registry-root {} ",
+        "guild --registry-root {} ",
         shell_quote_arg(&registry_root.display().to_string())
     );
-    next_steps.replace("Next: guild ", &replacement)
+    next_steps
+        .replace("Next: guild ", &format!("Next: {replacement}"))
+        .replace("`guild ", &format!("`{replacement}"))
 }
 
 fn uses_default_registry_root(registry_root: &Path) -> bool {
@@ -3368,7 +3419,7 @@ fn build_existing_registry(registry_root: &Path) -> Result<LocalRegistry, CliErr
         if error.code == "registry-root-missing" {
             missing_registry_root_error(registry_root)
         } else {
-            CliError::from(error)
+            cli_error_from_registry_with_root(error, registry_root)
         }
     })
 }
@@ -3376,7 +3427,8 @@ fn build_existing_registry(registry_root: &Path) -> Result<LocalRegistry, CliErr
 fn build_facade(
     registry_root: &Path,
 ) -> Result<GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter>, CliError> {
-    let registry = LocalRegistry::load(registry_root)?;
+    let registry = LocalRegistry::load(registry_root)
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
     let runtime = WasmtimeRuntimeAdapter::new()
         .map_err(McpError::from)
         .map_err(|error| {
@@ -3793,7 +3845,7 @@ fn parse_capability_grants(value: Value) -> Result<CapabilityGrantSet, CliError>
 }
 
 fn classify_mcp_error_category(code: &str, message: &str) -> CliErrorCategory {
-    if code == "policy-denied" || code.starts_with("policy-") {
+    if code == "policy-denied" || code.starts_with("policy-") || code.ends_with("-not-granted") {
         CliErrorCategory::AuthorityDenial
     } else if code == "unsupported-runtime"
         || code == "component-abi-mismatch"
