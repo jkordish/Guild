@@ -520,13 +520,16 @@ fn primary_show_and_verify_commands_render_compact_human_output() {
     );
     assert_eq!(
         show_output,
-        concat!(
-            "example/hello-inspect@0.1.0  Hello Inspect\n",
-            "status: local-source / local-dev\n",
-            "support: proof-backed(log-write) not_proven(emit-evidence)\n",
-            "runtime: wasm-component / guild-skill-inspect-v1\n",
-            "caps: emit-evidence(write,required) log-write(write)\n",
-            "Next: guild verify skill://example/hello-inspect@0.1.0\n",
+        format!(
+            concat!(
+                "example/hello-inspect@0.1.0  Hello Inspect\n",
+                "status: local-source / local-dev\n",
+                "support: proof-backed(log-write) not_proven(emit-evidence)\n",
+                "runtime: wasm-component / guild-skill-inspect-v1\n",
+                "caps: emit-evidence(write,required) log-write(write)\n",
+                "Next: guild --registry-root {} verify skill://example/hello-inspect@0.1.0\n",
+            ),
+            registry_root.display()
         )
     );
 
@@ -536,11 +539,14 @@ fn primary_show_and_verify_commands_render_compact_human_output() {
     );
     assert_eq!(
         verify_output,
-        concat!(
-            "example/hello-inspect@0.1.0\n",
-            "verification: local-source\n",
-            "trust: local-dev\n",
-            "Next: guild show -v skill://example/hello-inspect@0.1.0\n",
+        format!(
+            concat!(
+                "example/hello-inspect@0.1.0\n",
+                "verification: local-source\n",
+                "trust: local-dev\n",
+                "Next: guild --registry-root {} show -v skill://example/hello-inspect@0.1.0\n",
+            ),
+            registry_root.display()
         )
     );
 }
@@ -576,7 +582,10 @@ fn show_execution_and_evidence_human_output_suggest_why_next_step() {
         "{execution_show}"
     );
     assert!(
-        execution_show.contains(&format!("Next: guild why {execution_uri}")),
+        execution_show.contains(&format!(
+            "Next: guild --registry-root {} why {execution_uri}",
+            registry_root.display()
+        )),
         "{execution_show}"
     );
 
@@ -586,7 +595,10 @@ fn show_execution_and_evidence_human_output_suggest_why_next_step() {
     );
     assert!(evidence_show.contains("evidence:"), "{evidence_show}");
     assert!(
-        evidence_show.contains(&format!("Next: guild why {execution_uri}")),
+        evidence_show.contains(&format!(
+            "Next: guild --registry-root {} why {execution_uri}",
+            registry_root.display()
+        )),
         "{evidence_show}"
     );
 }
@@ -623,11 +635,17 @@ fn primary_run_command_keeps_payload_on_stdout_and_status_on_stderr() {
     assert!(stderr.contains("succeeded  not_proven  exec:"), "{stderr}");
     assert!(stderr.contains("example/hello-inspect@0.1.0"), "{stderr}");
     assert!(
-        stderr.contains("Next: guild why guild://executions/"),
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why guild://executions/",
+            registry_root.display()
+        )),
         "{stderr}"
     );
     assert!(
-        stderr.contains("Next: guild get guild://executions/"),
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} get guild://executions/",
+            registry_root.display()
+        )),
         "{stderr}"
     );
     assert!(!stdout.contains("exec:"), "{stdout}");
@@ -664,11 +682,14 @@ fn starter_pack_incident_brief_runs_with_markdown_stdout() {
     );
     assert_eq!(
         verify_output,
-        concat!(
-            "example/incident-brief@0.1.0\n",
-            "verification: local-source\n",
-            "trust: local-dev\n",
-            "Next: guild show -v skill://example/incident-brief@0.1.0\n",
+        format!(
+            concat!(
+                "example/incident-brief@0.1.0\n",
+                "verification: local-source\n",
+                "trust: local-dev\n",
+                "Next: guild --registry-root {} show -v skill://example/incident-brief@0.1.0\n",
+            ),
+            registry_root.display()
         )
     );
 
@@ -2069,7 +2090,7 @@ fn install_command_maps_to_real_source_install_path() {
 }
 
 #[test]
-fn install_human_output_suggests_show_next_step() {
+fn install_human_output_reports_digest_and_path_without_follow_up_hint() {
     let temp = TempFixtureDir::new("guild-cli-install-human");
     let registry_root = temp.path().join("registry");
     let root = registry_root.display().to_string();
@@ -2082,10 +2103,7 @@ fn install_human_output_suggests_show_next_step() {
     );
     assert!(stdout.contains("digest: sha256:"), "{stdout}");
     assert!(stdout.contains("path: "), "{stdout}");
-    assert!(
-        stdout.contains("Next: guild show -v skill://example/hello-inspect@0.1.0"),
-        "{stdout}"
-    );
+    assert!(!stdout.contains("Next:"), "{stdout}");
 }
 
 #[test]
@@ -2179,7 +2197,13 @@ fn why_human_output_suggests_get_next_step() {
         &["why", &exec_prefix, "--color", "never"],
         Some(&registry_root),
     );
-    assert!(stdout.contains("Next: guild get "), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "Next: guild --registry-root {} get ",
+            registry_root.display()
+        )),
+        "{stdout}"
+    );
     assert!(stdout.contains(&execution_uri), "{stdout}");
 }
 

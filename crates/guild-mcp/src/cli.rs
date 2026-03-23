@@ -1311,7 +1311,10 @@ fn run_show(
     };
     print!("{text}");
     if let Some(next_steps) = next_steps {
-        println!("{next_steps}");
+        println!(
+            "{}",
+            qualify_next_steps_for_registry_root(&next_steps, &registry_root)
+        );
     }
     Ok(())
 }
@@ -1452,7 +1455,10 @@ fn run_run_command(
     eprintln!("{status}");
     if !render.porcelain_output {
         if let Some(next_steps) = render_run_next_steps(&response.structured_content) {
-            eprintln!("{next_steps}");
+            eprintln!(
+                "{}",
+                qualify_next_steps_for_registry_root(&next_steps, &registry_root)
+            );
         }
     }
     Ok(())
@@ -1627,7 +1633,10 @@ fn run_why(
             "{}",
             render_execution_why(&record, presentation, StreamKind::Stdout)
         );
-        println!("{}", render_why_next_step(&record));
+        println!(
+            "{}",
+            qualify_next_steps_for_registry_root(&render_why_next_step(&record), &registry_root)
+        );
     }
     Ok(())
 }
@@ -1670,7 +1679,13 @@ fn run_verify(
             "{}",
             render_skill_verify(&installed, presentation, StreamKind::Stdout)
         );
-        println!("{}", render_skill_verify_next_step(&installed));
+        println!(
+            "{}",
+            qualify_next_steps_for_registry_root(
+                &render_skill_verify_next_step(&installed),
+                &registry_root,
+            )
+        );
     }
     Ok(())
 }
@@ -2101,7 +2116,6 @@ fn run_install(
         println!("installed {}", output.resolved_skill);
         println!("digest: {}", output.digest);
         println!("path: {}", output.root_dir);
-        println!("Next: guild show -v {}", output.resolved_skill);
     }
 
     Ok(())
@@ -2939,6 +2953,36 @@ fn resolve_registry_root(
     }
 
     paths::default_registry_root().map_err(|error| CliError::new(error.to_string()))
+}
+
+fn qualify_next_steps_for_registry_root(next_steps: &str, registry_root: &Path) -> String {
+    if uses_default_registry_root(registry_root) {
+        return next_steps.to_owned();
+    }
+
+    let replacement = format!(
+        "Next: guild --registry-root {} ",
+        shell_quote_arg(&registry_root.display().to_string())
+    );
+    next_steps.replace("Next: guild ", &replacement)
+}
+
+fn uses_default_registry_root(registry_root: &Path) -> bool {
+    paths::default_registry_root()
+        .map(|default| default == registry_root)
+        .unwrap_or(false)
+}
+
+fn shell_quote_arg(value: &str) -> String {
+    if value.chars().all(is_shell_safe_char) {
+        value.to_owned()
+    } else {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+}
+
+fn is_shell_safe_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-')
 }
 
 fn ensure_existing_registry_root(registry_root: &Path) -> Result<(), CliError> {
