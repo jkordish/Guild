@@ -1137,7 +1137,7 @@ pub fn run(
         CliCommand::Trust(command) => run_trust(&command.to_args(), &global, env_registry_root),
         CliCommand::Codex(command) => run_codex(&command.args, &global, env_registry_root),
         CliCommand::Mcp(command) => run_mcp(&command.to_args(), &global, env_registry_root),
-        CliCommand::Help(command) => run_help(command),
+        CliCommand::Help(command) => run_help(&command),
     }
 }
 
@@ -1160,7 +1160,7 @@ fn is_top_level_help_request(args: &[String]) -> bool {
     saw_help
 }
 
-fn run_help(command: HelpCliArgs) -> Result<(), CliError> {
+fn run_help(command: &HelpCliArgs) -> Result<(), CliError> {
     match command.topic {
         None => print_help_topics(),
         Some(HelpTopic::Refs) => print_help_refs(),

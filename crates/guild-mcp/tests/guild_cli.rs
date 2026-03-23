@@ -10,7 +10,8 @@ use guild_registry::LocalSourceInstaller;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
     CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, FilesystemConstraints,
-    FilesystemOperation, FilesystemRoot, GrantedCapability, RedactionClass,
+    FilesystemOperation, FilesystemRoot, GrantedCapability, InvokeDependencyConstraints,
+    ReadResourceConstraints, RedactionClass, ResourceKind,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -27,6 +28,18 @@ fn repo_root() -> PathBuf {
 
 fn hello_source_dir() -> PathBuf {
     repo_root().join("examples/skills/hello-inspect")
+}
+
+fn render_report_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/render-report")
+}
+
+fn incident_brief_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/incident-brief")
+}
+
+fn evidence_summary_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/evidence-summary")
 }
 
 fn draft_plan_path(name: &str) -> PathBuf {
@@ -75,6 +88,43 @@ fn emit_filesystem_rejection_grants_json() -> String {
                 }),
             },
         ],
+    })
+    .unwrap()
+}
+
+fn incident_brief_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![
+            GrantedCapability {
+                id: CapabilityId::ReadResource,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(vec!["guild://executions/".into()]),
+                    resource_kinds: Some(vec![ResourceKind::Execution]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::InvokeSkill,
+                access: CapabilityAccess::Invoke,
+                constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                    aliases: Some(vec!["renderer".into()]),
+                }),
+            },
+        ],
+    })
+    .unwrap()
+}
+
+fn evidence_summary_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![GrantedCapability {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec!["guild://objects/records/".into()]),
+                resource_kinds: Some(vec![ResourceKind::Object]),
+            }),
+        }],
     })
     .unwrap()
 }
@@ -226,7 +276,11 @@ fn parse_json_stdout<T: DeserializeOwned>(stdout: &str) -> T {
 }
 
 fn install_with_cli(registry_root: &Path) {
-    let source_dir = hello_source_dir().display().to_string();
+    install_source_with_cli(registry_root, &hello_source_dir());
+}
+
+fn install_source_with_cli(registry_root: &Path, source_dir: &Path) {
+    let source_dir = source_dir.display().to_string();
     let root = registry_root.display().to_string();
     let _ = run_guild_success(&["--registry-root", &root, "install", &source_dir], None);
 }
@@ -491,6 +545,110 @@ fn primary_run_command_keeps_payload_on_stdout_and_status_on_stderr() {
     assert!(stderr.contains("example/hello-inspect@0.1.0"), "{stderr}");
     assert!(!stdout.contains("exec:"), "{stdout}");
     assert!(!stderr.contains("\"message\""), "{stderr}");
+}
+
+#[test]
+fn starter_pack_incident_brief_runs_with_markdown_stdout() {
+    let temp = TempFixtureDir::new("guild-cli-incident-brief");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    install_source_with_cli(&registry_root, &render_report_source_dir());
+    install_source_with_cli(&registry_root, &incident_brief_source_dir());
+
+    let inspect_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let execution_uri = inspect_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let show_output = run_guild_success(
+        &["show", "incident-brief@^0.1", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(show_output.contains("example/incident-brief@0.1.0"));
+    assert!(show_output.contains("support: bounded("));
+    assert!(show_output.contains("invoke-skill"));
+
+    let verify_output = run_guild_success(
+        &["verify", "incident-brief@^0.1", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert_eq!(
+        verify_output,
+        concat!(
+            "example/incident-brief@0.1.0\n",
+            "verification: local-source\n",
+            "trust: local-dev\n",
+        )
+    );
+
+    let grants_json = incident_brief_grants_json();
+    let output = run_guild_success_output(
+        &[
+            "run",
+            "incident-brief@^0.1",
+            "--input-json",
+            &command_json(json!({ "execution_uri": execution_uri })),
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.starts_with("# Incident Brief\n\n"), "{stdout}");
+    assert!(stdout.contains("## Primary reason"), "{stdout}");
+    assert!(stdout.contains("## Next refs"), "{stdout}");
+    assert!(stderr.contains("succeeded  bounded  exec:"), "{stderr}");
+    assert!(stderr.contains("example/incident-brief@0.1.0"), "{stderr}");
+    assert!(!stdout.contains("\"title\""), "{stdout}");
+}
+
+#[test]
+fn starter_pack_evidence_summary_runs_with_markdown_stdout() {
+    let temp = TempFixtureDir::new("guild-cli-evidence-summary");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    install_source_with_cli(&registry_root, &evidence_summary_source_dir());
+
+    let inspect_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let evidence_uri = inspect_value["record"]["emitted_evidence"][0]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let grants_json = evidence_summary_grants_json();
+    let output = run_guild_success_output(
+        &[
+            "run",
+            "evidence-summary@^0.1",
+            "--input-json",
+            &command_json(json!({ "evidence_uri": evidence_uri })),
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.starts_with("# Evidence Summary\n\n"), "{stdout}");
+    assert!(stdout.contains("## Linkage"), "{stdout}");
+    assert!(stdout.contains("## Normalized details"), "{stdout}");
+    assert!(stdout.contains("hello-inspect-snapshot"), "{stdout}");
+    assert!(stderr.contains("succeeded  bounded  exec:"), "{stderr}");
+    assert!(
+        stderr.contains("example/evidence-summary@0.1.0"),
+        "{stderr}"
+    );
+    assert!(!stdout.contains("\"mime_type\""), "{stdout}");
 }
 
 #[test]

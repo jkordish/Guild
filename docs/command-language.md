@@ -141,6 +141,29 @@ What this flow teaches:
 - `get` reads the same backend used by MCP and guest `read-resource`
 - `verify` reports installed trust and verification state for skill refs only
 
+### Ops Starter Pack
+
+The current user-facing example pack lives at
+[`examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md).
+
+It is still just example skills under `examples/skills/`, not a new pack system.
+Use it when you want a compact real-path walkthrough over persisted Guild refs:
+
+- `incident-brief` for one stored execution ref
+- `run-diff` for two stored execution refs
+- `recent-failures` for one bounded execution-query ref
+- `evidence-summary` for one stored evidence ref
+- `render-report` as the zero-authority child formatter used by the report skills
+
+The honest story is narrow on purpose:
+
+- durable Guild refs and resources
+- compact markdown output on `guild run`
+- explicit capability grants
+- exact single-child zero-authority composition only where the runtime already supports it
+- no broad HTTP showcase
+- no `emit-evidence` proof claims
+
 ### Trust And Transport
 
 ```bash

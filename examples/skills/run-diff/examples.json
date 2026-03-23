@@ -1,0 +1,6 @@
+[
+  {
+    "left_execution_uri": "guild://executions/left",
+    "right_execution_uri": "guild://executions/right"
+  }
+]

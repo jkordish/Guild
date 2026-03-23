@@ -1,0 +1,7 @@
+{
+  "summary": "Rendered starter-pack report.",
+  "structured": "# Incident Brief\n\nfailed  upper-bound  exec:abc123  example/inspect-http-json@0.1.0\n\n- Status: failed\n- Skill: example/inspect-http-json@0.1.0\n\n## Primary reason\nruntime-exec:http-method-not-allowed\nPOST was requested against a GET-only grant",
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

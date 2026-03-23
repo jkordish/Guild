@@ -1,0 +1,14 @@
+[package]
+edition = "2024"
+name = "guild-example-run-diff"
+rust-version = "1.94"
+version = "0.1.1"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+serde_json = "1"
+wit-bindgen = "0.54.0"

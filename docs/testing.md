@@ -245,6 +245,27 @@ cargo run -q -p guild-mcp --bin guild -- verify skill://example/hello-inspect@^0
 cargo run -q -p guild-mcp --bin guild -- mcp serve --stdio
 ```
 
+Starter-pack smoke:
+
+```bash
+export GUILD_REGISTRY_ROOT=target/dev-local-registry/ops-pack
+
+cargo run -q -p guild-mcp --bin guild -- install examples/skills/render-report
+cargo run -q -p guild-mcp --bin guild -- install examples/skills/incident-brief
+cargo run -q -p guild-mcp --bin guild -- install examples/skills/run-diff
+cargo run -q -p guild-mcp --bin guild -- install examples/skills/recent-failures
+cargo run -q -p guild-mcp --bin guild -- install examples/skills/evidence-summary
+
+cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root "$GUILD_REGISTRY_ROOT" --reset
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow incident-brief
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow run-diff
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow recent-failures
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow evidence-summary
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow render-report
+```
+
+For the user-facing quickstart and exact capability-grant snippets, see [`../examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md).
+
 Trust and signed-bundle smoke:
 
 ```bash
@@ -309,6 +330,11 @@ cargo run -p guild-mcp --bin guild -- codex scenario --registry-root target/dev-
 Deterministic smoke flows:
 
 ```bash
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow incident-brief
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow run-diff
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow recent-failures
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow evidence-summary
+cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow render-report
 cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
 cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
 cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow recent-failure-triage

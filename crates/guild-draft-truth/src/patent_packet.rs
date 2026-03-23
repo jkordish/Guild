@@ -427,9 +427,7 @@ fn validate_claim_concepts(
     Ok(())
 }
 
-fn benchmark_slice_map<'a>(
-    benchmark_matrix: &'a Value,
-) -> Result<BTreeMap<String, &'a Map<String, Value>>> {
+fn benchmark_slice_map(benchmark_matrix: &Value) -> Result<BTreeMap<String, &Map<String, Value>>> {
     let slices = json_array(
         benchmark_matrix
             .get("slices")

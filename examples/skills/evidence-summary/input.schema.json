@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvidenceSummaryInput",
+  "type": "object",
+  "properties": {
+    "evidence_uri": {
+      "type": "string"
+    }
+  },
+  "required": ["evidence_uri"],
+  "additionalProperties": false
+}

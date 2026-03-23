@@ -1,0 +1,23 @@
+{
+  "title": "Incident Brief",
+  "summary_line": "failed  upper-bound  exec:abc123  example/inspect-http-json@0.1.0",
+  "facts": [
+    {
+      "label": "Status",
+      "value": "failed"
+    },
+    {
+      "label": "Skill",
+      "value": "example/inspect-http-json@0.1.0"
+    }
+  ],
+  "sections": [
+    {
+      "title": "Primary reason",
+      "lines": [
+        "runtime-exec:http-method-not-allowed",
+        "POST was requested against a GET-only grant"
+      ]
+    }
+  ]
+}

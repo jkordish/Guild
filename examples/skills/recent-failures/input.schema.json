@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RecentFailuresInput",
+  "type": "object",
+  "properties": {
+    "query_uri": {
+      "type": "string"
+    }
+  },
+  "required": ["query_uri"],
+  "additionalProperties": false
+}

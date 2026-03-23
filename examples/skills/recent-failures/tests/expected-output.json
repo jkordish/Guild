@@ -1,0 +1,7 @@
+{
+  "summary": "Summarized recent failures from guild://queries/executions/failures/recent/10.",
+  "structured": "# Recent Failures\n\n2 stored failures/refusals from guild://queries/executions/failures/recent/10\n\n- Total matches: 2\n- Returned matches: 2\n- Truncated: false\n\n## Grouped reasons\n- grant:policy-denied: 1\n- runtime-exec:http-method-not-allowed: 1\n\n## Posture groups\n- refused: 1\n- upper-bound: 1\n\n## Top executions\n- exec:rejected  rejected  refused  grant:policy-denied\n- exec:failed  failed  upper-bound  runtime-exec:http-method-not-allowed\n\n## Next refs\n- guild why exec:rejected\n- guild why exec:failed",
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

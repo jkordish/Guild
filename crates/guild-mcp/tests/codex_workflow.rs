@@ -90,6 +90,11 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
     assert_eq!(
         skill_names,
         vec![
+            "render-report",
+            "incident-brief",
+            "run-diff",
+            "recent-failures",
+            "evidence-summary",
             "hello-inspect",
             "hello-composite",
             "explain-execution",
@@ -141,7 +146,7 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
             .iter()
             .all(|command| command.contains("--bin guild -- codex scenario"))
     );
-    assert_eq!(payload.recommended_smoke_commands.len(), 4);
+    assert_eq!(payload.recommended_smoke_commands.len(), 9);
     assert!(
         payload
             .recommended_smoke_commands
@@ -207,6 +212,158 @@ fn guild_codex_smoke_explain_execution_json_produces_resources() {
     );
     assert!(payload.flows[0].additional_report_execution_uris.is_empty());
     assert!(payload.flows[0].subject_query_uri.is_none());
+}
+
+#[test]
+fn guild_codex_smoke_incident_brief_json_produces_resources() {
+    let temp_root = TempRegistryRoot::new("codex-workflow-incident-brief");
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
+
+    let stdout = run_guild_codex_json(&[
+        "smoke",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--flow",
+        "incident-brief",
+        "--json",
+    ])
+    .unwrap();
+    let payload: CodexSmokeSummary = serde_json::from_slice(&stdout).unwrap();
+
+    assert_eq!(payload.requested_flow, CodexSmokeSelection::IncidentBrief);
+    assert_eq!(payload.flows.len(), 1);
+    assert_eq!(payload.flows[0].flow, CodexSmokeSelection::IncidentBrief);
+    assert_eq!(payload.flows[0].subject_resource_items, 1);
+    assert_eq!(payload.flows[0].report_resource_items, 1);
+    assert!(payload.flows[0].subject_query_uri.is_some());
+    assert!(!payload.flows[0].report_summary.is_empty());
+    assert!(
+        payload.flows[0]
+            .report_summary
+            .contains("Prepared incident brief")
+    );
+}
+
+#[test]
+fn guild_codex_smoke_run_diff_json_produces_resources() {
+    let temp_root = TempRegistryRoot::new("codex-workflow-run-diff");
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
+
+    let stdout = run_guild_codex_json(&[
+        "smoke",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--flow",
+        "run-diff",
+        "--json",
+    ])
+    .unwrap();
+    let payload: CodexSmokeSummary = serde_json::from_slice(&stdout).unwrap();
+
+    assert_eq!(payload.requested_flow, CodexSmokeSelection::RunDiff);
+    assert_eq!(payload.flows.len(), 1);
+    assert_eq!(payload.flows[0].flow, CodexSmokeSelection::RunDiff);
+    assert_eq!(payload.flows[0].subject_resource_items, 1);
+    assert_eq!(payload.flows[0].report_resource_items, 1);
+    assert_eq!(payload.flows[0].comparison_execution_uris.len(), 1);
+    assert!(payload.flows[0].subject_query_uri.is_some());
+    assert!(
+        payload.flows[0]
+            .report_summary
+            .contains("Prepared bounded run diff")
+    );
+}
+
+#[test]
+fn guild_codex_smoke_recent_failures_json_produces_resources() {
+    let temp_root = TempRegistryRoot::new("codex-workflow-recent-failures");
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
+
+    let stdout = run_guild_codex_json(&[
+        "smoke",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--flow",
+        "recent-failures",
+        "--json",
+    ])
+    .unwrap();
+    let payload: CodexSmokeSummary = serde_json::from_slice(&stdout).unwrap();
+
+    assert_eq!(payload.requested_flow, CodexSmokeSelection::RecentFailures);
+    assert_eq!(payload.flows.len(), 1);
+    assert_eq!(payload.flows[0].flow, CodexSmokeSelection::RecentFailures);
+    assert_eq!(payload.flows[0].subject_resource_items, 1);
+    assert_eq!(payload.flows[0].report_resource_items, 1);
+    assert!(payload.flows[0].subject_query_uri.is_some());
+    assert!(!payload.flows[0].comparison_execution_uris.is_empty());
+    assert!(
+        payload.flows[0]
+            .report_summary
+            .contains("Summarized recent failures")
+    );
+}
+
+#[test]
+fn guild_codex_smoke_evidence_summary_json_produces_resources() {
+    let temp_root = TempRegistryRoot::new("codex-workflow-evidence-summary");
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
+
+    let stdout = run_guild_codex_json(&[
+        "smoke",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--flow",
+        "evidence-summary",
+        "--json",
+    ])
+    .unwrap();
+    let payload: CodexSmokeSummary = serde_json::from_slice(&stdout).unwrap();
+
+    assert_eq!(payload.requested_flow, CodexSmokeSelection::EvidenceSummary);
+    assert_eq!(payload.flows.len(), 1);
+    assert_eq!(payload.flows[0].flow, CodexSmokeSelection::EvidenceSummary);
+    assert_eq!(payload.flows[0].subject_resource_items, 1);
+    assert_eq!(payload.flows[0].report_resource_items, 1);
+    assert!(payload.flows[0].subject_emitted_evidence > 0);
+    assert!(payload.flows[0].subject_query_uri.is_none());
+    assert!(
+        payload.flows[0]
+            .report_summary
+            .contains("Summarized stored evidence")
+    );
+}
+
+#[test]
+fn guild_codex_smoke_render_report_json_produces_resources() {
+    let temp_root = TempRegistryRoot::new("codex-workflow-render-report");
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
+
+    let stdout = run_guild_codex_json(&[
+        "smoke",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--flow",
+        "render-report",
+        "--json",
+    ])
+    .unwrap();
+    let payload: CodexSmokeSummary = serde_json::from_slice(&stdout).unwrap();
+
+    assert_eq!(payload.requested_flow, CodexSmokeSelection::RenderReport);
+    assert_eq!(payload.flows.len(), 1);
+    assert_eq!(payload.flows[0].flow, CodexSmokeSelection::RenderReport);
+    assert_eq!(payload.flows[0].subject_resource_items, 1);
+    assert_eq!(payload.flows[0].report_resource_items, 1);
+    assert_eq!(
+        payload.flows[0].subject_execution_uri,
+        payload.flows[0].report_execution_uri
+    );
+    assert!(
+        payload.flows[0]
+            .report_summary
+            .contains("Rendered starter-pack report")
+    );
 }
 
 #[test]
@@ -420,6 +577,11 @@ fn guild_codex_smoke_all_runs_all_documented_flows() {
     assert_eq!(
         flow_names,
         vec![
+            CodexSmokeSelection::IncidentBrief,
+            CodexSmokeSelection::RunDiff,
+            CodexSmokeSelection::RecentFailures,
+            CodexSmokeSelection::EvidenceSummary,
+            CodexSmokeSelection::RenderReport,
             CodexSmokeSelection::ExplainExecution,
             CodexSmokeSelection::ExplainExecutionTree,
             CodexSmokeSelection::RecentFailureTriage,

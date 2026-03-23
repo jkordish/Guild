@@ -1,0 +1,7 @@
+{
+  "summary": "Summarized stored evidence guild://objects/records/example-evidence.",
+  "structured": "# Evidence Summary\n\napplication/json  not_proven  evidence:example-evid\n\n- Evidence: evidence:example-evid\n- Mime type: application/json\n- Audience: user\n- Redaction: none\n- Size: 128\n- Produced by: exec:example-run\n\n## Linkage\n- metadata: guild://objects/records/example-evidence/metadata\n- blob: obj:example-blob\n- sink: local-object-store / direct / local-persistent-content-addressed\n\n## Normalized details\n- Kind: hello-inspect-snapshot\n- Mode: inspect\n- Skill: example/hello-inspect@0.1.0\n- Top-level keys: echoed_input, kind, mode, skill\n\n## Next refs\n- guild show evidence:example-evid\n- guild why exec:example-run",
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

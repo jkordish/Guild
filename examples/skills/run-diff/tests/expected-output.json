@@ -1,0 +1,7 @@
+{
+  "summary": "Prepared bounded run diff for guild://executions/left and guild://executions/right.",
+  "structured": "# Run Diff\n\nchanged  exec:left vs exec:right\n\n- Left: exec:left\n- Right: exec:right\n- Left status: rejected\n- Right status: failed\n- Left posture: refused\n- Right posture: upper-bound\n\n## Primary reason diff\n- left: grant:policy-denied\n- right: runtime-exec:http-method-not-allowed\n- changed: changed\n\n## Support diff\n- left: none\n- right: bounded(http-request)\n- changed: changed\n\n## Child execution diff\n- left: none\n- right: none\n- changed: unchanged\n\n## Evidence diff\n- left: none\n- right: none\n- changed: unchanged\n\n## Next refs\n- guild why exec:left\n- guild why exec:right",
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

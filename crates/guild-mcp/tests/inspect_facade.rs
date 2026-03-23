@@ -66,6 +66,26 @@ fn summarize_query_source_dir() -> PathBuf {
     repo_root().join("examples/skills/summarize-execution-query")
 }
 
+fn render_report_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/render-report")
+}
+
+fn incident_brief_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/incident-brief")
+}
+
+fn run_diff_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/run-diff")
+}
+
+fn recent_failures_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/recent-failures")
+}
+
+fn evidence_summary_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/evidence-summary")
+}
+
 fn wit_dir() -> PathBuf {
     repo_root().join("wit")
 }
@@ -135,6 +155,26 @@ fn prepared_registry_root() -> &'static PathBuf {
         LocalSourceInstaller::new(&root)
             .unwrap()
             .install(summarize_query_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(render_report_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(incident_brief_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(run_diff_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(recent_failures_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(evidence_summary_source_dir())
             .unwrap();
 
         root
@@ -287,6 +327,7 @@ fn install_query_test_skills(root: &Path) {
     let installer = LocalSourceInstaller::new(root).unwrap();
     installer.install(http_source_dir()).unwrap();
     installer.install(summarize_query_source_dir()).unwrap();
+    installer.install(recent_failures_source_dir()).unwrap();
 }
 
 fn install_authority_debug_skills(root: &Path) {
@@ -409,6 +450,27 @@ fn query_resource_grant() -> GrantedCapability {
         constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
             uri_prefixes: Some(vec!["guild://queries/executions/".into()]),
             resource_kinds: Some(vec![ResourceKind::Query]),
+        }),
+    }
+}
+
+fn object_resource_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::ReadResource,
+        access: CapabilityAccess::Read,
+        constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+            uri_prefixes: Some(vec!["guild://objects/records/".into()]),
+            resource_kinds: Some(vec![ResourceKind::Object]),
+        }),
+    }
+}
+
+fn render_report_invoke_grant() -> GrantedCapability {
+    GrantedCapability {
+        id: CapabilityId::InvokeSkill,
+        access: CapabilityAccess::Invoke,
+        constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+            aliases: Some(vec!["renderer".into()]),
         }),
     }
 }
@@ -2320,6 +2382,346 @@ fn query_resource_reads_require_query_scope() {
             .iter()
             .any(|reason| reason.code == "policy-required-capability-missing")
     );
+}
+
+#[test]
+fn render_report_skill_returns_markdown_without_authority() {
+    let facade = build_facade();
+    let response = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "render-report".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "title": "Smoke Report",
+                "summary_line": "failed  upper-bound  exec:abc123  example/inspect-http-json@0.1.0",
+                "facts": [
+                    { "label": "Status", "value": "failed" },
+                    { "label": "Skill", "value": "example/inspect-http-json@0.1.0" }
+                ],
+                "sections": [
+                    {
+                        "title": "Primary reason",
+                        "lines": [
+                            "runtime-exec:http-method-not-allowed",
+                            "POST was requested against a GET-only grant"
+                        ]
+                    }
+                ]
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet::default(),
+        ))
+        .unwrap();
+    let output = response.structured_content.output.as_ref().unwrap();
+
+    assert_eq!(
+        response.structured_content.status,
+        ExecutionStatus::Succeeded
+    );
+    assert!(response.structured_content.child_executions.is_empty());
+    assert!(
+        response
+            .structured_content
+            .granted_capabilities
+            .grants
+            .is_empty()
+    );
+    assert_eq!(
+        output.structured.as_str(),
+        Some(
+            "# Smoke Report\n\nfailed  upper-bound  exec:abc123  example/inspect-http-json@0.1.0\n\n- Status: failed\n- Skill: example/inspect-http-json@0.1.0\n\n## Primary reason\nruntime-exec:http-method-not-allowed\nPOST was requested against a GET-only grant"
+        )
+    );
+}
+
+#[test]
+fn incident_brief_uses_single_zero_authority_render_child() {
+    let facade = build_facade();
+    let subject = facade.inspect(composite_request()).unwrap();
+    let response = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "incident-brief".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "execution_uri": subject.structured_content.receipt.uri,
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![
+                    read_execution_resource_grant(),
+                    render_report_invoke_grant(),
+                ],
+            },
+        ))
+        .unwrap();
+    let output = response.structured_content.output.as_ref().unwrap();
+    let markdown = output
+        .structured
+        .as_str()
+        .expect("incident-brief should return markdown");
+    let child = &response.structured_content.child_executions[0];
+    let child_record = read_execution_record(&facade, &child.uri);
+
+    assert_eq!(
+        response.structured_content.status,
+        ExecutionStatus::Succeeded
+    );
+    assert_eq!(response.structured_content.child_executions.len(), 1);
+    assert_eq!(child.provenance.resolved_skill.key.name, "render-report");
+    assert!(child.granted_capabilities.grants.is_empty());
+    assert!(child_record.child_executions.is_empty());
+    assert!(child_record.granted_capabilities.grants.is_empty());
+    assert!(markdown.starts_with("# Incident Brief\n\n"));
+    assert!(markdown.contains("## Nearby child refs"));
+    assert!(markdown.contains("## Nearby evidence refs"));
+    assert!(markdown.contains("guild why exec:"));
+}
+
+#[test]
+fn run_diff_uses_single_zero_authority_render_child() {
+    let facade = build_facade();
+    let left = facade
+        .inspect(example_request(
+            "hello-inspect",
+            "actor-left",
+            vec![emit_evidence_grant()],
+        ))
+        .unwrap();
+    let right = facade.inspect(composite_request()).unwrap();
+    let response = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "run-diff".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "left_execution_uri": left.structured_content.receipt.uri,
+                "right_execution_uri": right.structured_content.receipt.uri,
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![
+                    read_execution_resource_grant(),
+                    render_report_invoke_grant(),
+                ],
+            },
+        ))
+        .unwrap();
+    let output = response.structured_content.output.as_ref().unwrap();
+    let markdown = output
+        .structured
+        .as_str()
+        .expect("run-diff should return markdown");
+    let child = &response.structured_content.child_executions[0];
+    let child_record = read_execution_record(&facade, &child.uri);
+
+    assert_eq!(
+        response.structured_content.status,
+        ExecutionStatus::Succeeded
+    );
+    assert_eq!(response.structured_content.child_executions.len(), 1);
+    assert_eq!(child.provenance.resolved_skill.key.name, "render-report");
+    assert!(child.granted_capabilities.grants.is_empty());
+    assert!(child_record.child_executions.is_empty());
+    assert!(child_record.granted_capabilities.grants.is_empty());
+    assert!(markdown.starts_with("# Run Diff\n\n"));
+    assert!(markdown.contains("## Child execution diff"));
+    assert!(markdown.contains("## Evidence diff"));
+    assert!(markdown.contains("- changed: changed"));
+}
+
+#[test]
+fn recent_failures_reads_bounded_query_and_exact_execution_resources() {
+    let temp = TempFixtureDir::new("guild-recent-failures");
+    install_query_test_skills(temp.path());
+    let facade = build_facade_for_root(temp.path());
+    let _ = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": "http://127.0.0.1:9/json",
+                "method": "get",
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet::default(),
+        ))
+        .unwrap_err();
+    let query_uri =
+        execution_query_resource_uri(&ExecutionQueryResource::FailuresRecent { limit: 10 });
+    let response = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "recent-failures".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "query_uri": query_uri,
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![query_resource_grant(), read_execution_resource_grant()],
+            },
+        ))
+        .unwrap();
+    let markdown = response
+        .structured_content
+        .output
+        .as_ref()
+        .unwrap()
+        .structured
+        .as_str()
+        .expect("recent-failures should return markdown");
+
+    assert_eq!(
+        response.structured_content.status,
+        ExecutionStatus::Succeeded
+    );
+    assert!(response.structured_content.child_executions.is_empty());
+    assert!(markdown.starts_with("# Recent Failures\n\n"));
+    assert!(markdown.contains("## Grouped reasons"));
+    assert!(markdown.contains("## Top executions"));
+    assert!(markdown.contains("policy-denied"));
+    assert!(markdown.contains("guild why exec:"));
+}
+
+#[test]
+fn recent_failures_requires_both_query_and_execution_scope() {
+    let temp = TempFixtureDir::new("guild-recent-failures-auth");
+    install_query_test_skills(temp.path());
+    let facade = build_facade_for_root(temp.path());
+    let _ = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "inspect-http-json".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "url": "http://127.0.0.1:9/json",
+                "method": "get",
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet::default(),
+        ))
+        .unwrap_err();
+    let query_uri =
+        execution_query_resource_uri(&ExecutionQueryResource::FailuresRecent { limit: 10 });
+    let error = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "recent-failures".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "query_uri": query_uri,
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![query_resource_grant()],
+            },
+        ))
+        .unwrap_err();
+    let receipt = error
+        .receipt
+        .expect("missing execution scope should still persist a rejected execution");
+    let record = read_execution_record(&facade, &receipt.uri);
+
+    assert_eq!(error.code, "policy-denied");
+    assert_eq!(record.status, ExecutionStatus::Rejected);
+    assert_eq!(record.termination.as_ref().unwrap().code, "policy-denied");
+    assert!(
+        record
+            .policy_decision
+            .reasons
+            .iter()
+            .any(|reason| reason.code == "policy-required-capability-missing")
+    );
+}
+
+#[test]
+fn evidence_summary_reads_metadata_and_small_json_payload() {
+    let facade = build_facade();
+    let hello = facade
+        .inspect(example_request(
+            "hello-inspect",
+            "actor-evidence",
+            vec![emit_evidence_grant()],
+        ))
+        .unwrap();
+    let evidence_uri = hello.structured_content.emitted_evidence[0].uri.clone();
+    let response = facade
+        .inspect(InspectRequest::new(
+            RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "evidence-summary".into(),
+                },
+                version_req: VersionRequirement::parse("^0.1").unwrap(),
+            },
+            serde_json::json!({
+                "evidence_uri": evidence_uri,
+            }),
+            "tenant-1",
+            "actor-1",
+            CapabilityGrantSet {
+                grants: vec![object_resource_grant()],
+            },
+        ))
+        .unwrap();
+    let markdown = response
+        .structured_content
+        .output
+        .as_ref()
+        .unwrap()
+        .structured
+        .as_str()
+        .expect("evidence-summary should return markdown");
+
+    assert_eq!(
+        response.structured_content.status,
+        ExecutionStatus::Succeeded
+    );
+    assert!(response.structured_content.child_executions.is_empty());
+    assert!(markdown.starts_with("# Evidence Summary\n\n"));
+    assert!(markdown.contains("not_proven"));
+    assert!(markdown.contains("## Linkage"));
+    assert!(markdown.contains("## Normalized details"));
+    assert!(markdown.contains("hello-inspect-snapshot"));
+    assert!(markdown.contains("guild why exec:"));
 }
 
 #[test]

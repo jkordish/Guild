@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunDiffInput",
+  "type": "object",
+  "properties": {
+    "left_execution_uri": {
+      "type": "string"
+    },
+    "right_execution_uri": {
+      "type": "string"
+    }
+  },
+  "required": ["left_execution_uri", "right_execution_uri"],
+  "additionalProperties": false
+}

@@ -1,0 +1,7 @@
+{
+  "summary": "Prepared incident brief for stored execution __TARGET_EXECUTION_URI__.",
+  "structured": "# Incident Brief\n\nsucceeded  upper-bound  exec:__TARGET_EXECUTION_SHORT__  example/hello-inspect@0.1.0\n\n- Execution: exec:__TARGET_EXECUTION_SHORT__\n- Skill: example/hello-inspect@0.1.0\n- Status: succeeded\n- Posture: upper-bound\n- Support: not_proven(emit-evidence)\n- Policy outcome: allowed\n- Child executions: 0\n- Evidence records: 1\n\n## Primary reason\nnone\nno termination or policy reason recorded\n\n## Nearby child refs\nno child execution refs recorded\n\n## Nearby evidence refs\n- evidence:__TARGET_EVIDENCE_SHORT__\n\n## Next refs\n- guild why exec:__TARGET_EXECUTION_SHORT__\n- guild show evidence:__TARGET_EVIDENCE_SHORT__",
+  "diagnostics": [],
+  "effects": [],
+  "evidence": []
+}

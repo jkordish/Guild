@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IncidentBriefInput",
+  "type": "object",
+  "properties": {
+    "execution_uri": {
+      "type": "string"
+    }
+  },
+  "required": ["execution_uri"],
+  "additionalProperties": false
+}

@@ -30,6 +30,7 @@ Guild already has:
 - OCI image layout and OCI registry transport for installed signed bundles
 - a real stdio MCP server with one public tool, `guild.inspect`, plus Guild resources
 - bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, and `log-write` slices
+- a user-facing starter pack of example skills for compact ops analysis over stored executions, bounded query refs, and evidence refs
 
 The live-proof envelope is intentionally narrow. The exact current status lives in `SPECS.md`, `docs/testing.md`, and `docs/schemas/draft-v1/family_support_matrix.json`.
 
@@ -120,6 +121,20 @@ If you want an explicit non-default root for local proofs or CI, keep passing it
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/hello
 cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
 ```
+
+## Ops Starter Pack
+
+The current user-facing skill pack lives at [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
+
+It is intentionally ordinary example-skill layout, not a new packaging system. The pack installs as five example skills and stays inside current honest repo truth:
+
+- `incident-brief` for one stored execution ref
+- `run-diff` for two stored execution refs
+- `recent-failures` for one bounded execution-query ref
+- `evidence-summary` for one stored evidence ref
+- `render-report` as the zero-authority child formatter used by the parent report skills
+
+The pack is meant to show the current Guild story without broadening runtime or proof semantics: durable refs, compact terminal output, explicit capability requirements, and bounded single-child composition only where it is already real.
 
 ## Trust And Transport
 
