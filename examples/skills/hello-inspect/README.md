@@ -46,6 +46,15 @@ guild --registry-root target/dev-local-registry/hello-inspect why exec:<executio
 guild --registry-root target/dev-local-registry/hello-inspect verify skill://example/hello-inspect@^0.1
 ```
 
+In that flow, the authority lifecycle is:
+
+- declared authority: capabilities declared by the installed manifest and visible in `guild show`
+- requested authority: caller-requested grants passed to `guild run`
+- granted authority: the final capability slice the host policy allows for that run
+- effective at runtime: the authority the guest can actually exercise during execution
+
+In this example, `--grants-json` is the caller-requested grants input for `guild run`. Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.
+
 Replace `<execution-id-prefix>` with the short execution id prefix from the run receipt.
 
 Deep developer proof helpers:

@@ -933,6 +933,17 @@ A host policy decision SHOULD distinguish:
 - the host-owned verification state and local trust tier considered
 - host-owned reason codes sufficient for later explanation
 
+For the current repository's user-facing docs and help, these same stages are
+described with one stable authority lifecycle vocabulary:
+
+- declared authority: capabilities declared by the installed manifest
+- requested authority: caller-requested grants for one run
+- granted authority: the final capability slice the host policy allows for that run
+- effective at runtime: the authority the guest can actually exercise during execution
+
+This explanatory vocabulary does not widen the normative model above; the
+host-owned policy decision and final granted capability set remain canonical.
+
 ### 18.4 Durable denial record
 
 Policy rejection SHOULD produce a durable record suitable for later inspection and audit.

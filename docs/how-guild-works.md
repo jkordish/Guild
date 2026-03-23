@@ -43,7 +43,7 @@ Guild also keeps authority staged instead of ambient:
 - granted authority: the final capability slice the host policy allows for that run
 - effective at runtime: the authority the guest can actually exercise during execution
 
-In practice, that means the caller can ask for authority, but the guest only receives the final granted set.
+Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.
 
 ## Command Roles
 

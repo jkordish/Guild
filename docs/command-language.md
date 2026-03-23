@@ -135,12 +135,7 @@ Guild uses one authority lifecycle in day-to-day CLI flows:
 - granted authority: the final capability slice the host policy allows for that run
 - effective at runtime: the authority the guest can actually exercise during execution
 
-In other words:
-
-- manifests declare the capability envelope
-- callers request a narrower or matching slice for one run
-- host policy may grant, reduce, or deny that request before guest start
-- the guest only sees the final granted set at runtime
+Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.
 
 ## Root Resolution
 

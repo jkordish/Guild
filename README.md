@@ -100,7 +100,7 @@ Guild also uses one authority lifecycle in normal operator workflows:
 
 - declared authority: capabilities declared by the installed manifest and visible in `guild show`
 - requested authority: caller-requested grants passed to `guild run`
-- granted authority: the final capability slice the host policy allows for this run
+- granted authority: the final capability slice the host policy allows for that run
 - effective at runtime: the authority the guest can actually exercise during execution
 
 Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.

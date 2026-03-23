@@ -79,6 +79,21 @@ fn assert_markdown_keeps_legacy_alias_commands_out_of_examples(path: &Path) {
     }
 }
 
+fn assert_contains_canonical_authority_lifecycle(contents: &str, label: &str) {
+    for phrase in [
+        "declared authority: capabilities declared by the installed manifest and visible in `guild show`",
+        "requested authority: caller-requested grants passed to `guild run`",
+        "granted authority: the final capability slice the host policy allows for that run",
+        "effective at runtime: the authority the guest can actually exercise during execution",
+        "Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.",
+    ] {
+        assert!(
+            contents.contains(phrase),
+            "{label} is missing canonical authority-lifecycle wording: {phrase}"
+        );
+    }
+}
+
 fn emit_evidence_grants_json() -> String {
     serde_json::to_string(&CapabilityGrantSet {
         grants: vec![GrantedCapability {
@@ -1980,7 +1995,14 @@ fn run_help_uses_input_file_flag_and_ref_topic() {
     assert!(!stdout.contains("input-file-path"));
     assert!(stdout.contains("Authority lifecycle:"));
     assert!(stdout.contains("declared authority comes from the installed manifest."));
-    assert!(stdout.contains("runtime-effective authority is limited to the final granted set."));
+    assert!(stdout.contains("requested authority comes from the caller-provided grants."));
+    assert!(stdout.contains(
+        "granted authority is the final capability slice the host policy allows for that run."
+    ));
+    assert!(stdout.contains(
+        "effective at runtime is the authority the guest can actually exercise during execution."
+    ));
+    assert!(stdout.contains("Guild does not hand the guest ambient authority."));
     assert!(stdout.contains("in the default human mode, stdout carries the result payload."));
     assert!(
         stdout.contains("with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.")
@@ -2286,4 +2308,45 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(ops_pack.contains("## Journey 3: Scan Recent Failures"));
     assert!(ops_pack.contains("## Journey 4: Inspect One Stored Evidence Record"));
     assert!(ops_pack.contains("## Keep Going With The Normal CLI"));
+}
+
+#[test]
+fn authority_lifecycle_language_stays_canonical_across_docs_and_spec() {
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert_contains_canonical_authority_lifecycle(&readme, "README.md");
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    assert_contains_canonical_authority_lifecycle(&command_language, "docs/command-language.md");
+
+    let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
+    assert_contains_canonical_authority_lifecycle(&how_it_works, "docs/how-guild-works.md");
+
+    let hello_readme =
+        fs::read_to_string(repo_root().join("examples/skills/hello-inspect/README.md")).unwrap();
+    assert_contains_canonical_authority_lifecycle(
+        &hello_readme,
+        "examples/skills/hello-inspect/README.md",
+    );
+    assert!(
+        hello_readme.contains(
+            "In this example, `--grants-json` is the caller-requested grants input for `guild run`."
+        ),
+        "examples/skills/hello-inspect/README.md should tie --grants-json to requested authority",
+    );
+
+    let specs = fs::read_to_string(repo_root().join("SPECS.md")).unwrap();
+    for phrase in [
+        "described with one stable authority lifecycle vocabulary:",
+        "- declared authority: capabilities declared by the installed manifest",
+        "- requested authority: caller-requested grants for one run",
+        "- granted authority: the final capability slice the host policy allows for that run",
+        "- effective at runtime: the authority the guest can actually exercise during execution",
+        "This explanatory vocabulary does not widen the normative model above; the",
+    ] {
+        assert!(
+            specs.contains(phrase),
+            "SPECS.md is missing authority-lifecycle bridge wording: {phrase}"
+        );
+    }
 }
