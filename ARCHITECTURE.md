@@ -386,6 +386,7 @@ That M7 layer is intentionally honest about what it is and what it is not:
 - it reuses the same draft-local HMAC-SHA256 MAC over canonical JSON claims used by M6, so it is not a public attestation mechanism
 - it is currently complete for the bundled draft example harnesses and explicit bounded observation fixtures, and it now also consumes the live Rust `ExecutionRecord.authority_observations` stream for the active runtime families
 - the live runner now persists durable per-effect exercised and blocked observations for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- execution-record JSON and resource surfaces now also carry `authority_observations_recorded` so legacy stored executions that predate that stream remain distinguishable from explicitly recorded empty observation lists
 - draft-v1 now carries live `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` observations directly as canonical families
 - scope-only negative claims are now supported for those five families when the relevant live observation coverage is complete
 - the fixed claim vocabulary still has no per-family positive observed-fact claim types, so positive claim verification remains unsupported even though witnesses carry those facts

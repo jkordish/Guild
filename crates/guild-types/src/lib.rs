@@ -2311,8 +2311,7 @@ pub struct ExecutionRecord {
     pub emitted_evidence: Vec<EvidenceRecord>,
     #[serde(default)]
     pub authority_observations: Vec<AuthorityObservation>,
-    #[serde(skip)]
-    #[schemars(skip)]
+    #[serde(default)]
     pub authority_observations_recorded: bool,
     #[serde(default)]
     pub metrics: ExecutionMetrics,
@@ -2335,6 +2334,7 @@ struct ExecutionRecordSerde {
     #[serde(default)]
     emitted_evidence: Vec<EvidenceRecord>,
     authority_observations: Option<Vec<AuthorityObservation>>,
+    authority_observations_recorded: Option<bool>,
     #[serde(default)]
     metrics: ExecutionMetrics,
     provenance: Provenance,
@@ -2348,7 +2348,9 @@ impl<'de> Deserialize<'de> for ExecutionRecord {
         D: Deserializer<'de>,
     {
         let record = ExecutionRecordSerde::deserialize(deserializer)?;
-        let authority_observations_recorded = record.authority_observations.is_some();
+        let authority_observations_recorded = record
+            .authority_observations_recorded
+            .unwrap_or_else(|| record.authority_observations.is_some());
         Ok(Self {
             receipt: record.receipt,
             request: record.request,
@@ -2366,6 +2368,127 @@ impl<'de> Deserialize<'de> for ExecutionRecord {
             provenance: record.provenance,
             child_executions: record.child_executions,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn sample_execution_record_json() -> serde_json::Value {
+        json!({
+            "receipt": {
+                "execution_id": "exec-1",
+                "uri": "guild://executions/exec-1",
+                "trace_id": "trace-1",
+                "status": "succeeded"
+            },
+            "request": {
+                "request_id": "request-1",
+                "skill": {
+                    "key": {
+                        "namespace": "example",
+                        "name": "hello-inspect"
+                    },
+                    "version_req": "^0.1"
+                },
+                "tenant_id": "tenant-1",
+                "actor_id": "actor-1",
+                "mode": "inspect",
+                "input": {},
+                "budget": {
+                    "max_millis": 1000,
+                    "max_memory_bytes": 1048576,
+                    "max_output_bytes": 65536,
+                    "max_network_requests": 4,
+                    "max_child_executions": 4
+                },
+                "requested_capabilities": { "grants": [] },
+                "idempotency_key": null,
+                "trace_id": "trace-1"
+            },
+            "policy_decision": {
+                "outcome": "allowed",
+                "summary": "allowed",
+                "profile_name": "default",
+                "trust_tier": "local-dev",
+                "verification_state": "local-source",
+                "reasons": [],
+                "detail": null
+            },
+            "resolved_skill": {
+                "key": {
+                    "namespace": "example",
+                    "name": "hello-inspect"
+                },
+                "version": "0.1.0",
+                "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            },
+            "parent_execution_id": null,
+            "status": "succeeded",
+            "output": null,
+            "termination": null,
+            "granted_capabilities": { "grants": [] },
+            "emitted_evidence": [],
+            "metrics": {
+                "duration_ms": 0,
+                "network_requests": 0,
+                "child_executions": 0,
+                "cache_hits": 0,
+                "cache_misses": 0
+            },
+            "provenance": {
+                "resolved_skill": {
+                    "key": {
+                        "namespace": "example",
+                        "name": "hello-inspect"
+                    },
+                    "version": "0.1.0",
+                    "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                },
+                "abi": "guild-skill-inspect-v1",
+                "dependency_digests": [],
+                "started_at_utc": null,
+                "finished_at_utc": null
+            },
+            "child_executions": []
+        })
+    }
+
+    #[test]
+    fn execution_record_roundtrip_marks_legacy_missing_observations_as_unrecorded() {
+        let record: ExecutionRecord =
+            serde_json::from_value(sample_execution_record_json()).unwrap();
+        assert!(!record.authority_observations_recorded);
+
+        let serialized = serde_json::to_value(record).unwrap();
+        assert_eq!(
+            serialized
+                .get("authority_observations_recorded")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn execution_record_roundtrip_infers_recorded_when_observation_field_is_present() {
+        let mut value = sample_execution_record_json();
+        value.as_object_mut().unwrap().insert(
+            "authority_observations".into(),
+            serde_json::Value::Array(Vec::new()),
+        );
+
+        let record: ExecutionRecord = serde_json::from_value(value).unwrap();
+        assert!(record.authority_observations_recorded);
+
+        let serialized = serde_json::to_value(record).unwrap();
+        assert_eq!(
+            serialized
+                .get("authority_observations_recorded")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
     }
 }
 

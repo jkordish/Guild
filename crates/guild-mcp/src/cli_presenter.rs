@@ -1470,10 +1470,9 @@ mod tests {
 
     fn legacy_execution_record_without_authority_observations() -> ExecutionRecord {
         let mut value = serde_json::to_value(execution_record_with_related_refs(0, 0)).unwrap();
-        value
-            .as_object_mut()
-            .unwrap()
-            .remove("authority_observations");
+        let object = value.as_object_mut().unwrap();
+        object.remove("authority_observations");
+        object.remove("authority_observations_recorded");
         serde_json::from_value(value).unwrap()
     }
 

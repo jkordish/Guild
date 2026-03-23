@@ -749,6 +749,7 @@ That M7 path has hard limits:
 - redaction MUST NOT be described as verified when it removes facts required for the requested claim
 - the current draft implementation MUST be described as HMAC MAC protection over canonical JSON claims, not as public-key signatures or public attestation
 - the current live Rust runtime now persists durable per-effect `authority_observations` for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`
+- `ExecutionRecord` JSON surfaces MUST also carry `authority_observations_recorded` so legacy executions that predate observation capture stay distinguishable from explicitly recorded empty observation lists
 - the current witness path MAY describe runtime-backed exercised-authority and absence claims only where that live stream maps safely into the draft-v1 vocabulary
 - for M8c, draft-v1 now carries the live canonical `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` families directly in witness generation and verification
 - scope-only negative claims MAY now be supported for those five families when the relevant live observation coverage is complete

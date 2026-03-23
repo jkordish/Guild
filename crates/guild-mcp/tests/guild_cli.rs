@@ -1372,9 +1372,15 @@ fn primary_get_ls_and_show_commands_accept_short_resource_refs() {
 
     let get_execution = run_guild_success(&["get", &exec_prefix, "--json"], Some(&registry_root));
     let get_execution_value: Value = parse_json_stdout(&get_execution);
+    let get_execution_record: Value =
+        serde_json::from_str(get_execution_value["text"].as_str().unwrap()).unwrap();
     assert_eq!(
         get_execution_value["uri"].as_str(),
         Some(execution_uri.as_str())
+    );
+    assert_eq!(
+        get_execution_record["authority_observations_recorded"].as_bool(),
+        Some(true)
     );
 
     let show_execution = run_guild_success(&["show", &exec_prefix, "--json"], Some(&registry_root));
