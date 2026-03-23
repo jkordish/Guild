@@ -227,6 +227,7 @@ pub fn why_summary(record: &ExecutionRecord) -> WhySummary {
 pub fn render_skill_show(
     installed: &InstalledSkill,
     requested: &str,
+    resolution_lines: &[String],
     options: PresentationOptions,
     stream: StreamKind,
 ) -> String {
@@ -286,6 +287,12 @@ pub fn render_skill_show(
         );
     }
     if options.very_verbose() {
+        if !resolution_lines.is_empty() {
+            let _ = writeln!(output, "resolution:");
+            for line in resolution_lines {
+                let _ = writeln!(output, "  {line}");
+            }
+        }
         let _ = writeln!(output, "description: {}", installed.manifest.description);
         let _ = writeln!(
             output,
@@ -502,6 +509,19 @@ pub fn render_run_status(
 }
 
 #[must_use]
+pub fn render_run_next_steps(record: &ExecutionRecord) -> Option<String> {
+    if !matches!(record.status, ExecutionStatus::Succeeded) {
+        return None;
+    }
+
+    Some(format!(
+        "Next: guild why {}\nNext: guild get {}",
+        short_execution_ref(record),
+        record.receipt.uri
+    ))
+}
+
+#[must_use]
 pub fn render_skills_list(
     skills: &[InstalledSkill],
     options: PresentationOptions,
@@ -551,6 +571,11 @@ pub fn render_runs_list(
         );
     }
     output
+}
+
+#[must_use]
+pub fn render_why_next_step(record: &ExecutionRecord) -> String {
+    format!("Next: guild get {}", record.receipt.uri)
 }
 
 #[must_use]

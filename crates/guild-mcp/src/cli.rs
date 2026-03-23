@@ -12,8 +12,8 @@ use guild_registry::{
     ExecutionPlanSignatureEnvelope, ExecutionPlanVerification, InstalledSkill,
     InstalledTrustMetadata, InstalledVerificationRecord, LocalPublisherIdentity, LocalRegistry,
     LocalSourceInstaller, OciRegistryReference, OciRegistryTransportOptions, RegistryError,
-    SkillRegistry, StructuredDigest, TrustedPublisherRecord, sign_execution_plan,
-    verify_execution_plan,
+    SkillRegistry, SkillResolutionExplanation, StructuredDigest, TrustedPublisherRecord,
+    sign_execution_plan, verify_execution_plan,
 };
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
@@ -27,9 +27,9 @@ use serde_json::Value;
 use crate::cli_presenter::{
     PresentationOptions, StreamKind, SupportSummary, WhySummary, color_mode, render_evidence_list,
     render_evidence_show, render_execution_show, render_execution_why, render_object_show,
-    render_objects_list, render_run_porcelain, render_run_status, render_runs_list,
-    render_skill_porcelain, render_skill_show, render_skill_verify, render_skills_list,
-    render_verify_porcelain, render_why_porcelain,
+    render_objects_list, render_run_next_steps, render_run_porcelain, render_run_status,
+    render_runs_list, render_skill_porcelain, render_skill_show, render_skill_verify,
+    render_skills_list, render_verify_porcelain, render_why_next_step, render_why_porcelain,
     resolved_skill_ref as presenter_resolved_skill_ref, runtime_label as presenter_runtime_label,
     short_execution_ref, support_summary_for_execution, support_summary_for_skill, why_summary,
 };
@@ -46,12 +46,12 @@ const DEFAULT_TENANT_ID: &str = "local";
 const DEFAULT_ACTOR_ID: &str = "guild-cli";
 const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
 const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
-const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n\nSee also:\n  guild help refs";
-const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  host policy grants, reduces, or denies that request before guest start.\n  runtime-effective authority is limited to the final granted set.\n\nOutput:\n  stdout carries the result payload.\n  stderr carries the human status summary.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs";
-const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nLegacy alias:\n  guild list ...";
-const GET_AFTER_HELP: &str = "Scope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nLegacy alias:\n  guild read ...";
-const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nThis command explains a persisted execution record; it does not rerun the skill.";
-const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nSee also:\n  guild help trust";
+const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nOutput:\n  default output is a short human summary.\n  use --json or --porcelain for machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild why --help";
+const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  host policy grants, reduces, or denies that request before guest start.\n  runtime-effective authority is limited to the final granted set.\n\nOutput:\n  stdout carries the result payload.\n  stderr carries the human status summary.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
+const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
+const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
+const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
+const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary.\n  use --json or --porcelain for machine reads.\n\nSee also:\n  guild help trust\n  guild show --help";
 
 #[derive(Debug)]
 pub struct CliError {
@@ -338,6 +338,7 @@ struct TrustVerifyPlanOutput {
 enum ShowTarget {
     Skill {
         requested: String,
+        resolution_lines: Vec<String>,
         installed: InstalledSkill,
     },
     Execution(ExecutionRecord),
@@ -1203,6 +1204,7 @@ fn run_show(
         match target {
             ShowTarget::Skill {
                 requested,
+                resolution_lines: _,
                 installed,
             } => {
                 print_json(&ShowSkillCommandOutput {
@@ -1258,8 +1260,15 @@ fn run_show(
     let text = match target {
         ShowTarget::Skill {
             requested,
+            resolution_lines,
             installed,
-        } => render_skill_show(&installed, &requested, presentation, StreamKind::Stdout),
+        } => render_skill_show(
+            &installed,
+            &requested,
+            &resolution_lines,
+            presentation,
+            StreamKind::Stdout,
+        ),
         ShowTarget::Execution(record) => {
             render_execution_show(&record, presentation, StreamKind::Stdout)
         }
@@ -1406,6 +1415,11 @@ fn run_run_command(
         )
     };
     eprintln!("{status}");
+    if !render.porcelain_output {
+        if let Some(next_steps) = render_run_next_steps(&response.structured_content) {
+            eprintln!("{next_steps}");
+        }
+    }
     Ok(())
 }
 
@@ -1578,6 +1592,7 @@ fn run_why(
             "{}",
             render_execution_why(&record, presentation, StreamKind::Stdout)
         );
+        println!("{}", render_why_next_step(&record));
     }
     Ok(())
 }
@@ -2050,6 +2065,7 @@ fn run_install(
         println!("installed {}", output.resolved_skill);
         println!("digest: {}", output.digest);
         println!("path: {}", output.root_dir);
+        println!("Next: guild show -v {}", output.resolved_skill);
     }
 
     Ok(())
@@ -3002,10 +3018,54 @@ fn resolve_show_target(registry: &LocalRegistry, input: &str) -> Result<ShowTarg
 
     let requested = resolve_requested_skill_ref(registry, trimmed)?;
     let installed = registry.resolve(&requested)?;
+    let resolution = registry.explain_resolution(&requested)?;
     Ok(ShowTarget::Skill {
         requested: trimmed.to_owned(),
+        resolution_lines: explain_show_skill_resolution(trimmed, &requested, &resolution),
         installed,
     })
+}
+
+fn canonical_requested_skill_ref(skill: &RequestedSkillRef) -> String {
+    format!(
+        "skill://{}/{}@{}",
+        skill.key.namespace, skill.key.name, skill.version_req
+    )
+}
+
+fn explain_show_skill_resolution(
+    raw_requested: &str,
+    requested: &RequestedSkillRef,
+    resolution: &SkillResolutionExplanation,
+) -> Vec<String> {
+    let canonical_requested = canonical_requested_skill_ref(requested);
+    let mut lines = Vec::new();
+
+    if !raw_requested.starts_with("skill://") && !raw_requested.contains('/') {
+        lines.push(format!(
+            "short ref `{raw_requested}` resolved to `{canonical_requested}` because it was unambiguous across installed namespaces"
+        ));
+    } else if !raw_requested.starts_with("skill://") {
+        lines.push(format!(
+            "normalized requested ref `{raw_requested}` to `{canonical_requested}` for resolution"
+        ));
+    }
+
+    lines.push(format!(
+        "matched installed versions satisfying `{}`: {}",
+        requested.version_req,
+        resolution.matching_versions.join(", ")
+    ));
+    lines.push(format!(
+        "selected version `{}` as the highest installed version satisfying the request",
+        resolution.selected_version
+    ));
+    lines.push(format!(
+        "selected digest `{}` because exactly one installed digest matched version `{}`",
+        resolution.selected_digest, resolution.selected_version
+    ));
+
+    lines
 }
 
 fn resolve_show_resource_target(
@@ -3523,6 +3583,8 @@ fn print_help_refs() {
     println!();
     println!("Trace one skill through those layers with:");
     println!("  guild show -v skill://example/hello-inspect@^0.1");
+    println!("Use this first ref-resolution explanation surface when you need the why:");
+    println!("  guild show -vv skill://example/hello-inspect@^0.1");
     println!();
     println!(
         "Use canonical skill refs and full Guild URIs in scripts or when ambiguity is possible."
@@ -3560,9 +3622,7 @@ fn print_show_usage() {
         "usage: guild [--registry-root <path>] show <ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
     );
     println!("`guild show` is the primary non-executing inspection command.");
-    println!(
-        "accepted refs: skill refs, `exec:<id-prefix>`, `evidence:<id-prefix>`, `obj:<sha-prefix>`, and full `guild://...` URIs."
-    );
+    println!("{SHOW_AFTER_HELP}");
 }
 
 fn print_run_usage() {
@@ -3570,43 +3630,35 @@ fn print_run_usage() {
         "usage: guild [--registry-root <path>] run <skill-ref> [input-file] [--input-json <json> | --input-file <path>] [--grants-json <json> | --grants-file <path>] [--tenant-id <id>] [--actor-id <id>] [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
     );
     println!("`guild run` is the primary execution command.");
-    println!("legacy alias: `guild inspect ...`.");
-    println!("stdout carries the result payload; stderr carries the human status summary.");
+    println!("{RUN_AFTER_HELP}");
 }
 
 fn print_ls_usage() {
     println!(
         "usage: guild [--registry-root <path>] ls [skills|runs|objects|evidence] [--limit <n>] [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
     );
-    println!("`guild ls` is the primary local-state listing command.");
-    println!("legacy alias: `guild list ...`.");
+    println!("{LS_AFTER_HELP}");
 }
 
 fn print_get_usage() {
     println!(
         "usage: guild [--registry-root <path>] get <ref> [--output <path>] [--json | --porcelain]"
     );
-    println!("`guild get` is the primary raw resource-read command.");
-    println!(
-        "accepted refs: full `guild://...` URIs plus `exec:<id-prefix>`, `evidence:<id-prefix>`, and `obj:<sha-prefix>`."
-    );
-    println!("legacy alias: `guild read ...`.");
+    println!("{GET_AFTER_HELP}");
 }
 
 fn print_why_usage() {
     println!(
         "usage: guild [--registry-root <path>] why <exec-ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
     );
-    println!("`guild why` is the primary persisted-execution explanation command.");
-    println!("accepted refs: `exec:<id-prefix>` and full execution URIs.");
+    println!("{WHY_AFTER_HELP}");
 }
 
 fn print_verify_usage() {
     println!(
         "usage: guild [--registry-root <path>] verify <skill-ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
     );
-    println!("`guild verify` is intentionally limited to installed skill refs.");
-    println!("signed plan verification remains under `guild trust verify-plan`.");
+    println!("{VERIFY_AFTER_HELP}");
 }
 
 fn print_init_usage() {

@@ -116,6 +116,14 @@ guild show -v skill://example/hello-inspect@^0.1
 
 That verbose view shows the requested ref, resolved ref, digest, and installed path together. Use it when you need to answer "what did I ask for?" versus "what exact executable did Guild select?"
 
+When the question is "why did this request resolve to that digest?", the first explanation surface is:
+
+```bash
+guild show -vv skill://example/hello-inspect@^0.1
+```
+
+That very verbose view explains how Guild interpreted the request, which installed versions matched it, and why one digest was selected from installed state.
+
 ## Authority Lifecycle
 
 Guild uses one authority lifecycle in day-to-day CLI flows:
@@ -168,6 +176,7 @@ What this flow teaches:
 - `install` is source-to-installed, not source-to-runtime bypass
 - `show` is the primary non-executing summary path
 - `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
+- `show -vv` is the first requested-ref explanation path and explains why one digest was selected
 - `run` executes a `skill://...` ref through the real Guild runtime path after host policy computes the final granted authority for that run
 - success produces a durable `guild://executions/...` receipt
 - `why` explains one stored execution record

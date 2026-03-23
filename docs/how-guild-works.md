@@ -26,6 +26,14 @@ guild show -v skill://example/hello-inspect@^0.1
 
 That one command lets you line up what you asked for, what Guild installed, and what exact executable identity Guild selected.
 
+When you need the current "why did this ref resolve that way?" surface, use:
+
+```bash
+guild show -vv skill://example/hello-inspect@^0.1
+```
+
+That adds the installed-version and selected-digest reasoning on top of the identity trace.
+
 ## Authority Lifecycle
 
 Guild also keeps authority staged instead of ambient:
@@ -71,6 +79,7 @@ What that flow tells you:
 
 - the source directory becomes installed executable state through `guild install`
 - `guild show -v` explains the identity path before you run anything
+- `guild show -vv` explains why the requested ref resolved to the selected digest
 - `guild run` executes with caller-requested grants filtered through host policy
 - `guild why` and `guild get` explain what happened after the run completes
 - `guild verify` is about installed trust state, not execution replay

@@ -574,6 +574,11 @@ fn primary_run_command_keeps_payload_on_stdout_and_status_on_stderr() {
     assert_eq!(payload["mode"].as_str(), Some("inspect"));
     assert!(stderr.contains("succeeded  not_proven  exec:"), "{stderr}");
     assert!(stderr.contains("example/hello-inspect@0.1.0"), "{stderr}");
+    assert!(stderr.contains("Next: guild why exec:"), "{stderr}");
+    assert!(
+        stderr.contains("Next: guild get guild://executions/"),
+        "{stderr}"
+    );
     assert!(!stdout.contains("exec:"), "{stdout}");
     assert!(!stderr.contains("\"message\""), "{stderr}");
 }
@@ -717,6 +722,8 @@ fn run_refusal_keeps_payload_off_stdout_and_status_on_stderr() {
         stderr.contains("filesystem-runtime-not-supported"),
         "{stderr}"
     );
+    assert!(!stderr.contains("Next: guild why"), "{stderr}");
+    assert!(!stderr.contains("Next: guild get"), "{stderr}");
 }
 
 #[test]
@@ -1783,6 +1790,7 @@ fn shared_help_topics_are_available() {
     assert!(refs.contains("installed executable state"));
     assert!(refs.contains("resolved executable identity"));
     assert!(refs.contains("guild show -v skill://example/hello-inspect@^0.1"));
+    assert!(refs.contains("guild show -vv skill://example/hello-inspect@^0.1"));
 
     let trust = run_guild_success(&["help", "trust"], None);
     assert!(trust.contains("Trust and verification"));
@@ -1809,8 +1817,11 @@ fn show_help_points_to_ref_topics() {
     assert!(stdout.contains("Show a skill, run, object, or evidence summary"));
     assert!(stdout.contains("Accepted refs:"));
     assert!(stdout.contains("does not run a skill"));
+    assert!(stdout.contains("default output is a short human summary."));
     assert!(stdout.contains("Use -v with a skill ref"));
+    assert!(stdout.contains("Use -vv with a skill ref"));
     assert!(stdout.contains("guild help refs"));
+    assert!(stdout.contains("guild why --help"));
 }
 
 #[test]
@@ -1824,6 +1835,7 @@ fn run_help_uses_input_file_flag_and_ref_topic() {
     assert!(stdout.contains("runtime-effective authority is limited to the final granted set."));
     assert!(stdout.contains("stdout carries the result payload."));
     assert!(stdout.contains("guild help refs"));
+    assert!(stdout.contains("guild why --help"));
 }
 
 #[test]
@@ -1831,24 +1843,36 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     let ls_help = run_guild_success(&["ls", "--help"], None);
     assert!(ls_help.contains("List skills, runs, objects, or evidence"));
     assert!(ls_help.contains("primary local-state listing command"));
+    assert!(ls_help.contains("default output is a short local-state listing."));
     assert!(ls_help.contains("Legacy alias:"));
     assert!(ls_help.contains("guild list ..."));
+    assert!(ls_help.contains("guild show --help"));
+    assert!(ls_help.contains("guild why --help"));
 
     let get_help = run_guild_success(&["get", "--help"], None);
     assert!(get_help.contains("Read a Guild resource"));
+    assert!(get_help.contains("Accepted refs:"));
+    assert!(get_help.contains("exec:<execution-id-prefix>"));
     assert!(get_help.contains("primary raw resource-read command"));
+    assert!(get_help.contains("reads go to stdout by default."));
     assert!(get_help.contains("Legacy alias:"));
     assert!(get_help.contains("guild read ..."));
+    assert!(get_help.contains("guild help refs"));
+    assert!(get_help.contains("guild why --help"));
 
     let why_help = run_guild_success(&["why", "--help"], None);
     assert!(why_help.contains("Explain a persisted execution"));
     assert!(why_help.contains("primary persisted-execution explanation command"));
+    assert!(why_help.contains("default output is a short human explanation."));
     assert!(why_help.contains("persisted execution record"));
+    assert!(why_help.contains("guild get --help"));
 
     let verify_help = run_guild_success(&["verify", "--help"], None);
     assert!(verify_help.contains("Show installed trust and verification status"));
+    assert!(verify_help.contains("default output is a short human trust summary."));
     assert!(verify_help.contains("guild trust verify-plan"));
     assert!(verify_help.contains("guild help trust"));
+    assert!(verify_help.contains("guild show --help"));
 }
 
 #[test]
@@ -1872,6 +1896,26 @@ fn install_command_maps_to_real_source_install_path() {
 }
 
 #[test]
+fn install_human_output_suggests_show_next_step() {
+    let temp = TempFixtureDir::new("guild-cli-install-human");
+    let registry_root = temp.path().join("registry");
+    let root = registry_root.display().to_string();
+    let source_root = hello_source_dir().display().to_string();
+    let stdout = run_guild_success(&["--registry-root", &root, "install", &source_root], None);
+
+    assert!(
+        stdout.contains("installed skill://example/hello-inspect@0.1.0"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("digest: sha256:"), "{stdout}");
+    assert!(stdout.contains("path: "), "{stdout}");
+    assert!(
+        stdout.contains("Next: guild show -v skill://example/hello-inspect@0.1.0"),
+        "{stdout}"
+    );
+}
+
+#[test]
 fn show_verbose_output_traces_requested_to_resolved_identity() {
     let temp = TempFixtureDir::new("guild-cli-show-identity");
     let registry_root = temp.path().join("registry");
@@ -1886,6 +1930,59 @@ fn show_verbose_output_traces_requested_to_resolved_identity() {
     assert!(stdout.contains("digest: sha256:"), "{stdout}");
     assert!(stdout.contains("installed path:"), "{stdout}");
     assert!(!stdout.contains("\nsource:"), "{stdout}");
+}
+
+#[test]
+fn show_very_verbose_output_explains_requested_ref_resolution() {
+    let temp = TempFixtureDir::new("guild-cli-show-resolution");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let stdout = run_guild_success(&["show", "-vv", "hello-inspect@^0.1"], Some(&registry_root));
+    assert!(stdout.contains("resolution:"), "{stdout}");
+    assert!(
+        stdout.contains(
+            "short ref `hello-inspect@^0.1` resolved to `skill://example/hello-inspect@^0.1` because it was unambiguous across installed namespaces"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("matched installed versions satisfying `^0.1`: 0.1.0"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "selected version `0.1.0` as the highest installed version satisfying the request"
+        ),
+        "{stdout}"
+    );
+    assert!(stdout.contains("selected digest `sha256:"), "{stdout}");
+}
+
+#[test]
+fn why_human_output_suggests_get_next_step() {
+    let temp = TempFixtureDir::new("guild-cli-why-next-step");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let inspect_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let execution_id = inspect_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let execution_uri = inspect_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+
+    let stdout = run_guild_success(
+        &["why", &exec_prefix, "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(stdout.contains("Next: guild get "), "{stdout}");
+    assert!(stdout.contains(&execution_uri), "{stdout}");
 }
 
 #[test]

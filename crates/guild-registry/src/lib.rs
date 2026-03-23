@@ -50,6 +50,13 @@ pub struct InstalledSkill {
     pub trust: InstalledTrustMetadata,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillResolutionExplanation {
+    pub matching_versions: Vec<String>,
+    pub selected_version: String,
+    pub selected_digest: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct InstalledTrustMetadata {
     pub verification_state: InstalledVerificationState,
@@ -1144,78 +1151,112 @@ impl LocalRegistry {
     }
 }
 
-impl SkillRegistry for LocalRegistry {
-    fn resolve(&self, skill: &RequestedSkillRef) -> Result<InstalledSkill, RegistryError> {
-        let mut matches: Vec<&InstalledSkill> = self
-            .installed
+#[derive(Debug)]
+struct ResolutionSelection<'a> {
+    installed: &'a InstalledSkill,
+    matching_versions: Vec<String>,
+}
+
+fn resolve_installed_selection<'a>(
+    installed_skills: &'a [InstalledSkill],
+    skill: &RequestedSkillRef,
+) -> Result<ResolutionSelection<'a>, RegistryError> {
+    let mut matches: Vec<&InstalledSkill> = installed_skills
+        .iter()
+        .filter(|installed| installed.manifest.key == skill.key)
+        .filter(|installed| {
+            skill
+                .version_req
+                .as_semver()
+                .matches(installed.resolved_ref.version.as_semver())
+        })
+        .collect();
+
+    if matches.is_empty() {
+        let has_name_match = installed_skills
             .iter()
-            .filter(|installed| installed.manifest.key == skill.key)
-            .filter(|installed| {
-                skill
-                    .version_req
-                    .as_semver()
-                    .matches(installed.resolved_ref.version.as_semver())
-            })
-            .collect();
+            .any(|installed| installed.manifest.key == skill.key);
 
-        if matches.is_empty() {
-            let has_name_match = self
-                .installed
-                .iter()
-                .any(|installed| installed.manifest.key == skill.key);
-
-            let error = if has_name_match {
-                RegistryError::new(
-                    "skill-version-not-found",
-                    "no installed skill version satisfied the requested version requirement",
-                )
-            } else {
-                RegistryError::new(
-                    "skill-not-found",
-                    "requested skill was not found in registry",
-                )
-            };
-
-            return Err(error.with_detail(serde_json::json!({
-                "namespace": skill.key.namespace,
-                "name": skill.key.name,
-                "version_req": skill.version_req.to_string(),
-            })));
-        }
-
-        matches.sort_by(|left, right| left.resolved_ref.version.cmp(&right.resolved_ref.version));
-        let selected_version = matches
-            .last()
-            .expect("non-empty version matches")
-            .resolved_ref
-            .version
-            .clone();
-        let selected_matches: Vec<_> = matches
-            .into_iter()
-            .filter(|installed| installed.resolved_ref.version == selected_version)
-            .collect();
-
-        if selected_matches.len() > 1 {
-            return Err(RegistryError::new(
-                "skill-version-ambiguous",
-                "multiple installed digests matched the requested skill version",
+        let error = if has_name_match {
+            RegistryError::new(
+                "skill-version-not-found",
+                "no installed skill version satisfied the requested version requirement",
             )
-            .with_detail(serde_json::json!({
-                "namespace": skill.key.namespace,
-                "name": skill.key.name,
-                "version": selected_version.to_string(),
-                "version_req": skill.version_req.to_string(),
-                "digests": selected_matches
-                    .iter()
-                    .map(|installed| installed.resolved_ref.digest.clone())
-                    .collect::<Vec<_>>(),
-            })));
-        }
+        } else {
+            RegistryError::new(
+                "skill-not-found",
+                "requested skill was not found in registry",
+            )
+        };
 
-        Ok(selected_matches
+        return Err(error.with_detail(serde_json::json!({
+            "namespace": skill.key.namespace,
+            "name": skill.key.name,
+            "version_req": skill.version_req.to_string(),
+        })));
+    }
+
+    matches.sort_by(|left, right| left.resolved_ref.version.cmp(&right.resolved_ref.version));
+    let mut matching_versions = matches
+        .iter()
+        .map(|installed| installed.resolved_ref.version.to_string())
+        .collect::<Vec<_>>();
+    matching_versions.dedup();
+    let selected_version = matches
+        .last()
+        .expect("non-empty version matches")
+        .resolved_ref
+        .version
+        .clone();
+    let selected_matches: Vec<_> = matches
+        .into_iter()
+        .filter(|installed| installed.resolved_ref.version == selected_version)
+        .collect();
+
+    if selected_matches.len() > 1 {
+        return Err(RegistryError::new(
+            "skill-version-ambiguous",
+            "multiple installed digests matched the requested skill version",
+        )
+        .with_detail(serde_json::json!({
+            "namespace": skill.key.namespace,
+            "name": skill.key.name,
+            "version": selected_version.to_string(),
+            "version_req": skill.version_req.to_string(),
+            "digests": selected_matches
+                .iter()
+                .map(|installed| installed.resolved_ref.digest.clone())
+                .collect::<Vec<_>>(),
+        })));
+    }
+
+    Ok(ResolutionSelection {
+        installed: selected_matches
             .into_iter()
             .next()
-            .expect("selected version keeps one installed digest")
+            .expect("selected version keeps one installed digest"),
+        matching_versions,
+    })
+}
+
+impl LocalRegistry {
+    pub fn explain_resolution(
+        &self,
+        skill: &RequestedSkillRef,
+    ) -> Result<SkillResolutionExplanation, RegistryError> {
+        let selection = resolve_installed_selection(&self.installed, skill)?;
+        Ok(SkillResolutionExplanation {
+            matching_versions: selection.matching_versions,
+            selected_version: selection.installed.resolved_ref.version.to_string(),
+            selected_digest: selection.installed.resolved_ref.digest.clone(),
+        })
+    }
+}
+
+impl SkillRegistry for LocalRegistry {
+    fn resolve(&self, skill: &RequestedSkillRef) -> Result<InstalledSkill, RegistryError> {
+        Ok(resolve_installed_selection(&self.installed, skill)?
+            .installed
             .clone())
     }
 
