@@ -526,6 +526,8 @@ fn primary_show_and_verify_commands_render_compact_human_output() {
             "support: proof-backed(log-write) not_proven(emit-evidence)\n",
             "runtime: wasm-component / guild-skill-inspect-v1\n",
             "caps: emit-evidence(write,required) log-write(write)\n",
+            "Next: guild run skill://example/hello-inspect@0.1.0\n",
+            "Next: guild verify skill://example/hello-inspect@0.1.0\n",
         )
     );
 
@@ -539,7 +541,50 @@ fn primary_show_and_verify_commands_render_compact_human_output() {
             "example/hello-inspect@0.1.0\n",
             "verification: local-source\n",
             "trust: local-dev\n",
+            "Next: guild show -v skill://example/hello-inspect@0.1.0\n",
         )
+    );
+}
+
+#[test]
+fn show_execution_and_evidence_human_output_suggest_why_next_step() {
+    let temp = TempFixtureDir::new("guild-cli-show-next-steps");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let inspect_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let execution_id = inspect_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+    let evidence_uri = inspect_value["record"]["emitted_evidence"][0]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let execution_show = run_guild_success(
+        &["show", &exec_prefix, "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(
+        execution_show.contains("succeeded  exec:"),
+        "{execution_show}"
+    );
+    assert!(
+        execution_show.contains(&format!("Next: guild why {exec_prefix}")),
+        "{execution_show}"
+    );
+
+    let evidence_show = run_guild_success(
+        &["show", &evidence_uri, "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(evidence_show.contains("evidence:"), "{evidence_show}");
+    assert!(
+        evidence_show.contains(&format!("Next: guild why {exec_prefix}")),
+        "{evidence_show}"
     );
 }
 
@@ -616,6 +661,7 @@ fn starter_pack_incident_brief_runs_with_markdown_stdout() {
             "example/incident-brief@0.1.0\n",
             "verification: local-source\n",
             "trust: local-dev\n",
+            "Next: guild show -v skill://example/incident-brief@0.1.0\n",
         )
     );
 
@@ -749,6 +795,8 @@ fn primary_commands_support_short_refs_and_machine_output_flags() {
         show_value["runtime"].as_str(),
         Some("wasm-component / guild-skill-inspect-v1")
     );
+    assert!(!show_json.contains("Next:"), "{show_json}");
+    assert!(!show_json.contains("resolution:"), "{show_json}");
 
     let show_porcelain = run_guild_success(
         &["show", "hello-inspect@^0.1", "--porcelain"],
@@ -758,6 +806,7 @@ fn primary_commands_support_short_refs_and_machine_output_flags() {
         show_porcelain,
         "skill\texample/hello-inspect@0.1.0\tlocal-source\tlocal-dev\tnot_proven\n"
     );
+    assert!(!show_porcelain.contains("Next:"), "{show_porcelain}");
 
     let verify_porcelain = run_guild_success(
         &["verify", "hello-inspect@^0.1", "--porcelain"],
@@ -767,9 +816,21 @@ fn primary_commands_support_short_refs_and_machine_output_flags() {
         verify_porcelain,
         "verify\texample/hello-inspect@0.1.0\tlocal-source\tlocal-dev\n"
     );
+    assert!(!verify_porcelain.contains("Next:"), "{verify_porcelain}");
+
+    let verify_json = run_guild_success(
+        &["verify", "hello-inspect@^0.1", "--json"],
+        Some(&registry_root),
+    );
+    let verify_value: Value = parse_json_stdout(&verify_json);
+    assert_eq!(
+        verify_value["resolved_skill"].as_str(),
+        Some("skill://example/hello-inspect@0.1.0")
+    );
+    assert!(!verify_json.contains("Next:"), "{verify_json}");
 
     let grants_json = emit_evidence_grants_json();
-    let run_json = run_guild_success(
+    let run_json_output = run_guild_success_output(
         &[
             "run",
             "hello-inspect@^0.1",
@@ -781,19 +842,28 @@ fn primary_commands_support_short_refs_and_machine_output_flags() {
         ],
         Some(&registry_root),
     );
+    let run_json = String::from_utf8(run_json_output.stdout).unwrap();
+    let run_json_stderr = String::from_utf8(run_json_output.stderr).unwrap();
     let run_value: Value = parse_json_stdout(&run_json);
     let execution_id = run_value["record"]["receipt"]["execution_id"]
         .as_str()
         .unwrap()
         .to_owned();
     let exec_prefix = format!("exec:{}", &execution_id[..12]);
+    assert!(!run_json.contains("Next:"), "{run_json}");
+    assert!(run_json_stderr.trim().is_empty(), "{run_json_stderr}");
 
-    let why_json = run_guild_success(&["why", &exec_prefix, "--json"], Some(&registry_root));
+    let why_json_output =
+        run_guild_success_output(&["why", &exec_prefix, "--json"], Some(&registry_root));
+    let why_json = String::from_utf8(why_json_output.stdout).unwrap();
+    let why_json_stderr = String::from_utf8(why_json_output.stderr).unwrap();
     let why_value: Value = parse_json_stdout(&why_json);
     assert_eq!(why_value["summary"]["plan"].as_str(), Some("upper-bound"));
     assert_eq!(why_value["summary"]["proof"].as_str(), Some("not_proven"));
     assert_eq!(why_value["summary"]["token"].as_str(), Some("upper-bound"));
     assert_eq!(why_value["summary"]["witness"].as_str(), Some("unlinked"));
+    assert!(!why_json.contains("Next:"), "{why_json}");
+    assert!(why_json_stderr.trim().is_empty(), "{why_json_stderr}");
 
     let why_porcelain =
         run_guild_success(&["why", &exec_prefix, "--porcelain"], Some(&registry_root));
@@ -804,6 +874,7 @@ fn primary_commands_support_short_refs_and_machine_output_flags() {
         )),
         "{why_porcelain}"
     );
+    assert!(!why_porcelain.contains("Next:"), "{why_porcelain}");
 }
 
 #[test]
@@ -852,6 +923,7 @@ fn primary_get_ls_and_show_commands_accept_short_resource_refs() {
         show_execution_value["record"]["receipt"]["uri"].as_str(),
         Some(execution_uri.as_str())
     );
+    assert!(!show_execution.contains("Next:"), "{show_execution}");
 
     let evidence_list = run_guild_success(&["ls", "evidence", "--json"], Some(&registry_root));
     let evidence_list_value: Value = parse_json_stdout(&evidence_list);
@@ -876,12 +948,39 @@ fn primary_get_ls_and_show_commands_accept_short_resource_refs() {
         show_evidence_value["record"]["uri"].as_str(),
         Some(evidence_uri.as_str())
     );
+    assert!(!show_evidence.contains("Next:"), "{show_evidence}");
 
     let show_object = run_guild_success(&["show", &object_prefix, "--json"], Some(&registry_root));
     let show_object_value: Value = parse_json_stdout(&show_object);
     assert_eq!(
         show_object_value["record"]["uri"].as_str(),
         Some(blob_uri.as_str())
+    );
+    assert!(!show_object.contains("Next:"), "{show_object}");
+
+    let show_execution_porcelain =
+        run_guild_success(&["show", &exec_prefix, "--porcelain"], Some(&registry_root));
+    assert!(
+        !show_execution_porcelain.contains("Next:"),
+        "{show_execution_porcelain}"
+    );
+
+    let show_evidence_porcelain = run_guild_success(
+        &["show", &evidence_prefix, "--porcelain"],
+        Some(&registry_root),
+    );
+    assert!(
+        !show_evidence_porcelain.contains("Next:"),
+        "{show_evidence_porcelain}"
+    );
+
+    let show_object_porcelain = run_guild_success(
+        &["show", &object_prefix, "--porcelain"],
+        Some(&registry_root),
+    );
+    assert!(
+        !show_object_porcelain.contains("Next:"),
+        "{show_object_porcelain}"
     );
 }
 
@@ -1770,6 +1869,8 @@ fn top_level_help_is_grouped_and_points_to_topic_help() {
     assert!(stdout.contains("guild help refs"));
     assert!(stdout.contains("guild help trust"));
     assert!(stdout.contains("guild help roots"));
+    assert!(stdout.contains("guild help doctor"));
+    assert!(stdout.contains("guild help preview"));
     assert!(stdout.contains("guild <command> --help"));
     assert!(!stdout.contains("deferred:"));
     assert!(!stdout.contains("inspect path"));
@@ -1780,7 +1881,7 @@ fn top_level_help_is_grouped_and_points_to_topic_help() {
 fn shared_help_topics_are_available() {
     let help = run_guild_success(&["help"], None);
     assert!(help.contains("Guild help topics"));
-    assert!(help.contains("guild help [refs|trust|roots]"));
+    assert!(help.contains("guild help [refs|trust|roots|doctor|preview]"));
 
     let refs = run_guild_success(&["help", "refs"], None);
     assert!(refs.contains("Guild ref forms"));
@@ -1801,6 +1902,24 @@ fn shared_help_topics_are_available() {
     assert!(roots.contains("Guild root resolution"));
     assert!(roots.contains("GUILD_REGISTRY_ROOT"));
     assert!(roots.contains("There is no cwd-local .guild fallback."));
+
+    let doctor = run_guild_success(&["help", "doctor"], None);
+    assert!(doctor.contains("Diagnostic command direction"));
+    assert!(doctor.contains("guild doctor"));
+    assert!(doctor.contains("not implemented yet"));
+    assert!(doctor.contains("read-only Guild-scoped diagnostic command"));
+    assert!(doctor.contains("selected Guild root resolution"));
+    assert!(doctor.contains("local trust-store state relevant to guild verify and guild trust"));
+    assert!(doctor.contains("no hidden bootstrap or repair side effects"));
+
+    let preview = run_guild_success(&["help", "preview"], None);
+    assert!(preview.contains("Preview direction for risky flows"));
+    assert!(preview.contains("use `--preview` as the first preflight flag"));
+    assert!(preview.contains("guild import bundle"));
+    assert!(preview.contains("guild import oci-layout"));
+    assert!(preview.contains("guild pull"));
+    assert!(preview.contains("publisher identity, verification outcome, and local trust posture"));
+    assert!(preview.contains("no preview contract for export or push in the first slice"));
 }
 
 #[test]
@@ -1817,7 +1936,8 @@ fn show_help_points_to_ref_topics() {
     assert!(stdout.contains("Show a skill, run, object, or evidence summary"));
     assert!(stdout.contains("Accepted refs:"));
     assert!(stdout.contains("does not run a skill"));
-    assert!(stdout.contains("default output is a short human summary."));
+    assert!(stdout.contains("default output is a short human summary for reading, not parsing."));
+    assert!(stdout.contains("low-noise `Next:` hints"));
     assert!(stdout.contains("Use -v with a skill ref"));
     assert!(stdout.contains("Use -vv with a skill ref"));
     assert!(stdout.contains("guild help refs"));
@@ -1834,6 +1954,7 @@ fn run_help_uses_input_file_flag_and_ref_topic() {
     assert!(stdout.contains("declared authority comes from the installed manifest."));
     assert!(stdout.contains("runtime-effective authority is limited to the final granted set."));
     assert!(stdout.contains("stdout carries the result payload."));
+    assert!(stdout.contains("low-noise `Next:` hints"));
     assert!(stdout.contains("guild help refs"));
     assert!(stdout.contains("guild why --help"));
 }
@@ -1843,7 +1964,9 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     let ls_help = run_guild_success(&["ls", "--help"], None);
     assert!(ls_help.contains("List skills, runs, objects, or evidence"));
     assert!(ls_help.contains("primary local-state listing command"));
-    assert!(ls_help.contains("default output is a short local-state listing."));
+    assert!(
+        ls_help.contains("default output is a short local-state listing for reading, not parsing.")
+    );
     assert!(ls_help.contains("Legacy alias:"));
     assert!(ls_help.contains("guild list ..."));
     assert!(ls_help.contains("guild show --help"));
@@ -1863,16 +1986,50 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     let why_help = run_guild_success(&["why", "--help"], None);
     assert!(why_help.contains("Explain a persisted execution"));
     assert!(why_help.contains("primary persisted-execution explanation command"));
-    assert!(why_help.contains("default output is a short human explanation."));
+    assert!(
+        why_help.contains("default output is a short human explanation for reading, not parsing.")
+    );
+    assert!(why_help.contains("low-noise `Next:` hints"));
     assert!(why_help.contains("persisted execution record"));
     assert!(why_help.contains("guild get --help"));
 
     let verify_help = run_guild_success(&["verify", "--help"], None);
     assert!(verify_help.contains("Show installed trust and verification status"));
-    assert!(verify_help.contains("default output is a short human trust summary."));
+    assert!(
+        verify_help
+            .contains("default output is a short human trust summary for reading, not parsing.")
+    );
+    assert!(verify_help.contains("low-noise `Next:` hints"));
     assert!(verify_help.contains("guild trust verify-plan"));
     assert!(verify_help.contains("guild help trust"));
     assert!(verify_help.contains("guild show --help"));
+}
+
+#[test]
+fn import_pull_and_transport_help_point_to_preview_direction() {
+    let import_help = run_guild_success(&["import", "--help"], None);
+    assert!(import_help.contains("Import a signed bundle or OCI layout into a Guild root"));
+    assert!(import_help.contains("first preview contract is `--preview` for import and pull"));
+    assert!(import_help.contains("guild help preview"));
+
+    let import_bundle_help = run_guild_success(&["import", "bundle", "--help"], None);
+    assert!(import_bundle_help.contains("planned `--preview` stays read-only"));
+    assert!(import_bundle_help.contains("same signed bundle and trust checks as import"));
+
+    let import_oci_help = run_guild_success(&["import", "oci-layout", "--help"], None);
+    assert!(import_oci_help.contains("planned `--preview` stays read-only"));
+    assert!(import_oci_help.contains("same signed bundle and trust checks as import"));
+
+    let pull_help = run_guild_success(&["pull", "--help"], None);
+    assert!(pull_help.contains("Pull and import installed state from an OCI registry"));
+    assert!(pull_help.contains("first preview contract is planned as `--preview`"));
+    assert!(pull_help.contains("guild help preview"));
+
+    let export_help = run_guild_success(&["export", "--help"], None);
+    assert!(export_help.contains("no preview contract is chosen for export in the first slice"));
+
+    let push_help = run_guild_success(&["push", "--help"], None);
+    assert!(push_help.contains("no preview contract is chosen for push in the first slice"));
 }
 
 #[test]
@@ -1913,6 +2070,25 @@ fn install_human_output_suggests_show_next_step() {
         stdout.contains("Next: guild show -v skill://example/hello-inspect@0.1.0"),
         "{stdout}"
     );
+}
+
+#[test]
+fn install_json_output_stays_machine_only() {
+    let temp = TempFixtureDir::new("guild-cli-install-json");
+    let registry_root = temp.path().join("registry");
+    let root = registry_root.display().to_string();
+    let source_root = hello_source_dir().display().to_string();
+    let stdout = run_guild_success(
+        &["--registry-root", &root, "install", &source_root, "--json"],
+        None,
+    );
+    let value: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        value["resolved_skill"].as_str(),
+        Some("skill://example/hello-inspect@0.1.0")
+    );
+    assert!(!stdout.contains("Next:"), "{stdout}");
 }
 
 #[test]
@@ -2008,4 +2184,60 @@ fn user_facing_docs_use_installed_guild_cli_after_install() {
         assert_markdown_uses_installed_guild_cli(&path);
         assert_markdown_keeps_legacy_alias_commands_out_of_examples(&path);
     }
+}
+
+#[test]
+fn journey_docs_stay_centered_on_user_workflows() {
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(readme.contains("## User Journeys"));
+    assert!(readme.contains("Install and run a skill"));
+    assert!(readme.contains("Explain what happened"));
+    assert!(readme.contains("Verify trust state and move installed state"));
+    assert!(readme.contains("Debug failures and compare runs"));
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    assert!(command_language.contains("### Journey Map"));
+    assert!(command_language.contains("Install and run a skill"));
+    assert!(command_language.contains("Explain what happened"));
+    assert!(command_language.contains("Verify trust state and move installed state"));
+    assert!(command_language.contains("Debug failures and compare runs"));
+
+    let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
+    assert!(examples_index.contains("## User Journeys"));
+    assert!(examples_index.contains("### Install and run a skill"));
+    assert!(examples_index.contains("### Explain what happened"));
+    assert!(examples_index.contains("### Verify trust state and move installed state"));
+    assert!(examples_index.contains("### Debug failures and compare runs"));
+
+    let hello_readme =
+        fs::read_to_string(repo_root().join("examples/skills/hello-inspect/README.md")).unwrap();
+    assert!(hello_readme.contains("User journey: install and run a skill locally."));
+    assert!(hello_readme.contains(" show skill://example/hello-inspect@^0.1"));
+    assert!(hello_readme.contains(" why exec:<execution-id-prefix>"));
+    assert!(hello_readme.contains(" verify skill://example/hello-inspect@^0.1"));
+
+    let explain_readme =
+        fs::read_to_string(repo_root().join("examples/skills/explain-execution/README.md"))
+            .unwrap();
+    assert!(explain_readme.contains("Use `guild why` first"));
+    assert!(explain_readme.contains("User journey: explain a stored execution."));
+
+    let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
+    assert!(how_it_works.contains("## Output Modes"));
+    assert!(how_it_works.contains("Default human output is for reading, not parsing."));
+    assert!(how_it_works.contains("low-noise follow-up hints such as `Next: ...`"));
+    assert!(how_it_works.contains("use `--json` for structured machine-readable output"));
+    assert!(how_it_works.contains("use `--porcelain` for stable one-line machine-readable output"));
+    assert!(how_it_works.contains("guild help doctor"));
+    assert!(how_it_works.contains("guild help preview"));
+
+    let ops_pack =
+        fs::read_to_string(repo_root().join("examples/skills/guild-ops-starter/README.md"))
+            .unwrap();
+    assert!(ops_pack.contains("## Journey 1: Explain One Stored Execution"));
+    assert!(ops_pack.contains("## Journey 2: Compare Two Stored Executions"));
+    assert!(ops_pack.contains("## Journey 3: Scan Recent Failures"));
+    assert!(ops_pack.contains("## Journey 4: Inspect One Stored Evidence Record"));
+    assert!(ops_pack.contains("## Keep Going With The Normal CLI"));
 }

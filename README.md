@@ -65,6 +65,8 @@ The CLI now also ships focused help topics:
 - `guild help refs`
 - `guild help trust`
 - `guild help roots`
+- `guild help doctor`
+- `guild help preview`
 
 Version note: the current workspace Cargo packages, including the `guild` CLI crate, are `0.1.1`. The checked-in example Guild skill manifests still resolve as `0.1.0` / `@^0.1`, and the OCI transport examples intentionally keep those manifest-driven tags. Cargo package version and Guild skill identity are separate axes.
 
@@ -113,6 +115,24 @@ Guild chooses a local root in this order:
 
 There is no cwd-local `.guild/` fallback. `guild init` is the explicit root-creation workflow, and read-only commands do not silently create a missing root.
 
+## Diagnostic Direction
+
+The chosen future read-only diagnostic command is `guild doctor`.
+It is not implemented yet as a first-class command, but the direction is now fixed so later implementation does not have to re-decide the product surface.
+
+Its first checks should stay tied to real Guild state:
+
+- selected Guild root resolution and whether the root can be opened read-only
+- installed and persisted state needed by the daily CLI under that root
+- local trust-store state relevant to `guild verify` and `guild trust`
+- Guild-specific runtime or setup checks grounded in real Guild reads
+
+Its non-goals are just as important:
+
+- no root creation, install, config writing, or trust mutation
+- no remote registry probing or generic machine-inspector behavior
+- no hidden bootstrap or repair side effects
+
 ### Install, Show, Run, And Read Back
 
 ```bash
@@ -150,6 +170,8 @@ What that flow shows:
 - `get` reads the same resource backend used by MCP and guest `read-resource`
 - `verify` reports installed trust and verification state for skill refs only
 
+Default human output is concise and meant for reading, not parsing. It may include low-noise follow-up hints such as `Next: ...` on clear success paths. Use `--json` for structured machine-readable output and `--porcelain` for stable one-line machine-readable output.
+
 `guild run` keeps the payload on stdout and writes the human execution summary to stderr. `guild get` stays the raw resource-read path and supports `--json`, `--porcelain`, and `--output <path>` when you want machine-stable reads instead of styled summaries.
 
 If you want an explicit non-default root for local proofs or CI, keep passing it:
@@ -157,6 +179,17 @@ If you want an explicit non-default root for local proofs or CI, keep passing it
 ```bash
 guild --registry-root target/dev-local-registry/hello install examples/skills/hello-inspect
 ```
+
+## User Journeys
+
+If you are deciding where to start, use the user-facing docs in this order:
+
+- Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](examples/skills/hello-inspect/README.md)
+- Explain what happened: start with `guild why` and `guild get`, then use [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md) or the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md)
+- Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
+- Debug failures and compare runs: use the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md) and the surrounding index at [`examples/README.md`](examples/README.md)
+
+The deeper proof and benchmark commands still live in [`docs/testing.md`](docs/testing.md), but they are maintainers' helper paths rather than the main onboarding route.
 
 ## Ops Starter Pack
 
@@ -198,6 +231,16 @@ That flow demonstrates the current trust model:
 - export and import operate on installed signed bundle semantics, not source directories
 - `guild trust ...` manages local trust-store state only
 - OCI transport carries the same installed signed bundle contract through another transport shape
+
+Preview direction for risky flows is now chosen, even though the flag is not implemented yet:
+
+- first preview flag: `--preview`
+- first scope: `guild import bundle`, `guild import oci-layout`, and `guild pull`
+- preview must report real signed installed-state metadata, verification outcome, local trust posture, and bundled closure scope before any state change
+- preview must stay read-only: no root creation, staging, installation, trust mutation, or fake detached summary
+- `export` and `push` stay out of the first preview slice
+
+Use `guild help preview` for the shipped CLI wording of that contract direction.
 
 ## MCP And Codex
 

@@ -24,6 +24,8 @@ The default help is task-oriented:
 - `guild help refs`
 - `guild help trust`
 - `guild help roots`
+- `guild help doctor`
+- `guild help preview`
 - `guild <command> --help`
 
 ## Command Groups
@@ -152,6 +154,24 @@ There is no cwd-local `.guild/` fallback.
 
 `guild init` is the explicit root-creation workflow. Read-only commands do not initialize a missing root. Write-oriented commands may create the selected root when they are already doing real work.
 
+## Diagnostic Direction
+
+The chosen first read-only diagnostic command direction is `guild doctor`.
+This is a contract-direction decision, not a shipped command yet.
+
+Initial scope:
+
+- selected Guild root resolution and whether the root can be opened read-only
+- installed and persisted state needed by the daily CLI under the selected root
+- local trust-store state relevant to `guild verify` and `guild trust`
+- Guild-specific runtime or setup checks grounded in real Guild reads
+
+Non-goals:
+
+- no root creation, install, config writing, or trust mutation
+- no remote registry probing or generic machine-inspector behavior
+- no hidden bootstrap or repair side effects
+
 ## Primary Workflows
 
 ### Quickstart
@@ -182,6 +202,17 @@ What this flow teaches:
 - `why` explains one stored execution record
 - `get` reads the same backend used by MCP and guest `read-resource`
 - `verify` reports installed trust and verification state for skill refs only
+
+### Journey Map
+
+Use the examples and docs in this order when you want the current practical path rather than the full maintainer proof surface:
+
+- Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](../examples/skills/hello-inspect/README.md)
+- Explain what happened: start with `guild why` and `guild get`, then use [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md) or the [`Guild Ops Starter Pack`](../examples/skills/guild-ops-starter/README.md)
+- Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
+- Debug failures and compare runs: use the [`Guild Ops Starter Pack`](../examples/skills/guild-ops-starter/README.md) and the surrounding examples index at [`examples/README.md`](../examples/README.md)
+
+`docs/testing.md` remains the place for deeper proof commands, smoke coverage, and maintainer-oriented verification.
 
 ### Ops Starter Pack
 
@@ -234,6 +265,30 @@ This flow stays within the current trust model:
 - `guild trust ...` manages local trust-store state only
 - OCI transport uses the same installed signed bundle contract through another transport shape
 
+### Preview Direction
+
+The chosen first preflight direction is `--preview`, but the flag is not
+implemented yet.
+
+First scope:
+
+- `guild import bundle`
+- `guild import oci-layout`
+- `guild pull`
+
+Preview output must stay grounded in the real installer and trust model:
+
+- inspect the signed installed-state metadata the import or pull path would use
+- report publisher identity, verification outcome, and local trust posture
+- report the top-level skill ref plus bundled dependency closure scope
+- report whether Guild would import or refuse under the selected root
+
+Non-goals:
+
+- no root creation, staging, installation, or trust-store mutation
+- no fake preview detached from signed bundle and trust verification semantics
+- no preview contract for `export` or `push` in the first slice
+
 ### Execution Plan Signing
 
 ```bash
@@ -258,6 +313,7 @@ Default human output is compact and status-forward:
 
 - one screen by default for common `show`, `run`, `why`, and `ls` cases
 - short refs and short ids by default rather than full digest and URI dumps
+- default human output is for reading, not parsing, and may gain low-noise hints such as `Next: ...`
 - stable vocabulary across commands:
   - `proof-backed`
   - `upper-bound`
@@ -269,20 +325,23 @@ Default human output is compact and status-forward:
 
 Shared output controls for the human-summary commands (`show`, `run`, `ls`, `why`, and `verify`):
 
-- `--json` for structured machine-readable output
-- `--porcelain` for stable one-line machine-readable output
+- `--json` for structured machine-readable output when you want named fields
+- `--porcelain` for stable one-line machine-readable output when you want short script-friendly lines
 - `-v` for important ids, digests, and installed-state details
 - `-vv` for deeper technical detail
 - `--debug` for full internal detail
 - `--color auto|always|never`
 - `NO_COLOR` disables ANSI color even when the terminal would otherwise allow it
 
+Human-only hints and extra readability text do not belong to `--json` or `--porcelain`.
+
 `guild get` stays a raw resource-read path rather than a styled summary view. It supports `--json`, `--porcelain`, and `--output <path>`.
 
 `guild run` keeps payload and human status separate:
 
 - stdout carries the payload or structured result
-- stderr carries the human execution summary
+- stderr carries the human execution summary and any low-noise next-step hints
+- `--json` and `--porcelain` keep those machine surfaces free of human hint text
 
 ## Trust Scope
 

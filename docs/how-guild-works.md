@@ -59,6 +59,17 @@ The main daily commands each answer a different question:
 `guild ls`, `guild show`, `guild why`, `guild get`, and `guild verify` are read-only inspection surfaces.
 `guild run` is the execution surface.
 
+## Output Modes
+
+Default human output is for reading, not parsing.
+Short human summaries may include low-noise follow-up hints such as `Next: ...`
+when the follow-up is obvious.
+
+When you need a stable machine surface:
+
+- use `--json` for structured machine-readable output
+- use `--porcelain` for stable one-line machine-readable output
+
 ## A Normal Daily Flow
 
 ```bash
@@ -84,8 +95,20 @@ What that flow tells you:
 - `guild why` and `guild get` explain what happened after the run completes
 - `guild verify` is about installed trust state, not execution replay
 
+## Planned Help Topics
+
+Two future-facing directions are fixed now, even though the commands or flags
+themselves are not implemented yet:
+
+- `guild help doctor` defines the first read-only diagnostic command direction
+- `guild help preview` defines the first read-only preflight direction for risky
+  `import` and `pull` flows
+
 ## Where To Go Next
 
+- Use `guild help refs`, `guild help trust`, `guild help roots`,
+  `guild help doctor`, and `guild help preview` when you want the shipped CLI
+  wording first.
 - Read [`docs/command-language.md`](command-language.md) for the full public CLI surface.
 - Read [`docs/testing.md`](testing.md) for proof commands and smoke flows.
 - Read `SPECS.md` if you need exact contract language.

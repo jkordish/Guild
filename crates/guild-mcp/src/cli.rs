@@ -26,12 +26,14 @@ use serde_json::Value;
 
 use crate::cli_presenter::{
     PresentationOptions, StreamKind, SupportSummary, WhySummary, color_mode, render_evidence_list,
-    render_evidence_show, render_execution_show, render_execution_why, render_object_show,
-    render_objects_list, render_run_next_steps, render_run_porcelain, render_run_status,
-    render_runs_list, render_skill_porcelain, render_skill_show, render_skill_verify,
-    render_skills_list, render_verify_porcelain, render_why_next_step, render_why_porcelain,
-    resolved_skill_ref as presenter_resolved_skill_ref, runtime_label as presenter_runtime_label,
-    short_execution_ref, support_summary_for_execution, support_summary_for_skill, why_summary,
+    render_evidence_show, render_evidence_show_next_step, render_execution_show,
+    render_execution_show_next_step, render_execution_why, render_object_show, render_objects_list,
+    render_run_next_steps, render_run_porcelain, render_run_status, render_runs_list,
+    render_skill_porcelain, render_skill_show, render_skill_show_next_steps, render_skill_verify,
+    render_skill_verify_next_step, render_skills_list, render_verify_porcelain,
+    render_why_next_step, render_why_porcelain, resolved_skill_ref as presenter_resolved_skill_ref,
+    runtime_label as presenter_runtime_label, short_execution_ref, support_summary_for_execution,
+    support_summary_for_skill, why_summary,
 };
 use crate::codex::{
     CodexConfigWriteResult, CodexServerConfig, DEFAULT_CODEX_SERVER_NAME,
@@ -46,12 +48,17 @@ const DEFAULT_TENANT_ID: &str = "local";
 const DEFAULT_ACTOR_ID: &str = "guild-cli";
 const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
 const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
-const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nOutput:\n  default output is a short human summary.\n  use --json or --porcelain for machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild why --help";
-const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  host policy grants, reduces, or denies that request before guest start.\n  runtime-effective authority is limited to the final granted set.\n\nOutput:\n  stdout carries the result payload.\n  stderr carries the human status summary.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
-const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
+const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nOutput:\n  default output is a short human summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild why --help";
+const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  host policy grants, reduces, or denies that request before guest start.\n  runtime-effective authority is limited to the final granted set.\n\nOutput:\n  stdout carries the result payload.\n  stderr carries the human status summary for reading, not parsing.\n  that status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain when you need a stable machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
+const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
 const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
-const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
-const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary.\n  use --json or --porcelain for machine reads.\n\nSee also:\n  guild help trust\n  guild show --help";
+const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
+const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nSee also:\n  guild help trust\n  guild show --help";
+const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
+const IMPORT_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is `--preview` for import and pull.\n  see `guild help preview` for the planned read-only scope.";
+const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  planned `--preview` stays read-only and uses the same signed bundle and trust checks as import.\n  see `guild help preview` for the first contract.";
+const PUSH_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for push in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
+const PULL_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview`.\n  see `guild help preview` for the planned read-only scope.";
 
 #[derive(Debug)]
 pub struct CliError {
@@ -388,6 +395,8 @@ enum HelpTopic {
     Refs,
     Trust,
     Roots,
+    Doctor,
+    Preview,
 }
 
 #[derive(Debug, Clone, Args, Default)]
@@ -467,13 +476,25 @@ enum CliCommand {
     Verify(VerifyCliArgs),
     #[command(about = "Install a source skill into a Guild root")]
     Install(InstallCliArgs),
-    #[command(about = "Export installed state as a signed bundle or OCI layout")]
+    #[command(
+        about = "Export installed state as a signed bundle or OCI layout",
+        after_help = EXPORT_AFTER_HELP
+    )]
     Export(ExportCliArgs),
-    #[command(about = "Import a signed bundle or OCI layout into a Guild root")]
+    #[command(
+        about = "Import a signed bundle or OCI layout into a Guild root",
+        after_help = IMPORT_AFTER_HELP
+    )]
     Import(ImportCliArgs),
-    #[command(about = "Publish installed state to an OCI registry")]
+    #[command(
+        about = "Publish installed state to an OCI registry",
+        after_help = PUSH_AFTER_HELP
+    )]
     Push(PushCliArgs),
-    #[command(about = "Pull and import installed state from an OCI registry")]
+    #[command(
+        about = "Pull and import installed state from an OCI registry",
+        after_help = PULL_AFTER_HELP
+    )]
     Pull(PullCliArgs),
     #[command(about = "Manage local trust records")]
     Trust(TrustCliArgs),
@@ -623,8 +644,9 @@ struct ImportCliArgs {
 
 #[derive(Debug, Clone, Subcommand)]
 enum ImportCliCommand {
+    #[command(after_help = IMPORT_SUBCOMMAND_AFTER_HELP)]
     Bundle(ImportBundleCliArgs),
-    #[command(name = "oci-layout")]
+    #[command(name = "oci-layout", after_help = IMPORT_SUBCOMMAND_AFTER_HELP)]
     OciLayout(ImportOciLayoutCliArgs),
 }
 
@@ -1177,6 +1199,8 @@ fn run_help(command: &HelpCliArgs) -> Result<(), CliError> {
         Some(HelpTopic::Refs) => print_help_refs(),
         Some(HelpTopic::Trust) => print_help_trust(),
         Some(HelpTopic::Roots) => print_help_roots(),
+        Some(HelpTopic::Doctor) => print_help_doctor(),
+        Some(HelpTopic::Preview) => print_help_preview(),
     }
     io::stdout().flush()?;
     Ok(())
@@ -1257,27 +1281,38 @@ fn run_show(
     }
 
     let presentation = presentation_options(&render);
-    let text = match target {
+    let (text, next_steps) = match target {
         ShowTarget::Skill {
             requested,
             resolution_lines,
             installed,
-        } => render_skill_show(
-            &installed,
-            &requested,
-            &resolution_lines,
-            presentation,
-            StreamKind::Stdout,
+        } => (
+            render_skill_show(
+                &installed,
+                &requested,
+                &resolution_lines,
+                presentation,
+                StreamKind::Stdout,
+            ),
+            Some(render_skill_show_next_steps(&installed)),
         ),
-        ShowTarget::Execution(record) => {
-            render_execution_show(&record, presentation, StreamKind::Stdout)
-        }
-        ShowTarget::Evidence(record) => {
-            render_evidence_show(&record, presentation, StreamKind::Stdout)
-        }
-        ShowTarget::Object(record) => render_object_show(&record, presentation, StreamKind::Stdout),
+        ShowTarget::Execution(record) => (
+            render_execution_show(&record, presentation, StreamKind::Stdout),
+            Some(render_execution_show_next_step(&record)),
+        ),
+        ShowTarget::Evidence(record) => (
+            render_evidence_show(&record, presentation, StreamKind::Stdout),
+            render_evidence_show_next_step(&record),
+        ),
+        ShowTarget::Object(record) => (
+            render_object_show(&record, presentation, StreamKind::Stdout),
+            None,
+        ),
     };
     print!("{text}");
+    if let Some(next_steps) = next_steps {
+        println!("{next_steps}");
+    }
     Ok(())
 }
 
@@ -1635,6 +1670,7 @@ fn run_verify(
             "{}",
             render_skill_verify(&installed, presentation, StreamKind::Stdout)
         );
+        println!("{}", render_skill_verify_next_step(&installed));
     }
     Ok(())
 }
@@ -3543,6 +3579,8 @@ fn print_usage() {
     println!("  guild help refs");
     println!("  guild help trust");
     println!("  guild help roots");
+    println!("  guild help doctor");
+    println!("  guild help preview");
     println!("  guild <command> --help");
 }
 
@@ -3550,12 +3588,14 @@ fn print_help_topics() {
     println!("Guild help topics");
     println!();
     println!("Usage:");
-    println!("  guild help [refs|trust|roots]");
+    println!("  guild help [refs|trust|roots|doctor|preview]");
     println!();
     println!("Topics:");
     println!("  refs    Accepted skill and resource ref forms");
     println!("  trust   Installed trust and verification scope");
     println!("  roots   Guild root selection and initialization");
+    println!("  doctor  Chosen read-only diagnostic command direction");
+    println!("  preview Chosen preflight direction for risky import and pull flows");
     println!();
     println!("See also:");
     println!("  guild --help");
@@ -3617,6 +3657,46 @@ fn print_help_roots() {
     println!("Read-only commands do not create a missing root.");
 }
 
+fn print_help_doctor() {
+    println!("Diagnostic command direction");
+    println!();
+    println!("Chosen direction:");
+    println!("  guild doctor");
+    println!("  This will be the first read-only Guild-scoped diagnostic command.");
+    println!("  It is not implemented yet; this help topic fixes the contract direction first.");
+    println!();
+    println!("Initial checks should stay tied to real Guild state:");
+    println!("  selected Guild root resolution and whether that root can be opened read-only");
+    println!("  installed and persisted state needed by the daily CLI under the selected root");
+    println!("  local trust-store state relevant to guild verify and guild trust");
+    println!("  Guild-specific runtime or setup checks grounded in real Guild reads");
+    println!();
+    println!("Non-goals:");
+    println!("  no root creation, install, config writing, or trust mutation");
+    println!("  no remote registry probing or generic machine-inspector behavior");
+    println!("  no hidden bootstrap or repair side effects");
+}
+
+fn print_help_preview() {
+    println!("Preview direction for risky flows");
+    println!();
+    println!("Chosen direction:");
+    println!("  use `--preview` as the first preflight flag");
+    println!("  first scope: `guild import bundle`, `guild import oci-layout`, and `guild pull`");
+    println!("  this is a contract-direction decision; the flag is not implemented yet");
+    println!();
+    println!("Preview must stay grounded in the real installer and trust model:");
+    println!("  inspect the signed installed-state metadata that import or pull would use");
+    println!("  report publisher identity, verification outcome, and local trust posture");
+    println!("  report the top-level skill ref plus bundled dependency closure scope");
+    println!("  report whether Guild would import or refuse under the selected root");
+    println!();
+    println!("Non-goals:");
+    println!("  no root creation, staging, installation, or trust-store mutation");
+    println!("  no fake preview detached from signed bundle and trust verification semantics");
+    println!("  no preview contract for export or push in the first slice");
+}
+
 fn print_show_usage() {
     println!(
         "usage: guild [--registry-root <path>] show <ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
@@ -3673,6 +3753,9 @@ fn print_install_usage() {
 
 fn print_export_usage() {
     println!("usage: guild [--registry-root <path>] export <bundle|oci-layout> ...");
+    println!(
+        "note: no preview contract is chosen for export in the first slice; see `guild help preview`."
+    );
 }
 
 fn print_export_bundle_usage() {
@@ -3695,14 +3778,23 @@ fn print_export_oci_layout_usage() {
 
 fn print_import_usage() {
     println!("usage: guild [--registry-root <path>] import <bundle|oci-layout> ...");
+    println!(
+        "direction: the first preview contract is `--preview` for import and pull; see `guild help preview`."
+    );
 }
 
 fn print_import_bundle_usage() {
     println!("usage: guild [--registry-root <path>] import bundle <dir> [--json]");
+    println!(
+        "direction: planned `--preview` stays read-only and uses the same signed bundle and trust checks as import."
+    );
 }
 
 fn print_import_oci_layout_usage() {
     println!("usage: guild [--registry-root <path>] import oci-layout <dir> [--json]");
+    println!(
+        "direction: planned `--preview` stays read-only and uses the same signed bundle and trust checks as import."
+    );
 }
 
 fn print_push_usage() {
@@ -3712,10 +3804,16 @@ fn print_push_usage() {
     println!(
         "note: canonical skill refs use `skill://<namespace>/<name>@<version>`; bare `<namespace>/<name>@<version>` is accepted as convenience."
     );
+    println!(
+        "note: no preview contract is chosen for push in the first slice; see `guild help preview`."
+    );
 }
 
 fn print_pull_usage() {
     println!("usage: guild [--registry-root <path>] pull <oci-ref> [--allow-http] [--json]");
+    println!(
+        "direction: the first preview contract is planned as `--preview`; see `guild help preview`."
+    );
 }
 
 fn print_trust_usage() {

@@ -309,6 +309,12 @@ pub fn render_skill_show(
 }
 
 #[must_use]
+pub fn render_skill_show_next_steps(installed: &InstalledSkill) -> String {
+    let resolved = resolved_skill_ref(&installed.resolved_ref);
+    format!("Next: guild run {resolved}\nNext: guild verify {resolved}")
+}
+
+#[must_use]
 pub fn render_skill_verify(
     installed: &InstalledSkill,
     options: PresentationOptions,
@@ -355,6 +361,14 @@ pub fn render_skill_verify(
         );
     }
     output
+}
+
+#[must_use]
+pub fn render_skill_verify_next_step(installed: &InstalledSkill) -> String {
+    format!(
+        "Next: guild show -v {}",
+        resolved_skill_ref(&installed.resolved_ref)
+    )
 }
 
 #[must_use]
@@ -426,6 +440,11 @@ pub fn render_execution_show(
         );
     }
     output
+}
+
+#[must_use]
+pub fn render_execution_show_next_step(record: &ExecutionRecord) -> String {
+    format!("Next: guild why {}", short_execution_ref(record))
 }
 
 #[must_use]
@@ -666,6 +685,14 @@ pub fn render_evidence_show(
         );
     }
     output
+}
+
+#[must_use]
+pub fn render_evidence_show_next_step(record: &EvidenceRecord) -> Option<String> {
+    record
+        .produced_by_execution
+        .as_deref()
+        .map(|execution| format!("Next: guild why {}", short_prefixed_id("exec", execution)))
 }
 
 #[must_use]
