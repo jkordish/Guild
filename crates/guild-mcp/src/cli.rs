@@ -3404,6 +3404,7 @@ fn missing_registry_root_error(registry_root: &Path) -> CliError {
     .with_next_steps(format!(
         "Next: run `{CLI_BINARY_NAME} install <source-dir>` to create it, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an existing root"
     ))
+    .qualify_for_registry_root(registry_root)
 }
 
 fn ensure_existing_registry_root(registry_root: &Path) -> Result<(), CliError> {
@@ -3845,7 +3846,16 @@ fn parse_capability_grants(value: Value) -> Result<CapabilityGrantSet, CliError>
 }
 
 fn classify_mcp_error_category(code: &str, message: &str) -> CliErrorCategory {
-    if code == "policy-denied" || code.starts_with("policy-") || code.ends_with("-not-granted") {
+    if code == "policy-denied"
+        || code.starts_with("policy-")
+        || code.ends_with("-not-granted")
+        || code.ends_with("-denied")
+        || code == "child-capability-mismatch"
+        || message.contains("was not granted")
+        || message.contains("were not granted")
+        || message.contains("outside the granted HTTP authority")
+        || message.contains("exceeded the granted")
+    {
         CliErrorCategory::AuthorityDenial
     } else if code == "unsupported-runtime"
         || code == "component-abi-mismatch"

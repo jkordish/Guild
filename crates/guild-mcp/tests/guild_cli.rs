@@ -34,6 +34,10 @@ fn render_report_source_dir() -> PathBuf {
     repo_root().join("examples/skills/render-report")
 }
 
+fn composite_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/hello-composite")
+}
+
 fn http_source_dir() -> PathBuf {
     repo_root().join("examples/skills/inspect-http-json")
 }
@@ -184,6 +188,30 @@ fn incident_brief_grants_json() -> String {
                 access: CapabilityAccess::Invoke,
                 constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
                     aliases: Some(vec!["renderer".into()]),
+                }),
+            },
+        ],
+    })
+    .unwrap()
+}
+
+fn composite_invoke_and_emit_evidence_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![
+            GrantedCapability {
+                id: CapabilityId::InvokeSkill,
+                access: CapabilityAccess::Invoke,
+                constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                    aliases: Some(vec!["hello".into()]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::EmitEvidence,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
+                    max_bytes: Some(65_536),
+                    audiences: Some(vec![EvidenceAudience::User]),
+                    redactions: Some(vec![RedactionClass::None]),
                 }),
             },
         ],
@@ -1033,6 +1061,68 @@ fn capability_denial_errors_surface_authority_follow_up_guidance() {
 }
 
 #[test]
+fn child_capability_mismatch_errors_surface_authority_follow_up_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-child-capability-mismatch");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    install_source_with_cli(&registry_root, &composite_source_dir());
+
+    let child_skill_dir = installed_skill_dir(&registry_root, "example", "hello-inspect");
+    write_installed_manifest(&child_skill_dir, |manifest| {
+        let log_write = manifest
+            .capabilities
+            .iter_mut()
+            .find(|capability| capability.id == CapabilityId::LogWrite)
+            .expect("hello-inspect log-write capability must exist");
+        log_write.required = true;
+    });
+
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-composite@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &composite_invoke_and_emit_evidence_grants_json(),
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(
+        stderr.contains(
+            "authority denial: child invocation required capabilities that were not granted to the parent"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: child-capability-mismatch"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why guild://executions/",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v 'skill://example/hello-composite@^0.1'",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn primary_commands_support_short_refs_and_machine_output_flags() {
     let temp = TempFixtureDir::new("guild-cli-primary-machine");
     let registry_root = temp.path().join("registry");
@@ -1500,6 +1590,37 @@ fn read_only_commands_do_not_create_the_default_registry_root() {
         "{stderr}"
     );
     assert!(!default_root.exists());
+}
+
+#[test]
+fn read_only_commands_qualify_missing_non_default_root_follow_up() {
+    let temp = TempFixtureDir::new("guild-cli-missing-non-default-root");
+    let registry_root = temp.path().join("custom registry");
+    let registry_root_display = registry_root.display().to_string();
+
+    let output = run_guild(&["--registry-root", &registry_root_display, "ls"], None);
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(&format!(
+            "root/setup: Guild registry root `{}` does not exist yet",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("detail: read-only commands do not initialize a new root"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: run `guild --registry-root '{}' install <source-dir>` to create it",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!registry_root.exists());
 }
 
 #[test]
