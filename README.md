@@ -166,11 +166,13 @@ What that flow shows:
 - `run` executes a human-facing `skill://...` ref through the real Guild path using caller-requested grants filtered through host policy into final runtime authority
 - `ls` shows installed skills and recent persisted activity
 - successful runs return a durable `guild://executions/...` receipt
-- `why` explains a persisted execution record
+- `why` explains a persisted execution record and points to nearby child or evidence refs when present
 - `get` reads the same resource backend used by MCP and guest `read-resource`
 - `verify` reports installed trust and verification state for skill refs only
 
 Default human output is concise and meant for reading, not parsing. It may include low-noise follow-up hints such as `Next: ...` on clear success paths. Use `--json` for structured machine-readable output and `--porcelain` for stable one-line machine-readable output.
+
+`guild why` stays compact by default and may include one nearby short execution or evidence ref so you can keep navigating stored work without pasting full URIs first.
 
 `guild run` keeps the payload on stdout and writes the human execution summary to stderr. `guild get` stays the raw resource-read path and supports `--json`, `--porcelain`, and `--output <path>` when you want machine-stable reads instead of styled summaries.
 
@@ -221,7 +223,7 @@ Next: run `guild trust list` to inspect the target root, then add the publisher 
 If you are deciding where to start, use the user-facing docs in this order:
 
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](examples/skills/hello-inspect/README.md)
-- Explain what happened: start with `guild why` and `guild get`, then use [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md) or the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md)
+- Explain what happened: start with `guild why` as the first nearby-ref navigation surface and `guild get` for raw durable reads, then use [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md) or the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md)
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
 - Debug failures and compare runs: use the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md) and the surrounding index at [`examples/README.md`](examples/README.md)
 

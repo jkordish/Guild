@@ -3696,11 +3696,25 @@ fn why_human_output_suggests_get_next_step() {
         .as_str()
         .unwrap()
         .to_owned();
+    let evidence_id = inspect_value["record"]["emitted_evidence"][0]["uri"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_owned();
     let exec_prefix = format!("exec:{}", &execution_id[..12]);
+    let evidence_prefix = format!("evidence:{}", &evidence_id[..12]);
 
     let stdout = run_guild_success(
         &["why", &exec_prefix, "--color", "never"],
         Some(&registry_root),
+    );
+    assert!(stdout.contains("child executions: 0"), "{stdout}");
+    assert!(stdout.contains("evidence records: 1"), "{stdout}");
+    assert!(
+        stdout.contains(&format!("nearby evidence: {evidence_prefix}")),
+        "{stdout}"
     );
     assert!(
         stdout.contains(&format!(
@@ -3710,6 +3724,132 @@ fn why_human_output_suggests_get_next_step() {
         "{stdout}"
     );
     assert!(stdout.contains(&execution_uri), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "Next: guild --registry-root {} show {evidence_prefix}",
+            registry_root.display()
+        )),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn why_verbose_output_lists_nearby_related_refs() {
+    let temp = TempFixtureDir::new("guild-cli-why-verbose-nearby");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let inspect_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let execution_id = inspect_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let evidence_id = inspect_value["record"]["emitted_evidence"][0]["uri"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+    let evidence_prefix = format!("evidence:{}", &evidence_id[..12]);
+
+    let stdout = run_guild_success(
+        &["why", &exec_prefix, "-v", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(stdout.contains("nearby evidence refs:"), "{stdout}");
+    assert!(stdout.contains(&format!("- {evidence_prefix}")), "{stdout}");
+    assert!(!stdout.contains("nearby evidence: "), "{stdout}");
+}
+
+#[test]
+fn why_human_output_prefers_child_execution_navigation_when_lineage_exists() {
+    let temp = TempFixtureDir::new("guild-cli-why-child-navigation");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    install_source_with_cli(&registry_root, &composite_source_dir());
+
+    let run_output = run_guild_success_output(
+        &[
+            "run",
+            "skill://example/hello-composite@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &composite_invoke_and_emit_evidence_grants_json(),
+            "--json",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(run_output.stdout).unwrap();
+    let stderr = String::from_utf8(run_output.stderr).unwrap();
+    assert!(stderr.trim().is_empty(), "{stderr}");
+    let run_value: Value = parse_json_stdout(&stdout);
+    let execution_id = run_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let execution_uri = run_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let child_execution_id = run_value["record"]["child_executions"][0]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let child_execution_prefix = format!("exec:{}", &child_execution_id[..12]);
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+
+    let why_output = run_guild_success(
+        &["why", &exec_prefix, "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(why_output.contains("child executions: 1"), "{why_output}");
+    assert!(why_output.contains("nearby child: exec:"), "{why_output}");
+    assert!(
+        why_output.contains(&format!("nearby child: {child_execution_prefix}")),
+        "{why_output}"
+    );
+    assert!(
+        why_output.contains(&format!(
+            "Next: guild --registry-root {} get {execution_uri}",
+            registry_root.display()
+        )),
+        "{why_output}"
+    );
+    assert!(
+        why_output.contains(&format!(
+            "Next: guild --registry-root {} why {child_execution_prefix}",
+            registry_root.display()
+        )),
+        "{why_output}"
+    );
+    assert!(
+        !why_output.contains(&format!(
+            "Next: guild --registry-root {} show evidence:",
+            registry_root.display()
+        )),
+        "{why_output}"
+    );
+
+    let verbose_output = run_guild_success(
+        &["why", &exec_prefix, "-v", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(
+        verbose_output.contains("nearby child refs:"),
+        "{verbose_output}"
+    );
+    assert!(
+        verbose_output.contains(&format!("- {child_execution_prefix}")),
+        "{verbose_output}"
+    );
+    assert!(
+        !verbose_output.contains("nearby child: "),
+        "{verbose_output}"
+    );
 }
 
 #[test]

@@ -4,12 +4,12 @@ use guild_manifest::SkillManifest;
 use guild_registry::{InstalledSkill, SignatureScheme, TrustedPublisherRecord};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
-    CapabilityRequirement, EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionPhase,
-    ExecutionRecord, ExecutionStatus, GUILD_EXECUTION_URI_PREFIX, PRESENTATION_STATUS_LINKED,
-    PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED,
-    PRESENTATION_STATUS_UPPER_BOUND, RedactionClass, ResolvedSkillRef, RuntimeKind,
-    SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN, SkillCategory, TerminationDetail,
-    execution_status_label,
+    CapabilityRequirement, ChildExecutionRecord, EvidenceAudience, EvidenceBlobRecord,
+    EvidenceRecord, ExecutionPhase, ExecutionRecord, ExecutionStatus, GUILD_EXECUTION_URI_PREFIX,
+    PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED,
+    PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND, RedactionClass,
+    ResolvedSkillRef, RuntimeKind, SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN,
+    SkillCategory, TerminationDetail, execution_status_label,
 };
 use serde::Serialize;
 
@@ -137,6 +137,11 @@ pub fn short_skill_ref(installed: &InstalledSkill) -> String {
 #[must_use]
 pub fn short_execution_ref(record: &ExecutionRecord) -> String {
     short_prefixed_id("exec", &record.receipt.execution_id)
+}
+
+#[must_use]
+pub fn short_child_execution_ref(record: &ChildExecutionRecord) -> String {
+    short_prefixed_id("exec", &record.execution_id)
 }
 
 #[must_use]
@@ -508,6 +513,8 @@ pub fn render_execution_why(
     let styler = options.styler(stream);
     let summary = why_summary(record);
     let status = execution_status_label(&record.status);
+    let child_refs = nearby_child_execution_refs(record, if options.verbose() { 3 } else { 1 });
+    let evidence_refs = nearby_evidence_refs(record, if options.verbose() { 3 } else { 1 });
     let mut output = String::new();
     let _ = writeln!(
         output,
@@ -541,6 +548,35 @@ pub fn render_execution_why(
     let _ = writeln!(output, "policy: {}", record.policy_decision.summary);
     if let Some(termination) = &record.termination {
         let _ = writeln!(output, "detail: {}", format_termination(termination));
+    }
+    let _ = writeln!(
+        output,
+        "child executions: {}",
+        record.child_executions.len()
+    );
+    let _ = writeln!(
+        output,
+        "evidence records: {}",
+        record.emitted_evidence.len()
+    );
+    if options.verbose() {
+        append_ref_list(&mut output, "nearby child refs", &child_refs, &styler);
+        append_ref_list(&mut output, "nearby evidence refs", &evidence_refs, &styler);
+    } else {
+        if let Some(child_ref) = child_refs.first() {
+            let _ = writeln!(
+                output,
+                "nearby child: {}",
+                styler.paint(Tone::Ref, child_ref)
+            );
+        }
+        if let Some(evidence_ref) = evidence_refs.first() {
+            let _ = writeln!(
+                output,
+                "nearby evidence: {}",
+                styler.paint(Tone::Ref, evidence_ref)
+            );
+        }
     }
     if options.verbose() {
         let trust = record.policy_decision.trust_tier.to_string();
@@ -645,7 +681,16 @@ pub fn render_runs_list(
 
 #[must_use]
 pub fn render_why_next_step(record: &ExecutionRecord) -> String {
-    format!("Next: guild get {}", record.receipt.uri)
+    let mut lines = vec![format!("Next: guild get {}", record.receipt.uri)];
+    if let Some(child) = record.child_executions.first() {
+        lines.push(format!(
+            "Next: guild why {}",
+            short_child_execution_ref(child)
+        ));
+    } else if let Some(evidence) = record.emitted_evidence.first() {
+        lines.push(format!("Next: guild show {}", short_evidence_ref(evidence)));
+    }
+    lines.join("\n")
 }
 
 #[must_use]
@@ -939,6 +984,35 @@ fn reason_codes(record: &ExecutionRecord) -> Vec<String> {
         }
     }
     codes
+}
+
+fn nearby_child_execution_refs(record: &ExecutionRecord, limit: usize) -> Vec<String> {
+    record
+        .child_executions
+        .iter()
+        .take(limit)
+        .map(short_child_execution_ref)
+        .collect()
+}
+
+fn nearby_evidence_refs(record: &ExecutionRecord, limit: usize) -> Vec<String> {
+    record
+        .emitted_evidence
+        .iter()
+        .take(limit)
+        .map(short_evidence_ref)
+        .collect()
+}
+
+fn append_ref_list(output: &mut String, label: &str, refs: &[String], styler: &Styler) {
+    if refs.is_empty() {
+        return;
+    }
+
+    let _ = writeln!(output, "{label}:");
+    for value in refs {
+        let _ = writeln!(output, "- {}", styler.paint(Tone::Ref, value));
+    }
 }
 
 fn format_termination(termination: &TerminationDetail) -> String {

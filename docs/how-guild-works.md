@@ -52,7 +52,7 @@ The main daily commands each answer a different question:
 - `guild ls`: list installed skills and other objects in the current root
 - `guild show`: what is installed or what stored object am I looking at?
 - `guild run`: execute one installed skill locally
-- `guild why`: explain one persisted execution record
+- `guild why`: explain one persisted execution record and point to nearby stored refs when present
 - `guild get`: read one Guild resource directly
 - `guild verify`: show installed trust and verification state for a skill
 
@@ -64,6 +64,8 @@ The main daily commands each answer a different question:
 Default human output is for reading, not parsing.
 Short human summaries may include low-noise follow-up hints such as `Next: ...`
 when the follow-up is obvious.
+`guild why` may also include one nearby short execution or evidence ref when a
+stored execution already points at related work.
 
 When you need a stable machine surface:
 
@@ -92,7 +94,7 @@ What that flow tells you:
 - `guild show -v` explains the identity path before you run anything
 - `guild show -vv` explains why the requested ref resolved to the selected digest
 - `guild run` executes with caller-requested grants filtered through host policy
-- `guild why` and `guild get` explain what happened after the run completes
+- `guild why` is the first nearby-ref navigation surface after the run completes, and `guild get` is the raw durable read path
 - `guild verify` is about installed trust state, not execution replay
 
 ## Trust Review
