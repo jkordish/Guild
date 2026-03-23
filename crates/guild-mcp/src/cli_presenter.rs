@@ -4,12 +4,14 @@ use guild_manifest::SkillManifest;
 use guild_registry::{InstalledSkill, SignatureScheme, TrustedPublisherRecord};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
-    CapabilityRequirement, EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionPhase,
-    ExecutionRecord, ExecutionStatus, GUILD_EXECUTION_URI_PREFIX, PRESENTATION_STATUS_LINKED,
-    PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED,
-    PRESENTATION_STATUS_UPPER_BOUND, RedactionClass, ResolvedSkillRef, RuntimeKind,
-    SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN, SkillCategory, TerminationDetail,
-    execution_status_label,
+    CapabilityRequirement, ChildExecutionRecord, EvidenceAudience, EvidenceBlobRecord,
+    EvidenceRecord, ExecutionPhase, ExecutionRecord, ExecutionStatus,
+    GUILD_EXECUTION_QUERY_URI_PREFIX, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
+    GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX, GUILD_OBJECT_RECORD_URI_PREFIX,
+    PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED,
+    PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND, RedactionClass,
+    ResolvedSkillRef, ResourceKind, RuntimeKind, SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN,
+    Severity, SkillCategory, TerminationDetail, execution_status_label,
 };
 use serde::Serialize;
 
@@ -137,6 +139,11 @@ pub fn short_skill_ref(installed: &InstalledSkill) -> String {
 #[must_use]
 pub fn short_execution_ref(record: &ExecutionRecord) -> String {
     short_prefixed_id("exec", &record.receipt.execution_id)
+}
+
+#[must_use]
+pub fn short_child_execution_ref(record: &ChildExecutionRecord) -> String {
+    short_prefixed_id("exec", &record.execution_id)
 }
 
 #[must_use]
@@ -508,6 +515,10 @@ pub fn render_execution_why(
     let styler = options.styler(stream);
     let summary = why_summary(record);
     let status = execution_status_label(&record.status);
+    let child_refs =
+        nearby_child_execution_refs(record, if options.verbose() { usize::MAX } else { 1 });
+    let evidence_refs =
+        nearby_evidence_refs(record, if options.verbose() { usize::MAX } else { 1 });
     let mut output = String::new();
     let _ = writeln!(
         output,
@@ -541,6 +552,36 @@ pub fn render_execution_why(
     let _ = writeln!(output, "policy: {}", record.policy_decision.summary);
     if let Some(termination) = &record.termination {
         let _ = writeln!(output, "detail: {}", format_termination(termination));
+    }
+    let _ = writeln!(
+        output,
+        "child executions: {}",
+        record.child_executions.len()
+    );
+    let _ = writeln!(
+        output,
+        "evidence records: {}",
+        record.emitted_evidence.len()
+    );
+    let _ = writeln!(output, "authority: {}", authority_summary(record));
+    if options.verbose() {
+        append_authority_observation_list(&mut output, record);
+        append_ref_list(&mut output, "nearby child refs", &child_refs, &styler);
+        append_ref_list(&mut output, "nearby evidence refs", &evidence_refs, &styler);
+    } else {
+        if let Some(child_ref) = child_refs.first() {
+            let _ = writeln!(
+                output,
+                "nearby child: {}",
+                styler.paint(Tone::Ref, child_ref)
+            );
+        } else if let Some(evidence_ref) = evidence_refs.first() {
+            let _ = writeln!(
+                output,
+                "nearby evidence: {}",
+                styler.paint(Tone::Ref, evidence_ref)
+            );
+        }
     }
     if options.verbose() {
         let trust = record.policy_decision.trust_tier.to_string();
@@ -645,7 +686,13 @@ pub fn render_runs_list(
 
 #[must_use]
 pub fn render_why_next_step(record: &ExecutionRecord) -> String {
-    format!("Next: guild get {}", record.receipt.uri)
+    let mut lines = vec![format!("Next: guild get {}", record.receipt.uri)];
+    if let Some(child) = record.child_executions.first() {
+        lines.push(format!("Next: guild why {}", child.uri));
+    } else if let Some(evidence) = record.emitted_evidence.first() {
+        lines.push(format!("Next: guild show {}", evidence.uri));
+    }
+    lines.join("\n")
 }
 
 #[must_use]
@@ -941,6 +988,265 @@ fn reason_codes(record: &ExecutionRecord) -> Vec<String> {
     codes
 }
 
+fn nearby_child_execution_refs(record: &ExecutionRecord, limit: usize) -> Vec<String> {
+    record
+        .child_executions
+        .iter()
+        .take(limit)
+        .map(|child| prefixed_id("exec", &child.execution_id))
+        .collect()
+}
+
+fn nearby_evidence_refs(record: &ExecutionRecord, limit: usize) -> Vec<String> {
+    record
+        .emitted_evidence
+        .iter()
+        .take(limit)
+        .map(|evidence| {
+            evidence.uri.rsplit('/').next().map_or_else(
+                || evidence.uri.clone(),
+                |record_id| prefixed_id("evidence", record_id),
+            )
+        })
+        .collect()
+}
+
+fn append_ref_list(output: &mut String, label: &str, refs: &[String], styler: &Styler) {
+    if refs.is_empty() {
+        return;
+    }
+
+    let _ = writeln!(output, "{label}:");
+    for value in refs {
+        let _ = writeln!(output, "- {}", styler.paint(Tone::Ref, value));
+    }
+}
+
+fn authority_summary(record: &ExecutionRecord) -> String {
+    if !record.authority_observations_recorded {
+        return "not-recorded".into();
+    }
+
+    let mut exercised = Vec::new();
+    let mut blocked = Vec::new();
+
+    for observation in &record.authority_observations {
+        let family = authority_observation_family_label(observation);
+        match authority_observation_status(observation) {
+            AuthorityObservationStatus::Exercised => push_unique(&mut exercised, family),
+            AuthorityObservationStatus::Blocked => push_unique(&mut blocked, family),
+        }
+    }
+
+    if exercised.is_empty() && blocked.is_empty() {
+        return "none".into();
+    }
+
+    let mut parts = Vec::new();
+    if !exercised.is_empty() {
+        parts.push(format!("exercised({})", exercised.join(", ")));
+    }
+    if !blocked.is_empty() {
+        parts.push(format!("blocked({})", blocked.join(", ")));
+    }
+    parts.join(" ")
+}
+
+fn append_authority_observation_list(output: &mut String, record: &ExecutionRecord) {
+    if !record.authority_observations_recorded {
+        let _ = writeln!(output, "authority observations: not recorded");
+        return;
+    }
+
+    if record.authority_observations.is_empty() {
+        return;
+    }
+
+    let _ = writeln!(output, "authority observations:");
+    for observation in &record.authority_observations {
+        let _ = writeln!(output, "- {}", authority_observation_line(observation));
+    }
+}
+
+fn authority_observation_line(observation: &AuthorityObservation) -> String {
+    match observation {
+        AuthorityObservation::HttpRequest { status, detail } => {
+            let mut parts = vec![detail.request.url.clone()];
+            if let Some(response_status) = detail.response_status {
+                parts.push(format!("status {response_status}"));
+            }
+            format!(
+                "{} http-request -> {}",
+                authority_observation_status_label(status),
+                authority_observation_parts(
+                    parts,
+                    detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                    detail
+                        .result_error
+                        .as_ref()
+                        .map(|failure| failure.code.as_str()),
+                    None,
+                )
+            )
+        }
+        AuthorityObservation::ReadResource { status, detail } => format!(
+            "{} read-resource -> {}",
+            authority_observation_status_label(status),
+            authority_observation_parts(
+                vec![
+                    display_resource_ref_or_uri(&detail.uri),
+                    detail
+                        .resource_kind
+                        .as_ref()
+                        .map(resource_kind_label)
+                        .unwrap_or("resource")
+                        .into(),
+                ],
+                detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                detail
+                    .result_error
+                    .as_ref()
+                    .map(|failure| failure.code.as_str()),
+                detail.bytes.map(format_bytes),
+            )
+        ),
+        AuthorityObservation::InvokeSkill { status, detail } => format!(
+            "{} invoke-skill -> {}",
+            authority_observation_status_label(status),
+            {
+                let mut parts = vec![format!("alias {}", detail.alias)];
+                if let Some(execution_id) = &detail.child_execution_id {
+                    parts.push(prefixed_id("exec", execution_id));
+                }
+                authority_observation_parts(
+                    parts,
+                    detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                    detail
+                        .result_error
+                        .as_ref()
+                        .map(|failure| failure.code.as_str()),
+                    None,
+                )
+            }
+        ),
+        AuthorityObservation::EmitEvidence { status, detail } => format!(
+            "{} emit-evidence -> {}",
+            authority_observation_status_label(status),
+            authority_observation_parts(
+                vec![
+                    detail
+                        .evidence_uri
+                        .as_deref()
+                        .map(display_resource_ref_or_uri)
+                        .unwrap_or_else(|| detail.mime_type.clone()),
+                    format_bytes(detail.size_bytes),
+                ],
+                detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                detail
+                    .result_error
+                    .as_ref()
+                    .map(|failure| failure.code.as_str()),
+                None,
+            )
+        ),
+        AuthorityObservation::LogWrite { status, detail } => format!(
+            "{} log-write -> {}",
+            authority_observation_status_label(status),
+            authority_observation_parts(
+                vec![severity_label(&detail.level).into()],
+                detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                None,
+                None,
+            )
+        ),
+    }
+}
+
+fn authority_observation_parts(
+    mut parts: Vec<String>,
+    denial_code: Option<&str>,
+    result_error_code: Option<&str>,
+    trailing: Option<String>,
+) -> String {
+    if let Some(code) = denial_code.or(result_error_code) {
+        parts.push(code.into());
+    } else if let Some(trailing) = trailing {
+        parts.push(trailing);
+    }
+    parts.join(" / ")
+}
+
+fn authority_observation_family_label(observation: &AuthorityObservation) -> &'static str {
+    match observation {
+        AuthorityObservation::HttpRequest { .. } => "http-request",
+        AuthorityObservation::ReadResource { .. } => "read-resource",
+        AuthorityObservation::InvokeSkill { .. } => "invoke-skill",
+        AuthorityObservation::EmitEvidence { .. } => "emit-evidence",
+        AuthorityObservation::LogWrite { .. } => "log-write",
+    }
+}
+
+fn authority_observation_status(observation: &AuthorityObservation) -> &AuthorityObservationStatus {
+    match observation {
+        AuthorityObservation::HttpRequest { status, .. }
+        | AuthorityObservation::ReadResource { status, .. }
+        | AuthorityObservation::InvokeSkill { status, .. }
+        | AuthorityObservation::EmitEvidence { status, .. }
+        | AuthorityObservation::LogWrite { status, .. } => status,
+    }
+}
+
+fn authority_observation_status_label(status: &AuthorityObservationStatus) -> &'static str {
+    match status {
+        AuthorityObservationStatus::Exercised => "exercised",
+        AuthorityObservationStatus::Blocked => "blocked",
+    }
+}
+
+fn display_resource_ref_or_uri(uri: &str) -> String {
+    if let Some(execution_id) = uri.strip_prefix(GUILD_EXECUTION_URI_PREFIX) {
+        return prefixed_id("exec", execution_id);
+    }
+    if let Some(record_id) = uri.strip_prefix(GUILD_OBJECT_RECORD_URI_PREFIX) {
+        if record_id
+            .strip_suffix(GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX)
+            .is_some()
+        {
+            return uri.into();
+        }
+        return prefixed_id("evidence", record_id);
+    }
+    if let Some(digest) = uri.strip_prefix(GUILD_OBJECT_BLOB_URI_PREFIX) {
+        return prefixed_id("obj", digest);
+    }
+    if uri.starts_with(GUILD_EXECUTION_QUERY_URI_PREFIX) {
+        return uri.into();
+    }
+    uri.into()
+}
+
+fn resource_kind_label(kind: &ResourceKind) -> &'static str {
+    match kind {
+        ResourceKind::Execution => "execution",
+        ResourceKind::Object => "object",
+        ResourceKind::Query => "query",
+    }
+}
+
+fn severity_label(level: &Severity) -> &'static str {
+    match level {
+        Severity::Info => "info",
+        Severity::Warn => "warn",
+        Severity::Error => "error",
+    }
+}
+
+fn push_unique<'a>(items: &mut Vec<&'a str>, value: &'a str) {
+    if !items.iter().any(|existing| existing == &value) {
+        items.push(value);
+    }
+}
+
 fn format_termination(termination: &TerminationDetail) -> String {
     format!(
         "{}:{}{}",
@@ -971,6 +1277,10 @@ fn capability_summary(grants: &[CapabilityRequirement]) -> String {
 
 fn short_hash(value: &str) -> String {
     value.chars().take(12).collect()
+}
+
+fn prefixed_id(prefix: &str, value: &str) -> String {
+    format!("{prefix}:{value}")
 }
 
 fn short_prefixed_id(prefix: &str, value: &str) -> String {
@@ -1004,6 +1314,277 @@ fn render_support_summary(summary: &SupportSummary, styler: &Styler) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn test_options(verbosity: u8) -> PresentationOptions {
+        PresentationOptions {
+            verbosity,
+            debug: false,
+            color: ColorMode::Never,
+            stdout_is_terminal: false,
+            stderr_is_terminal: false,
+        }
+    }
+
+    fn resolved_skill_json() -> serde_json::Value {
+        json!({
+            "key": {
+                "namespace": "example",
+                "name": "hello-inspect",
+            },
+            "version": "0.1.0",
+            "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        })
+    }
+
+    fn child_record_json(index: usize) -> serde_json::Value {
+        let execution_id = format!("child-exec-{index:04}-abcdef1234567890");
+        json!({
+            "alias": format!("child-{index}"),
+            "execution_id": execution_id,
+            "uri": execution_uri(&format!("child-exec-{index:04}-abcdef1234567890")),
+            "parent_execution_id": "parent-exec-0001-abcdef1234567890",
+            "trace_id": format!("trace-child-{index}"),
+            "status": "succeeded",
+            "policy_decision": {
+                "outcome": "allowed",
+                "summary": "allowed",
+                "profile_name": "default",
+                "trust_tier": "local-dev",
+                "verification_state": "local-source",
+                "reasons": [],
+                "detail": null
+            },
+            "termination": null,
+            "granted_capabilities": { "grants": [] },
+            "metrics": {
+                "duration_ms": 0,
+                "network_requests": 0,
+                "child_executions": 0,
+                "cache_hits": 0,
+                "cache_misses": 0
+            },
+            "provenance": {
+                "resolved_skill": resolved_skill_json(),
+                "abi": "guild-skill-inspect-v1",
+                "dependency_digests": [],
+                "started_at_utc": null,
+                "finished_at_utc": null
+            }
+        })
+    }
+
+    fn evidence_record_json(index: usize) -> serde_json::Value {
+        let record_id = format!("evidence-record-{index:04}-abcdef1234567890");
+        let digest = format!("{index:064x}");
+        json!({
+            "uri": format!("{GUILD_OBJECT_RECORD_URI_PREFIX}{record_id}"),
+            "blob_uri": format!("{GUILD_OBJECT_BLOB_URI_PREFIX}{digest}"),
+            "mime_type": "application/json",
+            "sha256": digest,
+            "size_bytes": 128,
+            "sink": null,
+            "title": format!("evidence {index}"),
+            "audience": "user",
+            "redaction": "none",
+            "freshness": "deterministic",
+            "produced_by_execution": "parent-exec-0001-abcdef1234567890"
+        })
+    }
+
+    fn execution_record_with_related_refs(
+        child_count: usize,
+        evidence_count: usize,
+    ) -> ExecutionRecord {
+        serde_json::from_value(json!({
+            "receipt": {
+                "execution_id": "parent-exec-0001-abcdef1234567890",
+                "uri": execution_uri("parent-exec-0001-abcdef1234567890"),
+                "trace_id": "trace-parent-1",
+                "status": "succeeded"
+            },
+            "request": {
+                "request_id": "request-1",
+                "skill": {
+                    "key": {
+                        "namespace": "example",
+                        "name": "hello-inspect"
+                    },
+                    "version_req": "^0.1"
+                },
+                "tenant_id": "tenant-1",
+                "actor_id": "actor-1",
+                "mode": "inspect",
+                "input": {},
+                "budget": {
+                    "max_millis": 1000,
+                    "max_memory_bytes": 1048576,
+                    "max_output_bytes": 65536,
+                    "max_network_requests": 4,
+                    "max_child_executions": 4
+                },
+                "requested_capabilities": { "grants": [] },
+                "idempotency_key": null,
+                "trace_id": "trace-parent-1"
+            },
+            "policy_decision": {
+                "outcome": "allowed",
+                "summary": "allowed",
+                "profile_name": "default",
+                "trust_tier": "local-dev",
+                "verification_state": "local-source",
+                "reasons": [],
+                "detail": null
+            },
+            "resolved_skill": resolved_skill_json(),
+            "parent_execution_id": null,
+            "status": "succeeded",
+            "output": null,
+            "termination": null,
+            "granted_capabilities": { "grants": [] },
+            "emitted_evidence": (0..evidence_count).map(evidence_record_json).collect::<Vec<_>>(),
+            "authority_observations": [],
+            "metrics": {
+                "duration_ms": 0,
+                "network_requests": 0,
+                "child_executions": child_count,
+                "cache_hits": 0,
+                "cache_misses": 0
+            },
+            "provenance": {
+                "resolved_skill": resolved_skill_json(),
+                "abi": "guild-skill-inspect-v1",
+                "dependency_digests": [],
+                "started_at_utc": null,
+                "finished_at_utc": null
+            },
+            "child_executions": (0..child_count).map(child_record_json).collect::<Vec<_>>()
+        }))
+        .unwrap()
+    }
+
+    fn legacy_execution_record_without_authority_observations() -> ExecutionRecord {
+        let mut value = serde_json::to_value(execution_record_with_related_refs(0, 0)).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("authority_observations");
+        object.remove("authority_observations_recorded");
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn compact_why_output_prefers_one_child_ref_over_evidence() {
+        let record = execution_record_with_related_refs(1, 1);
+
+        let output = render_execution_why(&record, test_options(0), StreamKind::Stdout);
+
+        assert!(output.contains("nearby child: exec:"), "{output}");
+        assert!(!output.contains("nearby evidence: "), "{output}");
+    }
+
+    #[test]
+    fn verbose_why_output_lists_all_related_refs() {
+        let record = execution_record_with_related_refs(4, 4);
+
+        let output = render_execution_why(&record, test_options(1), StreamKind::Stdout);
+
+        assert!(output.contains("nearby child refs:"), "{output}");
+        assert!(output.contains("nearby evidence refs:"), "{output}");
+        for index in 0..4 {
+            let child_execution_id = format!("child-exec-{index:04}-abcdef1234567890");
+            let child_ref = format!("exec:{child_execution_id}");
+            let evidence_id = format!("evidence-record-{index:04}-abcdef1234567890");
+            let evidence_ref = format!("evidence:{evidence_id}");
+            assert!(output.contains(&format!("- {child_ref}")), "{output}");
+            assert!(output.contains(&format!("- {evidence_ref}")), "{output}");
+        }
+    }
+
+    #[test]
+    fn display_resource_ref_preserves_metadata_uris() {
+        let metadata_uri = format!(
+            "{GUILD_OBJECT_RECORD_URI_PREFIX}evidence-record-0001-abcdef1234567890{GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX}"
+        );
+
+        assert_eq!(display_resource_ref_or_uri(&metadata_uri), metadata_uri);
+    }
+
+    #[test]
+    fn invoke_skill_observation_keeps_child_ref_when_result_error_is_present() {
+        let observation = AuthorityObservation::InvokeSkill {
+            status: AuthorityObservationStatus::Exercised,
+            detail: guild_types::InvokeSkillAuthorityObservation {
+                alias: "hello".into(),
+                child_execution_id: Some("child-exec-0001-abcdef1234567890".into()),
+                child_status: Some(ExecutionStatus::Failed),
+                denial: None,
+                result_error: Some(guild_types::AuthorityObservationFailure {
+                    code: "child-skill-failed".into(),
+                    message: "child skill failed".into(),
+                    detail: None,
+                }),
+            },
+        };
+
+        let line = authority_observation_line(&observation);
+
+        assert!(
+            line.contains(
+                "alias hello / exec:child-exec-0001-abcdef1234567890 / child-skill-failed"
+            ),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn http_request_observation_keeps_response_status_when_result_error_is_present() {
+        let observation = AuthorityObservation::HttpRequest {
+            status: AuthorityObservationStatus::Exercised,
+            detail: guild_types::HttpAuthorityObservation {
+                request: guild_types::HttpRequest {
+                    method: guild_types::HttpMethod::Get,
+                    url: "http://127.0.0.1/not-json".into(),
+                    timeout_ms: None,
+                },
+                response_status: Some(200),
+                response_content_type: Some("text/plain".into()),
+                response_bytes: Some(12),
+                redirects_followed: Some(0),
+                resolution: None,
+                denial: None,
+                result_error: Some(guild_types::AuthorityObservationFailure {
+                    code: "http-response-not-json".into(),
+                    message: "response was not valid JSON".into(),
+                    detail: None,
+                }),
+            },
+        };
+
+        let line = authority_observation_line(&observation);
+
+        assert!(
+            line.contains("http://127.0.0.1/not-json / status 200 / http-response-not-json"),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn legacy_records_render_authority_as_not_recorded() {
+        let record = legacy_execution_record_without_authority_observations();
+
+        let compact = render_execution_why(&record, test_options(0), StreamKind::Stdout);
+        let verbose = render_execution_why(&record, test_options(1), StreamKind::Stdout);
+
+        assert!(compact.contains("authority: not-recorded"), "{compact}");
+        assert!(
+            verbose.contains("authority observations: not recorded"),
+            "{verbose}"
+        );
+    }
 }
 
 fn format_bytes(bytes: u64) -> String {

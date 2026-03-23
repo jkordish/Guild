@@ -2650,6 +2650,7 @@ mod tests {
                     result_error: None,
                 },
             }],
+            authority_observations_recorded: true,
             metrics: ExecutionMetrics::default(),
             provenance: Provenance {
                 resolved_skill: ResolvedSkillRef {

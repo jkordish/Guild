@@ -39,7 +39,9 @@ and `guild verify` path with the smallest real skill in the repo.
 Use the current primary CLI first:
 
 - `guild why` for the compact persisted-execution explanation path
+- `guild why -v` when you need nearby child/evidence refs and authority observations
 - `guild get` when you want the raw stored resource
+- `guild ls evidence --limit 5` when you need to discover stored evidence first
 
 Then move to the example skills when you want richer reusable reports:
 

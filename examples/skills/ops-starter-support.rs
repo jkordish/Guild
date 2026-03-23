@@ -205,6 +205,10 @@ pub fn child_execution_uris(record: &Value) -> Vec<String> {
 }
 
 pub fn support_buckets(record: &Value) -> Vec<(String, Vec<String>)> {
+    if !authority_observations_recorded(record) {
+        return Vec::new();
+    }
+
     let mut proof_backed = Vec::new();
     let mut bounded = Vec::new();
     let mut not_proven = Vec::new();
@@ -236,6 +240,10 @@ pub fn support_buckets(record: &Value) -> Vec<(String, Vec<String>)> {
 }
 
 pub fn rendered_support(record: &Value) -> String {
+    if !authority_observations_recorded(record) {
+        return "not-recorded".into();
+    }
+
     let buckets = support_buckets(record);
     if buckets.is_empty() {
         return "none".into();
@@ -249,6 +257,10 @@ pub fn rendered_support(record: &Value) -> String {
 }
 
 pub fn overall_support(record: &Value) -> &'static str {
+    if !authority_observations_recorded(record) {
+        return "not_proven";
+    }
+
     let buckets = support_buckets(record);
     if buckets.iter().any(|(status, _)| status == "refused") {
         "refused"
@@ -399,4 +411,11 @@ fn exercised_or_granted_capability_ids(record: &Value) -> Vec<String> {
         }
     }
     granted.into_iter().collect()
+}
+
+fn authority_observations_recorded(record: &Value) -> bool {
+    record
+        .get("authority_observations_recorded")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| record.get("authority_observations").is_some())
 }

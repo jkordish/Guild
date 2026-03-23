@@ -281,6 +281,7 @@ fn sample_execution_record(
         granted_capabilities: CapabilityGrantSet::default(),
         emitted_evidence,
         authority_observations: Vec::new(),
+        authority_observations_recorded: true,
         metrics: guild_types::ExecutionMetrics::default(),
         provenance: Provenance {
             resolved_skill,

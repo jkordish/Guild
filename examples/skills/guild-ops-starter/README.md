@@ -125,9 +125,15 @@ guild why exec:<execution-id-prefix>
 guild get guild://executions/<execution-id>
 ```
 
-## Journey 4: Inspect One Stored Evidence Record
+## Journey 4: Discover And Inspect One Stored Evidence Record
 
-`evidence-summary` needs a real stored evidence ref. One easy way to get one is the existing `hello-inspect` example:
+If your selected Guild root already has stored evidence, start discovery with:
+
+```bash
+guild ls evidence --limit 5
+```
+
+`evidence-summary` still needs one real stored evidence ref. If your root is empty, one easy way to create one is the existing `hello-inspect` example:
 
 ```bash
 guild install examples/skills/hello-inspect
