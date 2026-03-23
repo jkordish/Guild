@@ -5,6 +5,10 @@ Guild examples are ordinary repo-native examples and example skills.
 There is no separate pack system here. The examples exist to prove and teach
 specific honest slices of the current repo.
 
+The canonical command examples assume `guild` is installed and on `PATH`.
+Lower-level `cargo run -p guild-mcp --example ...` commands are developer proof
+helpers, not the normal operator workflow.
+
 ## Start Here
 
 If you want one compact first-five-minutes workflow, start with the Guild Ops

@@ -23,13 +23,13 @@ If you want one current user-facing Guild workflow, start here.
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/ops-pack
 
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/render-report
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/incident-brief
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/run-diff
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/recent-failures
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/evidence-summary
+guild install examples/skills/render-report
+guild install examples/skills/incident-brief
+guild install examples/skills/run-diff
+guild install examples/skills/recent-failures
+guild install examples/skills/evidence-summary
 
-cargo run -q -p guild-mcp --bin guild -- verify skill://example/incident-brief@^0.1
+guild verify skill://example/incident-brief@^0.1
 ```
 
 ## First Five Minutes
@@ -37,8 +37,8 @@ cargo run -q -p guild-mcp --bin guild -- verify skill://example/incident-brief@^
 Use the existing deterministic repo-local scenario prep to get real execution and query refs:
 
 ```bash
-cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root "$GUILD_REGISTRY_ROOT" --reset
-cargo run -p guild-mcp --bin guild -- codex scenario --registry-root "$GUILD_REGISTRY_ROOT" --scenario recent-failure-triage --json
+guild codex bootstrap --registry-root "$GUILD_REGISTRY_ROOT" --reset
+guild codex scenario --registry-root "$GUILD_REGISTRY_ROOT" --scenario recent-failure-triage --json
 ```
 
 That JSON includes:
@@ -54,7 +54,7 @@ Core workflow:
 1. Run `incident-brief` on one stored execution ref:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" run \
+guild run \
   incident-brief@^0.1 \
   --input-json '{"execution_uri":"<paste one subject_execution_uri>"}' \
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"invoke-skill","access":"invoke","constraints":{"aliases":["renderer"]}}]}'
@@ -63,7 +63,7 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" 
 2. Run `run-diff` on two stored execution refs:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" run \
+guild run \
   run-diff@^0.1 \
   --input-json '{"left_execution_uri":"<paste first execution_uri>","right_execution_uri":"<paste second execution_uri>"}' \
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"invoke-skill","access":"invoke","constraints":{"aliases":["renderer"]}}]}'
@@ -72,7 +72,7 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" 
 3. Optionally run `recent-failures` on the bounded query ref:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" run \
+guild run \
   recent-failures@^0.1 \
   --input-json '{"query_uri":"<paste one query_uri>"}' \
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://queries/executions/"],"resource_kinds":["query"]}},{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}}]}'
@@ -90,9 +90,9 @@ guild why exec:<execution-id-prefix>
 `evidence-summary` needs a real stored evidence ref. One easy way to get one is the existing `hello-inspect` example:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
+guild install examples/skills/hello-inspect
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" run \
+guild run \
   hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
@@ -102,7 +102,7 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" 
 Take one emitted evidence URI from that JSON and run:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" run \
+guild run \
   evidence-summary@^0.1 \
   --input-json '{"evidence_uri":"<paste one emitted evidence uri>"}' \
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://objects/records/"],"resource_kinds":["object"]}}]}'

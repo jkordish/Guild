@@ -12,11 +12,9 @@ Install the operator CLI with:
 cargo install --path crates/guild-mcp --bin guild
 ```
 
-If you are working from the repository instead, use:
-
-```bash
-cargo run -q -p guild-mcp --bin guild -- ...
-```
+After install, the command language uses `guild ...` directly.
+Repo-local proof commands and lower-level developer helpers live in
+`docs/testing.md`.
 
 The default help is task-oriented:
 
@@ -169,20 +167,20 @@ The honest story is narrow on purpose:
 ### Trust And Transport
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- trust generate \
+guild trust generate \
   --publisher-id local.example \
   --display-name "Local Example" \
   --output target/dev-local-registry/local.example.json
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/a export bundle \
+guild --registry-root target/dev-local-registry/a export bundle \
   skill://example/hello-inspect@^0.1 \
   --signer target/dev-local-registry/local.example.json \
   --output target/dev-local-registry/bundle
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b trust add \
+guild --registry-root target/dev-local-registry/b trust add \
   --identity-file target/dev-local-registry/local.example.json
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b import bundle \
+guild --registry-root target/dev-local-registry/b import bundle \
   target/dev-local-registry/bundle
 ```
 
@@ -195,12 +193,12 @@ This flow stays within the current trust model:
 ### Execution Plan Signing
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- trust sign-plan \
+guild trust sign-plan \
   --plan docs/schemas/draft-v1/examples/zero-authority.admit.plan.json \
   --identity-file target/dev-local-registry/local.example.json \
   --output target/dev-local-registry/zero-authority.admit.signed.plan.json
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b trust verify-plan \
+guild --registry-root target/dev-local-registry/b trust verify-plan \
   --plan target/dev-local-registry/zero-authority.admit.signed.plan.json
 ```
 

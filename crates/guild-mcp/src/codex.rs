@@ -554,7 +554,7 @@ pub fn recommended_proof_commands() -> Vec<String> {
 #[must_use]
 pub fn print_config_command(registry_root: impl AsRef<Path>) -> String {
     format!(
-        "cargo run -p guild-mcp --bin guild -- codex print-config --registry-root {}",
+        "{CLI_BINARY_NAME} codex print-config --registry-root {}",
         shell_quote(&absolute_path(registry_root).to_string_lossy())
     )
 }
@@ -569,7 +569,7 @@ pub fn recommended_scenario_commands(registry_root: impl AsRef<Path>) -> Vec<Str
     .into_iter()
     .map(|scenario| {
         format!(
-            "cargo run -p guild-mcp --bin guild -- codex scenario --registry-root {} --scenario {} --json",
+            "{CLI_BINARY_NAME} codex scenario --registry-root {} --scenario {} --json",
             shell_quote(&registry_root.to_string_lossy()),
             scenario
         )
@@ -594,7 +594,7 @@ pub fn recommended_smoke_commands(registry_root: impl AsRef<Path>) -> Vec<String
     .into_iter()
     .map(|flow| {
         format!(
-            "cargo run -p guild-mcp --bin guild -- codex smoke --registry-root {} --flow {}",
+            "{CLI_BINARY_NAME} codex smoke --registry-root {} --flow {}",
             shell_quote(&registry_root.to_string_lossy()),
             flow
         )

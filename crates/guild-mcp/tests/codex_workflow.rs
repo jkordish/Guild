@@ -135,7 +135,7 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
     assert_eq!(
         payload.print_config_command,
         format!(
-            "cargo run -p guild-mcp --bin guild -- codex print-config --registry-root {}",
+            "guild codex print-config --registry-root {}",
             payload.bootstrap.registry_root.to_string_lossy()
         )
     );
@@ -144,14 +144,14 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
         payload
             .recommended_scenario_commands
             .iter()
-            .all(|command| command.contains("--bin guild -- codex scenario"))
+            .all(|command| command.starts_with("guild codex scenario "))
     );
     assert_eq!(payload.recommended_smoke_commands.len(), 9);
     assert!(
         payload
             .recommended_smoke_commands
             .iter()
-            .all(|command| command.contains("--bin guild -- codex smoke"))
+            .all(|command| command.starts_with("guild codex smoke "))
     );
     assert!(
         payload

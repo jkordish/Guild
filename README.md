@@ -42,11 +42,9 @@ Install the operator CLI with:
 cargo install --path crates/guild-mcp --bin guild
 ```
 
-If you are working from the repository instead, use:
-
-```bash
-cargo run -q -p guild-mcp --bin guild -- ...
-```
+After install, the normal workflow is the `guild` binary itself.
+Repo-local proof commands and lower-level developer helpers live in
+`docs/testing.md`.
 
 Top-level commands are grouped around daily use, distribution, and setup:
 
@@ -118,8 +116,7 @@ What that flow shows:
 If you want an explicit non-default root for local proofs or CI, keep passing it:
 
 ```bash
-export GUILD_REGISTRY_ROOT=target/dev-local-registry/hello
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
+guild --registry-root target/dev-local-registry/hello install examples/skills/hello-inspect
 ```
 
 ## Ops Starter Pack
@@ -140,20 +137,20 @@ The pack is meant to show the current Guild story without broadening runtime or 
 ## Trust And Transport
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- trust generate \
+guild trust generate \
   --publisher-id local.example \
   --display-name "Local Example" \
   --output target/dev-local-registry/local.example.json
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/a export bundle \
+guild --registry-root target/dev-local-registry/a export bundle \
   skill://example/hello-inspect@^0.1 \
   --signer target/dev-local-registry/local.example.json \
   --output target/dev-local-registry/bundle
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b trust add \
+guild --registry-root target/dev-local-registry/b trust add \
   --identity-file target/dev-local-registry/local.example.json
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b import bundle \
+guild --registry-root target/dev-local-registry/b import bundle \
   target/dev-local-registry/bundle
 ```
 
@@ -189,8 +186,8 @@ guild init --global
 For deterministic repo-local scenarios and smoke flows from this repository, Guild also keeps the `guild codex` helper surface:
 
 ```bash
-cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
-cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/dev-local-registry/codex-local
+guild codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
+guild codex print-config --registry-root target/dev-local-registry/codex-local
 ```
 
 `guild codex` is not the normal setup path. It is the deterministic repo-local helper surface for bootstrap, scenario preparation, and smoke coverage.

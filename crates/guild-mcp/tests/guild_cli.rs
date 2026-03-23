@@ -48,6 +48,20 @@ fn draft_plan_path(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn assert_markdown_uses_installed_guild_cli(path: &Path) {
+    let contents = fs::read_to_string(path).unwrap();
+    assert!(
+        !contents.contains("cargo run -q -p guild-mcp --bin guild --"),
+        "{} still uses cargo-wrapped guild CLI in user-facing markdown",
+        path.display()
+    );
+    assert!(
+        !contents.contains("cargo run -p guild-mcp --bin guild --"),
+        "{} still uses cargo-wrapped guild CLI in user-facing markdown",
+        path.display()
+    );
+}
+
 fn emit_evidence_grants_json() -> String {
     serde_json::to_string(&CapabilityGrantSet {
         grants: vec![GrantedCapability {
@@ -1816,4 +1830,26 @@ fn install_command_maps_to_real_source_install_path() {
     assert_eq!(manifest.key.name, "hello-inspect");
     assert!(Path::new(install_value["artifact_path"].as_str().unwrap()).exists());
     assert!(Path::new(install_value["root_dir"].as_str().unwrap()).exists());
+}
+
+#[test]
+fn user_facing_docs_use_installed_guild_cli_after_install() {
+    let mut paths = vec![
+        repo_root().join("README.md"),
+        repo_root().join("docs/command-language.md"),
+        repo_root().join("docs/testing.md"),
+        repo_root().join("examples/README.md"),
+    ];
+
+    for entry in fs::read_dir(repo_root().join("examples/skills")).unwrap() {
+        let entry = entry.unwrap();
+        let readme = entry.path().join("README.md");
+        if readme.is_file() {
+            paths.push(readme);
+        }
+    }
+
+    for path in paths {
+        assert_markdown_uses_installed_guild_cli(&path);
+    }
 }

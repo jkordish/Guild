@@ -197,21 +197,21 @@ The standard repo truth path is now `cargo run -q -p xtask -- draft-v1 truth che
 If you want one explicit sign-and-verify pass for a generated M4 plan:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- trust generate \
+guild trust generate \
   --publisher-id local.example \
   --display-name "Local Example" \
   --output /tmp/guild-plan-signer.json
 
-cargo run -q -p guild-mcp --bin guild -- \
+guild \
   --registry-root /tmp/guild-plan-registry trust add \
   --identity-file /tmp/guild-plan-signer.json
 
-cargo run -q -p guild-mcp --bin guild -- trust sign-plan \
+guild trust sign-plan \
   --plan docs/schemas/draft-v1/examples/zero-authority.admit.plan.json \
   --identity-file /tmp/guild-plan-signer.json \
   --output /tmp/zero-authority.admit.signed.plan.json
 
-cargo run -q -p guild-mcp --bin guild -- \
+guild \
   --registry-root /tmp/guild-plan-registry trust verify-plan \
   --plan /tmp/zero-authority.admit.signed.plan.json
 ```
@@ -225,24 +225,24 @@ Minimal local CLI smoke:
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/cli-local
 
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
+guild install examples/skills/hello-inspect
 
-cargo run -q -p guild-mcp --bin guild -- show skill://example/hello-inspect@^0.1
+guild show skill://example/hello-inspect@^0.1
 
-cargo run -q -p guild-mcp --bin guild -- run \
+guild run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
 
-cargo run -q -p guild-mcp --bin guild -- ls runs --limit 5
+guild ls runs --limit 5
 
-cargo run -q -p guild-mcp --bin guild -- why exec:<execution-id-prefix>
+guild why exec:<execution-id-prefix>
 
-cargo run -q -p guild-mcp --bin guild -- get guild://executions/<execution-id>
+guild get guild://executions/<execution-id>
 
-cargo run -q -p guild-mcp --bin guild -- verify skill://example/hello-inspect@^0.1
+guild verify skill://example/hello-inspect@^0.1
 
-cargo run -q -p guild-mcp --bin guild -- mcp serve --stdio
+guild mcp serve --stdio
 ```
 
 Starter-pack smoke:
@@ -250,18 +250,18 @@ Starter-pack smoke:
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/ops-pack
 
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/render-report
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/incident-brief
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/run-diff
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/recent-failures
-cargo run -q -p guild-mcp --bin guild -- install examples/skills/evidence-summary
+guild install examples/skills/render-report
+guild install examples/skills/incident-brief
+guild install examples/skills/run-diff
+guild install examples/skills/recent-failures
+guild install examples/skills/evidence-summary
 
-cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root "$GUILD_REGISTRY_ROOT" --reset
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow incident-brief
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow run-diff
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow recent-failures
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow evidence-summary
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow render-report
+guild codex bootstrap --registry-root "$GUILD_REGISTRY_ROOT" --reset
+guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow incident-brief
+guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow run-diff
+guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow recent-failures
+guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow evidence-summary
+guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow render-report
 ```
 
 For the user-facing quickstart and exact capability-grant snippets, see [`../examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md). For the surrounding examples index, see [`../examples/README.md`](../examples/README.md).
@@ -269,33 +269,33 @@ For the user-facing quickstart and exact capability-grant snippets, see [`../exa
 Trust and signed-bundle smoke:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- trust generate \
+guild trust generate \
   --publisher-id local.example \
   --display-name "Local Example" \
   --output target/dev-local-registry/local.example.json
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/a export bundle \
+guild --registry-root target/dev-local-registry/a export bundle \
   skill://example/hello-inspect@^0.1 \
   --signer target/dev-local-registry/local.example.json \
   --output target/dev-local-registry/bundle
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b trust add \
+guild --registry-root target/dev-local-registry/b trust add \
   --identity-file target/dev-local-registry/local.example.json
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b import bundle \
+guild --registry-root target/dev-local-registry/b import bundle \
   target/dev-local-registry/bundle
 ```
 
 OCI registry smoke:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/a push \
+guild --registry-root target/dev-local-registry/a push \
   skill://example/hello-inspect@^0.1 \
   --reference 127.0.0.1:5000/guild-example-hello-inspect:0.1.0 \
   --signer target/dev-local-registry/local.example.json \
   --allow-http
 
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/b pull \
+guild --registry-root target/dev-local-registry/b pull \
   127.0.0.1:5000/guild-example-hello-inspect:0.1.0 \
   --allow-http
 ```
@@ -312,33 +312,33 @@ guild init --project
 
 `guild init` is the only persistent local setup workflow. It creates the selected Guild root, always prints the current stdio Codex wiring for the running `guild` binary, and `--global` / `--project` make the config writes explicit.
 
-Deterministic repo-local bootstrap and Cargo-based config helper:
+Deterministic repo-local bootstrap and installed-CLI helper:
 
 ```bash
-cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
-cargo run -p guild-mcp --bin guild -- codex print-config --registry-root target/dev-local-registry/codex-local
+guild codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
+guild codex print-config --registry-root target/dev-local-registry/codex-local
 ```
 
 Deterministic scenario prep:
 
 ```bash
-cargo run -p guild-mcp --bin guild -- codex scenario --registry-root target/dev-local-registry/codex-local --scenario recent-failure-triage --json
-cargo run -p guild-mcp --bin guild -- codex scenario --registry-root target/dev-local-registry/codex-local --scenario policy-denial-debug --json
-cargo run -p guild-mcp --bin guild -- codex scenario --registry-root target/dev-local-registry/codex-local --scenario execution-tree --json
+guild codex scenario --registry-root target/dev-local-registry/codex-local --scenario recent-failure-triage --json
+guild codex scenario --registry-root target/dev-local-registry/codex-local --scenario policy-denial-debug --json
+guild codex scenario --registry-root target/dev-local-registry/codex-local --scenario execution-tree --json
 ```
 
 Deterministic smoke flows:
 
 ```bash
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow incident-brief
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow run-diff
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow recent-failures
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow evidence-summary
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow render-report
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow recent-failure-triage
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow policy-denial-debug
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow incident-brief
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow run-diff
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow recent-failures
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow evidence-summary
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow render-report
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow recent-failure-triage
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow policy-denial-debug
 ```
 
 ## Example Proof Commands

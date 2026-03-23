@@ -34,11 +34,16 @@ This directory is the source fixture for the example skill:
 - `input.schema.json` and `output.schema.json` pin the structured I/O shape
 - `tests/` contains the inspect fixture pair used by repo tests
 
-Run it locally from the repository root:
+Run it locally from the repository root with the installed `guild` CLI:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/hello-inspect install examples/skills/hello-inspect
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/hello-inspect run skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+guild --registry-root target/dev-local-registry/hello-inspect install examples/skills/hello-inspect
+guild --registry-root target/dev-local-registry/hello-inspect run skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+```
+
+Deep developer proof helpers:
+
+```bash
 cargo run -p guild-mcp --example inspect_local
 ```
 

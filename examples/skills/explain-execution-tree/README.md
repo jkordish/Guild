@@ -26,11 +26,11 @@ Evidence handling stays intentionally small:
 Canonical local proof flow:
 
 ```bash
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/hello-inspect
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/hello-composite
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree run skill://example/hello-composite@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"invoke-skill","access":"write","constraints":{"aliases":["hello"]}},{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/explain-execution-tree
-cargo run -q -p guild-mcp --bin guild -- --registry-root target/dev-local-registry/explain-execution-tree run skill://example/explain-execution-tree@^0.1 --input-json '{"execution_uri":"guild://executions/<root-execution-id>","max_depth":4,"max_nodes":32,"include_evidence_resources":true}' --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/","guild://objects/records/"],"resource_kinds":["execution","object"]}}]}'
+guild --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/hello-inspect
+guild --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/hello-composite
+guild --registry-root target/dev-local-registry/explain-execution-tree run skill://example/hello-composite@^0.1 --input-json '{"name":"Ada"}' --grants-json '{"grants":[{"id":"invoke-skill","access":"write","constraints":{"aliases":["hello"]}},{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+guild --registry-root target/dev-local-registry/explain-execution-tree install examples/skills/explain-execution-tree
+guild --registry-root target/dev-local-registry/explain-execution-tree run skill://example/explain-execution-tree@^0.1 --input-json '{"execution_uri":"guild://executions/<root-execution-id>","max_depth":4,"max_nodes":32,"include_evidence_resources":true}' --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/","guild://objects/records/"],"resource_kinds":["execution","object"]}}]}'
 ```
 
 Replace `<root-execution-id>` with the durable execution id returned by the `hello-composite` run receipt.
@@ -38,7 +38,7 @@ Replace `<root-execution-id>` with the durable execution id returned by the `hel
 Deterministic helper proofs:
 
 ```bash
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
 cargo run -p guild-mcp --example explain_execution_tree_local
 cargo run -p guild-mcp --example codex_explain_execution_tree_local
 ```
@@ -54,7 +54,7 @@ That flow:
 For real Codex dogfooding, first bootstrap a local Guild root with:
 
 ```bash
-cargo run -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
+guild codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
 ```
 
 Then add Guild to Codex with the printed stdio config and ask Codex to run `hello-composite` followed by `explain-execution-tree` against the returned root execution URI. `codex_explain_execution_tree_local` is the deterministic MCP-path smoke version of that same flow.
@@ -62,7 +62,7 @@ Then add Guild to Codex with the printed stdio config and ask Codex to run `hell
 If you want the same deterministic flow without leaving the helper, run:
 
 ```bash
-cargo run -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
 ```
 
 `codex_explain_execution_tree_local` remains as the lower-level compatibility smoke command and now wraps that same shared helper path.
