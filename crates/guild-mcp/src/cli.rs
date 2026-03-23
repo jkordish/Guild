@@ -3517,9 +3517,9 @@ fn print_help_refs() {
     println!("  guild://...");
     println!();
     println!("Identity layers:");
-    println!("  source skill          local source directory passed to guild install");
-    println!("  installed state       installed executable record under the Guild root");
-    println!("  resolved executable   exact selected ref plus artifact digest");
+    println!("  source skill                 local source directory passed to guild install");
+    println!("  installed executable state   installed executable record under the Guild root");
+    println!("  resolved executable identity exact selected ref plus artifact digest");
     println!();
     println!("Trace one skill through those layers with:");
     println!("  guild show -v skill://example/hello-inspect@^0.1");

@@ -41,13 +41,14 @@ In practice, that means the caller can ask for authority, but the guest only rec
 
 The main daily commands each answer a different question:
 
+- `guild ls`: list installed skills and other objects in the current root
 - `guild show`: what is installed or what stored object am I looking at?
 - `guild run`: execute one installed skill locally
 - `guild why`: explain one persisted execution record
 - `guild get`: read one Guild resource directly
 - `guild verify`: show installed trust and verification state for a skill
 
-`guild show`, `guild why`, `guild get`, and `guild verify` are read-only inspection surfaces.
+`guild ls`, `guild show`, `guild why`, `guild get`, and `guild verify` are read-only inspection surfaces.
 `guild run` is the execution surface.
 
 ## A Normal Daily Flow

@@ -1,4 +1,4 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: Guild UX Umbrella
     url: https://github.com/jkordish/Guild/issues/15

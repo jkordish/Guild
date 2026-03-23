@@ -1780,6 +1780,8 @@ fn shared_help_topics_are_available() {
     assert!(refs.contains("skill://<namespace>/<name>@<version-or-range>"));
     assert!(refs.contains("guild://..."));
     assert!(refs.contains("Identity layers:"));
+    assert!(refs.contains("installed executable state"));
+    assert!(refs.contains("resolved executable identity"));
     assert!(refs.contains("guild show -v skill://example/hello-inspect@^0.1"));
 
     let trust = run_guild_success(&["help", "trust"], None);
