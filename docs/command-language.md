@@ -209,6 +209,24 @@ Use the examples and docs in this order when you want the current practical path
 
 `docs/testing.md` remains the place for deeper proof commands, smoke coverage, and maintainer-oriented verification.
 
+## Failure Language
+
+The human CLI path now uses a small stable set of failure labels:
+
+- `root/setup`: the selected Guild root or one of its local config files could not be opened as-is
+- `lookup/ambiguity`: the provided ref was missing or not specific enough
+- `resource/read`: the requested durable execution, evidence, or object ref was not available under the selected root
+- `authority denial`: local policy denied the run before guest start
+- `runtime/compatibility`: the active runtime could not honor the declared runtime surface
+- `trust/verification`: a signed artifact or publisher check failed against the selected root
+
+The default follow-up guidance should stay local and honest:
+
+- use `guild ls ...` to discover stored state
+- use `guild show -v ...` before rerunning after authority or runtime failures
+- use `guild why ...` after a rejected run when Guild persisted a receipt
+- use `guild trust list` and `guild trust add ...` when a trust check fails closed
+
 ### Ops Starter Pack
 
 The current user-facing example pack lives at

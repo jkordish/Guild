@@ -418,6 +418,45 @@ fn duplicate_installed_hello_with_filesystem(registry_root: &Path, skill_name: &
     target_dir
 }
 
+fn write_required_emit_evidence_denial_policy(registry_root: &Path) {
+    let policy = json!({
+        "format_version": "guild-local-policy-v2",
+        "default_profile": "default",
+        "profiles": [
+            {
+                "name": "default",
+                "default_action": "allow-requested-declared",
+                "rules": [
+                    {
+                        "name": "deny-required-emit-evidence",
+                        "applies_to": "required",
+                        "effect": "deny",
+                        "capabilities": {
+                            "grants": [
+                                {
+                                    "id": "emit-evidence",
+                                    "access": "write",
+                                    "constraints": {
+                                        "max_bytes": 65_536,
+                                        "audiences": ["user"],
+                                        "redactions": ["none"]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ],
+        "bindings": []
+    });
+    fs::write(
+        registry_root.join("policy.json"),
+        serde_json::to_vec_pretty(&policy).unwrap(),
+    )
+    .unwrap();
+}
+
 fn inspect_hello_with_cli(registry_root: &Path, name: &str, skill_ref: &str) -> Value {
     let grants_json = emit_evidence_grants_json();
     let inspect_output = run_guild_success(
@@ -808,11 +847,78 @@ fn run_refusal_keeps_payload_off_stdout_and_status_on_stderr() {
         "{stderr}"
     );
     assert!(
-        stderr.contains("filesystem-runtime-not-supported"),
+        stderr.contains("runtime/compatibility: filesystem capability contracts are not implemented in the active Wasm inspect slice"),
         "{stderr}"
     );
-    assert!(!stderr.contains("Next: guild why"), "{stderr}");
-    assert!(!stderr.contains("Next: guild get"), "{stderr}");
+    assert!(
+        stderr.contains("reason: filesystem-runtime-not-supported"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why guild://executions/",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v skill://example/hello-inspect-filesystem@^0.1",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn policy_denial_errors_surface_actionable_follow_up_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-run-policy-denial");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    write_required_emit_evidence_denial_policy(&registry_root);
+
+    let grants_json = emit_evidence_grants_json();
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(stderr.contains("rejected  proof-backed  exec:"), "{stderr}");
+    assert!(stderr.contains("policy-denied"), "{stderr}");
+    assert!(
+        stderr.contains("authority denial: local policy denied one or more required capabilities"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("reason: policy-denied"), "{stderr}");
+    assert!(stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why guild://executions/",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v skill://example/hello-inspect@^0.1",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -1039,10 +1145,20 @@ fn short_refs_fail_closed_when_ambiguous() {
         run_guild_failure_output(&["show", "hello-inspect@^0.1"], Some(&registry_root));
     let show_stderr = String::from_utf8(show_output.stderr).unwrap();
     assert!(
+        show_stderr.contains("lookup/ambiguity: short skill ref `hello-inspect@^0.1` was ambiguous across namespaces:"),
+        "{show_stderr}"
+    );
+    assert!(
         show_stderr.contains(
             "short skill ref `hello-inspect@^0.1` was ambiguous across namespaces: example, other-example"
         ) || show_stderr.contains(
             "short skill ref `hello-inspect@^0.1` was ambiguous across namespaces: other-example, example"
+        ),
+        "{show_stderr}"
+    );
+    assert!(
+        show_stderr.contains(
+            "Next: use a fully qualified skill ref such as `skill://<namespace>/<name>@<version-or-range>`"
         ),
         "{show_stderr}"
     );
@@ -1057,8 +1173,61 @@ fn short_refs_fail_closed_when_ambiguous() {
     let why_output = run_guild_failure_output(&["why", "exec:0"], Some(&registry_root));
     let why_stderr = String::from_utf8(why_output.stderr).unwrap();
     assert!(
-        why_stderr.contains("execution ref `exec:0` was ambiguous"),
+        why_stderr.contains("lookup/ambiguity: execution ref `exec:0` was ambiguous"),
         "{why_stderr}"
+    );
+    assert!(
+        why_stderr.contains(
+            "Next: use a longer `exec:` prefix or the full `guild://executions/<id>` URI"
+        ),
+        "{why_stderr}"
+    );
+}
+
+#[test]
+fn missing_execution_refs_surface_resource_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-missing-execution-guidance");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let why_output = run_guild_failure_output(&["why", "exec:deadbeef"], Some(&registry_root));
+    let why_stderr = String::from_utf8(why_output.stderr).unwrap();
+    assert!(
+        why_stderr.contains(
+            "resource/read: execution ref `exec:deadbeef` did not match any persisted execution"
+        ),
+        "{why_stderr}"
+    );
+    assert!(
+        why_stderr.contains(
+            "Next: run `guild ls runs --limit 5` to find a recent execution, or use a full `guild://executions/<id>` URI"
+        ),
+        "{why_stderr}"
+    );
+
+    let get_output = run_guild_failure_output(
+        &["get", "guild://executions/not-real"],
+        Some(&registry_root),
+    );
+    let get_stderr = String::from_utf8(get_output.stderr).unwrap();
+    assert!(
+        get_stderr
+            .contains("resource/read: execution record was not found in the local execution store"),
+        "{get_stderr}"
+    );
+    assert!(
+        get_stderr.contains("reason: execution-not-found"),
+        "{get_stderr}"
+    );
+    assert!(
+        get_stderr.contains("where: guild://executions/not-real"),
+        "{get_stderr}"
+    );
+    assert!(
+        get_stderr.contains(
+            "Next: run `guild ls runs --limit 5` to find a recent execution, or use a full `guild://executions/<id>` URI"
+        ),
+        "{get_stderr}"
     );
 }
 
@@ -1115,11 +1284,19 @@ fn read_only_commands_do_not_create_the_default_registry_root() {
 
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("read-only commands do not initialize a new root"),
+        stderr.contains("root/setup: Guild registry root `"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("detail: read-only commands do not initialize a new root"),
         "{stderr}"
     );
     assert!(
         stderr.contains(default_root.to_string_lossy().as_ref()),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("Next: run `guild install <source-dir>` to create it"),
         "{stderr}"
     );
     assert!(!default_root.exists());
@@ -1622,7 +1799,22 @@ fn trust_verify_plan_rejects_tampered_signed_plan() {
         String::from_utf8_lossy(&output.stderr),
     );
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("execution-plan-signature-digest-mismatch"));
+    assert!(
+        stderr.contains(
+            "trust/verification: execution plan signature metadata did not match the execution plan bytes"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: execution-plan-signature-digest-mismatch"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(
+            "Next: confirm the signed plan file was not modified after signing, or rerun `guild trust sign-plan --plan <plan.json> --identity-file <identity.json> --output <signed-plan.json>`"
+        ),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -1940,11 +2132,13 @@ fn shared_help_topics_are_available() {
     assert!(trust.contains("Trust and verification"));
     assert!(trust.contains("guild verify <skill-ref>"));
     assert!(trust.contains("guild trust verify-plan"));
+    assert!(trust.contains("`trust/verification` means Guild could not verify"));
 
     let roots = run_guild_success(&["help", "roots"], None);
     assert!(roots.contains("Guild root resolution"));
     assert!(roots.contains("GUILD_REGISTRY_ROOT"));
     assert!(roots.contains("There is no cwd-local .guild fallback."));
+    assert!(roots.contains("`root/setup` means Guild could not open"));
 
     let doctor = run_guild_success(&["help", "doctor"], None);
     assert!(doctor.contains("Diagnostic command direction"));
@@ -2308,6 +2502,44 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(ops_pack.contains("## Journey 3: Scan Recent Failures"));
     assert!(ops_pack.contains("## Journey 4: Inspect One Stored Evidence Record"));
     assert!(ops_pack.contains("## Keep Going With The Normal CLI"));
+}
+
+#[test]
+fn readme_and_command_language_document_failure_labels() {
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    for phrase in [
+        "## Failure Paths",
+        "`root/setup`",
+        "`lookup/ambiguity`",
+        "`resource/read`",
+        "`authority denial`",
+        "`runtime/compatibility`",
+        "`trust/verification`",
+        "use `guild why ...` after a rejected run when Guild persisted an execution receipt",
+    ] {
+        assert!(
+            readme.contains(phrase),
+            "README.md is missing failure-path wording: {phrase}"
+        );
+    }
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    for phrase in [
+        "## Failure Language",
+        "`root/setup`",
+        "`lookup/ambiguity`",
+        "`resource/read`",
+        "`authority denial`",
+        "`runtime/compatibility`",
+        "`trust/verification`",
+        "use `guild show -v ...` before rerunning after authority or runtime failures",
+    ] {
+        assert!(
+            command_language.contains(phrase),
+            "docs/command-language.md is missing failure-language wording: {phrase}"
+        );
+    }
 }
 
 #[test]

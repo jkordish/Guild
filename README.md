@@ -180,6 +180,24 @@ If you want an explicit non-default root for local proofs or CI, keep passing it
 guild --registry-root target/dev-local-registry/hello install examples/skills/hello-inspect
 ```
 
+## Failure Paths
+
+Guild now uses a small set of user-facing failure labels on the human CLI path:
+
+- `root/setup`: the selected Guild root or one of its local config files could not be opened as-is
+- `lookup/ambiguity`: the ref you gave Guild was missing or not specific enough
+- `resource/read`: the durable execution, evidence, or object ref was not available under the selected root
+- `authority denial`: local policy denied the run before guest start
+- `runtime/compatibility`: the active runtime could not honor the declared runtime surface
+- `trust/verification`: a signed plan or trusted publisher check failed against the selected root
+
+The follow-up guidance should stay boring and local:
+
+- use `guild ls ...` to find durable state when a read path is missing
+- use `guild show -v ...` before rerunning when the problem is authority or runtime shape
+- use `guild why ...` after a rejected run when Guild persisted an execution receipt
+- use `guild trust list` and `guild trust add ...` when a trust check fails closed
+
 ## User Journeys
 
 If you are deciding where to start, use the user-facing docs in this order:
