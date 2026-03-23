@@ -2985,7 +2985,7 @@ fn run_trust(
         "add" => run_trust_add(&args[1..], global, env_registry_root),
         "list" => run_trust_list(&args[1..], global, env_registry_root),
         "remove" => run_trust_remove(&args[1..], global, env_registry_root),
-        "sign-plan" => run_trust_sign_plan(&args[1..]),
+        "sign-plan" => run_trust_sign_plan(&args[1..], global, env_registry_root),
         "verify-plan" => run_trust_verify_plan(&args[1..], global, env_registry_root),
         _ => Err(CliError::new(format!(
             "unknown trust subcommand `{command}`"
@@ -3236,7 +3236,11 @@ fn run_trust_remove(
     Ok(())
 }
 
-fn run_trust_sign_plan(args: &[String]) -> Result<(), CliError> {
+fn run_trust_sign_plan(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
     if !args.is_empty() && is_help(args[0].as_str()) {
         print_trust_sign_plan_usage();
         return Ok(());
@@ -3302,7 +3306,8 @@ fn run_trust_sign_plan(args: &[String]) -> Result<(), CliError> {
     if json_output {
         print_json(&output)?;
     } else {
-        print_trust_sign_plan_text(&output);
+        let registry_root = resolve_registry_root(global, env_registry_root)?;
+        print_trust_sign_plan_text(&output, &registry_root);
     }
 
     Ok(())
@@ -4154,7 +4159,7 @@ fn print_import_text(installed: &[InstalledSkill], registry_root: &Path) {
     );
 }
 
-fn print_trust_sign_plan_text(output: &TrustSignPlanOutput) {
+fn print_trust_sign_plan_text(output: &TrustSignPlanOutput, registry_root: &Path) {
     println!("signed execution plan");
     println!("publisher: {}", output.publisher_id);
     println!(
@@ -4163,8 +4168,14 @@ fn print_trust_sign_plan_text(output: &TrustSignPlanOutput) {
     );
     println!("output: {}", output.output_path);
     println!(
-        "Next: guild trust verify-plan --plan {}",
-        shell_quote_arg(&output.output_path)
+        "{}",
+        qualify_next_steps_for_registry_root(
+            &format!(
+                "Next: guild trust verify-plan --plan {}",
+                shell_quote_arg(&output.output_path)
+            ),
+            registry_root,
+        )
     );
 }
 

@@ -2313,6 +2313,8 @@ fn trust_sign_and_verify_plan_commands_work() {
 
     let sign_output = run_guild_success(
         &[
+            "--registry-root",
+            &registry_root_display,
             "trust",
             "sign-plan",
             "--plan",
@@ -2394,6 +2396,8 @@ fn trust_sign_and_verify_plan_human_output_is_review_friendly() {
 
     let sign_output = run_guild_success(
         &[
+            "--registry-root",
+            &registry_root_display,
             "trust",
             "sign-plan",
             "--plan",
@@ -2420,7 +2424,8 @@ fn trust_sign_and_verify_plan_human_output_is_review_friendly() {
     );
     assert!(
         sign_output.contains(&format!(
-            "Next: guild trust verify-plan --plan {}",
+            "Next: guild --registry-root {} trust verify-plan --plan {}",
+            registry_root_display,
             signed_plan_path.display()
         )),
         "{sign_output}"
