@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, IsTerminal, Write as _};
 use std::num::NonZeroUsize;
@@ -60,22 +59,128 @@ const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  planned `--pre
 const PUSH_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for push in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const PULL_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview`, but the flag is not implemented yet.\n  see `guild help preview` for the planned read-only scope.";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CliErrorCategory {
+    Usage,
+    RootSetup,
+    LookupAmbiguity,
+    AuthorityDenial,
+    TrustVerification,
+    RuntimeCompatibility,
+    ResourceRead,
+}
+
+impl CliErrorCategory {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Usage => "usage",
+            Self::RootSetup => "root/setup",
+            Self::LookupAmbiguity => "lookup/ambiguity",
+            Self::AuthorityDenial => "authority denial",
+            Self::TrustVerification => "trust/verification",
+            Self::RuntimeCompatibility => "runtime/compatibility",
+            Self::ResourceRead => "resource/read",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct CliError {
-    message: String,
+    category: CliErrorCategory,
+    summary: String,
+    reason_code: Option<String>,
+    detail: Option<String>,
+    location: Option<String>,
+    next_steps: Option<String>,
 }
 
 impl CliError {
     fn new(message: impl Into<String>) -> Self {
+        let message = message.into();
+        let category = classify_cli_message(&message);
+        let next_steps = next_steps_for_cli_message(&message, category);
         Self {
-            message: message.into(),
+            category,
+            summary: message,
+            reason_code: None,
+            detail: None,
+            location: None,
+            next_steps,
         }
+    }
+
+    fn classified(category: CliErrorCategory, summary: impl Into<String>) -> Self {
+        Self {
+            category,
+            summary: summary.into(),
+            reason_code: None,
+            detail: None,
+            location: None,
+            next_steps: None,
+        }
+    }
+
+    fn with_reason_code(mut self, reason_code: impl Into<String>) -> Self {
+        self.reason_code = Some(reason_code.into());
+        self
+    }
+
+    fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        let detail = detail.into();
+        if !detail.trim().is_empty() {
+            self.detail = Some(detail);
+        }
+        self
+    }
+
+    fn with_location(mut self, location: impl Into<String>) -> Self {
+        let location = location.into();
+        if !location.trim().is_empty() {
+            self.location = Some(location);
+        }
+        self
+    }
+
+    fn with_preferred_location(mut self, location: impl Into<String>) -> Self {
+        self.location = Some(location.into());
+        self
+    }
+
+    fn with_next_steps(mut self, next_steps: impl Into<String>) -> Self {
+        let next_steps = next_steps.into();
+        if !next_steps.trim().is_empty() {
+            self.next_steps = Some(next_steps);
+        }
+        self
+    }
+
+    fn qualify_for_registry_root(mut self, registry_root: &Path) -> Self {
+        if let Some(next_steps) = self.next_steps.take() {
+            self.next_steps = Some(qualify_next_steps_for_registry_root(
+                &next_steps,
+                registry_root,
+            ));
+        }
+        self
     }
 }
 
 impl std::fmt::Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
+        write!(f, "{}: {}", self.category.label(), self.summary)?;
+        if let Some(reason_code) = &self.reason_code {
+            write!(f, "\nreason: {reason_code}")?;
+        }
+        if let Some(detail) = &self.detail {
+            write!(f, "\ndetail: {detail}")?;
+        }
+        if let Some(location) = &self.location {
+            write!(f, "\nwhere: {location}")?;
+        }
+        if let Some(next_steps) = &self.next_steps {
+            write!(f, "\n{next_steps}")?;
+        }
+        Ok(())
     }
 }
 
@@ -83,7 +188,7 @@ impl std::error::Error for CliError {}
 
 impl From<RegistryError> for CliError {
     fn from(value: RegistryError) -> Self {
-        Self::new(format!("{value}"))
+        cli_error_from_registry(value)
     }
 }
 
@@ -103,6 +208,307 @@ impl From<serde_json::Error> for CliError {
     fn from(value: serde_json::Error) -> Self {
         Self::new(value.to_string())
     }
+}
+
+fn classify_cli_message(message: &str) -> CliErrorCategory {
+    if message.starts_with("Guild registry root `")
+        || message.contains("read-only commands do not initialize a new root")
+        || message.contains("local policy configuration")
+    {
+        CliErrorCategory::RootSetup
+    } else if message.contains("was ambiguous")
+        || message.contains("did not match any installed skill")
+        || message.contains("requested skill was not found in registry")
+    {
+        CliErrorCategory::LookupAmbiguity
+    } else if message.contains("persisted execution")
+        || message.contains("execution record was not found")
+        || message.contains("evidence record was not found")
+        || message.contains("evidence object was not found")
+        || message.contains("stored evidence record")
+        || message.contains("stored object")
+        || message.contains("unsupported resource ref")
+    {
+        CliErrorCategory::ResourceRead
+    } else if message.contains("policy denied")
+        || message.contains("local policy rejected")
+        || message.contains("invalid requested capabilities")
+    {
+        CliErrorCategory::AuthorityDenial
+    } else if message.starts_with("trusted publisher `") && message.contains("was not present") {
+        CliErrorCategory::LookupAmbiguity
+    } else if message.contains("signature")
+        || message.contains("trusted publisher")
+        || message.contains("signed bundle")
+        || message.contains("execution plan")
+    {
+        CliErrorCategory::TrustVerification
+    } else if message.contains("runtime")
+        || message.contains("guest_abi_version")
+        || message.contains("filesystem capability contracts")
+        || message.contains("Wasm inspect execution only supports")
+    {
+        CliErrorCategory::RuntimeCompatibility
+    } else {
+        CliErrorCategory::Usage
+    }
+}
+
+fn next_steps_for_cli_message(message: &str, category: CliErrorCategory) -> Option<String> {
+    if message.starts_with("short skill ref `") && message.contains("was ambiguous") {
+        return Some(
+            "Next: use a fully qualified skill ref such as `skill://<namespace>/<name>@<version-or-range>`"
+                .into(),
+        );
+    }
+    if message.starts_with("short skill ref `")
+        && message.contains("did not match any installed skill")
+    {
+        return Some("Next: run `guild ls skills` to inspect installed skills".into());
+    }
+    if message.starts_with("execution ref `") && message.contains("was ambiguous") {
+        return Some(
+            "Next: use a longer `exec:` prefix or the full `guild://executions/<id>` URI".into(),
+        );
+    }
+    if message.starts_with("execution ref `")
+        && message.contains("did not match any persisted execution")
+    {
+        return Some(
+            "Next: run `guild ls runs --limit 5` to find a recent execution, or use a full `guild://executions/<id>` URI"
+                .into(),
+        );
+    }
+    if message.starts_with("evidence ref `")
+        && message.contains("did not match any stored evidence record")
+    {
+        return Some("Next: run `guild ls evidence --limit 5` to inspect stored evidence".into());
+    }
+    if message.starts_with("object ref `") && message.contains("did not match any stored object") {
+        return Some("Next: run `guild ls objects --limit 5` to inspect stored objects".into());
+    }
+    if message.starts_with("unsupported resource ref `") {
+        return Some(
+            "Next: use a canonical `guild://...` URI, or a supported short ref such as `exec:...`, `evidence:...`, or `obj:...`"
+                .into(),
+        );
+    }
+    if message.starts_with("trusted publisher `") && message.contains("was not present") {
+        return Some(
+            "Next: run `guild trust list` to inspect the current trusted publisher entries".into(),
+        );
+    }
+
+    match category {
+        CliErrorCategory::Usage => None,
+        CliErrorCategory::RootSetup => None,
+        CliErrorCategory::LookupAmbiguity => Some(
+            "Next: use a more specific ref, or inspect installed state with `guild ls skills`"
+                .into(),
+        ),
+        CliErrorCategory::AuthorityDenial => Some(
+            "Next: inspect the skill with `guild show -v <skill-ref>` and review the local policy before rerunning"
+                .into(),
+        ),
+        CliErrorCategory::TrustVerification => Some(
+            "Next: inspect the target root with `guild trust list`, then recheck the signed artifact and publisher trust record"
+                .into(),
+        ),
+        CliErrorCategory::RuntimeCompatibility => Some(
+            "Next: inspect the installed runtime surface with `guild show -v <skill-ref>` before rerunning"
+                .into(),
+        ),
+        CliErrorCategory::ResourceRead => Some(
+            "Next: inspect recent persisted state with `guild ls runs`, `guild ls evidence`, or `guild ls objects`"
+                .into(),
+        ),
+    }
+}
+
+fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCategory {
+    if code == "registry-root-missing"
+        || code.starts_with("policy-")
+        || message.contains("local policy configuration")
+    {
+        CliErrorCategory::RootSetup
+    } else if matches!(
+        code,
+        "trusted-publisher-read-failed"
+            | "trusted-publisher-parse-failed"
+            | "trusted-publisher-key-invalid"
+            | "trusted-publisher-tier-invalid"
+            | "trusted-publisher-scan-failed"
+            | "trusted-publisher-remove-failed"
+    ) {
+        CliErrorCategory::RootSetup
+    } else if matches!(
+        code,
+        "bundle-signature-format-unsupported" | "execution-plan-signature-format-unsupported"
+    ) {
+        CliErrorCategory::RuntimeCompatibility
+    } else if code == "bundle-format-unsupported" {
+        CliErrorCategory::RuntimeCompatibility
+    } else if is_bundle_integrity_error_code(code) {
+        CliErrorCategory::TrustVerification
+    } else if code.starts_with("execution-plan-")
+        || code.starts_with("trusted-publisher-")
+        || code.starts_with("bundle-publisher-")
+        || code.contains("signature")
+    {
+        CliErrorCategory::TrustVerification
+    } else if code == "execution-not-found"
+        || code == "object-not-found"
+        || code == "resource-uri-invalid"
+        || code == "resource-kind-mismatch"
+        || code.starts_with("object-")
+        || code.starts_with("execution-read-")
+    {
+        CliErrorCategory::ResourceRead
+    } else if code == "skill-not-found" || code == "resolved-skill-not-found" {
+        CliErrorCategory::LookupAmbiguity
+    } else if code.contains("ambiguous") {
+        CliErrorCategory::LookupAmbiguity
+    } else {
+        classify_cli_message(message)
+    }
+}
+
+fn is_bundle_integrity_error_code(code: &str) -> bool {
+    matches!(
+        code,
+        "artifact-digest-mismatch"
+            | "staged-file-missing"
+            | "bundle-index-invalid"
+            | "bundle-entry-mismatch"
+            | "bundle-publisher-mismatch"
+            | "oci-layout-index-missing"
+            | "oci-layout-digest-invalid"
+    ) || code.starts_with("bundle-signature-")
+        || code.starts_with("oci-layout-blob-")
+        || code.starts_with("oci-registry-blob-size-")
+        || code.starts_with("oci-registry-blob-digest-")
+}
+
+fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
+    match code {
+        "source-root-missing" => Some(
+            "Next: confirm the source directory exists, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "source-root-open-failed" => Some(
+            "Next: confirm the source directory is readable, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "source-manifest-read-failed"
+        | "source-manifest-parse-failed"
+        | "invalid-manifest"
+        | "invalid-source-manifest"
+        | "source-file-uri-invalid"
+        | "source-file-missing" => Some(
+            "Next: confirm the source directory contains a valid `manifest.json` and referenced support files, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "dependency-resolution-failed" => Some(
+            "Next: install the declared dependency skill first, or fix the dependency ref in the source manifest, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "build-command-failed" | "build-failed" | "build-artifact-missing" => Some(
+            "Next: confirm the source skill builds successfully as a Wasm component, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "source-skill-not-installed" => Some(
+            "Next: run `guild install <source-dir>` first, then rerun the command against the installed skill ref"
+                .into(),
+        ),
+        "bundle-root-missing" | "bundle-root-invalid" | "bundle-root-open-failed" => Some(
+            "Next: confirm the bundle directory path exists and points at the exported bundle root before rerunning `guild import bundle <directory>`"
+                .into(),
+        ),
+        "bundle-format-unsupported" => Some(
+            "Next: confirm the target Guild build supports this bundle format version, or re-export with a compatible Guild version before rerunning the import or pull"
+                .into(),
+        ),
+        "execution-not-found" => Some(
+            "Next: run `guild ls runs --limit 5` to find a recent execution, or use a full `guild://executions/<id>` URI"
+                .into(),
+        ),
+        "object-not-found" if message.contains("record") => {
+            Some("Next: run `guild ls evidence --limit 5` to inspect stored evidence".into())
+        }
+        "object-not-found" => {
+            Some("Next: run `guild ls objects --limit 5` to inspect stored objects".into())
+        }
+        "resource-uri-invalid" => Some(
+            "Next: use a canonical `guild://...` URI, or a supported short ref such as `exec:...`, `evidence:...`, or `obj:...`"
+                .into(),
+        ),
+        "policy-read-failed" | "policy-parse-failed" | "policy-invalid" => {
+            Some("Next: fix the local policy file under the selected Guild root and rerun the command".into())
+        }
+        "trusted-publisher-read-failed"
+        | "trusted-publisher-parse-failed"
+        | "trusted-publisher-key-invalid"
+        | "trusted-publisher-tier-invalid" => Some(
+            "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild trust list`"
+                .into(),
+        ),
+        "trusted-publisher-scan-failed" | "trusted-publisher-remove-failed" => Some(
+            "Next: fix the local trust store under the selected Guild root, then rerun `guild trust list` or `guild trust remove <publisher-id>`"
+                .into(),
+        ),
+        "bundle-signature-format-unsupported" => Some(
+            "Next: confirm the target Guild build supports this bundle signature format version, or re-export the bundle with a compatible Guild version before rerunning the import or pull"
+                .into(),
+        ),
+        "execution-plan-signature-format-unsupported" => Some(
+            "Next: confirm the target Guild build supports this signed plan format version, or rerun `guild trust sign-plan --plan <plan.json> --identity-file <identity.json> --output <signed-plan.json>` with a compatible Guild version"
+                .into(),
+        ),
+        "execution-plan-publisher-untrusted" | "bundle-publisher-untrusted" => Some(
+            "Next: run `guild trust list` to inspect the target root, then add the publisher with `guild trust add --identity-file <identity.json>` or `guild trust add --record-file <record.json>`"
+                .into(),
+        ),
+        code if code.starts_with("execution-plan-") => Some(
+            "Next: confirm the signed plan file was not modified after signing, or rerun `guild trust sign-plan --plan <plan.json> --identity-file <identity.json> --output <signed-plan.json>`"
+                .into(),
+        ),
+        code if is_bundle_integrity_error_code(code) => Some(
+            "Next: confirm the signed bundle or OCI artifact was not modified after export, or fetch a fresh copy from the publisher before rerunning the import or pull"
+                .into(),
+        ),
+        _ => next_steps_for_cli_message(message, classify_registry_error_category(code, message)),
+    }
+}
+
+fn location_from_registry_detail(detail: Option<&Value>) -> Option<String> {
+    let detail = detail?;
+    match detail {
+        Value::Object(map) => map
+            .get("uri")
+            .and_then(Value::as_str)
+            .or_else(|| map.get("path").and_then(Value::as_str))
+            .or_else(|| map.get("reference").and_then(Value::as_str))
+            .map(std::borrow::ToOwned::to_owned),
+        Value::String(text) => Some(text.clone()),
+        _ => None,
+    }
+}
+
+fn cli_error_from_registry(error: RegistryError) -> CliError {
+    let category = classify_registry_error_category(&error.code, &error.message);
+    let mut cli_error =
+        CliError::classified(category, error.message.clone()).with_reason_code(error.code.clone());
+    if let Some(location) = location_from_registry_detail(error.detail.as_ref()) {
+        cli_error = cli_error.with_location(location);
+    }
+    if let Some(next_steps) = next_steps_for_registry_error(&error.code, &error.message) {
+        cli_error = cli_error.with_next_steps(next_steps);
+    }
+    cli_error
+}
+
+fn cli_error_from_registry_with_root(error: RegistryError, registry_root: &Path) -> CliError {
+    cli_error_from_registry(error).qualify_for_registry_root(registry_root)
 }
 
 #[derive(Debug, Clone)]
@@ -1223,7 +1629,8 @@ fn run_show(
         return Err(CliError::new("`guild show` requires exactly one ref"));
     }
 
-    let target = resolve_show_target(&registry, &positional[0])?;
+    let target = resolve_show_target(&registry, &positional[0])
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     if render.json_output {
         match target {
             ShowTarget::Skill {
@@ -1389,7 +1796,9 @@ fn run_run_command(
     validate_render_flags(&render)?;
     let requested = skill_ref.ok_or_else(|| CliError::new("`guild run` requires a skill ref"))?;
     let registry = build_existing_registry(&registry_root)?;
-    let skill = resolve_requested_skill_ref(&registry, &requested)?;
+    let skill = resolve_requested_skill_ref(&registry, &requested)
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
+    let canonical_skill_ref = canonical_requested_skill_ref(&skill);
 
     if input_json.is_some() && input_file.is_some() {
         return Err(CliError::new(
@@ -1420,7 +1829,11 @@ fn run_run_command(
         Ok(response) => response,
         Err(error) => {
             emit_run_error_status(&facade, &render, &error);
-            return Err(cli_error_from_mcp(error));
+            return Err(cli_error_from_mcp(
+                error,
+                &canonical_skill_ref,
+                &registry_root,
+            ));
         }
     };
 
@@ -1550,8 +1963,12 @@ fn run_get(
 
     validate_render_flags(&render)?;
     let ref_input = ref_input.ok_or_else(|| CliError::new("`guild get` requires a ref"))?;
-    let uri = resolve_resource_ref(&registry, &ref_input)?;
-    let resource = registry.read_resource(&uri)?;
+    let uri = resolve_resource_ref(&registry, &ref_input)
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
+    let resource = registry.read_resource(&uri).map_err(|error| {
+        cli_error_from_registry_with_root(error, &registry_root)
+            .with_preferred_location(uri.clone())
+    })?;
 
     if let Some(path) = output_path {
         fs::write(&path, &resource.bytes)?;
@@ -1616,9 +2033,15 @@ fn run_why(
         ));
     }
 
-    let uri = resolve_execution_ref(&registry, &positional[0])?;
+    let uri = resolve_execution_ref(&registry, &positional[0])
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     let execution_id = execution_id_from_uri(&uri)?;
-    let record = registry.load_execution_record(&execution_id)?;
+    let record = registry
+        .load_execution_record(&execution_id)
+        .map_err(|error| {
+            cli_error_from_registry_with_root(error, &registry_root)
+                .with_preferred_location(uri.clone())
+        })?;
 
     if render.json_output {
         print_json(&WhyCommandOutput {
@@ -1661,8 +2084,11 @@ fn run_verify(
     }
 
     let requested = positional[0].clone();
-    let skill = resolve_requested_skill_ref(&registry, &requested)?;
-    let installed = registry.resolve(&skill)?;
+    let skill = resolve_requested_skill_ref(&registry, &requested)
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
+    let installed = registry
+        .resolve(&skill)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
 
     if render.json_output {
         print_json(&VerifySkillCommandOutput {
@@ -2107,7 +2533,10 @@ fn run_install(
         index += 1;
     }
 
-    let installed = LocalSourceInstaller::new(&registry_root)?.install(&source_dir)?;
+    let installed = LocalSourceInstaller::new(&registry_root)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?
+        .install(&source_dir)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
     let output = summarize_installed_skill(&installed, &registry_root);
 
     if json_output {
@@ -2152,7 +2581,8 @@ fn run_export_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
     }
 
     let registry = build_existing_registry(registry_root)?;
-    let root = resolve_installed_skill(&registry, &args[0])?;
+    let root = resolve_installed_skill(&registry, &args[0])
+        .map_err(|error| error.qualify_for_registry_root(registry_root))?;
     let mut signer = None;
     let mut output_root = None;
     let mut include_dependencies = false;
@@ -2181,12 +2611,14 @@ fn run_export_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
     let signer = load_signer_identity(signer.as_deref())?;
     let output_root = output_root
         .ok_or_else(|| CliError::new("`guild export bundle` requires --output <directory>"))?;
-    registry.export_bundle(
-        &root.resolved_ref,
-        include_dependencies,
-        &output_root,
-        &signer,
-    )?;
+    registry
+        .export_bundle(
+            &root.resolved_ref,
+            include_dependencies,
+            &output_root,
+            &signer,
+        )
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
 
     let output = ExportCommandOutput {
         format: "bundle",
@@ -2212,7 +2644,8 @@ fn run_export_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
     }
 
     let registry = build_existing_registry(registry_root)?;
-    let root = resolve_installed_skill(&registry, &args[0])?;
+    let root = resolve_installed_skill(&registry, &args[0])
+        .map_err(|error| error.qualify_for_registry_root(registry_root))?;
     let mut signer = None;
     let mut output_root = None;
     let mut include_dependencies = false;
@@ -2241,12 +2674,14 @@ fn run_export_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
     let signer = load_signer_identity(signer.as_deref())?;
     let output_root = output_root
         .ok_or_else(|| CliError::new("`guild export oci-layout` requires --output <directory>"))?;
-    registry.export_oci_layout(
-        &root.resolved_ref,
-        include_dependencies,
-        &output_root,
-        &signer,
-    )?;
+    registry
+        .export_oci_layout(
+            &root.resolved_ref,
+            include_dependencies,
+            &output_root,
+            &signer,
+        )
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
 
     let output = ExportCommandOutput {
         format: "oci-layout",
@@ -2310,7 +2745,8 @@ fn run_import_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
         index += 1;
     }
 
-    let installed = LocalRegistry::import_bundle(registry_root, &source_root)?;
+    let installed = LocalRegistry::import_bundle(registry_root, &source_root)
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
     let output = ImportCommandOutput {
         format: "bundle",
         registry_root: registry_root.display().to_string(),
@@ -2350,7 +2786,8 @@ fn run_import_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
         index += 1;
     }
 
-    let installed = LocalRegistry::import_oci_layout(registry_root, &source_root)?;
+    let installed = LocalRegistry::import_oci_layout(registry_root, &source_root)
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
     let output = ImportCommandOutput {
         format: "oci-layout",
         registry_root: registry_root.display().to_string(),
@@ -2381,7 +2818,8 @@ fn run_push(
 
     let registry_root = resolve_registry_root(global, env_registry_root)?;
     let registry = build_existing_registry(&registry_root)?;
-    let root = resolve_installed_skill(&registry, &args[0])?;
+    let root = resolve_installed_skill(&registry, &args[0])
+        .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     let mut signer = None;
     let mut reference = None;
     let mut include_dependencies = false;
@@ -2416,13 +2854,15 @@ fn run_push(
     let signer = load_signer_identity(signer.as_deref())?;
     let reference =
         reference.ok_or_else(|| CliError::new("`guild push` requires --reference <oci-ref>"))?;
-    let published = registry.push_oci_registry(
-        &root.resolved_ref,
-        include_dependencies,
-        &reference,
-        &oci_transport_options(allow_http),
-        &signer,
-    )?;
+    let published = registry
+        .push_oci_registry(
+            &root.resolved_ref,
+            include_dependencies,
+            &reference,
+            &oci_transport_options(allow_http),
+            &signer,
+        )
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
 
     let output = PushCommandOutput {
         reference: published.reference.to_string(),
@@ -2475,7 +2915,8 @@ fn run_pull(
         &registry_root,
         &reference,
         &oci_transport_options(allow_http),
-    )?;
+    )
+    .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
     let output = ImportCommandOutput {
         format: "oci-registry",
         registry_root: registry_root.display().to_string(),
@@ -2659,7 +3100,8 @@ fn run_trust_add(
         record
     };
 
-    LocalRegistry::trust_publisher(&registry_root, &publisher)?;
+    LocalRegistry::trust_publisher(&registry_root, &publisher)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
 
     let output = TrustAddOutput {
         publisher_id: publisher.publisher.id,
@@ -2704,7 +3146,8 @@ fn run_trust_list(
 
     let output = TrustListOutput {
         registry_root: registry_root.display().to_string(),
-        publishers: LocalRegistry::list_trusted_publishers(&registry_root)?,
+        publishers: LocalRegistry::list_trusted_publishers(&registry_root)
+            .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?,
     };
 
     if json_output {
@@ -2739,11 +3182,17 @@ fn run_trust_remove(
         ));
     }
 
-    let removed = LocalRegistry::remove_trusted_publisher(&registry_root, &publisher_id)?;
+    let removed = LocalRegistry::remove_trusted_publisher(&registry_root, &publisher_id)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
     if !removed {
-        return Err(CliError::new(format!(
-            "trusted publisher `{publisher_id}` was not present"
-        )));
+        return Err(CliError::classified(
+            CliErrorCategory::LookupAmbiguity,
+            format!("trusted publisher `{publisher_id}` was not present"),
+        )
+        .with_next_steps(
+            "Next: run `guild trust list` to inspect the current trusted publisher entries",
+        )
+        .qualify_for_registry_root(&registry_root));
     }
 
     println!("removed trusted publisher {publisher_id}");
@@ -2861,7 +3310,8 @@ fn run_trust_verify_plan(
     })?;
     let plan: Value =
         serde_json::from_str(&fs::read_to_string(&plan_path).map_err(CliError::from)?)?;
-    let verification = verify_execution_plan(&registry_root, &plan)?;
+    let verification = verify_execution_plan(&registry_root, &plan)
+        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
     let output = trust_verify_output(&registry_root, verification);
 
     if json_output {
@@ -2961,10 +3411,12 @@ fn qualify_next_steps_for_registry_root(next_steps: &str, registry_root: &Path) 
     }
 
     let replacement = format!(
-        "Next: guild --registry-root {} ",
+        "guild --registry-root {} ",
         shell_quote_arg(&registry_root.display().to_string())
     );
-    next_steps.replace("Next: guild ", &replacement)
+    next_steps
+        .replace("Next: guild ", &format!("Next: {replacement}"))
+        .replace("`guild ", &format!("`{replacement}"))
 }
 
 fn uses_default_registry_root(registry_root: &Path) -> bool {
@@ -2985,26 +3437,35 @@ fn is_shell_safe_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-')
 }
 
+fn missing_registry_root_error(registry_root: &Path) -> CliError {
+    CliError::classified(
+        CliErrorCategory::RootSetup,
+        format!(
+            "Guild registry root `{}` does not exist yet",
+            registry_root.display()
+        ),
+    )
+    .with_detail("read-only commands do not initialize a new root")
+    .with_next_steps(format!(
+        "Next: run `{CLI_BINARY_NAME} install <source-dir>` to create it, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an existing root"
+    ))
+    .qualify_for_registry_root(registry_root)
+}
+
 fn ensure_existing_registry_root(registry_root: &Path) -> Result<(), CliError> {
     if registry_root.exists() {
         return Ok(());
     }
 
-    Err(CliError::new(format!(
-        "Guild registry root `{}` does not exist yet\nread-only commands do not initialize a new root\nrun `{CLI_BINARY_NAME} install <source-dir>` to create it, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an existing root",
-        registry_root.display()
-    )))
+    Err(missing_registry_root_error(registry_root))
 }
 
 fn build_existing_registry(registry_root: &Path) -> Result<LocalRegistry, CliError> {
     LocalRegistry::load_existing(registry_root).map_err(|error| {
         if error.code == "registry-root-missing" {
-            CliError::new(format!(
-                "Guild registry root `{}` does not exist yet\nread-only commands do not initialize a new root\nrun `{CLI_BINARY_NAME} install <source-dir>` to create it, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an existing root",
-                registry_root.display()
-            ))
+            missing_registry_root_error(registry_root)
         } else {
-            CliError::from(error)
+            cli_error_from_registry_with_root(error, registry_root)
         }
     })
 }
@@ -3012,10 +3473,17 @@ fn build_existing_registry(registry_root: &Path) -> Result<LocalRegistry, CliErr
 fn build_facade(
     registry_root: &Path,
 ) -> Result<GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter>, CliError> {
-    let registry = LocalRegistry::load(registry_root)?;
+    let registry = LocalRegistry::load(registry_root)
+        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
     let runtime = WasmtimeRuntimeAdapter::new()
         .map_err(McpError::from)
-        .map_err(|error| CliError::new(format!("{}: {}", error.code, error.message)))?;
+        .map_err(|error| {
+            CliError::classified(
+                CliErrorCategory::RuntimeCompatibility,
+                error.message.clone(),
+            )
+            .with_reason_code(error.code)
+        })?;
     Ok(GuildMcpFacade::new(registry, runtime))
 }
 
@@ -3158,7 +3626,7 @@ fn resolve_show_resource_target(
         return registry
             .load_execution_record(&execution_id)
             .map(ShowTarget::Execution)
-            .map_err(CliError::from);
+            .map_err(|error| CliError::from(error).with_preferred_location(uri));
     }
 
     if let Some(prefix) = input.strip_prefix("evidence:") {
@@ -3175,12 +3643,12 @@ fn resolve_show_resource_target(
         GuildResourceUri::Execution { execution_id } => registry
             .load_execution_record(&execution_id)
             .map(ShowTarget::Execution)
-            .map_err(CliError::from),
+            .map_err(|error| CliError::from(error).with_preferred_location(input.to_owned())),
         GuildResourceUri::ObjectRecord { .. } | GuildResourceUri::ObjectRecordMetadata { .. } => {
             registry
                 .load_evidence_record(input)
                 .map(ShowTarget::Evidence)
-                .map_err(CliError::from)
+                .map_err(|error| CliError::from(error).with_preferred_location(input.to_owned()))
         }
         GuildResourceUri::ObjectBlob { digest_hex } => {
             resolve_object_blob_exact(registry, &digest_hex).map(ShowTarget::Object)
@@ -3422,17 +3890,86 @@ fn parse_capability_grants(value: Value) -> Result<CapabilityGrantSet, CliError>
     serde_json::from_value(value).map_err(CliError::from)
 }
 
-fn cli_error_from_mcp(error: McpError) -> CliError {
-    let mut message = format!("{}: {}", error.code, error.message);
-    if let Some(receipt) = error.receipt {
-        let _ = write!(
-            message,
-            " (execution: {}, status: {})",
-            receipt.uri,
-            status_label(&receipt.status)
-        );
+fn classify_mcp_error_category(code: &str, message: &str) -> CliErrorCategory {
+    if code == "policy-denied"
+        || code.starts_with("policy-")
+        || code.ends_with("-not-granted")
+        || code.ends_with("-denied")
+        || code == "child-capability-mismatch"
+        || message.contains("was not granted")
+        || message.contains("were not granted")
+        || message.contains("outside the granted HTTP authority")
+        || message.contains("exceeded the granted")
+    {
+        CliErrorCategory::AuthorityDenial
+    } else if code == "unsupported-runtime"
+        || code == "component-abi-mismatch"
+        || code == "unsupported-runtime-surface"
+        || code == "filesystem-runtime-not-supported"
+        || message.contains("runtime")
+        || message.contains("Wasm inspect execution only supports")
+    {
+        CliErrorCategory::RuntimeCompatibility
+    } else if code.contains("signature") || code.starts_with("execution-plan-") {
+        CliErrorCategory::TrustVerification
+    } else {
+        classify_cli_message(message)
     }
-    CliError::new(message)
+}
+
+fn next_steps_for_mcp_error(
+    error: &McpError,
+    requested_skill_ref: &str,
+    registry_root: &Path,
+) -> Option<String> {
+    let category = classify_mcp_error_category(&error.code, &error.message);
+    let mut lines = Vec::new();
+
+    if let Some(receipt) = error.receipt.as_deref() {
+        lines.push(format!("Next: guild why {}", receipt.uri));
+    }
+
+    match category {
+        CliErrorCategory::AuthorityDenial | CliErrorCategory::RuntimeCompatibility => {
+            lines.push(format!(
+                "Next: guild show -v {}",
+                shell_quote_arg(requested_skill_ref)
+            ));
+        }
+        CliErrorCategory::TrustVerification => {
+            lines.push("Next: guild help trust".into());
+        }
+        _ => {}
+    }
+
+    if lines.is_empty() {
+        None
+    } else {
+        Some(qualify_next_steps_for_registry_root(
+            &lines.join("\n"),
+            registry_root,
+        ))
+    }
+}
+
+fn cli_error_from_mcp(
+    error: McpError,
+    requested_skill_ref: &str,
+    registry_root: &Path,
+) -> CliError {
+    let category = classify_mcp_error_category(&error.code, &error.message);
+    let next_steps = next_steps_for_mcp_error(&error, requested_skill_ref, registry_root);
+    let mut cli_error =
+        CliError::classified(category, error.message.clone()).with_reason_code(error.code);
+
+    if let Some(receipt) = error.receipt {
+        cli_error = cli_error.with_location(receipt.uri);
+    }
+    if let Some(next_steps) = next_steps {
+        cli_error = cli_error.with_next_steps(next_steps);
+    }
+
+    cli_error
 }
 
 fn oci_transport_options(allow_http: bool) -> OciRegistryTransportOptions {
@@ -3686,6 +4223,10 @@ fn print_help_trust() {
     println!("  It does not verify remote policy, deployment state, or registry-wide trust.");
     println!();
     println!("Signed execution plan verification remains under guild trust verify-plan.");
+    println!("Common failure label:");
+    println!(
+        "  `trust/verification` means Guild could not verify a signed artifact against the selected root's trust store."
+    );
 }
 
 fn print_help_roots() {
@@ -3699,6 +4240,10 @@ fn print_help_roots() {
     println!("There is no cwd-local .guild fallback.");
     println!("guild init is the explicit root-creation workflow.");
     println!("Read-only commands do not create a missing root.");
+    println!("Common failure label:");
+    println!(
+        "  `root/setup` means Guild could not open the selected local root or one of its local config files as-is."
+    );
 }
 
 fn print_help_doctor() {

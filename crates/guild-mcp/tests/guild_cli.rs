@@ -10,8 +10,8 @@ use guild_registry::LocalSourceInstaller;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
     CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, FilesystemConstraints,
-    FilesystemOperation, FilesystemRoot, GrantedCapability, InvokeDependencyConstraints,
-    ReadResourceConstraints, RedactionClass, ResourceKind,
+    FilesystemOperation, FilesystemRoot, GrantedCapability, HttpMethod, HttpRequestConstraints,
+    HttpScheme, InvokeDependencyConstraints, ReadResourceConstraints, RedactionClass, ResourceKind,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -32,6 +32,14 @@ fn hello_source_dir() -> PathBuf {
 
 fn render_report_source_dir() -> PathBuf {
     repo_root().join("examples/skills/render-report")
+}
+
+fn composite_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/hello-composite")
+}
+
+fn http_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/inspect-http-json")
 }
 
 fn incident_brief_source_dir() -> PathBuf {
@@ -138,6 +146,32 @@ fn emit_filesystem_rejection_grants_json() -> String {
     .unwrap()
 }
 
+fn emit_http_path_denial_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![GrantedCapability {
+            id: CapabilityId::HttpRequest,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+                allowed_schemes: Some(vec![HttpScheme::Http]),
+                allowed_hosts: Some(vec!["127.0.0.1".into()]),
+                allowed_host_suffixes: None,
+                allowed_ports: None,
+                allowed_methods: Some(vec![HttpMethod::Get]),
+                allowed_path_prefixes: Some(vec!["/allowed".into()]),
+                max_timeout_ms: Some(2_000),
+                max_response_bytes: Some(4_096),
+                follow_redirects: Some(true),
+                max_redirects: Some(2),
+                allow_loopback: Some(true),
+                allow_link_local: Some(false),
+                allow_private_networks: Some(false),
+                allow_ip_literals: Some(true),
+            }),
+        }],
+    })
+    .unwrap()
+}
+
 fn incident_brief_grants_json() -> String {
     serde_json::to_string(&CapabilityGrantSet {
         grants: vec![
@@ -154,6 +188,30 @@ fn incident_brief_grants_json() -> String {
                 access: CapabilityAccess::Invoke,
                 constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
                     aliases: Some(vec!["renderer".into()]),
+                }),
+            },
+        ],
+    })
+    .unwrap()
+}
+
+fn composite_invoke_and_emit_evidence_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![
+            GrantedCapability {
+                id: CapabilityId::InvokeSkill,
+                access: CapabilityAccess::Invoke,
+                constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                    aliases: Some(vec!["hello".into()]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::EmitEvidence,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
+                    max_bytes: Some(65_536),
+                    audiences: Some(vec![EvidenceAudience::User]),
+                    redactions: Some(vec![RedactionClass::None]),
                 }),
             },
         ],
@@ -331,6 +389,33 @@ fn install_source_with_cli(registry_root: &Path, source_dir: &Path) {
     let _ = run_guild_success(&["--registry-root", &root, "install", &source_dir], None);
 }
 
+fn install_source_with_cli_json(registry_root: &Path, source_dir: &Path) -> Value {
+    let source_dir = source_dir.display().to_string();
+    let root = registry_root.display().to_string();
+    let output = run_guild_success(
+        &["--registry-root", &root, "install", &source_dir, "--json"],
+        None,
+    );
+    parse_json_stdout(&output)
+}
+
+fn generate_identity_with_cli(identity_path: &Path) {
+    let identity = identity_path.display().to_string();
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "generate",
+            "--publisher-id",
+            "local.example",
+            "--display-name",
+            "Local Example",
+            "--output",
+            &identity,
+        ],
+        None,
+    );
+}
+
 fn copy_dir_recursive(source: &Path, destination: &Path) {
     fs::create_dir_all(destination).unwrap();
     for entry in fs::read_dir(source).unwrap() {
@@ -416,6 +501,45 @@ fn duplicate_installed_hello_with_filesystem(registry_root: &Path, skill_name: &
         });
     });
     target_dir
+}
+
+fn write_required_emit_evidence_denial_policy(registry_root: &Path) {
+    let policy = json!({
+        "format_version": "guild-local-policy-v2",
+        "default_profile": "default",
+        "profiles": [
+            {
+                "name": "default",
+                "default_action": "allow-requested-declared",
+                "rules": [
+                    {
+                        "name": "deny-required-emit-evidence",
+                        "applies_to": "required",
+                        "effect": "deny",
+                        "capabilities": {
+                            "grants": [
+                                {
+                                    "id": "emit-evidence",
+                                    "access": "write",
+                                    "constraints": {
+                                        "max_bytes": 65_536,
+                                        "audiences": ["user"],
+                                        "redactions": ["none"]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ],
+        "bindings": []
+    });
+    fs::write(
+        registry_root.join("policy.json"),
+        serde_json::to_vec_pretty(&policy).unwrap(),
+    )
+    .unwrap();
 }
 
 fn inspect_hello_with_cli(registry_root: &Path, name: &str, skill_ref: &str) -> Value {
@@ -808,11 +932,194 @@ fn run_refusal_keeps_payload_off_stdout_and_status_on_stderr() {
         "{stderr}"
     );
     assert!(
-        stderr.contains("filesystem-runtime-not-supported"),
+        stderr.contains("runtime/compatibility: filesystem capability contracts are not implemented in the active Wasm inspect slice"),
         "{stderr}"
     );
-    assert!(!stderr.contains("Next: guild why"), "{stderr}");
-    assert!(!stderr.contains("Next: guild get"), "{stderr}");
+    assert!(
+        stderr.contains("reason: filesystem-runtime-not-supported"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why guild://executions/",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v 'skill://example/hello-inspect-filesystem@^0.1'",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    let where_line = stderr
+        .lines()
+        .find(|line| line.starts_with("where: guild://executions/"))
+        .unwrap();
+    assert!(!where_line.contains(" ("), "{stderr}");
+}
+
+#[test]
+fn policy_denial_errors_surface_actionable_follow_up_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-run-policy-denial");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    write_required_emit_evidence_denial_policy(&registry_root);
+
+    let grants_json = emit_evidence_grants_json();
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(stderr.contains("rejected  proof-backed  exec:"), "{stderr}");
+    assert!(stderr.contains("policy-denied"), "{stderr}");
+    assert!(
+        stderr.contains("authority denial: local policy denied one or more required capabilities"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("reason: policy-denied"), "{stderr}");
+    assert!(stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why guild://executions/",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v 'skill://example/hello-inspect@^0.1'",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn capability_denial_errors_surface_authority_follow_up_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-run-capability-denial");
+    let registry_root = temp.path().join("registry");
+    install_source_with_cli(&registry_root, &http_source_dir());
+
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/inspect-http-json@^0.1",
+            "--input-json",
+            &command_json(json!({ "url": "http://127.0.0.1/blocked.json" })),
+            "--grants-json",
+            &emit_http_path_denial_grants_json(),
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(
+        stderr.contains("authority denial: http-request path was not granted for this execution"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: http-request-path-not-granted"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why guild://executions/",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v 'skill://example/inspect-http-json@^0.1'",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn child_capability_mismatch_errors_surface_authority_follow_up_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-child-capability-mismatch");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    install_source_with_cli(&registry_root, &composite_source_dir());
+
+    let child_skill_dir = installed_skill_dir(&registry_root, "example", "hello-inspect");
+    write_installed_manifest(&child_skill_dir, |manifest| {
+        let log_write = manifest
+            .capabilities
+            .iter_mut()
+            .find(|capability| capability.id == CapabilityId::LogWrite)
+            .expect("hello-inspect log-write capability must exist");
+        log_write.required = true;
+    });
+
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-composite@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &composite_invoke_and_emit_evidence_grants_json(),
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(
+        stderr.contains(
+            "authority denial: child invocation required capabilities that were not granted to the parent"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: child-capability-mismatch"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why guild://executions/",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v 'skill://example/hello-composite@^0.1'",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -1039,10 +1346,20 @@ fn short_refs_fail_closed_when_ambiguous() {
         run_guild_failure_output(&["show", "hello-inspect@^0.1"], Some(&registry_root));
     let show_stderr = String::from_utf8(show_output.stderr).unwrap();
     assert!(
+        show_stderr.contains("lookup/ambiguity: short skill ref `hello-inspect@^0.1` was ambiguous across namespaces:"),
+        "{show_stderr}"
+    );
+    assert!(
         show_stderr.contains(
             "short skill ref `hello-inspect@^0.1` was ambiguous across namespaces: example, other-example"
         ) || show_stderr.contains(
             "short skill ref `hello-inspect@^0.1` was ambiguous across namespaces: other-example, example"
+        ),
+        "{show_stderr}"
+    );
+    assert!(
+        show_stderr.contains(
+            "Next: use a fully qualified skill ref such as `skill://<namespace>/<name>@<version-or-range>`"
         ),
         "{show_stderr}"
     );
@@ -1057,8 +1374,150 @@ fn short_refs_fail_closed_when_ambiguous() {
     let why_output = run_guild_failure_output(&["why", "exec:0"], Some(&registry_root));
     let why_stderr = String::from_utf8(why_output.stderr).unwrap();
     assert!(
-        why_stderr.contains("execution ref `exec:0` was ambiguous"),
+        why_stderr.contains("lookup/ambiguity: execution ref `exec:0` was ambiguous"),
         "{why_stderr}"
+    );
+    assert!(
+        why_stderr.contains(
+            "Next: use a longer `exec:` prefix or the full `guild://executions/<id>` URI"
+        ),
+        "{why_stderr}"
+    );
+}
+
+#[test]
+fn missing_execution_refs_surface_resource_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-missing-execution-guidance");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let why_output = run_guild_failure_output(&["why", "exec:deadbeef"], Some(&registry_root));
+    let why_stderr = String::from_utf8(why_output.stderr).unwrap();
+    assert!(
+        why_stderr.contains(
+            "resource/read: execution ref `exec:deadbeef` did not match any persisted execution"
+        ),
+        "{why_stderr}"
+    );
+    assert!(
+        why_stderr.contains(&format!(
+            "Next: run `guild --registry-root {} ls runs --limit 5` to find a recent execution, or use a full `guild://executions/<id>` URI",
+            registry_root.display()
+        )),
+        "{why_stderr}"
+    );
+
+    let get_output = run_guild_failure_output(
+        &["get", "guild://executions/not-real"],
+        Some(&registry_root),
+    );
+    let get_stderr = String::from_utf8(get_output.stderr).unwrap();
+    assert!(
+        get_stderr
+            .contains("resource/read: execution record was not found in the local execution store"),
+        "{get_stderr}"
+    );
+    assert!(
+        get_stderr.contains("reason: execution-not-found"),
+        "{get_stderr}"
+    );
+    assert!(
+        get_stderr.contains("where: guild://executions/not-real"),
+        "{get_stderr}"
+    );
+    assert!(
+        get_stderr.contains(&format!(
+            "Next: run `guild --registry-root {} ls runs --limit 5` to find a recent execution, or use a full `guild://executions/<id>` URI",
+            registry_root.display()
+        )),
+        "{get_stderr}"
+    );
+
+    let evidence_output =
+        run_guild_failure_output(&["get", "evidence:deadbeef"], Some(&registry_root));
+    let evidence_stderr = String::from_utf8(evidence_output.stderr).unwrap();
+    assert!(
+        evidence_stderr.contains(
+            "resource/read: evidence ref `evidence:deadbeef` did not match any stored evidence record"
+        ),
+        "{evidence_stderr}"
+    );
+    assert!(
+        evidence_stderr.contains(&format!(
+            "Next: run `guild --registry-root {} ls evidence --limit 5` to inspect stored evidence",
+            registry_root.display()
+        )),
+        "{evidence_stderr}"
+    );
+
+    let object_output = run_guild_failure_output(&["show", "obj:deadbeef"], Some(&registry_root));
+    let object_stderr = String::from_utf8(object_output.stderr).unwrap();
+    assert!(
+        object_stderr
+            .contains("resource/read: object ref `obj:deadbeef` did not match any stored object"),
+        "{object_stderr}"
+    );
+    assert!(
+        object_stderr.contains(&format!(
+            "Next: run `guild --registry-root {} ls objects --limit 5` to inspect stored objects",
+            registry_root.display()
+        )),
+        "{object_stderr}"
+    );
+}
+
+#[test]
+fn runtime_recovery_hints_shell_quote_copy_pasteable_skill_refs() {
+    let temp = TempFixtureDir::new("guild-cli-runtime-hints-quoted-ref");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let _ = duplicate_installed_hello_with_filesystem(&registry_root, "hello-inspect-filesystem");
+
+    let grants_json = emit_filesystem_rejection_grants_json();
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect-filesystem@>=0.1.0",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v 'skill://example/hello-inspect-filesystem@>=0.1.0'",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn verify_missing_skill_refs_surface_lookup_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-missing-verify-skill");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let output = run_guild_failure_output(&["verify", "missing-skill@^0.1"], Some(&registry_root));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(
+            "lookup/ambiguity: short skill ref `missing-skill@^0.1` did not match any installed skill"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: run `guild --registry-root {} ls skills` to inspect installed skills",
+            registry_root.display()
+        )),
+        "{stderr}"
     );
 }
 
@@ -1115,14 +1574,81 @@ fn read_only_commands_do_not_create_the_default_registry_root() {
 
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("read-only commands do not initialize a new root"),
+        stderr.contains("root/setup: Guild registry root `"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("detail: read-only commands do not initialize a new root"),
         "{stderr}"
     );
     assert!(
         stderr.contains(default_root.to_string_lossy().as_ref()),
         "{stderr}"
     );
+    assert!(
+        stderr.contains("Next: run `guild install <source-dir>` to create it"),
+        "{stderr}"
+    );
     assert!(!default_root.exists());
+}
+
+#[test]
+fn read_only_commands_qualify_missing_non_default_root_follow_up() {
+    let temp = TempFixtureDir::new("guild-cli-missing-non-default-root");
+    let registry_root = temp.path().join("custom registry");
+    let registry_root_display = registry_root.display().to_string();
+
+    let output = run_guild(&["--registry-root", &registry_root_display, "ls"], None);
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(&format!(
+            "root/setup: Guild registry root `{}` does not exist yet",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("detail: read-only commands do not initialize a new root"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: run `guild --registry-root '{}' install <source-dir>` to create it",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!registry_root.exists());
+}
+
+#[test]
+fn install_missing_source_directories_surface_usage_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-install-missing-source");
+    let registry_root = temp.path().join("registry");
+    let missing_source = temp.path().join("missing-skill");
+    let missing_source_display = missing_source.display().to_string();
+
+    let output =
+        run_guild_failure_output(&["install", &missing_source_display], Some(&registry_root));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("usage: source skill directory does not exist"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("reason: source-root-missing"), "{stderr}");
+    assert!(
+        stderr.contains(&format!("where: {}", missing_source.display())),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: confirm the source directory exists, then rerun `guild --registry-root {} install <source-dir>`",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -1452,6 +1978,171 @@ fn install_export_import_and_trust_commands_work_for_bundle_transport() {
 }
 
 #[test]
+fn trust_remove_missing_publishers_surface_lookup_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-trust-remove-missing");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "remove",
+            "local.example",
+        ],
+        None,
+    );
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "remove",
+            "local.example",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("lookup/ambiguity: trusted publisher `local.example` was not present"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: run `guild --registry-root {} trust list` to inspect the current trusted publisher entries",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
+}
+
+#[test]
+fn broken_local_trust_records_surface_root_setup_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-broken-trust-record");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+    let trusted_record_path = registry_root
+        .join("trust")
+        .join("publishers")
+        .join("local.example.json");
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    fs::write(&trusted_record_path, b"{not valid json").unwrap();
+
+    let output = run_guild_failure_output(
+        &["--registry-root", &registry_root_display, "trust", "list"],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("root/setup: failed to parse trusted publisher record"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: trusted-publisher-parse-failed"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild --registry-root {} trust list`",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
+}
+
+#[test]
+fn trust_remove_store_io_failures_surface_root_setup_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-trust-remove-io-failure");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+    let trusted_record_path = registry_root
+        .join("trust")
+        .join("publishers")
+        .join("local.example.json");
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    fs::remove_file(&trusted_record_path).unwrap();
+    fs::create_dir_all(&trusted_record_path).unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "remove",
+            "local.example",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("root/setup: failed to remove trusted publisher record"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: trusted-publisher-remove-failed"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: fix the local trust store under the selected Guild root, then rerun `guild --registry-root {} trust list` or `guild --registry-root {} trust remove <publisher-id>`",
+            registry_root.display(),
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
+}
+
+#[test]
 fn trust_sign_and_verify_plan_commands_work() {
     let temp = TempFixtureDir::new("guild-cli-plan-sign");
     let registry_root = temp.path().join("registry");
@@ -1545,6 +2236,34 @@ fn trust_sign_and_verify_plan_commands_work() {
 }
 
 #[test]
+fn trust_verify_plan_argument_errors_stay_in_usage() {
+    let temp = TempFixtureDir::new("guild-cli-plan-verify-usage");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let registry_root_display = registry_root.display().to_string();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "verify-plan",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("usage: error: the following required arguments were not provided:"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: guild trust verify-plan --plan <PLAN>"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
+}
+
+#[test]
 fn trust_verify_plan_rejects_tampered_signed_plan() {
     let temp = TempFixtureDir::new("guild-cli-plan-verify-fail");
     let registry_root = temp.path().join("registry");
@@ -1622,7 +2341,409 @@ fn trust_verify_plan_rejects_tampered_signed_plan() {
         String::from_utf8_lossy(&output.stderr),
     );
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("execution-plan-signature-digest-mismatch"));
+    assert!(
+        stderr.contains(
+            "trust/verification: execution plan signature metadata did not match the execution plan bytes"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: execution-plan-signature-digest-mismatch"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: confirm the signed plan file was not modified after signing, or rerun `guild --registry-root {} trust sign-plan --plan <plan.json> --identity-file <identity.json> --output <signed-plan.json>`",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn trust_verify_plan_unsupported_signature_format_surfaces_compatibility_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-plan-verify-format-skew");
+    let registry_root = temp.path().join("registry");
+    let identity_path = temp.path().join("publisher.json");
+    let signed_plan_path = temp.path().join("signed-plan.json");
+    let registry_root_display = registry_root.display().to_string();
+    let identity = identity_path.display().to_string();
+    let plan = draft_plan_path("zero-authority.admit.plan.json")
+        .display()
+        .to_string();
+    let signed_plan = signed_plan_path.display().to_string();
+
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "generate",
+            "--publisher-id",
+            "local.example",
+            "--display-name",
+            "Local Example",
+            "--output",
+            &identity,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "sign-plan",
+            "--plan",
+            &plan,
+            "--identity-file",
+            &identity,
+            "--output",
+            &signed_plan,
+        ],
+        None,
+    );
+
+    let mut signed_plan_json: Value =
+        serde_json::from_str(&fs::read_to_string(&signed_plan_path).unwrap()).unwrap();
+    signed_plan_json["plan_signature"]["format_version"] =
+        Value::String("guild-plan-signature-v999".into());
+    fs::write(
+        &signed_plan_path,
+        serde_json::to_vec_pretty(&signed_plan_json).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "verify-plan",
+            "--plan",
+            &signed_plan,
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(
+            "runtime/compatibility: execution plan signature format version is unsupported"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: execution-plan-signature-format-unsupported"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: confirm the target Guild build supports this signed plan format version, or rerun `guild --registry-root {} trust sign-plan --plan <plan.json> --identity-file <identity.json> --output <signed-plan.json>` with a compatible Guild version",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
+}
+
+#[test]
+fn import_bundle_untrusted_publishers_surface_trust_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-import-untrusted");
+    let registry_a = temp.path().join("registry-a");
+    let registry_b = temp.path().join("registry-b");
+    let identity_path = temp.path().join("publisher.json");
+    let bundle_root = temp.path().join("bundle");
+    let registry_a_root = registry_a.display().to_string();
+    let registry_b_root = registry_b.display().to_string();
+    let identity = identity_path.display().to_string();
+    let bundle = bundle_root.display().to_string();
+
+    install_with_cli(&registry_a);
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "export",
+            "bundle",
+            "skill://example/hello-inspect@^0.1",
+            "--signer",
+            &identity,
+            "--output",
+            &bundle,
+        ],
+        None,
+    );
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "import",
+            "bundle",
+            &bundle,
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(
+            "trust/verification: signed bundle publisher was not trusted by the target Guild root"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: bundle-publisher-untrusted"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: run `guild --registry-root {} trust list`",
+            registry_b.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "guild --registry-root {} trust add --identity-file <identity.json>",
+            registry_b.display()
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn import_bundle_tampered_content_surfaces_integrity_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-import-tampered");
+    let registry_a = temp.path().join("registry-a");
+    let registry_b = temp.path().join("registry-b");
+    let identity_path = temp.path().join("publisher.json");
+    let bundle_root = temp.path().join("bundle");
+    let registry_a_root = registry_a.display().to_string();
+    let registry_b_root = registry_b.display().to_string();
+    let identity = identity_path.display().to_string();
+    let bundle = bundle_root.display().to_string();
+
+    let installed = install_source_with_cli_json(&registry_a, &hello_source_dir());
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "export",
+            "bundle",
+            "skill://example/hello-inspect@^0.1",
+            "--signer",
+            &identity,
+            "--output",
+            &bundle,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let installed_manifest_path = installed["manifest_path"].as_str().unwrap();
+    let installed_manifest: SkillManifest =
+        serde_json::from_str(&fs::read_to_string(installed_manifest_path).unwrap()).unwrap();
+    let digest_dir = installed["digest"].as_str().unwrap().replace(':', "-");
+    let component_path = bundle_root
+        .join("installed")
+        .join(&installed_manifest.key.namespace)
+        .join(&installed_manifest.key.name)
+        .join(installed_manifest.version.to_string())
+        .join(digest_dir)
+        .join("component.wasm");
+    fs::write(&component_path, b"tampered artifact").unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "import",
+            "bundle",
+            &bundle,
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("trust/verification: artifact digest does not match manifest"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: artifact-digest-mismatch"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(
+            "Next: confirm the signed bundle or OCI artifact was not modified after export, or fetch a fresh copy from the publisher before rerunning the import or pull"
+        ),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn import_bundle_unsupported_format_surfaces_compatibility_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-import-unsupported-format");
+    let registry_a = temp.path().join("registry-a");
+    let registry_b = temp.path().join("registry-b");
+    let identity_path = temp.path().join("publisher.json");
+    let bundle_root = temp.path().join("bundle");
+    let registry_a_root = registry_a.display().to_string();
+    let registry_b_root = registry_b.display().to_string();
+    let identity = identity_path.display().to_string();
+    let bundle = bundle_root.display().to_string();
+
+    install_with_cli(&registry_a);
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "export",
+            "bundle",
+            "skill://example/hello-inspect@^0.1",
+            "--signer",
+            &identity,
+            "--output",
+            &bundle,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let bundle_json_path = bundle_root.join("bundle.json");
+    let mut bundle_json: Value =
+        serde_json::from_str(&fs::read_to_string(&bundle_json_path).unwrap()).unwrap();
+    bundle_json["format_version"] = Value::String("guild-installed-bundle-v999".into());
+    fs::write(
+        &bundle_json_path,
+        serde_json::to_vec_pretty(&bundle_json).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "import",
+            "bundle",
+            &bundle,
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(
+            "runtime/compatibility: installed skill bundle format version is unsupported"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: bundle-format-unsupported"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(
+            "Next: confirm the target Guild build supports this bundle format version, or re-export with a compatible Guild version before rerunning the import or pull"
+        ),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
+}
+
+#[test]
+fn pull_untrusted_publishers_surface_trust_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-pull-untrusted");
+    let registry_a = temp.path().join("registry-a");
+    let registry_b = temp.path().join("registry-b");
+    let identity_path = temp.path().join("publisher.json");
+    let registry_store = temp.path().join("oci-registry-store");
+    let registry_a_root = registry_a.display().to_string();
+    let registry_b_root = registry_b.display().to_string();
+    let identity = identity_path.display().to_string();
+
+    install_with_cli(&registry_a);
+    generate_identity_with_cli(&identity_path);
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = server.reference("guild-example-hello-inspect", "0.1.0");
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "push",
+            "skill://example/hello-inspect@^0.1",
+            "--reference",
+            &reference,
+            "--signer",
+            &identity,
+            "--allow-http",
+        ],
+        None,
+    );
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "pull",
+            &reference,
+            "--allow-http",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(
+            "trust/verification: signed bundle publisher was not trusted by the target Guild root"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: bundle-publisher-untrusted"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: run `guild --registry-root {} trust list`",
+            registry_b.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "guild --registry-root {} trust add --identity-file <identity.json>",
+            registry_b.display()
+        )),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -1940,11 +3061,13 @@ fn shared_help_topics_are_available() {
     assert!(trust.contains("Trust and verification"));
     assert!(trust.contains("guild verify <skill-ref>"));
     assert!(trust.contains("guild trust verify-plan"));
+    assert!(trust.contains("`trust/verification` means Guild could not verify"));
 
     let roots = run_guild_success(&["help", "roots"], None);
     assert!(roots.contains("Guild root resolution"));
     assert!(roots.contains("GUILD_REGISTRY_ROOT"));
     assert!(roots.contains("There is no cwd-local .guild fallback."));
+    assert!(roots.contains("`root/setup` means Guild could not open"));
 
     let doctor = run_guild_success(&["help", "doctor"], None);
     assert!(doctor.contains("Diagnostic command direction"));
@@ -2308,6 +3431,62 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(ops_pack.contains("## Journey 3: Scan Recent Failures"));
     assert!(ops_pack.contains("## Journey 4: Inspect One Stored Evidence Record"));
     assert!(ops_pack.contains("## Keep Going With The Normal CLI"));
+}
+
+#[test]
+fn readme_command_language_and_testing_guide_document_failure_paths() {
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    for phrase in [
+        "## Failure Paths",
+        "`root/setup`",
+        "`lookup/ambiguity`",
+        "`resource/read`",
+        "`authority denial`",
+        "`runtime/compatibility`",
+        "`trust/verification`",
+        "use `guild why ...` after a rejected run when Guild persisted an execution receipt",
+        "guild verify missing-skill@^0.1",
+        "reason: bundle-publisher-untrusted",
+    ] {
+        assert!(
+            readme.contains(phrase),
+            "README.md is missing failure-path wording: {phrase}"
+        );
+    }
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    for phrase in [
+        "## Failure Language",
+        "`root/setup`",
+        "`lookup/ambiguity`",
+        "`resource/read`",
+        "`authority denial`",
+        "`runtime/compatibility`",
+        "`trust/verification`",
+        "use `guild show -v ...` before rerunning after authority or runtime failures",
+        "guild verify missing-skill@^0.1",
+        "reason: bundle-publisher-untrusted",
+    ] {
+        assert!(
+            command_language.contains(phrase),
+            "docs/command-language.md is missing failure-language wording: {phrase}"
+        );
+    }
+
+    let testing = fs::read_to_string(repo_root().join("docs/testing.md")).unwrap();
+    for phrase in [
+        "Failure-oriented CLI smoke:",
+        "Expect `root/setup`",
+        "guild --registry-root target/dev-local-registry/cli-local verify missing-skill@^0.1",
+        "Expect `trust/verification`",
+        "signed bundle trust or integrity failures should say `trust/verification`",
+    ] {
+        assert!(
+            testing.contains(phrase),
+            "docs/testing.md is missing failure-oriented CLI smoke wording: {phrase}"
+        );
+    }
 }
 
 #[test]
