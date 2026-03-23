@@ -268,6 +268,41 @@ That flow demonstrates the current trust model:
 - `guild trust ...` manages local trust-store state only
 - OCI transport carries the same installed signed bundle contract through another transport shape
 
+The current trust review loop is:
+
+- `guild trust list`
+- `guild import ...` or `guild pull ...`
+- `guild verify -v <skill-ref>`
+
+Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path after import or pull. That view keeps the trust summary visible and adds signing-scheme and short bundle-digest detail when verification metadata exists.
+
+Current installed-state terms:
+
+- `local-source`: installed from local source in the current Guild root
+- `verified-import`: installed from a signed import or pull that verified successfully
+- `local-dev`: local source state in the current Guild root
+- `trusted-imported`: imported publisher trusted for normal imported use
+- `restricted`: imported publisher trusted only under restricted local policy posture
+
+Trust-store maintenance stays local and explicit:
+
+- `guild trust add --identity-file <identity.json>` trusts one local publisher identity directly
+- `guild trust add --record-file <record.json>` trusts one reviewed publisher record without secret key material
+- `guild trust list` reviews trusted publishers and their current tiers
+- `guild trust remove <publisher-id>` removes one local trust record when a publisher should no longer be trusted
+
+Execution-plan signing stays on the same local trust model:
+
+```bash
+guild trust sign-plan \
+  --plan docs/schemas/draft-v1/examples/zero-authority.admit.plan.json \
+  --identity-file target/dev-local-registry/local.example.json \
+  --output target/dev-local-registry/zero-authority.admit.signed.plan.json
+
+guild --registry-root target/dev-local-registry/b trust verify-plan \
+  --plan target/dev-local-registry/zero-authority.admit.signed.plan.json
+```
+
 Preview direction for risky flows is now chosen, even though the flag is not implemented yet:
 
 - first preview flag: `--preview`

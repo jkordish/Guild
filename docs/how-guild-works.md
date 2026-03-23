@@ -95,6 +95,31 @@ What that flow tells you:
 - `guild why` and `guild get` explain what happened after the run completes
 - `guild verify` is about installed trust state, not execution replay
 
+## Trust Review
+
+Use the current trust review loop in this order:
+
+- `guild trust list`
+- `guild import ...` or `guild pull ...`
+- `guild verify -v <skill-ref>`
+
+Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path after import or pull. That view keeps the trust summary visible and adds signing-scheme and short bundle-digest detail when verification metadata exists.
+
+Current installed-state terms:
+
+- `local-source`: installed from local source in the current Guild root
+- `verified-import`: installed from a signed import or pull that verified successfully
+- `local-dev`: local source state in the current Guild root
+- `trusted-imported`: imported publisher trusted for normal imported use
+- `restricted`: imported publisher trusted only under restricted local policy posture
+
+Trust-store maintenance stays local and explicit:
+
+- `guild trust add --identity-file <identity.json>` trusts one local publisher identity directly
+- `guild trust add --record-file <record.json>` trusts one reviewed publisher record without secret key material
+- `guild trust list` reviews trusted publishers and their current tiers
+- `guild trust remove <publisher-id>` removes one local trust record when a publisher should no longer be trusted
+
 ## Planned Help Topics
 
 Two future-facing directions are fixed now, even though the commands or flags

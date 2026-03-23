@@ -26,11 +26,13 @@ use serde_json::Value;
 use crate::cli_presenter::{
     PresentationOptions, StreamKind, SupportSummary, WhySummary, color_mode, render_evidence_list,
     render_evidence_show, render_evidence_show_next_step, render_execution_show,
-    render_execution_show_next_step, render_execution_why, render_object_show, render_objects_list,
-    render_run_next_steps, render_run_porcelain, render_run_status, render_runs_list,
-    render_skill_porcelain, render_skill_show, render_skill_show_next_steps, render_skill_verify,
-    render_skill_verify_next_step, render_skills_list, render_verify_porcelain,
-    render_why_next_step, render_why_porcelain, resolved_skill_ref as presenter_resolved_skill_ref,
+    render_execution_show_next_step, render_execution_why, render_import_next_step,
+    render_imported_skill_review, render_object_show, render_objects_list, render_run_next_steps,
+    render_run_porcelain, render_run_status, render_runs_list, render_skill_porcelain,
+    render_skill_show, render_skill_show_next_steps, render_skill_verify,
+    render_skill_verify_next_step, render_skills_list, render_trust_add_success,
+    render_trusted_publishers_list, render_verify_porcelain, render_why_next_step,
+    render_why_porcelain, resolved_skill_ref as presenter_resolved_skill_ref,
     runtime_label as presenter_runtime_label, short_execution_ref, support_summary_for_execution,
     support_summary_for_skill, why_summary,
 };
@@ -52,12 +54,20 @@ const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a
 const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
 const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
 const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
-const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nSee also:\n  guild help trust\n  guild show --help";
+const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nVerification details:\n  use -v after import or pull when you want the installed verification explanation.\n  that view adds signing scheme and short bundle digest details when verification metadata exists.\n\nSee also:\n  guild help trust\n  guild show --help";
 const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const IMPORT_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview` for import and pull, but the flag is not implemented yet.\n  see `guild help preview` for the planned read-only scope.";
 const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  planned `--preview` is not implemented yet; when it lands, it stays read-only and uses the same signed bundle and trust checks as import.\n  see `guild help preview` for the first contract.";
 const PUSH_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for push in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const PULL_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview`, but the flag is not implemented yet.\n  see `guild help preview` for the planned read-only scope.";
+const TRUST_AFTER_HELP: &str = "Review loop:\n  trust list -> import/pull -> verify -v\n\nMaintenance:\n  add/list/remove trusted publishers under the selected local root.\n  use `trust add --record-file` when you already have a reviewed trust record.\n\nSigning:\n  `sign-plan` writes a signed plan.\n  `verify-plan` checks it against the selected root's trust store.";
+const TRUST_ADD_AFTER_HELP: &str = "Identity sources:\n  use `--identity-file` for one local publisher identity.\n  use `--record-file` for one reviewed trust record without secret key material.";
+const TRUST_LIST_AFTER_HELP: &str =
+    "Review:\n  lists the trusted publishers and tiers in the selected local trust store.";
+const TRUST_REMOVE_AFTER_HELP: &str =
+    "Maintenance:\n  removes one trusted publisher record from the selected local trust store.";
+const TRUST_SIGN_PLAN_AFTER_HELP: &str = "Signing review:\n  writes a signed execution plan using the provided local publisher identity.\n  next step: `guild trust verify-plan --plan <signed-plan.json>`.";
+const TRUST_VERIFY_PLAN_AFTER_HELP: &str = "Verification review:\n  verifies the signed plan against the selected local trust store and reports publisher, trust tier, and signed digest.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CliErrorCategory {
@@ -902,7 +912,7 @@ enum CliCommand {
         after_help = PULL_AFTER_HELP
     )]
     Pull(PullCliArgs),
-    #[command(about = "Manage local trust records")]
+    #[command(about = "Manage local trust records", after_help = TRUST_AFTER_HELP)]
     Trust(TrustCliArgs),
     #[command(
         about = "Run deterministic Codex smoke helpers",
@@ -1106,13 +1116,34 @@ struct TrustCliArgs {
 
 #[derive(Debug, Clone, Subcommand)]
 enum TrustCliCommand {
+    #[command(about = "Generate one local publisher identity")]
     Generate(TrustGenerateCliArgs),
+    #[command(
+        about = "Add one trusted publisher record to the selected local root",
+        after_help = TRUST_ADD_AFTER_HELP
+    )]
     Add(TrustAddCliArgs),
+    #[command(
+        about = "List trusted publisher records in the selected local root",
+        after_help = TRUST_LIST_AFTER_HELP
+    )]
     List(TrustListCliArgs),
+    #[command(
+        about = "Remove one trusted publisher record from the selected local root",
+        after_help = TRUST_REMOVE_AFTER_HELP
+    )]
     Remove(TrustRemoveCliArgs),
-    #[command(name = "sign-plan")]
+    #[command(
+        name = "sign-plan",
+        about = "Sign an execution plan with a local publisher identity",
+        after_help = TRUST_SIGN_PLAN_AFTER_HELP
+    )]
     SignPlan(TrustSignPlanCliArgs),
-    #[command(name = "verify-plan")]
+    #[command(
+        name = "verify-plan",
+        about = "Verify a signed execution plan against the selected local trust store",
+        after_help = TRUST_VERIFY_PLAN_AFTER_HELP
+    )]
     VerifyPlan(TrustVerifyPlanCliArgs),
 }
 
@@ -2759,7 +2790,7 @@ fn run_import_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
     if json_output {
         print_json(&output)?;
     } else {
-        print_import_text(&output);
+        print_import_text(&installed, registry_root);
     }
 
     Ok(())
@@ -2800,7 +2831,7 @@ fn run_import_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
     if json_output {
         print_json(&output)?;
     } else {
-        print_import_text(&output);
+        print_import_text(&installed, registry_root);
     }
 
     Ok(())
@@ -2929,7 +2960,7 @@ fn run_pull(
     if json_output {
         print_json(&output)?;
     } else {
-        print_import_text(&output);
+        print_import_text(&installed, &registry_root);
     }
 
     Ok(())
@@ -3104,17 +3135,18 @@ fn run_trust_add(
         .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
 
     let output = TrustAddOutput {
-        publisher_id: publisher.publisher.id,
-        trust_tier: publisher.trust_tier,
+        publisher_id: publisher.publisher.id.clone(),
+        trust_tier: publisher.trust_tier.clone(),
         registry_root: registry_root.display().to_string(),
     };
 
     if json_output {
         print_json(&output)?;
     } else {
+        print!("{}", render_trust_add_success(&publisher));
         println!(
-            "trusted publisher {} as {}",
-            output.publisher_id, output.trust_tier
+            "{}",
+            qualify_next_steps_for_registry_root("Next: guild trust list", &registry_root)
         );
     }
 
@@ -3154,10 +3186,15 @@ fn run_trust_list(
         print_json(&output)?;
     } else if output.publishers.is_empty() {
         println!("no trusted publishers configured");
+        println!(
+            "{}",
+            qualify_next_steps_for_registry_root(
+                "Next: guild trust add --identity-file <identity.json>",
+                &registry_root,
+            )
+        );
     } else {
-        for publisher in &output.publishers {
-            println!("{} ({})", publisher.publisher.id, publisher.trust_tier);
-        }
+        print!("{}", render_trusted_publishers_list(&output.publishers));
     }
 
     Ok(())
@@ -3265,10 +3302,7 @@ fn run_trust_sign_plan(args: &[String]) -> Result<(), CliError> {
     if json_output {
         print_json(&output)?;
     } else {
-        println!(
-            "signed execution plan as {} to {}",
-            output.publisher_id, output.output_path
-        );
+        print_trust_sign_plan_text(&output);
     }
 
     Ok(())
@@ -3317,10 +3351,7 @@ fn run_trust_verify_plan(
     if json_output {
         print_json(&output)?;
     } else {
-        println!(
-            "verified execution plan signed by {} ({})",
-            output.publisher_id, output.trust_tier
-        );
+        print_trust_verify_plan_text(&output);
     }
 
     Ok(())
@@ -4105,15 +4136,50 @@ fn print_init_text(output: &InitCommandOutput) {
     );
 }
 
-fn print_import_text(output: &ImportCommandOutput) {
-    if output.installed.is_empty() {
+fn print_import_text(installed: &[InstalledSkill], registry_root: &Path) {
+    if installed.is_empty() {
         println!("no installed skills were imported");
         return;
     }
 
-    for skill in &output.installed {
-        println!("installed {}", skill.resolved_skill);
+    for (index, skill) in installed.iter().enumerate() {
+        print!("{}", render_imported_skill_review(skill));
+        if index + 1 < installed.len() {
+            println!();
+        }
     }
+    println!(
+        "{}",
+        qualify_next_steps_for_registry_root(&render_import_next_step(installed), registry_root)
+    );
+}
+
+fn print_trust_sign_plan_text(output: &TrustSignPlanOutput) {
+    println!("signed execution plan");
+    println!("publisher: {}", output.publisher_id);
+    println!(
+        "digest: {}",
+        format_structured_digest(&output.signed_digest)
+    );
+    println!("output: {}", output.output_path);
+    println!(
+        "Next: guild trust verify-plan --plan {}",
+        shell_quote_arg(&output.output_path)
+    );
+}
+
+fn print_trust_verify_plan_text(output: &TrustVerifyPlanOutput) {
+    println!("verified signed execution plan");
+    println!("publisher: {}", output.publisher_id);
+    println!("status: verified / {}", output.trust_tier);
+    println!(
+        "digest: {}",
+        format_structured_digest(&output.signed_digest)
+    );
+}
+
+fn format_structured_digest(digest: &StructuredDigest) -> String {
+    format!("{}:{}", digest.algorithm, digest.value)
 }
 
 fn print_usage() {
@@ -4215,8 +4281,43 @@ fn print_help_refs() {
 fn print_help_trust() {
     println!("Trust and verification");
     println!();
+    println!("Normal review loop:");
+    println!("  guild trust list");
+    println!("  guild import ... or guild pull ...");
+    println!("  guild verify -v <skill-ref>");
+    println!();
+    println!("Current installed-state terms:");
+    println!("  local-source       installed from local source in the current Guild root");
+    println!(
+        "  verified-import    installed from a signed import or pull that verified successfully"
+    );
+    println!("  local-dev          local source state in the current Guild root");
+    println!("  trusted-imported   imported publisher trusted for normal imported use");
+    println!(
+        "  restricted         imported publisher trusted only under restricted local policy posture"
+    );
+    println!();
+    println!("Trust-store maintenance:");
+    println!("  guild trust add --identity-file <identity.json>");
+    println!("    trust one local publisher identity directly");
+    println!("  guild trust add --record-file <record.json>");
+    println!("    trust one reviewed publisher record without secret key material");
+    println!("  guild trust list");
+    println!("    inspect trusted publishers and their current tiers");
+    println!("  guild trust remove <publisher-id>");
+    println!("    remove one local trust record when a publisher should no longer be trusted");
+    println!();
+    println!("Plan signing review:");
+    println!(
+        "  guild trust sign-plan --plan <plan.json> --identity-file <identity.json> --output <signed-plan.json>"
+    );
+    println!("  guild trust verify-plan --plan <signed-plan.json>");
+    println!();
     println!("guild verify <skill-ref>");
     println!("  Shows installed trust and verification status for installed skills.");
+    println!(
+        "  Use `guild verify -v` after import or pull for signing-scheme and bundle-digest detail."
+    );
     println!();
     println!("guild trust ...");
     println!("  Manages local trust-store state only.");
@@ -4412,6 +4513,11 @@ fn print_trust_usage() {
     println!(
         "note: `guild trust ...` manages the local trust store and signs or verifies execution plans against that same trust model."
     );
+    println!("review loop: trust list -> import/pull -> verify -v");
+    println!("maintenance: add/list/remove trusted publishers under the selected local root");
+    println!(
+        "signing: sign-plan writes a signed plan; verify-plan checks it against the selected root"
+    );
 }
 
 fn print_trust_generate_usage() {
@@ -4424,25 +4530,34 @@ fn print_trust_add_usage() {
     println!(
         "usage: guild [--registry-root <path>] trust add (--identity-file <path> | --record-file <path>) [--tier trusted-imported|restricted] [--json]"
     );
+    println!(
+        "note: use --identity-file for a local publisher identity or --record-file for a reviewed trust record."
+    );
 }
 
 fn print_trust_list_usage() {
     println!("usage: guild [--registry-root <path>] trust list [--json]");
+    println!("note: lists the trusted publishers and tiers in the selected local trust store.");
 }
 
 fn print_trust_remove_usage() {
     println!("usage: guild [--registry-root <path>] trust remove <publisher-id>");
+    println!("note: removes one trusted publisher record from the selected local trust store.");
 }
 
 fn print_trust_sign_plan_usage() {
     println!(
         "usage: guild trust sign-plan --plan <unsigned-plan.json> --identity-file <identity.json> --output <signed-plan.json> [--json]"
     );
+    println!("note: writes a signed execution plan using the provided local publisher identity.");
 }
 
 fn print_trust_verify_plan_usage() {
     println!(
         "usage: guild [--registry-root <path>] trust verify-plan --plan <signed-plan.json> [--json]"
+    );
+    println!(
+        "note: verifies the signed plan against the selected local trust store and reports publisher, trust tier, and signed digest."
     );
 }
 

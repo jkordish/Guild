@@ -416,6 +416,38 @@ fn generate_identity_with_cli(identity_path: &Path) {
     );
 }
 
+fn expected_import_review_output(registry_root: &Path) -> String {
+    format!(
+        concat!(
+            "installed skill://example/hello-inspect@0.1.0\n",
+            "status: verified-import / trusted-imported\n",
+            "publisher: local.example\n",
+            "Next: guild --registry-root {} verify -v skill://example/hello-inspect@0.1.0\n",
+        ),
+        registry_root.display()
+    )
+}
+
+fn expected_trust_add_output(registry_root: &Path) -> String {
+    format!(
+        concat!(
+            "trusted publisher local.example\n",
+            "tier: trusted-imported\n",
+            "name: Local Example\n",
+            "Next: guild --registry-root {} trust list\n",
+        ),
+        registry_root.display()
+    )
+}
+
+fn expected_trust_list_output() -> &'static str {
+    concat!(
+        "publisher: local.example\n",
+        "tier: trusted-imported\n",
+        "name: Local Example\n",
+    )
+}
+
 fn copy_dir_recursive(source: &Path, destination: &Path) {
     fs::create_dir_all(destination).unwrap();
     for entry in fs::read_dir(source).unwrap() {
@@ -681,13 +713,58 @@ fn primary_show_and_verify_commands_render_compact_human_output() {
         format!(
             concat!(
                 "example/hello-inspect@0.1.0\n",
-                "verification: local-source\n",
-                "trust: local-dev\n",
+                "status: local-source / local-dev\n",
+                "publisher: local-source\n",
                 "Next: guild --registry-root {} show -v skill://example/hello-inspect@0.1.0\n",
             ),
             registry_root.display()
         )
     );
+}
+
+#[test]
+fn trust_add_and_list_render_review_friendly_human_output() {
+    let temp = TempFixtureDir::new("guild-cli-trust-review");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+
+    let empty_list = run_guild_success(
+        &["--registry-root", &registry_root_display, "trust", "list"],
+        None,
+    );
+    assert_eq!(
+        empty_list,
+        format!(
+            concat!(
+                "no trusted publishers configured\n",
+                "Next: guild --registry-root {} trust add --identity-file <identity.json>\n",
+            ),
+            registry_root.display()
+        )
+    );
+
+    generate_identity_with_cli(&identity_path);
+
+    let add_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+    assert_eq!(add_output, expected_trust_add_output(&registry_root));
+
+    let list_output = run_guild_success(
+        &["--registry-root", &registry_root_display, "trust", "list"],
+        None,
+    );
+    assert_eq!(list_output, expected_trust_list_output());
 }
 
 #[test]
@@ -824,8 +901,8 @@ fn starter_pack_incident_brief_runs_with_markdown_stdout() {
         format!(
             concat!(
                 "example/incident-brief@0.1.0\n",
-                "verification: local-source\n",
-                "trust: local-dev\n",
+                "status: local-source / local-dev\n",
+                "publisher: local-source\n",
                 "Next: guild --registry-root {} show -v skill://example/incident-brief@0.1.0\n",
             ),
             registry_root.display()
@@ -1978,6 +2055,60 @@ fn install_export_import_and_trust_commands_work_for_bundle_transport() {
 }
 
 #[test]
+fn import_bundle_renders_human_trust_review_output() {
+    let temp = TempFixtureDir::new("guild-cli-bundle-human-review");
+    let registry_a = temp.path().join("registry-a");
+    let registry_b = temp.path().join("registry-b");
+    let identity_path = temp.path().join("publisher.json");
+    let bundle_root = temp.path().join("bundle");
+    let registry_a_root = registry_a.display().to_string();
+    let registry_b_root = registry_b.display().to_string();
+    let identity = identity_path.display().to_string();
+    let bundle = bundle_root.display().to_string();
+
+    install_with_cli(&registry_a);
+    generate_identity_with_cli(&identity_path);
+
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "export",
+            "bundle",
+            "skill://example/hello-inspect@^0.1",
+            "--signer",
+            &identity,
+            "--output",
+            &bundle,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let import_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "import",
+            "bundle",
+            &bundle,
+        ],
+        None,
+    );
+    assert_eq!(import_output, expected_import_review_output(&registry_b));
+}
+
+#[test]
 fn trust_remove_missing_publishers_surface_lookup_guidance() {
     let temp = TempFixtureDir::new("guild-cli-trust-remove-missing");
     let registry_root = temp.path().join("registry");
@@ -2233,6 +2364,92 @@ fn trust_sign_and_verify_plan_commands_work() {
         verified_output["signed_digest"]["algorithm"].as_str(),
         Some("sha256")
     );
+}
+
+#[test]
+fn trust_sign_and_verify_plan_human_output_is_review_friendly() {
+    let temp = TempFixtureDir::new("guild-cli-plan-sign-human");
+    let registry_root = temp.path().join("registry");
+    let identity_path = temp.path().join("publisher.json");
+    let signed_plan_path = temp.path().join("signed-plan.json");
+    let registry_root_display = registry_root.display().to_string();
+    let identity = identity_path.display().to_string();
+    let plan = draft_plan_path("zero-authority.admit.plan.json")
+        .display()
+        .to_string();
+    let signed_plan = signed_plan_path.display().to_string();
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let sign_output = run_guild_success(
+        &[
+            "trust",
+            "sign-plan",
+            "--plan",
+            &plan,
+            "--identity-file",
+            &identity,
+            "--output",
+            &signed_plan,
+        ],
+        None,
+    );
+    assert!(
+        sign_output.contains("signed execution plan"),
+        "{sign_output}"
+    );
+    assert!(
+        sign_output.contains("publisher: local.example"),
+        "{sign_output}"
+    );
+    assert!(sign_output.contains("digest: sha256:"), "{sign_output}");
+    assert!(
+        sign_output.contains(&format!("output: {}", signed_plan_path.display())),
+        "{sign_output}"
+    );
+    assert!(
+        sign_output.contains(&format!(
+            "Next: guild trust verify-plan --plan {}",
+            signed_plan_path.display()
+        )),
+        "{sign_output}"
+    );
+
+    let verify_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "verify-plan",
+            "--plan",
+            &signed_plan,
+        ],
+        None,
+    );
+    assert!(
+        verify_output.contains("verified signed execution plan"),
+        "{verify_output}"
+    );
+    assert!(
+        verify_output.contains("publisher: local.example"),
+        "{verify_output}"
+    );
+    assert!(
+        verify_output.contains("status: verified / trusted-imported"),
+        "{verify_output}"
+    );
+    assert!(verify_output.contains("digest: sha256:"), "{verify_output}");
 }
 
 #[test]
@@ -2868,6 +3085,106 @@ fn export_import_layout_and_push_pull_commands_work_for_oci_transport() {
     assert_eq!(pulled["installed"].as_array().unwrap().len(), 1);
 }
 
+#[test]
+fn import_layout_and_pull_render_human_trust_review_output() {
+    let temp = TempFixtureDir::new("guild-cli-oci-human-review");
+    let registry_a = temp.path().join("registry-a");
+    let registry_b = temp.path().join("registry-b");
+    let registry_c = temp.path().join("registry-c");
+    let identity_path = temp.path().join("publisher.json");
+    let layout_root = temp.path().join("layout");
+    let registry_store = temp.path().join("oci-registry-store");
+    let registry_a_root = registry_a.display().to_string();
+    let registry_b_root = registry_b.display().to_string();
+    let registry_c_root = registry_c.display().to_string();
+    let identity = identity_path.display().to_string();
+    let layout = layout_root.display().to_string();
+
+    install_with_cli(&registry_a);
+    generate_identity_with_cli(&identity_path);
+
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "export",
+            "oci-layout",
+            "skill://example/hello-inspect@^0.1",
+            "--signer",
+            &identity,
+            "--output",
+            &layout,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let import_layout_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "import",
+            "oci-layout",
+            &layout,
+        ],
+        None,
+    );
+    assert_eq!(
+        import_layout_output,
+        expected_import_review_output(&registry_b)
+    );
+
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = server.reference("guild-example-hello-inspect", "0.1.0");
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "push",
+            "skill://example/hello-inspect@^0.1",
+            "--reference",
+            &reference,
+            "--signer",
+            &identity,
+            "--allow-http",
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_c_root,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let pull_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_c_root,
+            "pull",
+            &reference,
+            "--allow-http",
+        ],
+        None,
+    );
+    assert_eq!(pull_output, expected_import_review_output(&registry_c));
+}
+
 struct McpHarness {
     child: Child,
     stdin: ChildStdin,
@@ -3059,9 +3376,45 @@ fn shared_help_topics_are_available() {
 
     let trust = run_guild_success(&["help", "trust"], None);
     assert!(trust.contains("Trust and verification"));
+    assert!(trust.contains("Normal review loop:"));
+    assert!(trust.contains("guild import ... or guild pull ..."));
+    assert!(trust.contains("guild verify -v <skill-ref>"));
     assert!(trust.contains("guild verify <skill-ref>"));
     assert!(trust.contains("guild trust verify-plan"));
+    assert!(trust.contains("Trust-store maintenance:"));
+    assert!(trust.contains("guild trust add --record-file <record.json>"));
+    assert!(trust.contains("guild trust remove <publisher-id>"));
+    assert!(trust.contains("Plan signing review:"));
+    assert!(trust.contains("local-source"));
+    assert!(trust.contains("verified-import"));
+    assert!(trust.contains("trusted-imported"));
+    assert!(trust.contains("restricted"));
     assert!(trust.contains("`trust/verification` means Guild could not verify"));
+
+    let trust_usage = run_guild_success(&["trust", "--help"], None);
+    assert!(trust_usage.contains("Review loop:"));
+    assert!(trust_usage.contains("trust list -> import/pull -> verify -v"));
+    assert!(trust_usage.contains("Maintenance:"));
+    assert!(trust_usage.contains("add/list/remove trusted publishers"));
+    assert!(trust_usage.contains("Signing:"));
+    assert!(trust_usage.contains("`sign-plan` writes a signed plan."));
+
+    let trust_add_help = run_guild_success(&["trust", "add", "--help"], None);
+    assert!(trust_add_help.contains("use `--identity-file`"));
+    assert!(trust_add_help.contains("use `--record-file`"));
+
+    let trust_remove_help = run_guild_success(&["trust", "remove", "--help"], None);
+    assert!(trust_remove_help.contains("removes one trusted publisher record"));
+
+    let trust_sign_help = run_guild_success(&["trust", "sign-plan", "--help"], None);
+    assert!(trust_sign_help.contains("writes a signed execution plan"));
+
+    let trust_verify_help = run_guild_success(&["trust", "verify-plan", "--help"], None);
+    assert!(
+        trust_verify_help
+            .contains("verifies the signed plan against the selected local trust store")
+    );
+    assert!(trust_verify_help.contains("publisher, trust tier, and signed digest"));
 
     let roots = run_guild_success(&["help", "roots"], None);
     assert!(roots.contains("Guild root resolution"));
@@ -3176,6 +3529,8 @@ fn ls_get_why_and_verify_help_call_out_scope() {
             .contains("default output is a short human trust summary for reading, not parsing.")
     );
     assert!(verify_help.contains("low-noise `Next:` hints"));
+    assert!(verify_help.contains("Verification details:"));
+    assert!(verify_help.contains("use -v after import or pull"));
     assert!(verify_help.contains("guild trust verify-plan"));
     assert!(verify_help.contains("guild help trust"));
     assert!(verify_help.contains("guild show --help"));
@@ -3416,6 +3771,12 @@ fn journey_docs_stay_centered_on_user_workflows() {
 
     let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
     assert!(how_it_works.contains("## Output Modes"));
+    assert!(how_it_works.contains("## Trust Review"));
+    assert!(how_it_works.contains("guild trust list"));
+    assert!(how_it_works.contains("guild verify -v <skill-ref>"));
+    assert!(how_it_works.contains("verified-import"));
+    assert!(how_it_works.contains("guild trust add --record-file <record.json>"));
+    assert!(how_it_works.contains("guild trust remove <publisher-id>"));
     assert!(how_it_works.contains("Default human output is for reading, not parsing."));
     assert!(how_it_works.contains("low-noise follow-up hints such as `Next: ...`"));
     assert!(how_it_works.contains("use `--json` for structured machine-readable output"));
@@ -3485,6 +3846,53 @@ fn readme_command_language_and_testing_guide_document_failure_paths() {
         assert!(
             testing.contains(phrase),
             "docs/testing.md is missing failure-oriented CLI smoke wording: {phrase}"
+        );
+    }
+}
+
+#[test]
+fn trust_review_terms_stay_canonical_across_help_and_docs() {
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    for phrase in [
+        "The current trust review loop is:",
+        "`guild trust list`",
+        "`guild import ...` or `guild pull ...`",
+        "`guild verify -v <skill-ref>`",
+        "Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path",
+        "`local-source`",
+        "`verified-import`",
+        "`local-dev`",
+        "`trusted-imported`",
+        "`restricted`",
+        "`guild trust add --record-file <record.json>`",
+        "`guild trust remove <publisher-id>`",
+        "Execution-plan signing stays on the same local trust model:",
+    ] {
+        assert!(
+            readme.contains(phrase),
+            "README.md is missing trust-review wording: {phrase}"
+        );
+    }
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    for phrase in [
+        "The current trust review loop is:",
+        "`guild trust list`",
+        "`guild import ...` or `guild pull ...`",
+        "`guild verify -v <skill-ref>`",
+        "Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path",
+        "`local-source`",
+        "`verified-import`",
+        "`local-dev`",
+        "`trusted-imported`",
+        "`restricted`",
+        "`guild trust add --record-file <record.json>`",
+        "`guild trust remove <publisher-id>`",
+    ] {
+        assert!(
+            command_language.contains(phrase),
+            "docs/command-language.md is missing trust-review wording: {phrase}"
         );
     }
 }
