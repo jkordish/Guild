@@ -313,6 +313,8 @@ fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCatego
         || message.contains("local policy configuration")
     {
         CliErrorCategory::RootSetup
+    } else if is_bundle_integrity_error_code(code) {
+        CliErrorCategory::TrustVerification
     } else if code.starts_with("execution-plan-")
         || code.starts_with("trusted-publisher-")
         || code.starts_with("bundle-publisher-")
@@ -336,8 +338,58 @@ fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCatego
     }
 }
 
+fn is_bundle_integrity_error_code(code: &str) -> bool {
+    matches!(
+        code,
+        "artifact-digest-mismatch"
+            | "staged-file-missing"
+            | "bundle-format-unsupported"
+            | "bundle-index-invalid"
+            | "bundle-entry-mismatch"
+            | "bundle-publisher-mismatch"
+            | "oci-layout-index-missing"
+            | "oci-layout-digest-invalid"
+    ) || code.starts_with("bundle-signature-")
+        || code.starts_with("oci-layout-blob-")
+        || code.starts_with("oci-registry-blob-size-")
+        || code.starts_with("oci-registry-blob-digest-")
+}
+
 fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
     match code {
+        "source-root-missing" => Some(
+            "Next: confirm the source directory exists, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "source-root-open-failed" => Some(
+            "Next: confirm the source directory is readable, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "source-manifest-read-failed"
+        | "source-manifest-parse-failed"
+        | "invalid-manifest"
+        | "invalid-source-manifest"
+        | "source-file-uri-invalid"
+        | "source-file-missing" => Some(
+            "Next: confirm the source directory contains a valid `manifest.json` and referenced support files, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "dependency-resolution-failed" => Some(
+            "Next: install the declared dependency skill first, or fix the dependency ref in the source manifest, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "build-command-failed" | "build-failed" | "build-artifact-missing" => Some(
+            "Next: confirm the source skill builds successfully as a Wasm component, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "source-skill-not-installed" => Some(
+            "Next: run `guild install <source-dir>` first, then rerun the command against the installed skill ref"
+                .into(),
+        ),
+        "bundle-root-missing" | "bundle-root-invalid" | "bundle-root-open-failed" => Some(
+            "Next: confirm the bundle directory path exists and points at the exported bundle root before rerunning `guild import bundle <directory>`"
+                .into(),
+        ),
         "execution-not-found" => Some(
             "Next: run `guild ls runs --limit 5` to find a recent execution, or use a full `guild://executions/<id>` URI"
                 .into(),
@@ -361,6 +413,10 @@ fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
         ),
         code if code.starts_with("execution-plan-") => Some(
             "Next: confirm the signed plan file was not modified after signing, or rerun `guild trust sign-plan --plan <plan.json> --identity-file <identity.json> --output <signed-plan.json>`"
+                .into(),
+        ),
+        code if is_bundle_integrity_error_code(code) => Some(
+            "Next: confirm the signed bundle or OCI artifact was not modified after export, or fetch a fresh copy from the publisher before rerunning the import or pull"
                 .into(),
         ),
         _ => next_steps_for_cli_message(message, classify_registry_error_category(code, message)),

@@ -300,6 +300,25 @@ guild --registry-root target/dev-local-registry/b pull \
   --allow-http
 ```
 
+Failure-oriented CLI smoke:
+
+```bash
+# Expect `root/setup` plus a create-or-select-root hint.
+HOME="$(mktemp -d)" guild ls --json
+
+# Expect `lookup/ambiguity` plus `guild ls skills`.
+guild --registry-root target/dev-local-registry/cli-local verify missing-skill@^0.1
+
+# Expect `trust/verification` plus `guild trust list` / `guild trust add`.
+guild --registry-root target/dev-local-registry/b import bundle target/dev-local-registry/bundle
+```
+
+Those failures should stay actionable rather than merely correct:
+
+- missing local state should say `root/setup`
+- missing or underspecified skill refs should say `lookup/ambiguity`
+- signed bundle trust or integrity failures should say `trust/verification`
+
 ## Codex Workflow
 
 Persistent operator setup:

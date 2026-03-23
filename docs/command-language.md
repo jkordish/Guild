@@ -227,6 +227,24 @@ The default follow-up guidance should stay local and honest:
 - use `guild why ...` after a rejected run when Guild persisted a receipt
 - use `guild trust list` and `guild trust add ...` when a trust check fails closed
 
+Representative failure examples:
+
+```text
+$ guild ls --json
+root/setup: Guild registry root `~/.guild` does not exist yet
+detail: read-only commands do not initialize a new root
+Next: run `guild install <source-dir>` to create it, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an existing root
+
+$ guild verify missing-skill@^0.1
+lookup/ambiguity: short skill ref `missing-skill@^0.1` did not match any installed skill
+Next: run `guild ls skills` to inspect installed skills
+
+$ guild import bundle /tmp/bundle
+trust/verification: signed bundle publisher was not trusted by the target Guild root
+reason: bundle-publisher-untrusted
+Next: run `guild trust list` to inspect the target root, then add the publisher with `guild trust add --identity-file <identity.json>` or `guild trust add --record-file <record.json>`
+```
+
 ### Ops Starter Pack
 
 The current user-facing example pack lives at
