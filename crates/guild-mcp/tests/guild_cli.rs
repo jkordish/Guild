@@ -11,7 +11,8 @@ use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
     CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, FilesystemConstraints,
     FilesystemOperation, FilesystemRoot, GrantedCapability, HttpMethod, HttpRequestConstraints,
-    HttpScheme, InvokeDependencyConstraints, ReadResourceConstraints, RedactionClass, ResourceKind,
+    HttpScheme, InvokeDependencyConstraints, LogConstraints, ReadResourceConstraints,
+    RedactionClass, ResourceKind, Severity,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -113,6 +114,30 @@ fn emit_evidence_grants_json() -> String {
                 redactions: Some(vec![RedactionClass::None]),
             }),
         }],
+    })
+    .unwrap()
+}
+
+fn emit_evidence_and_log_write_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![
+            GrantedCapability {
+                id: CapabilityId::EmitEvidence,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
+                    max_bytes: Some(65_536),
+                    audiences: Some(vec![EvidenceAudience::User]),
+                    redactions: Some(vec![RedactionClass::None]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::LogWrite,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::Log(LogConstraints {
+                    levels: Some(vec![Severity::Info]),
+                }),
+            },
+        ],
     })
     .unwrap()
 }
@@ -235,6 +260,14 @@ fn evidence_summary_grants_json() -> String {
 
 fn command_json(value: Value) -> String {
     serde_json::to_string(&value).unwrap()
+}
+
+fn persisted_where_uri(stderr: &str) -> String {
+    stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("where: "))
+        .unwrap()
+        .to_owned()
 }
 
 struct TempFixtureDir {
@@ -3713,6 +3746,10 @@ fn why_human_output_suggests_get_next_step() {
     assert!(stdout.contains("child executions: 0"), "{stdout}");
     assert!(stdout.contains("evidence records: 1"), "{stdout}");
     assert!(
+        stdout.contains("authority: exercised(emit-evidence)"),
+        "{stdout}"
+    );
+    assert!(
         stdout.contains(&format!("nearby evidence: {evidence_prefix}")),
         "{stdout}"
     );
@@ -3730,6 +3767,111 @@ fn why_human_output_suggests_get_next_step() {
             registry_root.display()
         )),
         "{stdout}"
+    );
+}
+
+#[test]
+fn why_human_output_summarizes_authority_observations() {
+    let temp = TempFixtureDir::new("guild-cli-why-authority-summary");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let run_output = run_guild_success_output(
+        &[
+            "run",
+            "hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada", "emit_log": true })),
+            "--grants-json",
+            &emit_evidence_and_log_write_grants_json(),
+            "--json",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(run_output.stdout).unwrap();
+    let stderr = String::from_utf8(run_output.stderr).unwrap();
+    assert!(stderr.trim().is_empty(), "{stderr}");
+    let run_value: Value = parse_json_stdout(&stdout);
+    let execution_id = run_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+
+    let why_output = run_guild_success(
+        &["why", &exec_prefix, "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(
+        why_output.contains("authority: exercised(emit-evidence, log-write)")
+            || why_output.contains("authority: exercised(log-write, emit-evidence)"),
+        "{why_output}"
+    );
+
+    let verbose_output = run_guild_success(
+        &["why", &exec_prefix, "-v", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(
+        verbose_output.contains("authority observations:"),
+        "{verbose_output}"
+    );
+    assert!(
+        verbose_output.contains("- exercised log-write -> info"),
+        "{verbose_output}"
+    );
+    assert!(
+        verbose_output.contains("- exercised emit-evidence -> evidence:"),
+        "{verbose_output}"
+    );
+}
+
+#[test]
+fn why_human_output_reports_blocked_authority_observations() {
+    let temp = TempFixtureDir::new("guild-cli-why-blocked-authority");
+    let registry_root = temp.path().join("registry");
+    install_source_with_cli(&registry_root, &http_source_dir());
+
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/inspect-http-json@^0.1",
+            "--input-json",
+            &command_json(json!({ "url": "http://127.0.0.1/blocked.json" })),
+            "--grants-json",
+            &emit_http_path_denial_grants_json(),
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    let execution_uri = persisted_where_uri(&stderr);
+
+    let why_output = run_guild_success(
+        &["why", &execution_uri, "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(
+        why_output.contains("authority: blocked(http-request)"),
+        "{why_output}"
+    );
+
+    let verbose_output = run_guild_success(
+        &["why", &execution_uri, "-v", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(
+        verbose_output.contains("authority observations:"),
+        "{verbose_output}"
+    );
+    assert!(
+        verbose_output.contains(
+            "- blocked http-request -> http://127.0.0.1/blocked.json / http-request-path-not-granted"
+        ),
+        "{verbose_output}"
     );
 }
 
@@ -3885,6 +4027,8 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(readme.contains("Explain what happened"));
     assert!(readme.contains("Verify trust state and move installed state"));
     assert!(readme.contains("Debug failures and compare runs"));
+    assert!(readme.contains("guild why -v"));
+    assert!(readme.contains("guild ls evidence --limit 5"));
 
     let command_language =
         fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
@@ -3893,6 +4037,8 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(command_language.contains("Explain what happened"));
     assert!(command_language.contains("Verify trust state and move installed state"));
     assert!(command_language.contains("Debug failures and compare runs"));
+    assert!(command_language.contains("guild why -v"));
+    assert!(command_language.contains("guild ls evidence --limit 5"));
 
     let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
     assert!(examples_index.contains("## User Journeys"));
@@ -3900,6 +4046,8 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(examples_index.contains("### Explain what happened"));
     assert!(examples_index.contains("### Verify trust state and move installed state"));
     assert!(examples_index.contains("### Debug failures and compare runs"));
+    assert!(examples_index.contains("guild why -v"));
+    assert!(examples_index.contains("guild ls evidence --limit 5"));
 
     let hello_readme =
         fs::read_to_string(repo_root().join("examples/skills/hello-inspect/README.md")).unwrap();
@@ -3928,6 +4076,8 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(how_it_works.contains("use `--porcelain` for stable one-line machine-readable output"));
     assert!(how_it_works.contains("guild help doctor"));
     assert!(how_it_works.contains("guild help preview"));
+    assert!(how_it_works.contains("guild why -v"));
+    assert!(how_it_works.contains("guild ls evidence --limit 5"));
 
     let ops_pack =
         fs::read_to_string(repo_root().join("examples/skills/guild-ops-starter/README.md"))
@@ -3935,7 +4085,8 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(ops_pack.contains("## Journey 1: Explain One Stored Execution"));
     assert!(ops_pack.contains("## Journey 2: Compare Two Stored Executions"));
     assert!(ops_pack.contains("## Journey 3: Scan Recent Failures"));
-    assert!(ops_pack.contains("## Journey 4: Inspect One Stored Evidence Record"));
+    assert!(ops_pack.contains("## Journey 4: Discover And Inspect One Stored Evidence Record"));
+    assert!(ops_pack.contains("guild ls evidence --limit 5"));
     assert!(ops_pack.contains("## Keep Going With The Normal CLI"));
 }
 

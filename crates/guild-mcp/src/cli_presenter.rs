@@ -5,11 +5,13 @@ use guild_registry::{InstalledSkill, SignatureScheme, TrustedPublisherRecord};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
     CapabilityRequirement, ChildExecutionRecord, EvidenceAudience, EvidenceBlobRecord,
-    EvidenceRecord, ExecutionPhase, ExecutionRecord, ExecutionStatus, GUILD_EXECUTION_URI_PREFIX,
+    EvidenceRecord, ExecutionPhase, ExecutionRecord, ExecutionStatus,
+    GUILD_EXECUTION_QUERY_URI_PREFIX, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
+    GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX, GUILD_OBJECT_RECORD_URI_PREFIX,
     PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED,
     PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND, RedactionClass,
-    ResolvedSkillRef, RuntimeKind, SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN,
-    SkillCategory, TerminationDetail, execution_status_label,
+    ResolvedSkillRef, ResourceKind, RuntimeKind, SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN,
+    Severity, SkillCategory, TerminationDetail, execution_status_label,
 };
 use serde::Serialize;
 
@@ -559,7 +561,9 @@ pub fn render_execution_why(
         "evidence records: {}",
         record.emitted_evidence.len()
     );
+    let _ = writeln!(output, "authority: {}", authority_summary(record));
     if options.verbose() {
+        append_authority_observation_list(&mut output, record);
         append_ref_list(&mut output, "nearby child refs", &child_refs, &styler);
         append_ref_list(&mut output, "nearby evidence refs", &evidence_refs, &styler);
     } else {
@@ -1012,6 +1016,212 @@ fn append_ref_list(output: &mut String, label: &str, refs: &[String], styler: &S
     let _ = writeln!(output, "{label}:");
     for value in refs {
         let _ = writeln!(output, "- {}", styler.paint(Tone::Ref, value));
+    }
+}
+
+fn authority_summary(record: &ExecutionRecord) -> String {
+    let mut exercised = Vec::new();
+    let mut blocked = Vec::new();
+
+    for observation in &record.authority_observations {
+        let family = authority_observation_family_label(observation);
+        match authority_observation_status(observation) {
+            AuthorityObservationStatus::Exercised => push_unique(&mut exercised, family),
+            AuthorityObservationStatus::Blocked => push_unique(&mut blocked, family),
+        }
+    }
+
+    if exercised.is_empty() && blocked.is_empty() {
+        return "none".into();
+    }
+
+    let mut parts = Vec::new();
+    if !exercised.is_empty() {
+        parts.push(format!("exercised({})", exercised.join(", ")));
+    }
+    if !blocked.is_empty() {
+        parts.push(format!("blocked({})", blocked.join(", ")));
+    }
+    parts.join(" ")
+}
+
+fn append_authority_observation_list(output: &mut String, record: &ExecutionRecord) {
+    if record.authority_observations.is_empty() {
+        return;
+    }
+
+    let _ = writeln!(output, "authority observations:");
+    for observation in &record.authority_observations {
+        let _ = writeln!(output, "- {}", authority_observation_line(observation));
+    }
+}
+
+fn authority_observation_line(observation: &AuthorityObservation) -> String {
+    match observation {
+        AuthorityObservation::HttpRequest { status, detail } => format!(
+            "{} http-request -> {}",
+            authority_observation_status_label(status),
+            authority_observation_parts(
+                vec![detail.request.url.clone()],
+                detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                detail
+                    .result_error
+                    .as_ref()
+                    .map(|failure| failure.code.as_str()),
+                detail
+                    .response_status
+                    .map(|value| format!("status {value}")),
+            )
+        ),
+        AuthorityObservation::ReadResource { status, detail } => format!(
+            "{} read-resource -> {}",
+            authority_observation_status_label(status),
+            authority_observation_parts(
+                vec![
+                    short_resource_ref_or_uri(&detail.uri),
+                    detail
+                        .resource_kind
+                        .as_ref()
+                        .map(resource_kind_label)
+                        .unwrap_or("resource")
+                        .into(),
+                ],
+                detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                detail
+                    .result_error
+                    .as_ref()
+                    .map(|failure| failure.code.as_str()),
+                detail.bytes.map(format_bytes),
+            )
+        ),
+        AuthorityObservation::InvokeSkill { status, detail } => format!(
+            "{} invoke-skill -> {}",
+            authority_observation_status_label(status),
+            authority_observation_parts(
+                vec![format!("alias {}", detail.alias)],
+                detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                detail
+                    .result_error
+                    .as_ref()
+                    .map(|failure| failure.code.as_str()),
+                detail
+                    .child_execution_id
+                    .as_ref()
+                    .map(|execution_id| short_prefixed_id("exec", execution_id)),
+            )
+        ),
+        AuthorityObservation::EmitEvidence { status, detail } => format!(
+            "{} emit-evidence -> {}",
+            authority_observation_status_label(status),
+            authority_observation_parts(
+                vec![
+                    detail
+                        .evidence_uri
+                        .as_deref()
+                        .map(short_resource_ref_or_uri)
+                        .unwrap_or_else(|| detail.mime_type.clone()),
+                    format_bytes(detail.size_bytes),
+                ],
+                detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                detail
+                    .result_error
+                    .as_ref()
+                    .map(|failure| failure.code.as_str()),
+                None,
+            )
+        ),
+        AuthorityObservation::LogWrite { status, detail } => format!(
+            "{} log-write -> {}",
+            authority_observation_status_label(status),
+            authority_observation_parts(
+                vec![severity_label(&detail.level).into()],
+                detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                None,
+                None,
+            )
+        ),
+    }
+}
+
+fn authority_observation_parts(
+    mut parts: Vec<String>,
+    denial_code: Option<&str>,
+    result_error_code: Option<&str>,
+    trailing: Option<String>,
+) -> String {
+    if let Some(code) = denial_code.or(result_error_code) {
+        parts.push(code.into());
+    } else if let Some(trailing) = trailing {
+        parts.push(trailing);
+    }
+    parts.join(" / ")
+}
+
+fn authority_observation_family_label(observation: &AuthorityObservation) -> &'static str {
+    match observation {
+        AuthorityObservation::HttpRequest { .. } => "http-request",
+        AuthorityObservation::ReadResource { .. } => "read-resource",
+        AuthorityObservation::InvokeSkill { .. } => "invoke-skill",
+        AuthorityObservation::EmitEvidence { .. } => "emit-evidence",
+        AuthorityObservation::LogWrite { .. } => "log-write",
+    }
+}
+
+fn authority_observation_status(observation: &AuthorityObservation) -> &AuthorityObservationStatus {
+    match observation {
+        AuthorityObservation::HttpRequest { status, .. }
+        | AuthorityObservation::ReadResource { status, .. }
+        | AuthorityObservation::InvokeSkill { status, .. }
+        | AuthorityObservation::EmitEvidence { status, .. }
+        | AuthorityObservation::LogWrite { status, .. } => status,
+    }
+}
+
+fn authority_observation_status_label(status: &AuthorityObservationStatus) -> &'static str {
+    match status {
+        AuthorityObservationStatus::Exercised => "exercised",
+        AuthorityObservationStatus::Blocked => "blocked",
+    }
+}
+
+fn short_resource_ref_or_uri(uri: &str) -> String {
+    if let Some(execution_id) = uri.strip_prefix(GUILD_EXECUTION_URI_PREFIX) {
+        return short_prefixed_id("exec", execution_id);
+    }
+    if let Some(record_id) = uri.strip_prefix(GUILD_OBJECT_RECORD_URI_PREFIX) {
+        if let Some(record_id) = record_id.strip_suffix(GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX) {
+            return format!("{} metadata", short_prefixed_id("evidence", record_id));
+        }
+        return short_prefixed_id("evidence", record_id);
+    }
+    if let Some(digest) = uri.strip_prefix(GUILD_OBJECT_BLOB_URI_PREFIX) {
+        return format!("obj:{}", short_hash(digest));
+    }
+    if uri.starts_with(GUILD_EXECUTION_QUERY_URI_PREFIX) {
+        return uri.into();
+    }
+    uri.into()
+}
+
+fn resource_kind_label(kind: &ResourceKind) -> &'static str {
+    match kind {
+        ResourceKind::Execution => "execution",
+        ResourceKind::Object => "object",
+        ResourceKind::Query => "query",
+    }
+}
+
+fn severity_label(level: &Severity) -> &'static str {
+    match level {
+        Severity::Info => "info",
+        Severity::Warn => "warn",
+        Severity::Error => "error",
+    }
+}
+
+fn push_unique<'a>(items: &mut Vec<&'a str>, value: &'a str) {
+    if !items.iter().any(|existing| existing == &value) {
+        items.push(value);
     }
 }
 
