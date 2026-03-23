@@ -515,8 +515,10 @@ pub fn render_execution_why(
     let styler = options.styler(stream);
     let summary = why_summary(record);
     let status = execution_status_label(&record.status);
-    let child_refs = nearby_child_execution_refs(record, if options.verbose() { 3 } else { 1 });
-    let evidence_refs = nearby_evidence_refs(record, if options.verbose() { 3 } else { 1 });
+    let child_refs =
+        nearby_child_execution_refs(record, if options.verbose() { usize::MAX } else { 1 });
+    let evidence_refs =
+        nearby_evidence_refs(record, if options.verbose() { usize::MAX } else { 1 });
     let mut output = String::new();
     let _ = writeln!(
         output,
@@ -573,8 +575,7 @@ pub fn render_execution_why(
                 "nearby child: {}",
                 styler.paint(Tone::Ref, child_ref)
             );
-        }
-        if let Some(evidence_ref) = evidence_refs.first() {
+        } else if let Some(evidence_ref) = evidence_refs.first() {
             let _ = writeln!(
                 output,
                 "nearby evidence: {}",
@@ -687,12 +688,9 @@ pub fn render_runs_list(
 pub fn render_why_next_step(record: &ExecutionRecord) -> String {
     let mut lines = vec![format!("Next: guild get {}", record.receipt.uri)];
     if let Some(child) = record.child_executions.first() {
-        lines.push(format!(
-            "Next: guild why {}",
-            short_child_execution_ref(child)
-        ));
+        lines.push(format!("Next: guild why {}", child.uri));
     } else if let Some(evidence) = record.emitted_evidence.first() {
-        lines.push(format!("Next: guild show {}", short_evidence_ref(evidence)));
+        lines.push(format!("Next: guild show {}", evidence.uri));
     }
     lines.join("\n")
 }
@@ -1288,6 +1286,193 @@ fn render_support_summary(summary: &SupportSummary, styler: &Styler) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn test_options(verbosity: u8) -> PresentationOptions {
+        PresentationOptions {
+            verbosity,
+            debug: false,
+            color: ColorMode::Never,
+            stdout_is_terminal: false,
+            stderr_is_terminal: false,
+        }
+    }
+
+    fn resolved_skill_json() -> serde_json::Value {
+        json!({
+            "key": {
+                "namespace": "example",
+                "name": "hello-inspect",
+            },
+            "version": "0.1.0",
+            "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        })
+    }
+
+    fn child_record_json(index: usize) -> serde_json::Value {
+        let execution_id = format!("child-exec-{index:04}-abcdef1234567890");
+        json!({
+            "alias": format!("child-{index}"),
+            "execution_id": execution_id,
+            "uri": execution_uri(&format!("child-exec-{index:04}-abcdef1234567890")),
+            "parent_execution_id": "parent-exec-0001-abcdef1234567890",
+            "trace_id": format!("trace-child-{index}"),
+            "status": "succeeded",
+            "policy_decision": {
+                "outcome": "allowed",
+                "summary": "allowed",
+                "profile_name": "default",
+                "trust_tier": "local-dev",
+                "verification_state": "local-source",
+                "reasons": [],
+                "detail": null
+            },
+            "termination": null,
+            "granted_capabilities": { "grants": [] },
+            "metrics": {
+                "duration_ms": 0,
+                "network_requests": 0,
+                "child_executions": 0,
+                "cache_hits": 0,
+                "cache_misses": 0
+            },
+            "provenance": {
+                "resolved_skill": resolved_skill_json(),
+                "abi": "guild-skill-inspect-v1",
+                "dependency_digests": [],
+                "started_at_utc": null,
+                "finished_at_utc": null
+            }
+        })
+    }
+
+    fn evidence_record_json(index: usize) -> serde_json::Value {
+        let record_id = format!("evidence-record-{index:04}-abcdef1234567890");
+        let digest = format!("{index:064x}");
+        json!({
+            "uri": format!("{GUILD_OBJECT_RECORD_URI_PREFIX}{record_id}"),
+            "blob_uri": format!("{GUILD_OBJECT_BLOB_URI_PREFIX}{digest}"),
+            "mime_type": "application/json",
+            "sha256": digest,
+            "size_bytes": 128,
+            "sink": null,
+            "title": format!("evidence {index}"),
+            "audience": "user",
+            "redaction": "none",
+            "freshness": "deterministic",
+            "produced_by_execution": "parent-exec-0001-abcdef1234567890"
+        })
+    }
+
+    fn execution_record_with_related_refs(
+        child_count: usize,
+        evidence_count: usize,
+    ) -> ExecutionRecord {
+        serde_json::from_value(json!({
+            "receipt": {
+                "execution_id": "parent-exec-0001-abcdef1234567890",
+                "uri": execution_uri("parent-exec-0001-abcdef1234567890"),
+                "trace_id": "trace-parent-1",
+                "status": "succeeded"
+            },
+            "request": {
+                "request_id": "request-1",
+                "skill": {
+                    "key": {
+                        "namespace": "example",
+                        "name": "hello-inspect"
+                    },
+                    "version_req": "^0.1"
+                },
+                "tenant_id": "tenant-1",
+                "actor_id": "actor-1",
+                "mode": "inspect",
+                "input": {},
+                "budget": {
+                    "max_millis": 1000,
+                    "max_memory_bytes": 1048576,
+                    "max_output_bytes": 65536,
+                    "max_network_requests": 4,
+                    "max_child_executions": 4
+                },
+                "requested_capabilities": { "grants": [] },
+                "idempotency_key": null,
+                "trace_id": "trace-parent-1"
+            },
+            "policy_decision": {
+                "outcome": "allowed",
+                "summary": "allowed",
+                "profile_name": "default",
+                "trust_tier": "local-dev",
+                "verification_state": "local-source",
+                "reasons": [],
+                "detail": null
+            },
+            "resolved_skill": resolved_skill_json(),
+            "parent_execution_id": null,
+            "status": "succeeded",
+            "output": null,
+            "termination": null,
+            "granted_capabilities": { "grants": [] },
+            "emitted_evidence": (0..evidence_count).map(evidence_record_json).collect::<Vec<_>>(),
+            "authority_observations": [],
+            "metrics": {
+                "duration_ms": 0,
+                "network_requests": 0,
+                "child_executions": child_count,
+                "cache_hits": 0,
+                "cache_misses": 0
+            },
+            "provenance": {
+                "resolved_skill": resolved_skill_json(),
+                "abi": "guild-skill-inspect-v1",
+                "dependency_digests": [],
+                "started_at_utc": null,
+                "finished_at_utc": null
+            },
+            "child_executions": (0..child_count).map(child_record_json).collect::<Vec<_>>()
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn compact_why_output_prefers_one_child_ref_over_evidence() {
+        let record = execution_record_with_related_refs(1, 1);
+
+        let output = render_execution_why(&record, test_options(0), StreamKind::Stdout);
+
+        assert!(output.contains("nearby child: exec:"), "{output}");
+        assert!(!output.contains("nearby evidence: "), "{output}");
+    }
+
+    #[test]
+    fn verbose_why_output_lists_all_related_refs() {
+        let record = execution_record_with_related_refs(4, 4);
+
+        let output = render_execution_why(&record, test_options(1), StreamKind::Stdout);
+
+        assert!(output.contains("nearby child refs:"), "{output}");
+        assert!(output.contains("nearby evidence refs:"), "{output}");
+        for index in 0..4 {
+            let child_execution_id = format!("child-exec-{index:04}-abcdef1234567890");
+            let child_ref = format!(
+                "exec:{}",
+                child_execution_id.chars().take(12).collect::<String>()
+            );
+            let evidence_id = format!("evidence-record-{index:04}-abcdef1234567890");
+            let evidence_ref = format!(
+                "evidence:{}",
+                evidence_id.chars().take(12).collect::<String>()
+            );
+            assert!(output.contains(&format!("- {child_ref}")), "{output}");
+            assert!(output.contains(&format!("- {evidence_ref}")), "{output}");
+        }
+    }
 }
 
 fn format_bytes(bytes: u64) -> String {

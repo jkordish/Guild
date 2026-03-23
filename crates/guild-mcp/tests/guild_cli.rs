@@ -3729,6 +3729,10 @@ fn why_human_output_suggests_get_next_step() {
         .as_str()
         .unwrap()
         .to_owned();
+    let evidence_uri = inspect_value["record"]["emitted_evidence"][0]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let evidence_id = inspect_value["record"]["emitted_evidence"][0]["uri"]
         .as_str()
         .unwrap()
@@ -3763,7 +3767,7 @@ fn why_human_output_suggests_get_next_step() {
     assert!(stdout.contains(&execution_uri), "{stdout}");
     assert!(
         stdout.contains(&format!(
-            "Next: guild --registry-root {} show {evidence_prefix}",
+            "Next: guild --registry-root {} show {evidence_uri}",
             registry_root.display()
         )),
         "{stdout}"
@@ -3941,6 +3945,10 @@ fn why_human_output_prefers_child_execution_navigation_when_lineage_exists() {
         .as_str()
         .unwrap()
         .to_owned();
+    let child_execution_uri = run_value["record"]["child_executions"][0]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let child_execution_prefix = format!("exec:{}", &child_execution_id[..12]);
     let exec_prefix = format!("exec:{}", &execution_id[..12]);
 
@@ -3954,6 +3962,7 @@ fn why_human_output_prefers_child_execution_navigation_when_lineage_exists() {
         why_output.contains(&format!("nearby child: {child_execution_prefix}")),
         "{why_output}"
     );
+    assert!(!why_output.contains("nearby evidence: "), "{why_output}");
     assert!(
         why_output.contains(&format!(
             "Next: guild --registry-root {} get {execution_uri}",
@@ -3963,7 +3972,7 @@ fn why_human_output_prefers_child_execution_navigation_when_lineage_exists() {
     );
     assert!(
         why_output.contains(&format!(
-            "Next: guild --registry-root {} why {child_execution_prefix}",
+            "Next: guild --registry-root {} why {child_execution_uri}",
             registry_root.display()
         )),
         "{why_output}"
