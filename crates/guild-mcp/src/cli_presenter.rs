@@ -5,10 +5,11 @@ use guild_registry::{InstalledSkill, SignatureScheme};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
     CapabilityRequirement, EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionPhase,
-    ExecutionRecord, ExecutionStatus, PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED,
-    PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND,
-    RedactionClass, ResolvedSkillRef, RuntimeKind, SUPPORT_STATUS_BOUNDED,
-    SUPPORT_STATUS_NOT_PROVEN, SkillCategory, TerminationDetail, execution_status_label,
+    ExecutionRecord, ExecutionStatus, GUILD_EXECUTION_URI_PREFIX, PRESENTATION_STATUS_LINKED,
+    PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED,
+    PRESENTATION_STATUS_UPPER_BOUND, RedactionClass, ResolvedSkillRef, RuntimeKind,
+    SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN, SkillCategory, TerminationDetail,
+    execution_status_label,
 };
 use serde::Serialize;
 
@@ -273,7 +274,7 @@ pub fn render_skill_show(
         let _ = writeln!(
             output,
             "digest: {}",
-            styler.paint(Tone::Ref, short_hash(&installed.resolved_ref.digest))
+            styler.paint(Tone::Ref, installed.resolved_ref.digest.as_str())
         );
         let _ = writeln!(
             output,
@@ -311,7 +312,7 @@ pub fn render_skill_show(
 #[must_use]
 pub fn render_skill_show_next_steps(installed: &InstalledSkill) -> String {
     let resolved = resolved_skill_ref(&installed.resolved_ref);
-    format!("Next: guild run {resolved}\nNext: guild verify {resolved}")
+    format!("Next: guild verify {resolved}")
 }
 
 #[must_use]
@@ -444,7 +445,7 @@ pub fn render_execution_show(
 
 #[must_use]
 pub fn render_execution_show_next_step(record: &ExecutionRecord) -> String {
-    format!("Next: guild why {}", short_execution_ref(record))
+    format!("Next: guild why {}", record.receipt.uri)
 }
 
 #[must_use]
@@ -535,8 +536,7 @@ pub fn render_run_next_steps(record: &ExecutionRecord) -> Option<String> {
 
     Some(format!(
         "Next: guild why {}\nNext: guild get {}",
-        short_execution_ref(record),
-        record.receipt.uri
+        record.receipt.uri, record.receipt.uri
     ))
 }
 
@@ -692,7 +692,7 @@ pub fn render_evidence_show_next_step(record: &EvidenceRecord) -> Option<String>
     record
         .produced_by_execution
         .as_deref()
-        .map(|execution| format!("Next: guild why {}", short_prefixed_id("exec", execution)))
+        .map(|execution| format!("Next: guild why {}", execution_uri(execution)))
 }
 
 #[must_use]
@@ -925,6 +925,10 @@ fn short_hash(value: &str) -> String {
 fn short_prefixed_id(prefix: &str, value: &str) -> String {
     let short: String = value.chars().take(12).collect();
     format!("{prefix}:{short}")
+}
+
+fn execution_uri(execution_id: &str) -> String {
+    format!("{GUILD_EXECUTION_URI_PREFIX}{execution_id}")
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]

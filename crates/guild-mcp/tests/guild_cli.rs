@@ -526,7 +526,6 @@ fn primary_show_and_verify_commands_render_compact_human_output() {
             "support: proof-backed(log-write) not_proven(emit-evidence)\n",
             "runtime: wasm-component / guild-skill-inspect-v1\n",
             "caps: emit-evidence(write,required) log-write(write)\n",
-            "Next: guild run skill://example/hello-inspect@0.1.0\n",
             "Next: guild verify skill://example/hello-inspect@0.1.0\n",
         )
     );
@@ -558,6 +557,10 @@ fn show_execution_and_evidence_human_output_suggest_why_next_step() {
         .as_str()
         .unwrap()
         .to_owned();
+    let execution_uri = inspect_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let exec_prefix = format!("exec:{}", &execution_id[..12]);
     let evidence_uri = inspect_value["record"]["emitted_evidence"][0]["uri"]
         .as_str()
@@ -573,7 +576,7 @@ fn show_execution_and_evidence_human_output_suggest_why_next_step() {
         "{execution_show}"
     );
     assert!(
-        execution_show.contains(&format!("Next: guild why {exec_prefix}")),
+        execution_show.contains(&format!("Next: guild why {execution_uri}")),
         "{execution_show}"
     );
 
@@ -583,7 +586,7 @@ fn show_execution_and_evidence_human_output_suggest_why_next_step() {
     );
     assert!(evidence_show.contains("evidence:"), "{evidence_show}");
     assert!(
-        evidence_show.contains(&format!("Next: guild why {exec_prefix}")),
+        evidence_show.contains(&format!("Next: guild why {execution_uri}")),
         "{evidence_show}"
     );
 }
@@ -619,7 +622,10 @@ fn primary_run_command_keeps_payload_on_stdout_and_status_on_stderr() {
     assert_eq!(payload["mode"].as_str(), Some("inspect"));
     assert!(stderr.contains("succeeded  not_proven  exec:"), "{stderr}");
     assert!(stderr.contains("example/hello-inspect@0.1.0"), "{stderr}");
-    assert!(stderr.contains("Next: guild why exec:"), "{stderr}");
+    assert!(
+        stderr.contains("Next: guild why guild://executions/"),
+        "{stderr}"
+    );
     assert!(
         stderr.contains("Next: guild get guild://executions/"),
         "{stderr}"
@@ -650,6 +656,7 @@ fn starter_pack_incident_brief_runs_with_markdown_stdout() {
     assert!(show_output.contains("example/incident-brief@0.1.0"));
     assert!(show_output.contains("support: bounded("));
     assert!(show_output.contains("invoke-skill"));
+    assert!(!show_output.contains("Next: guild run "), "{show_output}");
 
     let verify_output = run_guild_success(
         &["verify", "incident-brief@^0.1", "--color", "never"],
@@ -1953,7 +1960,10 @@ fn run_help_uses_input_file_flag_and_ref_topic() {
     assert!(stdout.contains("Authority lifecycle:"));
     assert!(stdout.contains("declared authority comes from the installed manifest."));
     assert!(stdout.contains("runtime-effective authority is limited to the final granted set."));
-    assert!(stdout.contains("stdout carries the result payload."));
+    assert!(stdout.contains("in the default human mode, stdout carries the result payload."));
+    assert!(
+        stdout.contains("with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.")
+    );
     assert!(stdout.contains("low-noise `Next:` hints"));
     assert!(stdout.contains("guild help refs"));
     assert!(stdout.contains("guild why --help"));
@@ -2009,20 +2019,26 @@ fn ls_get_why_and_verify_help_call_out_scope() {
 fn import_pull_and_transport_help_point_to_preview_direction() {
     let import_help = run_guild_success(&["import", "--help"], None);
     assert!(import_help.contains("Import a signed bundle or OCI layout into a Guild root"));
-    assert!(import_help.contains("first preview contract is `--preview` for import and pull"));
+    assert!(
+        import_help.contains(
+            "first preview contract is planned as `--preview` for import and pull, but the flag is not implemented yet"
+        )
+    );
     assert!(import_help.contains("guild help preview"));
 
     let import_bundle_help = run_guild_success(&["import", "bundle", "--help"], None);
-    assert!(import_bundle_help.contains("planned `--preview` stays read-only"));
+    assert!(import_bundle_help.contains("planned `--preview` is not implemented yet"));
     assert!(import_bundle_help.contains("same signed bundle and trust checks as import"));
 
     let import_oci_help = run_guild_success(&["import", "oci-layout", "--help"], None);
-    assert!(import_oci_help.contains("planned `--preview` stays read-only"));
+    assert!(import_oci_help.contains("planned `--preview` is not implemented yet"));
     assert!(import_oci_help.contains("same signed bundle and trust checks as import"));
 
     let pull_help = run_guild_success(&["pull", "--help"], None);
     assert!(pull_help.contains("Pull and import installed state from an OCI registry"));
-    assert!(pull_help.contains("first preview contract is planned as `--preview`"));
+    assert!(pull_help.contains(
+        "first preview contract is planned as `--preview`, but the flag is not implemented yet"
+    ));
     assert!(pull_help.contains("guild help preview"));
 
     let export_help = run_guild_success(&["export", "--help"], None);
@@ -2096,6 +2112,12 @@ fn show_verbose_output_traces_requested_to_resolved_identity() {
     let temp = TempFixtureDir::new("guild-cli-show-identity");
     let registry_root = temp.path().join("registry");
     install_with_cli(&registry_root);
+    let list_output = run_guild_success(&["list", "--json"], Some(&registry_root));
+    let listed: Value = parse_json_stdout(&list_output);
+    let digest = listed["installed"][0]["digest"]
+        .as_str()
+        .unwrap()
+        .to_owned();
 
     let stdout = run_guild_success(&["show", "-v", "hello-inspect@^0.1"], Some(&registry_root));
     assert!(stdout.contains("requested: hello-inspect@^0.1"), "{stdout}");
@@ -2103,7 +2125,7 @@ fn show_verbose_output_traces_requested_to_resolved_identity() {
         stdout.contains("resolved: skill://example/hello-inspect@0.1.0"),
         "{stdout}"
     );
-    assert!(stdout.contains("digest: sha256:"), "{stdout}");
+    assert!(stdout.contains(&format!("digest: {digest}")), "{stdout}");
     assert!(stdout.contains("installed path:"), "{stdout}");
     assert!(!stdout.contains("\nsource:"), "{stdout}");
 }

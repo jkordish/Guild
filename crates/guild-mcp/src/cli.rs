@@ -49,16 +49,16 @@ const DEFAULT_ACTOR_ID: &str = "guild-cli";
 const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
 const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
 const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nOutput:\n  default output is a short human summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild why --help";
-const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  host policy grants, reduces, or denies that request before guest start.\n  runtime-effective authority is limited to the final granted set.\n\nOutput:\n  stdout carries the result payload.\n  stderr carries the human status summary for reading, not parsing.\n  that status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain when you need a stable machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
+const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  host policy grants, reduces, or denies that request before guest start.\n  runtime-effective authority is limited to the final granted set.\n\nOutput:\n  in the default human mode, stdout carries the result payload.\n  in the default human mode, stderr carries the human status summary for reading, not parsing.\n  with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.\n  that human status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain when you need a stable machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
 const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
 const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
 const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
 const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nSee also:\n  guild help trust\n  guild show --help";
 const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
-const IMPORT_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is `--preview` for import and pull.\n  see `guild help preview` for the planned read-only scope.";
-const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  planned `--preview` stays read-only and uses the same signed bundle and trust checks as import.\n  see `guild help preview` for the first contract.";
+const IMPORT_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview` for import and pull, but the flag is not implemented yet.\n  see `guild help preview` for the planned read-only scope.";
+const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  planned `--preview` is not implemented yet; when it lands, it stays read-only and uses the same signed bundle and trust checks as import.\n  see `guild help preview` for the first contract.";
 const PUSH_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for push in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
-const PULL_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview`.\n  see `guild help preview` for the planned read-only scope.";
+const PULL_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview`, but the flag is not implemented yet.\n  see `guild help preview` for the planned read-only scope.";
 
 #[derive(Debug)]
 pub struct CliError {
@@ -3779,21 +3779,21 @@ fn print_export_oci_layout_usage() {
 fn print_import_usage() {
     println!("usage: guild [--registry-root <path>] import <bundle|oci-layout> ...");
     println!(
-        "direction: the first preview contract is `--preview` for import and pull; see `guild help preview`."
+        "direction: the first preview contract is planned as `--preview` for import and pull, but the flag is not implemented yet; see `guild help preview`."
     );
 }
 
 fn print_import_bundle_usage() {
     println!("usage: guild [--registry-root <path>] import bundle <dir> [--json]");
     println!(
-        "direction: planned `--preview` stays read-only and uses the same signed bundle and trust checks as import."
+        "direction: planned `--preview` is not implemented yet; when it lands, it stays read-only and uses the same signed bundle and trust checks as import."
     );
 }
 
 fn print_import_oci_layout_usage() {
     println!("usage: guild [--registry-root <path>] import oci-layout <dir> [--json]");
     println!(
-        "direction: planned `--preview` stays read-only and uses the same signed bundle and trust checks as import."
+        "direction: planned `--preview` is not implemented yet; when it lands, it stays read-only and uses the same signed bundle and trust checks as import."
     );
 }
 
@@ -3812,7 +3812,7 @@ fn print_push_usage() {
 fn print_pull_usage() {
     println!("usage: guild [--registry-root <path>] pull <oci-ref> [--allow-http] [--json]");
     println!(
-        "direction: the first preview contract is planned as `--preview`; see `guild help preview`."
+        "direction: the first preview contract is planned as `--preview`, but the flag is not implemented yet; see `guild help preview`."
     );
 }
 
