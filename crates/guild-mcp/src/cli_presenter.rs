@@ -1070,21 +1070,25 @@ fn append_authority_observation_list(output: &mut String, record: &ExecutionReco
 
 fn authority_observation_line(observation: &AuthorityObservation) -> String {
     match observation {
-        AuthorityObservation::HttpRequest { status, detail } => format!(
-            "{} http-request -> {}",
-            authority_observation_status_label(status),
-            authority_observation_parts(
-                vec![detail.request.url.clone()],
-                detail.denial.as_ref().map(|failure| failure.code.as_str()),
-                detail
-                    .result_error
-                    .as_ref()
-                    .map(|failure| failure.code.as_str()),
-                detail
-                    .response_status
-                    .map(|value| format!("status {value}")),
+        AuthorityObservation::HttpRequest { status, detail } => {
+            let mut parts = vec![detail.request.url.clone()];
+            if let Some(response_status) = detail.response_status {
+                parts.push(format!("status {response_status}"));
+            }
+            format!(
+                "{} http-request -> {}",
+                authority_observation_status_label(status),
+                authority_observation_parts(
+                    parts,
+                    detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                    detail
+                        .result_error
+                        .as_ref()
+                        .map(|failure| failure.code.as_str()),
+                    None,
+                )
             )
-        ),
+        }
         AuthorityObservation::ReadResource { status, detail } => format!(
             "{} read-resource -> {}",
             authority_observation_status_label(status),
@@ -1533,6 +1537,38 @@ mod tests {
             line.contains(
                 "alias hello / exec:child-exec-0001-abcdef1234567890 / child-skill-failed"
             ),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn http_request_observation_keeps_response_status_when_result_error_is_present() {
+        let observation = AuthorityObservation::HttpRequest {
+            status: AuthorityObservationStatus::Exercised,
+            detail: guild_types::HttpAuthorityObservation {
+                request: guild_types::HttpRequest {
+                    method: guild_types::HttpMethod::Get,
+                    url: "http://127.0.0.1/not-json".into(),
+                    timeout_ms: None,
+                },
+                response_status: Some(200),
+                response_content_type: Some("text/plain".into()),
+                response_bytes: Some(12),
+                redirects_followed: Some(0),
+                resolution: None,
+                denial: None,
+                result_error: Some(guild_types::AuthorityObservationFailure {
+                    code: "http-response-not-json".into(),
+                    message: "response was not valid JSON".into(),
+                    detail: None,
+                }),
+            },
+        };
+
+        let line = authority_observation_line(&observation);
+
+        assert!(
+            line.contains("http://127.0.0.1/not-json / status 200 / http-response-not-json"),
             "{line}"
         );
     }
