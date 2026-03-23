@@ -1793,6 +1793,7 @@ where
             granted_capabilities: envelope.granted_capabilities.clone(),
             emitted_evidence: Self::load_evidence_records(registry, &outcome.emitted_evidence)?,
             authority_observations: outcome.authority_observations,
+            authority_observations_recorded: true,
             metrics: ExecutionMetrics {
                 duration_ms,
                 network_requests: outcome.network_requests,
@@ -2297,6 +2298,7 @@ where
             emitted_evidence: Self::load_evidence_records(registry, emitted_evidence)
                 .unwrap_or_default(),
             authority_observations,
+            authority_observations_recorded: true,
             metrics: ExecutionMetrics {
                 duration_ms: context.duration_ms,
                 network_requests,

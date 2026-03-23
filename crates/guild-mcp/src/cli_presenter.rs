@@ -1023,6 +1023,10 @@ fn append_ref_list(output: &mut String, label: &str, refs: &[String], styler: &S
 }
 
 fn authority_summary(record: &ExecutionRecord) -> String {
+    if !record.authority_observations_recorded {
+        return "not-recorded".into();
+    }
+
     let mut exercised = Vec::new();
     let mut blocked = Vec::new();
 
@@ -1049,6 +1053,11 @@ fn authority_summary(record: &ExecutionRecord) -> String {
 }
 
 fn append_authority_observation_list(output: &mut String, record: &ExecutionRecord) {
+    if !record.authority_observations_recorded {
+        let _ = writeln!(output, "authority observations: not recorded");
+        return;
+    }
+
     if record.authority_observations.is_empty() {
         return;
     }
@@ -1100,18 +1109,21 @@ fn authority_observation_line(observation: &AuthorityObservation) -> String {
         AuthorityObservation::InvokeSkill { status, detail } => format!(
             "{} invoke-skill -> {}",
             authority_observation_status_label(status),
-            authority_observation_parts(
-                vec![format!("alias {}", detail.alias)],
-                detail.denial.as_ref().map(|failure| failure.code.as_str()),
-                detail
-                    .result_error
-                    .as_ref()
-                    .map(|failure| failure.code.as_str()),
-                detail
-                    .child_execution_id
-                    .as_ref()
-                    .map(|execution_id| prefixed_id("exec", execution_id)),
-            )
+            {
+                let mut parts = vec![format!("alias {}", detail.alias)];
+                if let Some(execution_id) = &detail.child_execution_id {
+                    parts.push(prefixed_id("exec", execution_id));
+                }
+                authority_observation_parts(
+                    parts,
+                    detail.denial.as_ref().map(|failure| failure.code.as_str()),
+                    detail
+                        .result_error
+                        .as_ref()
+                        .map(|failure| failure.code.as_str()),
+                    None,
+                )
+            }
         ),
         AuthorityObservation::EmitEvidence { status, detail } => format!(
             "{} emit-evidence -> {}",
@@ -1452,6 +1464,15 @@ mod tests {
         .unwrap()
     }
 
+    fn legacy_execution_record_without_authority_observations() -> ExecutionRecord {
+        let mut value = serde_json::to_value(execution_record_with_related_refs(0, 0)).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("authority_observations");
+        serde_json::from_value(value).unwrap()
+    }
+
     #[test]
     fn compact_why_output_prefers_one_child_ref_over_evidence() {
         let record = execution_record_with_related_refs(1, 1);
@@ -1487,6 +1508,47 @@ mod tests {
         );
 
         assert_eq!(display_resource_ref_or_uri(&metadata_uri), metadata_uri);
+    }
+
+    #[test]
+    fn invoke_skill_observation_keeps_child_ref_when_result_error_is_present() {
+        let observation = AuthorityObservation::InvokeSkill {
+            status: AuthorityObservationStatus::Exercised,
+            detail: guild_types::InvokeSkillAuthorityObservation {
+                alias: "hello".into(),
+                child_execution_id: Some("child-exec-0001-abcdef1234567890".into()),
+                child_status: Some(ExecutionStatus::Failed),
+                denial: None,
+                result_error: Some(guild_types::AuthorityObservationFailure {
+                    code: "child-skill-failed".into(),
+                    message: "child skill failed".into(),
+                    detail: None,
+                }),
+            },
+        };
+
+        let line = authority_observation_line(&observation);
+
+        assert!(
+            line.contains(
+                "alias hello / exec:child-exec-0001-abcdef1234567890 / child-skill-failed"
+            ),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn legacy_records_render_authority_as_not_recorded() {
+        let record = legacy_execution_record_without_authority_observations();
+
+        let compact = render_execution_why(&record, test_options(0), StreamKind::Stdout);
+        let verbose = render_execution_why(&record, test_options(1), StreamKind::Stdout);
+
+        assert!(compact.contains("authority: not-recorded"), "{compact}");
+        assert!(
+            verbose.contains("authority observations: not recorded"),
+            "{verbose}"
+        );
     }
 }
 

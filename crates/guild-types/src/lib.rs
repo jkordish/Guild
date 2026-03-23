@@ -2296,7 +2296,7 @@ pub struct ExecutionReceipt {
     pub status: ExecutionStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
 pub struct ExecutionRecord {
     pub receipt: ExecutionReceipt,
     pub request: CallerRequest,
@@ -2311,11 +2311,62 @@ pub struct ExecutionRecord {
     pub emitted_evidence: Vec<EvidenceRecord>,
     #[serde(default)]
     pub authority_observations: Vec<AuthorityObservation>,
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub authority_observations_recorded: bool,
     #[serde(default)]
     pub metrics: ExecutionMetrics,
     pub provenance: Provenance,
     #[serde(default)]
     pub child_executions: Vec<ChildExecutionRecord>,
+}
+
+#[derive(Deserialize)]
+struct ExecutionRecordSerde {
+    receipt: ExecutionReceipt,
+    request: CallerRequest,
+    policy_decision: PolicyDecision,
+    resolved_skill: ResolvedSkillRef,
+    parent_execution_id: Option<String>,
+    status: ExecutionStatus,
+    output: Option<SkillOutput>,
+    termination: Option<TerminationDetail>,
+    granted_capabilities: CapabilityGrantSet,
+    #[serde(default)]
+    emitted_evidence: Vec<EvidenceRecord>,
+    authority_observations: Option<Vec<AuthorityObservation>>,
+    #[serde(default)]
+    metrics: ExecutionMetrics,
+    provenance: Provenance,
+    #[serde(default)]
+    child_executions: Vec<ChildExecutionRecord>,
+}
+
+impl<'de> Deserialize<'de> for ExecutionRecord {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let record = ExecutionRecordSerde::deserialize(deserializer)?;
+        let authority_observations_recorded = record.authority_observations.is_some();
+        Ok(Self {
+            receipt: record.receipt,
+            request: record.request,
+            policy_decision: record.policy_decision,
+            resolved_skill: record.resolved_skill,
+            parent_execution_id: record.parent_execution_id,
+            status: record.status,
+            output: record.output,
+            termination: record.termination,
+            granted_capabilities: record.granted_capabilities,
+            emitted_evidence: record.emitted_evidence,
+            authority_observations: record.authority_observations.unwrap_or_default(),
+            authority_observations_recorded,
+            metrics: record.metrics,
+            provenance: record.provenance,
+            child_executions: record.child_executions,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
