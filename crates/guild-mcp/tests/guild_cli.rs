@@ -3741,7 +3741,7 @@ fn why_human_output_suggests_get_next_step() {
         .unwrap()
         .to_owned();
     let exec_prefix = format!("exec:{}", &execution_id[..12]);
-    let evidence_prefix = format!("evidence:{}", &evidence_id[..12]);
+    let evidence_ref = format!("evidence:{evidence_id}");
 
     let stdout = run_guild_success(
         &["why", &exec_prefix, "--color", "never"],
@@ -3754,7 +3754,7 @@ fn why_human_output_suggests_get_next_step() {
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("nearby evidence: {evidence_prefix}")),
+        stdout.contains(&format!("nearby evidence: {evidence_ref}")),
         "{stdout}"
     );
     assert!(
@@ -3899,14 +3899,14 @@ fn why_verbose_output_lists_nearby_related_refs() {
         .unwrap()
         .to_owned();
     let exec_prefix = format!("exec:{}", &execution_id[..12]);
-    let evidence_prefix = format!("evidence:{}", &evidence_id[..12]);
+    let evidence_ref = format!("evidence:{evidence_id}");
 
     let stdout = run_guild_success(
         &["why", &exec_prefix, "-v", "--color", "never"],
         Some(&registry_root),
     );
     assert!(stdout.contains("nearby evidence refs:"), "{stdout}");
-    assert!(stdout.contains(&format!("- {evidence_prefix}")), "{stdout}");
+    assert!(stdout.contains(&format!("- {evidence_ref}")), "{stdout}");
     assert!(!stdout.contains("nearby evidence: "), "{stdout}");
 }
 
@@ -3949,7 +3949,7 @@ fn why_human_output_prefers_child_execution_navigation_when_lineage_exists() {
         .as_str()
         .unwrap()
         .to_owned();
-    let child_execution_prefix = format!("exec:{}", &child_execution_id[..12]);
+    let child_execution_ref = format!("exec:{child_execution_id}");
     let exec_prefix = format!("exec:{}", &execution_id[..12]);
 
     let why_output = run_guild_success(
@@ -3959,7 +3959,7 @@ fn why_human_output_prefers_child_execution_navigation_when_lineage_exists() {
     assert!(why_output.contains("child executions: 1"), "{why_output}");
     assert!(why_output.contains("nearby child: exec:"), "{why_output}");
     assert!(
-        why_output.contains(&format!("nearby child: {child_execution_prefix}")),
+        why_output.contains(&format!("nearby child: {child_execution_ref}")),
         "{why_output}"
     );
     assert!(!why_output.contains("nearby evidence: "), "{why_output}");
@@ -3994,7 +3994,7 @@ fn why_human_output_prefers_child_execution_navigation_when_lineage_exists() {
         "{verbose_output}"
     );
     assert!(
-        verbose_output.contains(&format!("- {child_execution_prefix}")),
+        verbose_output.contains(&format!("- {child_execution_ref}")),
         "{verbose_output}"
     );
     assert!(

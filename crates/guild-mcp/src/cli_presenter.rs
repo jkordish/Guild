@@ -993,7 +993,7 @@ fn nearby_child_execution_refs(record: &ExecutionRecord, limit: usize) -> Vec<St
         .child_executions
         .iter()
         .take(limit)
-        .map(short_child_execution_ref)
+        .map(|child| prefixed_id("exec", &child.execution_id))
         .collect()
 }
 
@@ -1002,7 +1002,12 @@ fn nearby_evidence_refs(record: &ExecutionRecord, limit: usize) -> Vec<String> {
         .emitted_evidence
         .iter()
         .take(limit)
-        .map(short_evidence_ref)
+        .map(|evidence| {
+            evidence.uri.rsplit('/').next().map_or_else(
+                || evidence.uri.clone(),
+                |record_id| prefixed_id("evidence", record_id),
+            )
+        })
         .collect()
 }
 
@@ -1076,7 +1081,7 @@ fn authority_observation_line(observation: &AuthorityObservation) -> String {
             authority_observation_status_label(status),
             authority_observation_parts(
                 vec![
-                    short_resource_ref_or_uri(&detail.uri),
+                    display_resource_ref_or_uri(&detail.uri),
                     detail
                         .resource_kind
                         .as_ref()
@@ -1105,7 +1110,7 @@ fn authority_observation_line(observation: &AuthorityObservation) -> String {
                 detail
                     .child_execution_id
                     .as_ref()
-                    .map(|execution_id| short_prefixed_id("exec", execution_id)),
+                    .map(|execution_id| prefixed_id("exec", execution_id)),
             )
         ),
         AuthorityObservation::EmitEvidence { status, detail } => format!(
@@ -1116,7 +1121,7 @@ fn authority_observation_line(observation: &AuthorityObservation) -> String {
                     detail
                         .evidence_uri
                         .as_deref()
-                        .map(short_resource_ref_or_uri)
+                        .map(display_resource_ref_or_uri)
                         .unwrap_or_else(|| detail.mime_type.clone()),
                     format_bytes(detail.size_bytes),
                 ],
@@ -1182,18 +1187,21 @@ fn authority_observation_status_label(status: &AuthorityObservationStatus) -> &'
     }
 }
 
-fn short_resource_ref_or_uri(uri: &str) -> String {
+fn display_resource_ref_or_uri(uri: &str) -> String {
     if let Some(execution_id) = uri.strip_prefix(GUILD_EXECUTION_URI_PREFIX) {
-        return short_prefixed_id("exec", execution_id);
+        return prefixed_id("exec", execution_id);
     }
     if let Some(record_id) = uri.strip_prefix(GUILD_OBJECT_RECORD_URI_PREFIX) {
-        if let Some(record_id) = record_id.strip_suffix(GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX) {
-            return format!("{} metadata", short_prefixed_id("evidence", record_id));
+        if record_id
+            .strip_suffix(GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX)
+            .is_some()
+        {
+            return uri.into();
         }
-        return short_prefixed_id("evidence", record_id);
+        return prefixed_id("evidence", record_id);
     }
     if let Some(digest) = uri.strip_prefix(GUILD_OBJECT_BLOB_URI_PREFIX) {
-        return format!("obj:{}", short_hash(digest));
+        return prefixed_id("obj", digest);
     }
     if uri.starts_with(GUILD_EXECUTION_QUERY_URI_PREFIX) {
         return uri.into();
@@ -1253,6 +1261,10 @@ fn capability_summary(grants: &[CapabilityRequirement]) -> String {
 
 fn short_hash(value: &str) -> String {
     value.chars().take(12).collect()
+}
+
+fn prefixed_id(prefix: &str, value: &str) -> String {
+    format!("{prefix}:{value}")
 }
 
 fn short_prefixed_id(prefix: &str, value: &str) -> String {
@@ -1460,18 +1472,21 @@ mod tests {
         assert!(output.contains("nearby evidence refs:"), "{output}");
         for index in 0..4 {
             let child_execution_id = format!("child-exec-{index:04}-abcdef1234567890");
-            let child_ref = format!(
-                "exec:{}",
-                child_execution_id.chars().take(12).collect::<String>()
-            );
+            let child_ref = format!("exec:{child_execution_id}");
             let evidence_id = format!("evidence-record-{index:04}-abcdef1234567890");
-            let evidence_ref = format!(
-                "evidence:{}",
-                evidence_id.chars().take(12).collect::<String>()
-            );
+            let evidence_ref = format!("evidence:{evidence_id}");
             assert!(output.contains(&format!("- {child_ref}")), "{output}");
             assert!(output.contains(&format!("- {evidence_ref}")), "{output}");
         }
+    }
+
+    #[test]
+    fn display_resource_ref_preserves_metadata_uris() {
+        let metadata_uri = format!(
+            "{GUILD_OBJECT_RECORD_URI_PREFIX}evidence-record-0001-abcdef1234567890{GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX}"
+        );
+
+        assert_eq!(display_resource_ref_or_uri(&metadata_uri), metadata_uri);
     }
 }
 
