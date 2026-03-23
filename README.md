@@ -125,6 +125,7 @@ cargo run -q -p guild-mcp --bin guild -- install examples/skills/hello-inspect
 ## Ops Starter Pack
 
 The current user-facing skill pack lives at [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
+The surrounding examples index lives at [`examples/README.md`](examples/README.md).
 
 It is intentionally ordinary example-skill layout, not a new packaging system. The pack installs as five example skills and stays inside current honest repo truth:
 

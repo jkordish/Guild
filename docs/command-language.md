@@ -145,6 +145,8 @@ What this flow teaches:
 
 The current user-facing example pack lives at
 [`examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md).
+The surrounding examples index lives at
+[`examples/README.md`](../examples/README.md).
 
 It is still just example skills under `examples/skills/`, not a new pack system.
 Use it when you want a compact real-path walkthrough over persisted Guild refs:

@@ -264,7 +264,7 @@ cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGIST
 cargo run -p guild-mcp --bin guild -- codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow render-report
 ```
 
-For the user-facing quickstart and exact capability-grant snippets, see [`../examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md).
+For the user-facing quickstart and exact capability-grant snippets, see [`../examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md). For the surrounding examples index, see [`../examples/README.md`](../examples/README.md).
 
 Trust and signed-bundle smoke:
 

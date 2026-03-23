@@ -4,6 +4,8 @@ This is a starter pack of ordinary example skills. There is no new pack type her
 
 The point of the pack is narrow: show useful local operational analysis over real persisted Guild artifacts without widening runtime, proof, token, or witness semantics.
 
+If you want one current user-facing Guild workflow, start here.
+
 ## Skills
 
 | Skill | Question it answers | Input | Required capabilities |
@@ -30,7 +32,7 @@ cargo run -q -p guild-mcp --bin guild -- install examples/skills/evidence-summar
 cargo run -q -p guild-mcp --bin guild -- verify skill://example/incident-brief@^0.1
 ```
 
-## Try It
+## First Five Minutes
 
 Use the existing deterministic repo-local scenario prep to get real execution and query refs:
 
@@ -47,7 +49,9 @@ That JSON includes:
 
 Use those real refs directly with the pack skills.
 
-Run `incident-brief` on one stored execution ref:
+Core workflow:
+
+1. Run `incident-brief` on one stored execution ref:
 
 ```bash
 cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" run \
@@ -56,7 +60,7 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" 
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"invoke-skill","access":"invoke","constraints":{"aliases":["renderer"]}}]}'
 ```
 
-Run `run-diff` on two stored execution refs:
+2. Run `run-diff` on two stored execution refs:
 
 ```bash
 cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" run \
@@ -65,7 +69,7 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" 
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"invoke-skill","access":"invoke","constraints":{"aliases":["renderer"]}}]}'
 ```
 
-Run `recent-failures` on the bounded query ref:
+3. Optionally run `recent-failures` on the bounded query ref:
 
 ```bash
 cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" run \
@@ -74,7 +78,7 @@ cargo run -q -p guild-mcp --bin guild -- --registry-root "$GUILD_REGISTRY_ROOT" 
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://queries/executions/"],"resource_kinds":["query"]}},{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}}]}'
 ```
 
-Optionally inspect the last report run with the normal CLI:
+4. Inspect the resulting refs with the normal CLI:
 
 ```bash
 guild ls runs --limit 5
