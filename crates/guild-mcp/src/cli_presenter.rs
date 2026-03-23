@@ -281,7 +281,7 @@ pub fn render_skill_show(
         );
         let _ = writeln!(
             output,
-            "source: {}",
+            "installed path: {}",
             styler.paint(Tone::Dim, installed.root_dir.display().to_string())
         );
     }

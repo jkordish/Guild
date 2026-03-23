@@ -1762,6 +1762,8 @@ fn shared_help_topics_are_available() {
     assert!(refs.contains("Guild ref forms"));
     assert!(refs.contains("skill://<namespace>/<name>@<version-or-range>"));
     assert!(refs.contains("guild://..."));
+    assert!(refs.contains("Identity layers:"));
+    assert!(refs.contains("guild show -v skill://example/hello-inspect@^0.1"));
 
     let trust = run_guild_success(&["help", "trust"], None);
     assert!(trust.contains("Trust and verification"));
@@ -1787,6 +1789,7 @@ fn show_help_points_to_ref_topics() {
     let stdout = run_guild_success(&["show", "--help"], None);
     assert!(stdout.contains("Show a skill, run, object, or evidence summary"));
     assert!(stdout.contains("Accepted refs:"));
+    assert!(stdout.contains("Use -v with a skill ref"));
     assert!(stdout.contains("guild help refs"));
 }
 
@@ -1830,6 +1833,23 @@ fn install_command_maps_to_real_source_install_path() {
     assert_eq!(manifest.key.name, "hello-inspect");
     assert!(Path::new(install_value["artifact_path"].as_str().unwrap()).exists());
     assert!(Path::new(install_value["root_dir"].as_str().unwrap()).exists());
+}
+
+#[test]
+fn show_verbose_output_traces_requested_to_resolved_identity() {
+    let temp = TempFixtureDir::new("guild-cli-show-identity");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let stdout = run_guild_success(&["show", "-v", "hello-inspect@^0.1"], Some(&registry_root));
+    assert!(stdout.contains("requested: hello-inspect@^0.1"), "{stdout}");
+    assert!(
+        stdout.contains("resolved: skill://example/hello-inspect@0.1.0"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("digest: sha256:"), "{stdout}");
+    assert!(stdout.contains("installed path:"), "{stdout}");
+    assert!(!stdout.contains("\nsource:"), "{stdout}");
 }
 
 #[test]

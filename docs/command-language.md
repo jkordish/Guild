@@ -98,6 +98,22 @@ Transport and publication use standard OCI references:
 
 Guild intentionally does not use `guild://` for transport publication. Installed transport units move through signed bundle directories, OCI image layouts, and OCI registry references.
 
+## Identity Layers
+
+Guild uses three identity layers in day-to-day CLI flows:
+
+- source skill: the local source directory passed to `guild install`
+- installed executable state: the installed record stored under the selected Guild root
+- resolved executable identity: the exact installed executable selected for use, identified by resolved ref plus artifact digest
+
+The fastest way to trace those layers for one skill is:
+
+```bash
+guild show -v skill://example/hello-inspect@^0.1
+```
+
+That verbose view shows the requested ref, resolved ref, digest, and installed path together. Use it when you need to answer "what did I ask for?" versus "what exact executable did Guild select?"
+
 ## Root Resolution
 
 Guild chooses a root in this order:
@@ -133,6 +149,7 @@ What this flow teaches:
 
 - `install` is source-to-installed, not source-to-runtime bypass
 - `show` is the primary non-executing summary path
+- `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
 - `run` executes a `skill://...` ref through the real Guild runtime path
 - success produces a durable `guild://executions/...` receipt
 - `why` explains one stored execution record

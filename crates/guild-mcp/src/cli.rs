@@ -46,7 +46,7 @@ const DEFAULT_TENANT_ID: &str = "local";
 const DEFAULT_ACTOR_ID: &str = "guild-cli";
 const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
 const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
-const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nSee also:\n  guild help refs";
+const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n\nSee also:\n  guild help refs";
 const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nOutput:\n  stdout carries the result payload.\n  stderr carries the human status summary.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs";
 const WHY_AFTER_HELP: &str = "Accepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nThis command explains a persisted execution record; it does not rerun the skill.";
 const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nSee also:\n  guild help trust";
@@ -3505,6 +3505,14 @@ fn print_help_refs() {
     println!("  evidence:<evidence-record-id-prefix>");
     println!("  obj:<sha256-prefix>");
     println!("  guild://...");
+    println!();
+    println!("Identity layers:");
+    println!("  source skill          local source directory passed to guild install");
+    println!("  installed state       installed executable record under the Guild root");
+    println!("  resolved executable   exact selected ref plus artifact digest");
+    println!();
+    println!("Trace one skill through those layers with:");
+    println!("  guild show -v skill://example/hello-inspect@^0.1");
     println!();
     println!(
         "Use canonical skill refs and full Guild URIs in scripts or when ambiguity is possible."

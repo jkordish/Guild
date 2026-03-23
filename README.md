@@ -66,6 +66,22 @@ The CLI now also ships focused help topics:
 
 Version note: the current workspace Cargo packages, including the `guild` CLI crate, are `0.1.1`. The checked-in example Guild skill manifests still resolve as `0.1.0` / `@^0.1`, and the OCI transport examples intentionally keep those manifest-driven tags. Cargo package version and Guild skill identity are separate axes.
 
+## Identity Layers
+
+Guild uses three identity layers in normal operator workflows:
+
+- source skill: the local source directory you pass to `guild install`
+- installed executable state: the installed record under the selected Guild root
+- resolved executable identity: the exact installed executable selected to run, including its resolved ref and digest
+
+Trace those layers together with:
+
+```bash
+guild show -v skill://example/hello-inspect@^0.1
+```
+
+That verbose view prints the requested ref, the resolved ref, the resolved digest, and the installed path together so you can see what you asked for, what Guild installed, and what exact executable identity Guild selected.
+
 ## Quickstart
 
 Guild chooses a local root in this order:
@@ -104,6 +120,7 @@ What that flow shows:
 
 - `install` builds source into installed executable state
 - `show` is the primary non-executing summary path
+- `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
 - `run` executes a human-facing `skill://...` ref through the real Guild path
 - `ls` shows installed skills and recent persisted activity
 - successful runs return a durable `guild://executions/...` receipt
