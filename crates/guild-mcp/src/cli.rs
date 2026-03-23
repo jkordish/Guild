@@ -235,6 +235,8 @@ fn classify_cli_message(message: &str) -> CliErrorCategory {
         || message.contains("invalid requested capabilities")
     {
         CliErrorCategory::AuthorityDenial
+    } else if message.starts_with("trusted publisher `") && message.contains("was not present") {
+        CliErrorCategory::LookupAmbiguity
     } else if message.contains("signature")
         || message.contains("trusted publisher")
         || message.contains("signed bundle")
@@ -292,6 +294,11 @@ fn next_steps_for_cli_message(message: &str, category: CliErrorCategory) -> Opti
                 .into(),
         );
     }
+    if message.starts_with("trusted publisher `") && message.contains("was not present") {
+        return Some(
+            "Next: run `guild trust list` to inspect the current trusted publisher entries".into(),
+        );
+    }
 
     match category {
         CliErrorCategory::Usage => None,
@@ -324,6 +331,14 @@ fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCatego
         || code.starts_with("policy-")
         || message.contains("local policy configuration")
     {
+        CliErrorCategory::RootSetup
+    } else if matches!(
+        code,
+        "trusted-publisher-read-failed"
+            | "trusted-publisher-parse-failed"
+            | "trusted-publisher-key-invalid"
+            | "trusted-publisher-tier-invalid"
+    ) {
         CliErrorCategory::RootSetup
     } else if code == "bundle-format-unsupported" {
         CliErrorCategory::RuntimeCompatibility
@@ -424,6 +439,13 @@ fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
         "policy-read-failed" | "policy-parse-failed" | "policy-invalid" => {
             Some("Next: fix the local policy file under the selected Guild root and rerun the command".into())
         }
+        "trusted-publisher-read-failed"
+        | "trusted-publisher-parse-failed"
+        | "trusted-publisher-key-invalid"
+        | "trusted-publisher-tier-invalid" => Some(
+            "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild trust list`"
+                .into(),
+        ),
         "execution-plan-publisher-untrusted" | "bundle-publisher-untrusted" => Some(
             "Next: run `guild trust list` to inspect the target root, then add the publisher with `guild trust add --identity-file <identity.json>` or `guild trust add --record-file <record.json>`"
                 .into(),
@@ -3145,9 +3167,14 @@ fn run_trust_remove(
     let removed = LocalRegistry::remove_trusted_publisher(&registry_root, &publisher_id)
         .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
     if !removed {
-        return Err(CliError::new(format!(
-            "trusted publisher `{publisher_id}` was not present"
-        )));
+        return Err(CliError::classified(
+            CliErrorCategory::LookupAmbiguity,
+            format!("trusted publisher `{publisher_id}` was not present"),
+        )
+        .with_next_steps(
+            "Next: run `guild trust list` to inspect the current trusted publisher entries",
+        )
+        .qualify_for_registry_root(&registry_root));
     }
 
     println!("removed trusted publisher {publisher_id}");
