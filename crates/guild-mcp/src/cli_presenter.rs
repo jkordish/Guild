@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 
 use guild_manifest::SkillManifest;
-use guild_registry::{InstalledSkill, SignatureScheme};
+use guild_registry::{InstalledSkill, SignatureScheme, TrustedPublisherRecord};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
     CapabilityRequirement, EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionPhase,
@@ -245,9 +245,8 @@ pub fn render_skill_show(
     );
     let _ = writeln!(
         output,
-        "status: {} / {}",
-        paint_status_word(&styler, &verification),
-        paint_status_word(&styler, &trust)
+        "status: {}",
+        render_trust_status_pair(Some(&styler), &verification, &trust)
     );
     let _ = writeln!(
         output,
@@ -325,6 +324,10 @@ pub fn render_skill_verify(
     let verification = installed.trust.verification_state.to_string();
     let trust = installed.trust.trust_tier.to_string();
     let mut output = String::new();
+    let publisher = installed
+        .verification
+        .as_ref()
+        .map_or("local-source", |record| record.publisher.id.as_str());
     let _ = writeln!(
         output,
         "{}",
@@ -332,33 +335,26 @@ pub fn render_skill_verify(
     );
     let _ = writeln!(
         output,
-        "verification: {}",
-        paint_status_word(&styler, &verification)
+        "status: {}",
+        render_trust_status_pair(Some(&styler), &verification, &trust)
     );
-    let _ = writeln!(output, "trust: {}", paint_status_word(&styler, &trust));
-    if let Some(verification) = &installed.verification {
+    let _ = writeln!(
+        output,
+        "publisher: {}",
+        render_publisher_label(Some(&styler), publisher)
+    );
+    if let Some(verification) = &installed.verification
+        && options.verbose()
+    {
         let _ = writeln!(
             output,
-            "publisher: {}",
-            styler.paint(Tone::Ref, verification.publisher.id.as_str())
+            "scheme: {}",
+            signature_scheme_label(&verification.scheme)
         );
-        if options.verbose() {
-            let _ = writeln!(
-                output,
-                "scheme: {}",
-                signature_scheme_label(&verification.scheme)
-            );
-            let _ = writeln!(
-                output,
-                "bundle: {}",
-                styler.paint(Tone::Ref, short_hash(&verification.bundle_sha256))
-            );
-        }
-    } else if options.verbose() {
         let _ = writeln!(
             output,
-            "publisher: {}",
-            styler.paint(Tone::Dim, "local-source")
+            "bundle: {}",
+            styler.paint(Tone::Ref, short_hash(&verification.bundle_sha256))
         );
     }
     output
@@ -370,6 +366,61 @@ pub fn render_skill_verify_next_step(installed: &InstalledSkill) -> String {
         "Next: guild show -v {}",
         resolved_skill_ref(&installed.resolved_ref)
     )
+}
+
+#[must_use]
+pub fn render_imported_skill_review(installed: &InstalledSkill) -> String {
+    let verification = installed.trust.verification_state.to_string();
+    let trust = installed.trust.trust_tier.to_string();
+    let publisher = installed
+        .verification
+        .as_ref()
+        .map_or("local-source", |record| record.publisher.id.as_str());
+    let mut output = String::new();
+    let _ = writeln!(
+        output,
+        "installed {}",
+        resolved_skill_ref(&installed.resolved_ref)
+    );
+    let _ = writeln!(
+        output,
+        "status: {}",
+        render_trust_status_pair(None, &verification, &trust)
+    );
+    let _ = writeln!(output, "publisher: {publisher}");
+    output
+}
+
+#[must_use]
+pub fn render_import_next_step(installed: &[InstalledSkill]) -> String {
+    match installed {
+        [skill] => format!(
+            "Next: guild verify -v {}",
+            resolved_skill_ref(&skill.resolved_ref)
+        ),
+        _ => "Next: guild ls skills".to_owned(),
+    }
+}
+
+#[must_use]
+pub fn render_trust_add_success(publisher: &TrustedPublisherRecord) -> String {
+    let mut output = String::new();
+    let _ = writeln!(output, "trusted publisher {}", publisher.publisher.id);
+    append_trusted_publisher_details(&mut output, publisher);
+    output
+}
+
+#[must_use]
+pub fn render_trusted_publishers_list(publishers: &[TrustedPublisherRecord]) -> String {
+    let mut output = String::new();
+    for (index, publisher) in publishers.iter().enumerate() {
+        let _ = writeln!(output, "publisher: {}", publisher.publisher.id);
+        append_trusted_publisher_details(&mut output, publisher);
+        if index + 1 < publishers.len() {
+            let _ = writeln!(output);
+        }
+    }
+    output
 }
 
 #[must_use]
@@ -931,6 +982,14 @@ fn execution_uri(execution_id: &str) -> String {
     format!("{GUILD_EXECUTION_URI_PREFIX}{execution_id}")
 }
 
+fn append_trusted_publisher_details(output: &mut String, publisher: &TrustedPublisherRecord) {
+    let _ = writeln!(output, "tier: {}", publisher.trust_tier);
+    let _ = writeln!(output, "name: {}", publisher.publisher.display_name);
+    if let Some(homepage) = &publisher.publisher.homepage {
+        let _ = writeln!(output, "homepage: {homepage}");
+    }
+}
+
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn render_support_summary(summary: &SupportSummary, styler: &Styler) -> String {
     summary
@@ -974,6 +1033,25 @@ fn paint_status_word(styler: &Styler, word: &str) -> String {
             styler.paint(Tone::Danger, word)
         }
         _ => word.to_owned(),
+    }
+}
+
+fn render_publisher_label(styler: Option<&Styler>, publisher: &str) -> String {
+    match styler {
+        Some(styler) if publisher == "local-source" => styler.paint(Tone::Dim, publisher),
+        Some(styler) => styler.paint(Tone::Ref, publisher),
+        None => publisher.to_owned(),
+    }
+}
+
+fn render_trust_status_pair(styler: Option<&Styler>, verification: &str, trust: &str) -> String {
+    match styler {
+        Some(styler) => format!(
+            "{} / {}",
+            paint_status_word(styler, verification),
+            paint_status_word(styler, trust)
+        ),
+        None => format!("{verification} / {trust}"),
     }
 }
 
