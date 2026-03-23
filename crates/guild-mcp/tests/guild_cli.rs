@@ -891,11 +891,16 @@ fn run_refusal_keeps_payload_off_stdout_and_status_on_stderr() {
     );
     assert!(
         stderr.contains(&format!(
-            "Next: guild --registry-root {} show -v skill://example/hello-inspect-filesystem@^0.1",
+            "Next: guild --registry-root {} show -v 'skill://example/hello-inspect-filesystem@^0.1'",
             registry_root.display()
         )),
         "{stderr}"
     );
+    let where_line = stderr
+        .lines()
+        .find(|line| line.starts_with("where: guild://executions/"))
+        .unwrap();
+    assert!(!where_line.contains(" ("), "{stderr}");
 }
 
 #[test]
@@ -941,7 +946,7 @@ fn policy_denial_errors_surface_actionable_follow_up_guidance() {
     );
     assert!(
         stderr.contains(&format!(
-            "Next: guild --registry-root {} show -v skill://example/hello-inspect@^0.1",
+            "Next: guild --registry-root {} show -v 'skill://example/hello-inspect@^0.1'",
             registry_root.display()
         )),
         "{stderr}"
@@ -1255,6 +1260,65 @@ fn missing_execution_refs_surface_resource_guidance() {
             "Next: run `guild ls runs --limit 5` to find a recent execution, or use a full `guild://executions/<id>` URI"
         ),
         "{get_stderr}"
+    );
+
+    let evidence_output =
+        run_guild_failure_output(&["get", "evidence:deadbeef"], Some(&registry_root));
+    let evidence_stderr = String::from_utf8(evidence_output.stderr).unwrap();
+    assert!(
+        evidence_stderr.contains(
+            "resource/read: evidence ref `evidence:deadbeef` did not match any stored evidence record"
+        ),
+        "{evidence_stderr}"
+    );
+    assert!(
+        evidence_stderr
+            .contains("Next: run `guild ls evidence --limit 5` to inspect stored evidence"),
+        "{evidence_stderr}"
+    );
+
+    let object_output = run_guild_failure_output(&["show", "obj:deadbeef"], Some(&registry_root));
+    let object_stderr = String::from_utf8(object_output.stderr).unwrap();
+    assert!(
+        object_stderr
+            .contains("resource/read: object ref `obj:deadbeef` did not match any stored object"),
+        "{object_stderr}"
+    );
+    assert!(
+        object_stderr.contains("Next: run `guild ls objects --limit 5` to inspect stored objects"),
+        "{object_stderr}"
+    );
+}
+
+#[test]
+fn runtime_recovery_hints_shell_quote_copy_pasteable_skill_refs() {
+    let temp = TempFixtureDir::new("guild-cli-runtime-hints-quoted-ref");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let _ = duplicate_installed_hello_with_filesystem(&registry_root, "hello-inspect-filesystem");
+
+    let grants_json = emit_filesystem_rejection_grants_json();
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect-filesystem@>=0.1.0",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v 'skill://example/hello-inspect-filesystem@>=0.1.0'",
+            registry_root.display()
+        )),
+        "{stderr}"
     );
 }
 

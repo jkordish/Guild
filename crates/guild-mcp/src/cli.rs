@@ -215,6 +215,8 @@ fn classify_cli_message(message: &str) -> CliErrorCategory {
         || message.contains("execution record was not found")
         || message.contains("evidence record was not found")
         || message.contains("evidence object was not found")
+        || message.contains("stored evidence record")
+        || message.contains("stored object")
         || message.contains("unsupported resource ref")
     {
         CliErrorCategory::ResourceRead
@@ -3822,7 +3824,10 @@ fn next_steps_for_mcp_error(
 
     match category {
         CliErrorCategory::AuthorityDenial | CliErrorCategory::RuntimeCompatibility => {
-            lines.push(format!("Next: guild show -v {requested_skill_ref}"));
+            lines.push(format!(
+                "Next: guild show -v {}",
+                shell_quote_arg(requested_skill_ref)
+            ));
         }
         CliErrorCategory::TrustVerification => {
             lines.push("Next: guild help trust".into());
@@ -3851,11 +3856,7 @@ fn cli_error_from_mcp(
         CliError::classified(category, error.message.clone()).with_reason_code(error.code);
 
     if let Some(receipt) = error.receipt {
-        cli_error = cli_error.with_location(format!(
-            "{} ({})",
-            receipt.uri,
-            status_label(&receipt.status)
-        ));
+        cli_error = cli_error.with_location(receipt.uri);
     }
     if let Some(next_steps) = next_steps {
         cli_error = cli_error.with_next_steps(next_steps);
