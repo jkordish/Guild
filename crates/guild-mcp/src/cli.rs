@@ -241,7 +241,6 @@ fn classify_cli_message(message: &str) -> CliErrorCategory {
         || message.contains("trusted publisher")
         || message.contains("signed bundle")
         || message.contains("execution plan")
-        || message.contains("verify-plan")
     {
         CliErrorCategory::TrustVerification
     } else if message.contains("runtime")
@@ -338,8 +337,15 @@ fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCatego
             | "trusted-publisher-parse-failed"
             | "trusted-publisher-key-invalid"
             | "trusted-publisher-tier-invalid"
+            | "trusted-publisher-scan-failed"
+            | "trusted-publisher-remove-failed"
     ) {
         CliErrorCategory::RootSetup
+    } else if matches!(
+        code,
+        "bundle-signature-format-unsupported" | "execution-plan-signature-format-unsupported"
+    ) {
+        CliErrorCategory::RuntimeCompatibility
     } else if code == "bundle-format-unsupported" {
         CliErrorCategory::RuntimeCompatibility
     } else if is_bundle_integrity_error_code(code) {
@@ -444,6 +450,18 @@ fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
         | "trusted-publisher-key-invalid"
         | "trusted-publisher-tier-invalid" => Some(
             "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild trust list`"
+                .into(),
+        ),
+        "trusted-publisher-scan-failed" | "trusted-publisher-remove-failed" => Some(
+            "Next: fix the local trust store under the selected Guild root, then rerun `guild trust list` or `guild trust remove <publisher-id>`"
+                .into(),
+        ),
+        "bundle-signature-format-unsupported" => Some(
+            "Next: confirm the target Guild build supports this bundle signature format version, or re-export the bundle with a compatible Guild version before rerunning the import or pull"
+                .into(),
+        ),
+        "execution-plan-signature-format-unsupported" => Some(
+            "Next: confirm the target Guild build supports this signed plan format version, or rerun `guild trust sign-plan --plan <plan.json> --identity-file <identity.json> --output <signed-plan.json>` with a compatible Guild version"
                 .into(),
         ),
         "execution-plan-publisher-untrusted" | "bundle-publisher-untrusted" => Some(

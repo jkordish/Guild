@@ -2085,6 +2085,64 @@ fn broken_local_trust_records_surface_root_setup_guidance() {
 }
 
 #[test]
+fn trust_remove_store_io_failures_surface_root_setup_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-trust-remove-io-failure");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+    let trusted_record_path = registry_root
+        .join("trust")
+        .join("publishers")
+        .join("local.example.json");
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    fs::remove_file(&trusted_record_path).unwrap();
+    fs::create_dir_all(&trusted_record_path).unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "remove",
+            "local.example",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("root/setup: failed to remove trusted publisher record"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: trusted-publisher-remove-failed"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: fix the local trust store under the selected Guild root, then rerun `guild --registry-root {} trust list` or `guild --registry-root {} trust remove <publisher-id>`",
+            registry_root.display(),
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
+}
+
+#[test]
 fn trust_sign_and_verify_plan_commands_work() {
     let temp = TempFixtureDir::new("guild-cli-plan-sign");
     let registry_root = temp.path().join("registry");
@@ -2175,6 +2233,34 @@ fn trust_sign_and_verify_plan_commands_work() {
         verified_output["signed_digest"]["algorithm"].as_str(),
         Some("sha256")
     );
+}
+
+#[test]
+fn trust_verify_plan_argument_errors_stay_in_usage() {
+    let temp = TempFixtureDir::new("guild-cli-plan-verify-usage");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let registry_root_display = registry_root.display().to_string();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "verify-plan",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("usage: error: the following required arguments were not provided:"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: guild trust verify-plan --plan <PLAN>"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
 }
 
 #[test]
@@ -2272,6 +2358,99 @@ fn trust_verify_plan_rejects_tampered_signed_plan() {
         )),
         "{stderr}"
     );
+}
+
+#[test]
+fn trust_verify_plan_unsupported_signature_format_surfaces_compatibility_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-plan-verify-format-skew");
+    let registry_root = temp.path().join("registry");
+    let identity_path = temp.path().join("publisher.json");
+    let signed_plan_path = temp.path().join("signed-plan.json");
+    let registry_root_display = registry_root.display().to_string();
+    let identity = identity_path.display().to_string();
+    let plan = draft_plan_path("zero-authority.admit.plan.json")
+        .display()
+        .to_string();
+    let signed_plan = signed_plan_path.display().to_string();
+
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "generate",
+            "--publisher-id",
+            "local.example",
+            "--display-name",
+            "Local Example",
+            "--output",
+            &identity,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "sign-plan",
+            "--plan",
+            &plan,
+            "--identity-file",
+            &identity,
+            "--output",
+            &signed_plan,
+        ],
+        None,
+    );
+
+    let mut signed_plan_json: Value =
+        serde_json::from_str(&fs::read_to_string(&signed_plan_path).unwrap()).unwrap();
+    signed_plan_json["plan_signature"]["format_version"] =
+        Value::String("guild-plan-signature-v999".into());
+    fs::write(
+        &signed_plan_path,
+        serde_json::to_vec_pretty(&signed_plan_json).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "verify-plan",
+            "--plan",
+            &signed_plan,
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(
+            "runtime/compatibility: execution plan signature format version is unsupported"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: execution-plan-signature-format-unsupported"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: confirm the target Guild build supports this signed plan format version, or rerun `guild --registry-root {} trust sign-plan --plan <plan.json> --identity-file <identity.json> --output <signed-plan.json>` with a compatible Guild version",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
 }
 
 #[test]
