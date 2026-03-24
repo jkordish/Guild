@@ -443,6 +443,11 @@ fn guild_inspect_success_returns_structured_content_text_and_resource_links() {
                     .as_deref()
                     .unwrap()
                     .contains("none redaction")
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains(&record.receipt.uri)
     )));
 }
 

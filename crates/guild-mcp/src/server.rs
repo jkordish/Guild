@@ -4,7 +4,10 @@ use std::path::{Path, PathBuf};
 use base64::Engine as _;
 use guild_registry::LocalRegistry;
 use guild_runner::WasmtimeRuntimeAdapter;
-use guild_types::{EvidenceRecord, ExecutionQueryResource, ExecutionRecord, ResourceReadResult};
+use guild_types::{
+    EvidenceRecord, ExecutionQueryResource, ExecutionRecord, GUILD_EXECUTION_URI_PREFIX,
+    ResourceReadResult,
+};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1045,8 +1048,8 @@ fn evidence_metadata_description(record: &EvidenceRecord) -> String {
         record.size_bytes
     );
 
-    if let Some(execution_uri) = &record.produced_by_execution {
-        description.push_str(&format!(" Produced by {execution_uri}."));
+    if let Some(execution_id) = &record.produced_by_execution {
+        description.push_str(&format!(" Produced by {}.", execution_uri(execution_id)));
     }
 
     description.push_str(" Read this before the payload URI when you only need record context.");
@@ -1107,4 +1110,8 @@ fn redaction_class_label(redaction: &guild_types::RedactionClass) -> &'static st
         guild_types::RedactionClass::PiiRemoved => "pii-removed",
         guild_types::RedactionClass::TenantSensitive => "tenant-sensitive",
     }
+}
+
+fn execution_uri(execution_id: &str) -> String {
+    format!("{GUILD_EXECUTION_URI_PREFIX}{execution_id}")
 }
