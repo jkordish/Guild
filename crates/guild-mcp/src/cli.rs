@@ -273,11 +273,13 @@ fn strip_registry_root_qualifiers(line: &str) -> String {
 
 fn skip_shell_arg(input: &str) -> &str {
     let mut in_single_quotes = false;
+    let mut in_double_quotes = false;
 
     for (index, ch) in input.char_indices() {
         match ch {
-            '\'' => in_single_quotes = !in_single_quotes,
-            ' ' if !in_single_quotes => return &input[index..],
+            '\'' if !in_double_quotes => in_single_quotes = !in_single_quotes,
+            '"' if !in_single_quotes => in_double_quotes = !in_double_quotes,
+            ' ' if !in_single_quotes && !in_double_quotes => return &input[index..],
             _ => {}
         }
     }

@@ -2229,6 +2229,25 @@ fn json_failures_are_machine_readable_for_lookup_and_resource_misses() {
 }
 
 #[test]
+fn json_next_steps_strip_registry_root_qualifiers_with_apostrophes() {
+    let temp = TempFixtureDir::new("guild-cli-json-failure-apostrophe-root");
+    let registry_root = temp.path().join("O'Reilly guild root");
+    install_with_cli(&registry_root);
+
+    let verify_output = run_guild_failure_output(
+        &["verify", "missing-skill@^0.1", "--json"],
+        Some(&registry_root),
+    );
+    let verify_value = parse_failure_json_output(&verify_output);
+    assert_eq!(
+        verify_value["error"]["next_steps"][0].as_str(),
+        Some("run `guild ls skills` to inspect installed skills")
+    );
+    let rendered = serde_json::to_string(&verify_value).unwrap();
+    assert!(!rendered.contains("O'Reilly guild root"), "{rendered}");
+}
+
+#[test]
 fn legacy_aliases_keep_the_json_failure_envelope() {
     let temp = TempFixtureDir::new("guild-cli-json-failure-aliases");
     let registry_root = temp.path().join("registry");
