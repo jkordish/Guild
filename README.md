@@ -336,6 +336,9 @@ For agent discovery, start with `resources/list`, read the returned URIs through
 query shape or exact URI family, and use `guild.inspect` only when you mean to
 execute inspect mode and persist a new execution record.
 
+For task-shaped agent workflows, use
+[`docs/mcp-agent-recipes.md`](docs/mcp-agent-recipes.md).
+
 For persistent Codex integration, use the explicit setup workflow:
 
 ```bash
@@ -371,6 +374,7 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 ## Canonical Docs
 
 - `docs/how-guild-works.md` - short daily-user mental model for identity, authority, and the main CLI surfaces
+- `docs/mcp-agent-recipes.md` - task-shaped MCP recipes for agent users and integrators
 - `docs/command-language.md` - public CLI verbs, grouped workflows, and ref grammar
 - `docs/testing.md` - verification commands, proof workflows, and smoke paths
 - `SPECS.md` - normative contract and conformance language

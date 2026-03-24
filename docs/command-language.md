@@ -434,6 +434,9 @@ For agent-facing workflows, use the MCP surfaces in this order:
 - `resources/templates/list` when you need a specific query URI family or a URI you do not already have
 - `guild.inspect` when you actually want to execute inspect mode and persist a new execution record
 
+For the concrete task-shaped versions of those flows, read
+[`docs/mcp-agent-recipes.md`](mcp-agent-recipes.md).
+
 For persistent Codex integration, use:
 
 ```bash

@@ -4152,6 +4152,7 @@ fn user_facing_docs_use_installed_guild_cli_after_install() {
         repo_root().join("README.md"),
         repo_root().join("docs/command-language.md"),
         repo_root().join("docs/how-guild-works.md"),
+        repo_root().join("docs/mcp-agent-recipes.md"),
         repo_root().join("docs/adr/0019-thin-guild-cli.md"),
         repo_root().join("docs/testing.md"),
         repo_root().join("examples/README.md"),
@@ -4250,6 +4251,18 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(ops_pack.contains("guild why --lineage"));
     assert!(ops_pack.contains("guild ls evidence --limit 5"));
     assert!(ops_pack.contains("## Keep Going With The Normal CLI"));
+
+    let mcp_recipes = fs::read_to_string(repo_root().join("docs/mcp-agent-recipes.md")).unwrap();
+    assert!(mcp_recipes.contains("## Recipe 1: Inspect A Skill"));
+    assert!(mcp_recipes.contains("## Recipe 2: Find An Execution"));
+    assert!(mcp_recipes.contains("## Recipe 3: Fetch Evidence Safely"));
+    assert!(mcp_recipes.contains("## Recipe 4: Explain A Failure"));
+    assert!(mcp_recipes.contains("`resources/list`"));
+    assert!(mcp_recipes.contains("`resources/templates/list`"));
+    assert!(mcp_recipes.contains("`resources/read`"));
+    assert!(mcp_recipes.contains("`guild.inspect`"));
+    assert!(mcp_recipes.contains("guild://queries/executions/failures/recent/10"));
+    assert!(mcp_recipes.contains("guild://objects/records/<evidence-record-id>/metadata"));
 }
 
 #[test]
