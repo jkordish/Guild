@@ -353,6 +353,11 @@ fn percentile(samples: &[f64], percentile: f64) -> f64 {
 
     let mut sorted = samples.to_vec();
     sorted.sort_by(f64::total_cmp);
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss
+    )]
     let rank = ((sorted.len() - 1) as f64 * percentile).round() as usize;
     sorted[rank]
 }
@@ -363,6 +368,7 @@ fn summarize_samples(
     samples_ms: Vec<f64>,
 ) -> TimingSummary {
     let measured_runs = samples_ms.len();
+    #[allow(clippy::cast_precision_loss)]
     let mean_ms = if measured_runs == 0 {
         0.0
     } else {
@@ -419,6 +425,7 @@ fn benchmark_scenario(
     })
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn scenario_output(scenario_name: &str, result: LiveProofScenarioResult) -> Value {
     json!({
         "scenario": scenario_name,

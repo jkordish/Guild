@@ -173,6 +173,7 @@ fn emit_evidence_grant() -> GrantedCapability {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry_root = local_registry_root();
     reset_registry_root(&registry_root)?;

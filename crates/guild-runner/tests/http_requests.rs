@@ -1061,38 +1061,39 @@ fn proof_only_replay_transport_replays_deterministic_loopback_heads_with_default
 
 #[test]
 fn proof_only_replay_catalog_rejects_head_fixtures_with_bodies() {
-    let error =
-        match Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(vec![
+    let Err(error) =
+        Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(vec![
             http_replay_fixture_for_method(
                 HttpMethod::Head,
                 "http://127.0.0.1:18080/response.json",
                 r#"{"unexpected":"body"}"#,
             ),
-        ]) {
-            Ok(_) => panic!("HEAD replay fixture with a response body should fail closed"),
-            Err(error) => error,
-        };
+        ])
+    else {
+        panic!("HEAD replay fixture with a response body should fail closed");
+    };
 
     assert_eq!(error.code, "http-replay-fixture-invalid");
 }
 
 #[test]
 fn proof_only_replay_catalog_rejects_localhost_fixtures_without_resolution_binding() {
-    let error = match Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(
-        vec![HttpReplayFixture {
-            method: HttpMethod::Get,
-            url: "http://localhost:18080/response.json".into(),
-            response_status: 200,
-            response_content_type: Some("application/json".into()),
-            response_body: br#"{"service":"guild-http"}"#.to_vec(),
-            redirect_location: None,
-            resolution_binding: None,
-        }],
-    ) {
-        Ok(_) => panic!(
+    let Err(error) =
+        Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(vec![
+            HttpReplayFixture {
+                method: HttpMethod::Get,
+                url: "http://localhost:18080/response.json".into(),
+                response_status: 200,
+                response_content_type: Some("application/json".into()),
+                response_body: br#"{"service":"guild-http"}"#.to_vec(),
+                redirect_location: None,
+                resolution_binding: None,
+            },
+        ])
+    else {
+        panic!(
             "localhost replay fixture without a deterministic resolution binding should fail closed"
-        ),
-        Err(error) => error,
+        );
     };
 
     assert_eq!(error.code, "http-replay-fixture-invalid");
@@ -1100,8 +1101,8 @@ fn proof_only_replay_catalog_rejects_localhost_fixtures_without_resolution_bindi
 
 #[test]
 fn proof_only_replay_catalog_rejects_localhost_head_fixtures_without_explicit_port() {
-    let error =
-        match Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(vec![
+    let Err(error) =
+        Runner::new(WasmtimeRuntimeAdapter::new().unwrap()).with_http_replay_fixtures(vec![
             HttpReplayFixture {
                 method: HttpMethod::Head,
                 url: "http://localhost/response.json".into(),
@@ -1111,10 +1112,10 @@ fn proof_only_replay_catalog_rejects_localhost_head_fixtures_without_explicit_po
                 redirect_location: None,
                 resolution_binding: Some(localhost_resolution_binding(80)),
             },
-        ]) {
-            Ok(_) => panic!("default-port localhost HEAD replay fixtures should stay out of scope"),
-            Err(error) => error,
-        };
+        ])
+    else {
+        panic!("default-port localhost HEAD replay fixtures should stay out of scope");
+    };
 
     assert_eq!(error.code, "http-replay-fixture-invalid");
 }

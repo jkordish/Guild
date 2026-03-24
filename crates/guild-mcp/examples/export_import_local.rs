@@ -73,13 +73,11 @@ fn print_preview(label: &str, preview: &ImportPreviewReport) {
     let trust_tier = preview
         .trust_tier
         .as_ref()
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "none".to_owned());
+        .map_or_else(|| "none".to_owned(), ToString::to_string);
     let refusal = preview
         .refusal
         .as_ref()
-        .map(|error| error.code.as_str())
-        .unwrap_or("none");
+        .map_or("none", |error| error.code.as_str());
     println!(
         "{label}: decision={}, verified={}, trust_tier={trust_tier}, refusal={refusal}",
         preview_decision_label(&preview.decision),

@@ -1,3 +1,5 @@
+#![allow(clippy::similar_names)]
+
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -258,6 +260,7 @@ fn evidence_summary_grants_json() -> String {
     .unwrap()
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn command_json(value: Value) -> String {
     serde_json::to_string(&value).unwrap()
 }
@@ -1383,8 +1386,7 @@ fn primary_commands_support_short_refs_and_machine_output_flags() {
         run_guild_success(&["why", &exec_prefix, "--porcelain"], Some(&registry_root));
     assert!(
         why_porcelain.starts_with(&format!(
-            "why\t{}\tupper-bound\tnot_proven\tupper-bound\tunlinked\t",
-            execution_id
+            "why\t{execution_id}\tupper-bound\tnot_proven\tupper-bound\tunlinked\t"
         )),
         "{why_porcelain}"
     );
@@ -2024,6 +2026,7 @@ fn list_commands_show_installed_skills_and_recent_executions() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn install_export_import_and_trust_commands_work_for_bundle_transport() {
     let temp = TempFixtureDir::new("guild-cli-bundle");
     let registry_a = temp.path().join("registry-a");
@@ -3181,6 +3184,7 @@ fn pull_untrusted_publishers_surface_trust_guidance() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn export_import_layout_and_push_pull_commands_work_for_oci_transport() {
     let temp = TempFixtureDir::new("guild-cli-oci");
     let registry_a = temp.path().join("registry-a");
@@ -3303,6 +3307,7 @@ fn export_import_layout_and_push_pull_commands_work_for_oci_transport() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn import_layout_and_pull_render_human_trust_review_output() {
     let temp = TempFixtureDir::new("guild-cli-oci-human-review");
     let registry_a = temp.path().join("registry-a");
