@@ -404,10 +404,12 @@ cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
 That example now proves one real discovery-first paginated MCP interaction: it
-starts from `resources/list`, reads the canonical recent-executions query
-through `resources/read`, then uses `resources/templates/list` for the custom
-URI families before exercising `guild.inspect` and reading back the discovered
-execution and evidence metadata resources.
+checks `initialize`, verifies `tools/list` exposes the one public tool
+`guild.inspect`, starts from `resources/list`, reads the canonical
+recent-executions query through `resources/read`, then uses
+`resources/templates/list` for the custom URI families before exercising
+`guild.inspect` and reading back the discovered execution and evidence metadata
+resources.
 
 ## Where To Go Next
 

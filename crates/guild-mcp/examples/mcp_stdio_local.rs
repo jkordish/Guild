@@ -5,6 +5,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use guild_mcp::protocol::{
     CallToolResult, InitializeResult, ListResourceTemplatesResult, ListResourcesResult,
     ListToolsResult, PROTOCOL_VERSION_2025_11_25, ReadResourceResult, ResourceContents,
+    ToolTaskSupport,
 };
 use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
@@ -186,8 +187,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "initialized Guild MCP server {} {}",
         initialized.server_info.name, initialized.protocol_version
     );
+    if initialized
+        .capabilities
+        .tools
+        .as_ref()
+        .and_then(|tools| tools.list_changed)
+        != Some(false)
+    {
+        return Err("initialize did not advertise the expected one-tool capability surface".into());
+    }
 
     let tools: ListToolsResult = parse_result(&client.request("tools/list", &json!({}))?)?;
+    if tools.tools.len() != 1 {
+        return Err("tools/list did not expose exactly one public Guild tool".into());
+    }
+    let inspect_tool = tools
+        .tools
+        .iter()
+        .find(|tool| tool.name == "guild.inspect")
+        .ok_or("tools/list did not expose guild.inspect")?;
+    if inspect_tool.title.as_deref() != Some("Guild Inspect") {
+        return Err("guild.inspect did not expose the expected title".into());
+    }
+    if inspect_tool
+        .annotations
+        .as_ref()
+        .and_then(|annotations| annotations.title.as_deref())
+        != Some("Guild Inspect")
+    {
+        return Err("guild.inspect did not expose the expected annotation title".into());
+    }
+    if inspect_tool
+        .execution
+        .as_ref()
+        .and_then(|execution| execution.task_support.as_ref())
+        != Some(&ToolTaskSupport::Forbidden)
+    {
+        return Err("guild.inspect did not advertise taskSupport=forbidden".into());
+    }
     println!(
         "tools: {}",
         tools

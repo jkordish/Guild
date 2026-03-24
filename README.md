@@ -331,10 +331,14 @@ The public MCP surface is intentionally small:
 - `resources/read` fetches the durable execution, evidence, object, and bounded query resources behind those URIs
 - cursor-based pagination on `tools/list`, `resources/list`, and `resources/templates/list`
 
-For agent discovery, start with `resources/list`, read the returned URIs through
+For agent discovery, start with `tools/list` and expect exactly one public tool,
+`guild.inspect`. Then use `resources/list`, read the returned URIs through
 `resources/read`, move to `resources/templates/list` when you need a custom
 query shape or exact URI family, and use `guild.inspect` only when you mean to
 execute inspect mode and persist a new execution record.
+
+If a client renders `Tools: (none)` against this server, treat that as a client
+compatibility regression rather than the intended Guild MCP surface.
 
 For task-shaped agent workflows, use
 [`docs/mcp-agent-recipes.md`](docs/mcp-agent-recipes.md).

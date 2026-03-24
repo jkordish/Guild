@@ -9,7 +9,7 @@ use base64::Engine as _;
 use guild_mcp::protocol::{
     CallToolResult, ContentBlock, InitializeResult, ListResourceTemplatesResult,
     ListResourcesResult, ListToolsResult, PROTOCOL_VERSION_2025_11_25, ReadResourceResult,
-    ResourceContents,
+    ResourceContents, ToolTaskSupport,
 };
 use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
@@ -276,10 +276,19 @@ fn stdio_server_handshake_returns_honest_capabilities() {
     assert_eq!(initialized.protocol_version, PROTOCOL_VERSION_2025_11_25);
     assert!(initialized.capabilities.tools.is_some());
     assert!(initialized.capabilities.resources.is_some());
+    let tools = initialized.capabilities.tools.unwrap();
+    assert_eq!(tools.list_changed, Some(false));
     let resources = initialized.capabilities.resources.unwrap();
     assert_eq!(resources.subscribe, None);
     assert_eq!(resources.list_changed, None);
     assert_eq!(initialized.server_info.name, "guild-mcp");
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("tools/list")
+    );
     assert!(
         initialized
             .instructions
@@ -338,6 +347,7 @@ fn tools_list_returns_truthful_guild_inspect_annotations() {
     let result: ListToolsResult = parse_result(&tools_response);
     assert_eq!(result.tools.len(), 1);
     assert_eq!(result.tools[0].name, "guild.inspect");
+    assert_eq!(result.tools[0].title.as_deref(), Some("Guild Inspect"));
     assert!(result.tools[0].input_schema.is_object());
     assert!(result.tools[0].output_schema.as_ref().unwrap().is_object());
     assert_eq!(result.next_cursor, None);
@@ -356,10 +366,17 @@ fn tools_list_returns_truthful_guild_inspect_annotations() {
         .annotations
         .as_ref()
         .expect("guild.inspect exposes annotations");
+    assert_eq!(annotations.title.as_deref(), Some("Guild Inspect"));
     assert!(!annotations.read_only_hint);
     assert!(!annotations.destructive_hint);
     assert!(!annotations.idempotent_hint);
     assert!(annotations.open_world_hint);
+
+    let execution = result.tools[0]
+        .execution
+        .as_ref()
+        .expect("guild.inspect exposes execution metadata");
+    assert_eq!(execution.task_support, Some(ToolTaskSupport::Forbidden));
 }
 
 #[test]

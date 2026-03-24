@@ -7,6 +7,7 @@ contract and `ARCHITECTURE.md` for the fuller implementation view.
 
 Guild keeps the MCP surface intentionally small:
 
+- `tools/list` to discover the current public tool inventory
 - `resources/list` for the first useful durable entry points under the selected root
 - `resources/templates/list` for the parameterized Guild URI families
 - `resources/read` for durable reads
@@ -15,17 +16,22 @@ Guild keeps the MCP surface intentionally small:
 Use the workflows below in that order unless you already know the exact URI you
 need.
 
+Guild currently exposes exactly one public tool through `tools/list`:
+`guild.inspect`. If a client renders `Tools: (none)` against this server, treat
+that as a compatibility regression rather than the intended steady state.
+
 ## Recipe 1: Inspect A Skill
 
 Use this when you want to run one installed skill through the real Guild runtime.
 
-1. Call `guild.inspect` with:
+1. Call `tools/list` and confirm `guild.inspect` is present.
+2. Call `guild.inspect` with:
    - a requested skill ref such as `skill://example/hello-inspect@^0.1`
    - the input payload for that skill
    - the caller-requested grants the skill should receive for that run
-2. Read the returned execution record in `structured_content`.
-3. Follow the returned execution `ResourceLink` when you want the durable stored record.
-4. Follow any returned evidence metadata links before reading evidence payload bytes.
+3. Read the returned execution record in `structured_content`.
+4. Follow the returned execution `ResourceLink` when you want the durable stored record.
+5. Follow any returned evidence metadata links before reading evidence payload bytes.
 
 What to remember:
 

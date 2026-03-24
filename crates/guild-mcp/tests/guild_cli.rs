@@ -3332,11 +3332,27 @@ fn mcp_stdio_launches_through_guild_cli() {
     let mut harness = McpHarness::spawn(&registry_root);
     let initialized = harness.initialize();
     assert_eq!(initialized.server_info.name, "guild-mcp");
+    assert_eq!(
+        initialized
+            .capabilities
+            .tools
+            .as_ref()
+            .and_then(|tools| tools.list_changed),
+        Some(false)
+    );
 
     let tools_response = harness.request("tools/list", &json!({}));
     let tools: ListToolsResult = serde_json::from_value(tools_response["result"].clone()).unwrap();
     assert_eq!(tools.tools.len(), 1);
     assert_eq!(tools.tools[0].name, "guild.inspect");
+    assert_eq!(tools.tools[0].title.as_deref(), Some("Guild Inspect"));
+    assert_eq!(
+        tools.tools[0]
+            .annotations
+            .as_ref()
+            .and_then(|annotations| annotations.title.as_deref()),
+        Some("Guild Inspect")
+    );
 }
 
 #[test]
@@ -4257,6 +4273,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(mcp_recipes.contains("## Recipe 2: Find An Execution"));
     assert!(mcp_recipes.contains("## Recipe 3: Fetch Evidence Safely"));
     assert!(mcp_recipes.contains("## Recipe 4: Explain A Failure"));
+    assert!(mcp_recipes.contains("`tools/list`"));
     assert!(mcp_recipes.contains("`resources/list`"));
     assert!(mcp_recipes.contains("`resources/templates/list`"));
     assert!(mcp_recipes.contains("`resources/read`"));
@@ -4296,12 +4313,19 @@ fn mcp_contract_docs_match_the_discovery_catalog_surface() {
     }
 
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(readme.contains("start with `tools/list` and expect exactly one public tool"));
+    assert!(readme.contains("`Tools: (none)`"));
     assert!(readme.contains(
         "`resources/list` is a bounded discovery catalog: the first entries are canonical recent-query URIs"
     ));
 
     let command_language =
         fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    assert!(
+        command_language
+            .contains("`tools/list` to confirm the one current public tool, `guild.inspect`")
+    );
+    assert!(command_language.contains("`Tools: (none)`"));
     assert!(command_language.contains(
         "`resources/list` is a bounded discovery catalog: the first entries are canonical recent-query URIs"
     ));

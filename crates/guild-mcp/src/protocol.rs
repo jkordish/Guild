@@ -96,7 +96,11 @@ pub struct ServerCapabilities {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct ToolsCapabilities {}
+#[serde(rename_all = "camelCase")]
+pub struct ToolsCapabilities {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_changed: Option<bool>,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -130,18 +134,43 @@ pub struct Tool {
     pub description: String,
     pub input_schema: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<ToolExecution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_schema: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotations: Option<ToolAnnotations>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "_meta")]
+    pub meta: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolExecution {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_support: Option<ToolTaskSupport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolTaskSupport {
+    Forbidden,
+    Optional,
+    Required,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ToolAnnotations {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default)]
     pub read_only_hint: bool,
+    #[serde(default)]
     pub destructive_hint: bool,
+    #[serde(default)]
     pub idempotent_hint: bool,
+    #[serde(default)]
     pub open_world_hint: bool,
 }
 

@@ -22,7 +22,8 @@ use crate::protocol::{
     METHOD_RESOURCES_READ, METHOD_TOOLS_CALL, METHOD_TOOLS_LIST, NOTIFICATION_INITIALIZED,
     ReadResourceParams, ReadResourceResult, Resource, ResourceContents, ResourceLink,
     ResourceTemplate, ResourcesCapabilities, SUPPORTED_PROTOCOL_VERSIONS, ServerCapabilities,
-    TextContent, TextResourceContents, Tool, ToolAnnotations, ToolsCapabilities,
+    TextContent, TextResourceContents, Tool, ToolAnnotations, ToolExecution, ToolTaskSupport,
+    ToolsCapabilities,
 };
 use crate::{GuildMcpFacade, INSPECT_TOOL, InspectToolRequest, McpError, SERVER_NAME};
 
@@ -311,7 +312,9 @@ impl GuildMcpServer {
             InitializeResult {
                 protocol_version: negotiated,
                 capabilities: ServerCapabilities {
-                    tools: Some(ToolsCapabilities::default()),
+                    tools: Some(ToolsCapabilities {
+                        list_changed: Some(false),
+                    }),
                     resources: Some(ResourcesCapabilities {
                         subscribe: None,
                         list_changed: None,
@@ -323,7 +326,8 @@ impl GuildMcpServer {
                     title: Some("Guild MCP Server".into()),
                 },
                 instructions: Some(
-                    "Use `resources/list` to discover canonical recent-query entry points plus \
+                    "Use `tools/list` to confirm the current public tool inventory, then use \
+                     `resources/list` to discover canonical recent-query entry points plus \
                      durable execution and evidence metadata URIs. Use \
                      `resources/templates/list` for parameterized Guild URI families, \
                      `resources/read` for durable reads, and `guild.inspect` to execute inspect \
@@ -344,8 +348,12 @@ impl GuildMcpServer {
                           links."
                 .into(),
             input_schema: schema_value::<InspectToolRequest>(),
+            execution: Some(ToolExecution {
+                task_support: Some(ToolTaskSupport::Forbidden),
+            }),
             output_schema: Some(schema_value::<ExecutionRecord>()),
             annotations: Some(ToolAnnotations {
+                title: Some("Guild Inspect".into()),
                 // Inspect execution persists durable execution records and may persist
                 // evidence records, so the tool is not read-only or idempotent.
                 // It stays non-destructive because apply remains gated off and the
@@ -358,6 +366,7 @@ impl GuildMcpServer {
                 idempotent_hint: false,
                 open_world_hint: true,
             }),
+            meta: None,
         }];
         tools.sort_by(|left, right| left.name.cmp(&right.name));
         let offset = match list_offset_from_params(params, LIST_CURSOR_TOOLS, tools.len()) {

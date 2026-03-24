@@ -429,10 +429,14 @@ The public MCP surface is intentionally small:
 
 For agent-facing workflows, use the MCP surfaces in this order:
 
+- `tools/list` to confirm the one current public tool, `guild.inspect`
 - `resources/list` to discover the first useful URIs under the selected Guild root
 - `resources/read` to inspect those durable resources directly
 - `resources/templates/list` when you need a specific query URI family or a URI you do not already have
 - `guild.inspect` when you actually want to execute inspect mode and persist a new execution record
+
+If a client renders `Tools: (none)` against this server, treat that as a client
+compatibility regression rather than the intended Guild MCP surface.
 
 For the concrete task-shaped versions of those flows, read
 [`docs/mcp-agent-recipes.md`](mcp-agent-recipes.md).
