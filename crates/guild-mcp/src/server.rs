@@ -673,16 +673,21 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild execution record".into(),
             title: Some("Guild Execution Record".into()),
             description: Some(
-                "Read a persisted Guild execution record by host-minted execution id.".into(),
+                "Read one persisted execution record by host-minted execution id; use this after a \
+                 query result or inspect run points you at an exact execution URI."
+                    .into(),
             ),
             mime_type: Some("application/json".into()),
         },
         ResourceTemplate {
             uri_template: "guild://objects/records/{evidence_record_id}".into(),
             name: "Guild evidence record payload".into(),
-            title: Some("Guild Evidence Record".into()),
+            title: Some("Guild Evidence Payload".into()),
             description: Some(
-                "Read a persisted evidence emission through its host-issued record URI.".into(),
+                "Read the persisted evidence payload through its host-issued record URI; prefer the \
+                 metadata URI first when you only need context, MIME type, size, audience, or \
+                 producing execution details."
+                    .into(),
             ),
             mime_type: None,
         },
@@ -691,7 +696,9 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild evidence record metadata".into(),
             title: Some("Guild Evidence Record Metadata".into()),
             description: Some(
-                "Read the host-owned metadata record for a persisted evidence emission.".into(),
+                "Read the host-owned JSON metadata for a persisted evidence emission before opening \
+                 the payload URI."
+                    .into(),
             ),
             mime_type: Some("application/json".into()),
         },
@@ -699,7 +706,11 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             uri_template: "guild://objects/sha256/{digest}".into(),
             name: "Guild evidence blob".into(),
             title: Some("Guild Evidence Blob".into()),
-            description: Some("Read a raw content-addressed evidence blob by its digest URI.".into()),
+            description: Some(
+                "Read a raw content-addressed evidence blob by digest when you explicitly need the \
+                 blob URI rather than the evidence record URI."
+                    .into(),
+            ),
             mime_type: None,
         },
         ResourceTemplate {
@@ -707,7 +718,8 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild recent executions query".into(),
             title: Some("Guild Execution Query".into()),
             description: Some(
-                "Read a bounded recent-executions query result from the local Guild execution store."
+                "Read a bounded recent-executions query result from the local Guild execution \
+                 store to discover execution URIs, statuses, and nearby evidence counts."
                     .into(),
             ),
             mime_type: Some("application/json".into()),
@@ -717,7 +729,9 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild recent failures query".into(),
             title: Some("Guild Recent Failures Query".into()),
             description: Some(
-                "Read a bounded recent failed or rejected execution query result.".into(),
+                "Read a bounded recent failed or rejected execution query result to find failure \
+                 records before you already know an exact execution URI."
+                    .into(),
             ),
             mime_type: Some("application/json".into()),
         },
@@ -735,7 +749,9 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild executions by skill query".into(),
             title: Some("Guild Executions By Skill Query".into()),
             description: Some(
-                "Read a bounded execution query result filtered by resolved skill key.".into(),
+                "Read a bounded execution query result filtered by resolved skill namespace and \
+                 name, not by a requested ref."
+                    .into(),
             ),
             mime_type: Some("application/json".into()),
         },
@@ -840,10 +856,7 @@ fn execution_resource_link(record: &ExecutionRecord) -> ResourceLink {
         uri: record.receipt.uri.clone(),
         name: format!("execution-{}", record.receipt.execution_id),
         title: Some(format!("Guild execution {}", record.receipt.execution_id)),
-        description: Some(format!(
-            "Persisted execution record with status {}",
-            status_name(record)
-        )),
+        description: Some(execution_description(record)),
         mime_type: Some("application/json".into()),
         size: None,
     }
@@ -853,10 +866,8 @@ fn evidence_resource_link(record: &guild_types::EvidenceRecord) -> ResourceLink 
     ResourceLink {
         uri: record.uri.clone(),
         name: evidence_payload_name(record),
-        title: record.title.clone(),
-        description: Some(
-            "Persisted evidence emission addressed by host-issued evidence record URI.".into(),
-        ),
+        title: Some(evidence_payload_title(record)),
+        description: Some(evidence_payload_description(record)),
         mime_type: Some(record.mime_type.clone()),
         size: Some(record.size_bytes),
     }
@@ -866,14 +877,10 @@ fn evidence_metadata_resource_link(record: &EvidenceRecord) -> ResourceLink {
     ResourceLink {
         uri: evidence_metadata_uri(record),
         name: evidence_metadata_name(record),
-        title: evidence_metadata_title(record),
-        description: Some(
-            "Host-owned JSON metadata for a persisted evidence emission; read this before \
-             fetching payload bytes when you only need the record context."
-                .into(),
-        ),
+        title: Some(evidence_metadata_title(record)),
+        description: Some(evidence_metadata_description(record)),
         mime_type: Some("application/json".into()),
-        size: None,
+        size: Some(evidence_metadata_size(record)),
     }
 }
 
@@ -882,10 +889,7 @@ fn execution_record_to_resource(record: &ExecutionRecord) -> Resource {
         uri: record.receipt.uri.clone(),
         name: format!("execution-{}", record.receipt.execution_id),
         title: Some(format!("Guild execution {}", record.receipt.execution_id)),
-        description: Some(format!(
-            "Persisted execution record with status {}",
-            status_name(record)
-        )),
+        description: Some(execution_description(record)),
         mime_type: Some("application/json".into()),
         size: Some(
             serde_json::to_vec_pretty(record)
@@ -935,11 +939,26 @@ fn evidence_metadata_resource(record: &EvidenceRecord) -> Resource {
     Resource {
         uri: evidence_metadata_uri(record),
         name: evidence_metadata_name(record),
-        title: evidence_metadata_title(record),
-        description: Some("Host-owned JSON metadata for a persisted evidence emission.".into()),
+        title: Some(evidence_metadata_title(record)),
+        description: Some(evidence_metadata_description(record)),
         mime_type: Some("application/json".into()),
-        size: None,
+        size: Some(evidence_metadata_size(record)),
     }
+}
+
+fn execution_description(record: &ExecutionRecord) -> String {
+    format!(
+        "Persisted {} execution record for {}.",
+        status_name(record),
+        resolved_skill_label(&record.resolved_skill)
+    )
+}
+
+fn resolved_skill_label(skill: &guild_types::ResolvedSkillRef) -> String {
+    format!(
+        "{}/{}@{}",
+        skill.key.namespace, skill.key.name, skill.version
+    )
 }
 
 fn evidence_payload_name(record: &EvidenceRecord) -> String {
@@ -949,20 +968,59 @@ fn evidence_payload_name(record: &EvidenceRecord) -> String {
         .unwrap_or_else(|| format!("evidence-{}", record.sha256))
 }
 
+fn evidence_payload_title(record: &EvidenceRecord) -> String {
+    record
+        .title
+        .clone()
+        .unwrap_or_else(|| format!("Guild evidence payload {}", record.sha256))
+}
+
+fn evidence_payload_description(record: &EvidenceRecord) -> String {
+    format!(
+        "Persisted evidence payload ({}, {} bytes). Read the metadata URI first when you only \
+         need audience, redaction, MIME type, size, or producing execution context.",
+        record.mime_type, record.size_bytes
+    )
+}
+
 fn evidence_metadata_name(record: &EvidenceRecord) -> String {
     format!("{}-metadata", evidence_payload_name(record))
 }
 
-fn evidence_metadata_title(record: &EvidenceRecord) -> Option<String> {
+fn evidence_metadata_title(record: &EvidenceRecord) -> String {
     record
         .title
         .as_ref()
         .map(|title| format!("{title} metadata"))
-        .or_else(|| Some(format!("Guild evidence metadata {}", record.sha256)))
+        .unwrap_or_else(|| format!("Guild evidence metadata {}", record.sha256))
 }
 
 fn evidence_metadata_uri(record: &EvidenceRecord) -> String {
     format!("{}/metadata", record.uri)
+}
+
+fn evidence_metadata_description(record: &EvidenceRecord) -> String {
+    let mut description = format!(
+        "Host-owned JSON metadata for a persisted evidence emission ({} audience, {} redaction, \
+         {} payload, {} bytes).",
+        evidence_audience_label(&record.audience),
+        redaction_class_label(&record.redaction),
+        record.mime_type,
+        record.size_bytes
+    );
+
+    if let Some(execution_uri) = &record.produced_by_execution {
+        description.push_str(&format!(" Produced by {execution_uri}."));
+    }
+
+    description.push_str(" Read this before the payload URI when you only need record context.");
+    description
+}
+
+fn evidence_metadata_size(record: &EvidenceRecord) -> u64 {
+    serde_json::to_vec_pretty(record)
+        .expect("evidence metadata serializes")
+        .len() as u64
 }
 
 fn resource_contents(resource: ResourceReadResult) -> ResourceContents {
@@ -995,5 +1053,22 @@ fn status_name(record: &ExecutionRecord) -> &'static str {
         guild_types::ExecutionStatus::Failed => "failed",
         guild_types::ExecutionStatus::Partial => "partial",
         guild_types::ExecutionStatus::Rejected => "rejected",
+    }
+}
+
+fn evidence_audience_label(audience: &guild_types::EvidenceAudience) -> &'static str {
+    match audience {
+        guild_types::EvidenceAudience::User => "user",
+        guild_types::EvidenceAudience::Assistant => "assistant",
+        guild_types::EvidenceAudience::Internal => "internal",
+    }
+}
+
+fn redaction_class_label(redaction: &guild_types::RedactionClass) -> &'static str {
+    match redaction {
+        guild_types::RedactionClass::None => "none",
+        guild_types::RedactionClass::SecretsRemoved => "secrets-removed",
+        guild_types::RedactionClass::PiiRemoved => "pii-removed",
+        guild_types::RedactionClass::TenantSensitive => "tenant-sensitive",
     }
 }

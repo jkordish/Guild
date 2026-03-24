@@ -393,12 +393,36 @@ fn guild_inspect_success_returns_structured_content_text_and_resource_links() {
     )));
     assert!(result.content.iter().any(|block| matches!(
         block,
-        ContentBlock::ResourceLink(link) if link.uri == record.emitted_evidence[0].uri
+        ContentBlock::ResourceLink(link)
+            if link.uri == record.receipt.uri
+                && link.description.as_deref().unwrap().contains("example/hello-inspect@0.1.0")
+                && link.description.as_deref().unwrap().contains("succeeded")
+    )));
+    assert!(result.content.iter().any(|block| matches!(
+        block,
+        ContentBlock::ResourceLink(link)
+            if link.uri == record.emitted_evidence[0].uri
+                && link.title.as_deref().unwrap().contains("hello-inspect snapshot")
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("Read the metadata URI first")
     )));
     assert!(result.content.iter().any(|block| matches!(
         block,
         ContentBlock::ResourceLink(link)
             if link.uri == format!("{}/metadata", record.emitted_evidence[0].uri)
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("user audience")
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("none redaction")
     )));
 }
 
@@ -530,13 +554,52 @@ fn resources_templates_pagination_and_resources_list_match_active_resource_model
     assert!(templates
         .iter()
         .any(|template| template.uri_template == "guild://objects/records/{evidence_record_id}"));
+    let payload_template = templates
+        .iter()
+        .find(|template| template.uri_template == "guild://objects/records/{evidence_record_id}")
+        .unwrap();
+    assert_eq!(
+        payload_template.title.as_deref(),
+        Some("Guild Evidence Payload")
+    );
+    assert!(
+        payload_template
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("prefer the metadata URI first")
+    );
     assert!(templates.iter().any(|template| {
         template.uri_template == "guild://objects/records/{evidence_record_id}/metadata"
     }));
+    let metadata_template = templates
+        .iter()
+        .find(|template| {
+            template.uri_template == "guild://objects/records/{evidence_record_id}/metadata"
+        })
+        .unwrap();
+    assert!(
+        metadata_template
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("before opening the payload URI")
+    );
     assert!(
         templates
             .iter()
             .any(|template| template.uri_template == "guild://objects/sha256/{digest}")
+    );
+    let blob_template = templates
+        .iter()
+        .find(|template| template.uri_template == "guild://objects/sha256/{digest}")
+        .unwrap();
+    assert!(
+        blob_template
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("explicitly need the blob URI")
     );
     assert!(
         templates
@@ -558,6 +621,25 @@ fn resources_templates_pagination_and_resources_list_match_active_resource_model
             .iter()
             .any(|resource| resource.uri == record.receipt.uri)
     );
+    let execution_resource = resources
+        .resources
+        .iter()
+        .find(|resource| resource.uri == record.receipt.uri)
+        .unwrap();
+    assert!(
+        execution_resource
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("example/hello-inspect@0.1.0")
+    );
+    assert!(
+        execution_resource
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("succeeded")
+    );
     assert_eq!(
         resources.resources[0].uri,
         ExecutionQueryResource::Recent { limit: 10 }.canonical_uri()
@@ -573,6 +655,30 @@ fn resources_templates_pagination_and_resources_list_match_active_resource_model
             .iter()
             .any(|resource| resource.uri == evidence_metadata_uri)
     );
+    let evidence_metadata_resource = resources
+        .resources
+        .iter()
+        .find(|resource| resource.uri == evidence_metadata_uri)
+        .unwrap();
+    assert!(
+        evidence_metadata_resource
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("user audience")
+    );
+    assert!(
+        evidence_metadata_resource
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("none redaction")
+    );
+    assert_eq!(
+        evidence_metadata_resource.mime_type.as_deref(),
+        Some("application/json")
+    );
+    assert!(evidence_metadata_resource.size.unwrap() > 0);
 
     let wrong_cursor = harness.request(
         "resources/templates/list",
