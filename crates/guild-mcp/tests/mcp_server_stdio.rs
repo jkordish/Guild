@@ -15,8 +15,9 @@ use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
     EvidenceAudience, EvidenceRecord, ExecutionQueryResource, ExecutionQueryResult,
-    ExecutionStatus, GrantedCapability, PolicyDecisionOutcome, ReadResourceConstraints,
-    RedactionClass, RequestedSkillRef, ResourceKind, SkillKey, VersionRequirement,
+    ExecutionStatus, GrantedCapability, InvokeDependencyConstraints, PolicyDecisionOutcome,
+    ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResourceKind, SkillKey,
+    VersionRequirement,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -43,6 +44,10 @@ fn explain_tree_source_dir() -> PathBuf {
     repo_root().join("examples/skills/explain-execution-tree")
 }
 
+fn composite_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/hello-composite")
+}
+
 fn prepared_registry_root() -> &'static PathBuf {
     static ROOT: OnceLock<PathBuf> = OnceLock::new();
 
@@ -63,6 +68,10 @@ fn prepared_registry_root() -> &'static PathBuf {
         LocalSourceInstaller::new(&root)
             .unwrap()
             .install(explain_tree_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(composite_source_dir())
             .unwrap();
         root
     })
@@ -221,6 +230,17 @@ fn emit_evidence_grant_json() -> Value {
             max_bytes: Some(65_536),
             audiences: Some(vec![EvidenceAudience::User]),
             redactions: Some(vec![RedactionClass::None]),
+        }),
+    })
+    .unwrap()
+}
+
+fn invoke_hello_grant_json() -> Value {
+    serde_json::to_value(GrantedCapability {
+        id: CapabilityId::InvokeSkill,
+        access: CapabilityAccess::Invoke,
+        constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+            aliases: Some(vec!["hello".into()]),
         }),
     })
     .unwrap()
@@ -423,6 +443,43 @@ fn guild_inspect_success_returns_structured_content_text_and_resource_links() {
                     .as_deref()
                     .unwrap()
                     .contains("none redaction")
+    )));
+}
+
+#[test]
+fn guild_inspect_composite_surfaces_child_execution_resource_links() {
+    let mut harness = McpHarness::spawn();
+    harness.initialize();
+
+    let response = harness.request(
+        "tools/call",
+        &inspect_request(
+            "hello-composite",
+            &json!({ "name": "Ada" }),
+            &json!([invoke_hello_grant_json(), emit_evidence_grant_json()]),
+        ),
+    );
+    let result: CallToolResult = parse_result(&response);
+    let record = guild_inspect_helpers::parse_execution_record(&result);
+
+    assert_eq!(result.is_error, None);
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.child_executions.len(), 1);
+    assert!(result.content.iter().any(|block| matches!(
+        block,
+        ContentBlock::ResourceLink(link)
+            if link.uri == record.child_executions[0].uri
+                && link.title.as_deref().unwrap().contains(&record.child_executions[0].alias)
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("example/hello-inspect@0.1.0")
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("succeeded")
     )));
 }
 

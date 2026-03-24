@@ -827,6 +827,7 @@ fn inspect_success_content(record: &ExecutionRecord) -> Vec<ContentBlock> {
         text: serde_json::to_string_pretty(record).expect("execution record serializes"),
     })];
     content.push(ContentBlock::ResourceLink(execution_resource_link(record)));
+    content.extend(child_execution_content_blocks(record));
     content.extend(evidence_content_blocks(record));
     content
 }
@@ -836,8 +837,18 @@ fn inspect_failure_content(record: &ExecutionRecord) -> Vec<ContentBlock> {
         text: serde_json::to_string_pretty(record).expect("execution record serializes"),
     })];
     content.push(ContentBlock::ResourceLink(execution_resource_link(record)));
+    content.extend(child_execution_content_blocks(record));
     content.extend(evidence_content_blocks(record));
     content
+}
+
+fn child_execution_content_blocks(record: &ExecutionRecord) -> Vec<ContentBlock> {
+    record
+        .child_executions
+        .iter()
+        .map(child_execution_resource_link)
+        .map(ContentBlock::ResourceLink)
+        .collect()
 }
 
 fn evidence_content_blocks(record: &ExecutionRecord) -> Vec<ContentBlock> {
@@ -856,7 +867,29 @@ fn execution_resource_link(record: &ExecutionRecord) -> ResourceLink {
         uri: record.receipt.uri.clone(),
         name: format!("execution-{}", record.receipt.execution_id),
         title: Some(format!("Guild execution {}", record.receipt.execution_id)),
-        description: Some(execution_description(record)),
+        description: Some(execution_description(
+            &record.status,
+            &resolved_skill_label(&record.resolved_skill),
+        )),
+        mime_type: Some("application/json".into()),
+        size: None,
+    }
+}
+
+fn child_execution_resource_link(record: &guild_types::ChildExecutionRecord) -> ResourceLink {
+    ResourceLink {
+        uri: record.uri.clone(),
+        name: format!("child-execution-{}", record.execution_id),
+        title: Some(format!(
+            "Guild child execution {} ({})",
+            record.execution_id, record.alias
+        )),
+        description: Some(format!(
+            "Persisted child execution for alias `{}` with status {} targeting {}.",
+            record.alias,
+            status_name(&record.status),
+            resolved_skill_label(&record.provenance.resolved_skill)
+        )),
         mime_type: Some("application/json".into()),
         size: None,
     }
@@ -889,7 +922,10 @@ fn execution_record_to_resource(record: &ExecutionRecord) -> Resource {
         uri: record.receipt.uri.clone(),
         name: format!("execution-{}", record.receipt.execution_id),
         title: Some(format!("Guild execution {}", record.receipt.execution_id)),
-        description: Some(execution_description(record)),
+        description: Some(execution_description(
+            &record.status,
+            &resolved_skill_label(&record.resolved_skill),
+        )),
         mime_type: Some("application/json".into()),
         size: Some(
             serde_json::to_vec_pretty(record)
@@ -946,11 +982,11 @@ fn evidence_metadata_resource(record: &EvidenceRecord) -> Resource {
     }
 }
 
-fn execution_description(record: &ExecutionRecord) -> String {
+fn execution_description(status: &guild_types::ExecutionStatus, resolved_skill: &str) -> String {
     format!(
         "Persisted {} execution record for {}.",
-        status_name(record),
-        resolved_skill_label(&record.resolved_skill)
+        status_name(status),
+        resolved_skill
     )
 }
 
@@ -1047,8 +1083,8 @@ fn is_textual_mime(mime_type: &str) -> bool {
         || mime_type.starts_with("application/") && mime_type.ends_with("+json")
 }
 
-fn status_name(record: &ExecutionRecord) -> &'static str {
-    match record.status {
+fn status_name(status: &guild_types::ExecutionStatus) -> &'static str {
+    match status {
         guild_types::ExecutionStatus::Succeeded => "succeeded",
         guild_types::ExecutionStatus::Failed => "failed",
         guild_types::ExecutionStatus::Partial => "partial",
