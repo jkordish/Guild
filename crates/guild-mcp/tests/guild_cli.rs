@@ -10,7 +10,7 @@ use guild_manifest::SkillManifest;
 use guild_mcp::protocol::{InitializeResult, ListToolsResult, PROTOCOL_VERSION_2025_11_25};
 use guild_registry::LocalSourceInstaller;
 use guild_types::{
-    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
+    AbiVersion, CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
     CapabilityRequirement, EmitEvidenceConstraints, EvidenceAudience, FilesystemConstraints,
     FilesystemOperation, FilesystemRoot, GrantedCapability, HttpMethod, HttpRequestConstraints,
     HttpScheme, InvokeDependencyConstraints, LogConstraints, ReadResourceConstraints,
@@ -625,6 +625,127 @@ fn duplicate_installed_hello_with_filesystem(registry_root: &Path, skill_name: &
     target_dir
 }
 
+fn duplicate_installed_hello_with_entrypoint_mismatch(
+    registry_root: &Path,
+    skill_name: &str,
+) -> PathBuf {
+    let source_dir = installed_skill_dir(registry_root, "example", "hello-inspect");
+    let target_dir = registry_root
+        .join("installed")
+        .join("example")
+        .join(skill_name)
+        .join("0.1.0")
+        .join(source_dir.file_name().unwrap());
+    copy_dir_recursive(&source_dir, &target_dir);
+    write_installed_manifest(&target_dir, |manifest| {
+        manifest.key.name = skill_name.into();
+        manifest.display_name = "Hello Inspect EntryPoint Drift".into();
+        manifest.description =
+            "A fixture that keeps the inspect ABI but drifts the manifest entrypoint.".into();
+        manifest.runtime.guest_abi_version = AbiVersion::GuildSkillInspectV1;
+        manifest.runtime.entrypoint = "guild-skill".into();
+    });
+    target_dir
+}
+
+fn broad_world_fixture_source() -> &'static str {
+    r#"use serde_json::{json, Value};
+use wit_bindgen::generate;
+
+const _: &str = include_str!("../../../../../wit/guild-skill-v1.wit");
+
+generate!({
+    path: "../../../../wit",
+    world: "guild-skill",
+});
+
+use crate::exports::guild::skill::skill::{
+    ExecutionContext, Guest, Json, SkillError, SkillOutput,
+};
+use crate::guild::skill::host;
+use crate::guild::skill::types::{EvidenceAudience, EvidenceEmissionRequest, RedactionClass};
+
+struct HelloInspectBroadImport;
+
+impl Guest for HelloInspectBroadImport {
+    fn run(ctx: ExecutionContext, input: Json) -> Result<SkillOutput, SkillError> {
+        let parsed_input: Value = serde_json::from_str(&input).map_err(|error| SkillError {
+            code: "invalid-input".into(),
+            message: "input JSON could not be parsed".into(),
+            retryable: false,
+            detail: Some(json!({ "error": error.to_string() }).to_string()),
+        })?;
+
+        let payload = serde_json::to_vec(&json!({
+            "kind": "broad-import-fixture",
+            "execution_id": ctx.execution_id,
+            "input": parsed_input,
+        }))
+        .map_err(|error| SkillError {
+            code: "evidence-payload-invalid".into(),
+            message: "fixture evidence payload could not be serialized".into(),
+            retryable: false,
+            detail: Some(json!({ "error": error.to_string() }).to_string()),
+        })?;
+
+        let evidence = host::emit_evidence(&EvidenceEmissionRequest {
+            payload,
+            mime_type: "application/json".into(),
+            title: Some("broad-import fixture".into()),
+            audience: EvidenceAudience::User,
+            redaction: RedactionClass::None,
+            freshness: Some("deterministic".into()),
+        })
+        .map_err(|message| SkillError {
+            code: "emit-evidence-failed".into(),
+            message: "host failed to persist fixture evidence".into(),
+            retryable: false,
+            detail: Some(json!({ "error": message }).to_string()),
+        })?;
+
+        Ok(SkillOutput {
+            summary: "Broad world fixture executed".into(),
+            structured: json!({
+                "message": "broad import fixture",
+                "execution_id": ctx.execution_id,
+            })
+            .to_string(),
+            diagnostics: Vec::new(),
+            effects: Vec::new(),
+            evidence: vec![evidence],
+        })
+    }
+}
+
+export!(HelloInspectBroadImport with_types_in self);
+"#
+}
+
+fn write_broad_import_fixture(root: &Path, skill_name: &str) -> PathBuf {
+    let workspace_root = root.join("workspace");
+    let source_root = workspace_root.join(format!("examples/skills/{skill_name}"));
+    copy_dir_recursive(&hello_source_dir(), &source_root);
+    copy_dir_recursive(&repo_root().join("wit"), &workspace_root.join("wit"));
+
+    let manifest_path = source_root.join("manifest.json");
+    let mut manifest: guild_manifest::SourceSkillManifest =
+        serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+    manifest.key.name = skill_name.into();
+    manifest.display_name = format!("{} Broad Import", manifest.display_name);
+    manifest.description =
+        "A fixture that compiles the broad Guild world under an inspect manifest.".into();
+    fs::write(
+        &manifest_path,
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let lib_path = source_root.join("skill-rust/src/lib.rs");
+    fs::write(lib_path, broad_world_fixture_source()).unwrap();
+
+    source_root
+}
+
 fn write_required_emit_evidence_denial_policy(registry_root: &Path) {
     let policy = json!({
         "format_version": "guild-local-policy-v2",
@@ -1126,6 +1247,124 @@ fn run_refusal_keeps_payload_off_stdout_and_status_on_stderr() {
         .find(|line| line.starts_with("where: guild://executions/"))
         .unwrap();
     assert!(!where_line.contains(" ("), "{stderr}");
+}
+
+#[test]
+fn wrong_world_manifest_rejections_stay_in_runtime_compatibility_bucket() {
+    let temp = TempFixtureDir::new("guild-cli-run-entrypoint-drift");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let _ = duplicate_installed_hello_with_entrypoint_mismatch(
+        &registry_root,
+        "hello-inspect-entrypoint-drift",
+    );
+
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect-entrypoint-drift@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &emit_evidence_grants_json(),
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(
+        stderr.contains(
+            "runtime/compatibility: guild-skill-inspect-v1 guest ABI requires runtime.entrypoint = guild-skill-inspect-v1"
+        ),
+        "{stderr}"
+    );
+    assert!(stderr.contains("reason: invalid-manifest"), "{stderr}");
+    assert!(!stderr.contains("authority denial"), "{stderr}");
+    assert!(!stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: inspect the installed runtime surface with `guild --registry-root {} show -v <skill-ref>` or reinstall the skill from source before rerunning",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn broader_component_import_rejections_stay_in_runtime_compatibility_bucket() {
+    let temp = TempFixtureDir::new("guild-cli-broad-import-runtime-compat");
+    let registry_root = temp.path().join("registry");
+    let broad_source = write_broad_import_fixture(temp.path(), "hello-inspect-broad-import-cli");
+    install_source_with_cli(&registry_root, &broad_source);
+
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect-broad-import-cli@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &emit_evidence_grants_json(),
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(
+        stderr.contains("runtime/compatibility: inspect runtime rejected component import `guild:skill/host@1.0.0`"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: unsupported-runtime-surface"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("authority denial"), "{stderr}");
+    assert!(stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why guild://executions/",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} show -v 'skill://example/hello-inspect-broad-import-cli@^0.1'",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+
+    let execution_uri = persisted_where_uri(&stderr);
+    let why_output = run_guild_success(
+        &["why", &execution_uri, "--json", "--color", "never"],
+        Some(&registry_root),
+    );
+    let why_json: Value = parse_json_stdout(&why_output);
+    assert_eq!(why_json["record"]["policy_decision"]["outcome"], "allowed");
+    assert_eq!(
+        why_json["record"]["termination"]["code"],
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(why_json["record"]["termination"]["phase"], "runtime-load");
+    assert_eq!(
+        why_json["record"]["termination"]["detail"]["classification"],
+        "unsupported-runtime-surface"
+    );
+    assert_eq!(
+        why_json["record"]["termination"]["detail"]["surface_kind"],
+        "component-import"
+    );
 }
 
 #[test]
@@ -4727,6 +4966,8 @@ fn readme_command_language_and_testing_guide_document_failure_paths() {
         "`runtime/compatibility`",
         "`trust/verification`",
         "use `guild why ...` after a rejected run when Guild persisted an execution receipt",
+        "Wrong-world manifest drift and broader Guild component imports should surface as",
+        "`runtime/compatibility`, not `authority denial`",
         "guild verify missing-skill@^0.1",
         "reason: bundle-publisher-untrusted",
     ] {
@@ -4747,6 +4988,8 @@ fn readme_command_language_and_testing_guide_document_failure_paths() {
         "`runtime/compatibility`",
         "`trust/verification`",
         "use `guild show -v ...` before rerunning after authority or runtime failures",
+        "Wrong-world manifest drift and broader Guild component imports should surface as",
+        "`runtime/compatibility`, not `authority denial`",
         "guild verify missing-skill@^0.1",
         "reason: bundle-publisher-untrusted",
     ] {
@@ -4763,6 +5006,8 @@ fn readme_command_language_and_testing_guide_document_failure_paths() {
         "guild --registry-root target/dev-local-registry/cli-local verify missing-skill@^0.1",
         "Expect `trust/verification`",
         "signed bundle trust or integrity failures should say `trust/verification`",
+        "wrong-world manifest drift and broader Guild component imports should say",
+        "`runtime/compatibility`, not `authority denial`",
     ] {
         assert!(
             testing.contains(phrase),

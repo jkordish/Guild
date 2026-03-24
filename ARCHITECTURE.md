@@ -285,6 +285,7 @@ The host-to-guest projection boundary is explicit in the runner. The host retain
 
 That projection is intentionally not an isomorphism:
 
+- inspect guest `ExecutionContext` is a bounded subset and carries host-minted execution identity, trace/tenant IDs, resolved skill identity, input hash, `now_utc`, budget, and guest-visible granted capabilities only
 - inspect guest `ExecutionContext` omits `mode` because the inspect world is inspect-only by contract
 - current active grant projections for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are full at the current guest-visible grant-shape level
 - host-owned `CallerRequest.requested_capabilities`, `PolicyDecision`, provenance, termination detail, `EvidenceRecord`, and child lineage stay outside the guest ABI and remain canonical in durable records

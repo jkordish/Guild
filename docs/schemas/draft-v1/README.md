@@ -31,6 +31,8 @@ The active canonical runtime families are:
 
 `runtime_guarantee.supported_effect_classes` still exists, but only as a legacy draft-v1 compatibility surface for older bounded fixtures. It is not the canonical runtime truth surface.
 
+The bundled runtime examples in this directory stay pinned to exactly the active inspect world `guild-skill-inspect-v1`.
+
 Direct draft-v1 canonical family support now exists for:
 
 - M4 admission and execution-plan representation
@@ -478,6 +480,7 @@ That truth command now verifies:
 - fail-closed negative probes for omitted and invalid runtime guarantee fields
 - exact `family_support_matrix.json` regeneration or drift detection
 - exact `compatibility_matrix.md` regeneration or drift detection plus the fail-closed omitted or unsupported `wit_worlds` probes
+- exact bundled-runtime example pinning to that one active inspect world
 - benchmark artifact schema and report validation plus live scenario alignment against the real Rust runner
 
 The checked-output commands are:

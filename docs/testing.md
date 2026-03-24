@@ -43,6 +43,7 @@ That standard truth command now covers:
 - negative schema probes for omitted and invalid runtime guarantee fields
 - exact `family_support_matrix.json` regeneration or drift detection
 - exact `compatibility_matrix.md` regeneration or drift detection plus the fail-closed `wit_worlds` probes
+- exact bundled-runtime example pinning to the one active inspect world `guild-skill-inspect-v1`
 - benchmark artifact schema and report validation plus live scenario alignment against the real Rust runner
 
 The checked truth-output commands are:
@@ -73,7 +74,7 @@ The checked JSON and Markdown artifacts remain outputs of that Rust-native path;
 The Rust-native truth gate now checks the current repo-backed draft-v1 truth surface conservatively:
 
 - bundled schemas and checked examples still validate structurally
-- bundled runtimes and contracts still line up on the active inspect world `guild-skill-inspect-v1`
+- bundled runtime examples and contracts stay pinned to exactly the one active inspect world `guild-skill-inspect-v1`
 - `family_support_matrix.json` stays aligned with the canonical live-family vocabulary and the current bounded draft-v1 layer statuses
 - `compatibility_matrix.md` stays aligned with the fail-closed hard-requirement precheck logic, including the omitted and unsupported `wit_worlds` probes
 - `benchmark_matrix.json` and `m8-real-path-benchmark.md` stay aligned with the real Rust live-proof scenarios, including supported slices, unsupported fallback slices, and explicit fail-closed walls
@@ -350,6 +351,8 @@ Those failures should stay actionable rather than merely correct:
 - missing local state should say `root/setup`
 - missing or underspecified skill refs should say `lookup/ambiguity`
 - signed bundle trust or integrity failures should say `trust/verification`
+- wrong-world manifest drift and broader Guild component imports should say
+  `runtime/compatibility`, not `authority denial`
 
 ## Codex Workflow
 

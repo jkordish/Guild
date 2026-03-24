@@ -358,7 +358,8 @@ fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCatego
         CliErrorCategory::RootSetup
     } else if matches!(
         code,
-        "bundle-signature-format-unsupported"
+        "invalid-manifest"
+            | "bundle-signature-format-unsupported"
             | "execution-plan-signature-format-unsupported"
             | "bundle-format-unsupported"
     ) {
@@ -416,11 +417,14 @@ fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
         ),
         "source-manifest-read-failed"
         | "source-manifest-parse-failed"
-        | "invalid-manifest"
         | "invalid-source-manifest"
         | "source-file-uri-invalid"
         | "source-file-missing" => Some(
             "Next: confirm the source directory contains a valid `manifest.json` and referenced support files, then rerun `guild install <source-dir>`"
+                .into(),
+        ),
+        "invalid-manifest" => Some(
+            "Next: inspect the installed runtime surface with `guild show -v <skill-ref>` or reinstall the skill from source before rerunning"
                 .into(),
         ),
         "dependency-resolution-failed" => Some(
@@ -511,8 +515,11 @@ fn location_from_registry_detail(detail: Option<&Value>) -> Option<String> {
 
 fn cli_error_from_registry(error: &RegistryError) -> CliError {
     let category = classify_registry_error_category(&error.code, &error.message);
-    let mut cli_error =
-        CliError::classified(category, error.message.clone()).with_reason_code(error.code.clone());
+    let mut cli_error = CliError::classified(
+        category,
+        humanize_runtime_surface_summary(&error.code, &error.message, error.detail.as_ref()),
+    )
+    .with_reason_code(error.code.clone());
     if let Some(location) = location_from_registry_detail(error.detail.as_ref()) {
         cli_error = cli_error.with_location(location);
     }
@@ -4339,6 +4346,7 @@ fn classify_mcp_error_category(code: &str, message: &str) -> CliErrorCategory {
         CliErrorCategory::AuthorityDenial
     } else if code == "unsupported-runtime"
         || code == "component-abi-mismatch"
+        || code == "invalid-manifest"
         || code == "unsupported-runtime-surface"
         || code == "filesystem-runtime-not-supported"
         || message.contains("runtime")
@@ -4394,8 +4402,11 @@ fn cli_error_from_mcp(
 ) -> CliError {
     let category = classify_mcp_error_category(&error.code, &error.message);
     let next_steps = next_steps_for_mcp_error(&error, requested_skill_ref, registry_root);
-    let mut cli_error =
-        CliError::classified(category, error.message.clone()).with_reason_code(error.code);
+    let mut cli_error = CliError::classified(
+        category,
+        humanize_runtime_surface_summary(&error.code, &error.message, error.detail.as_deref()),
+    )
+    .with_reason_code(error.code);
 
     if let Some(receipt) = error.receipt {
         cli_error = cli_error.with_location(receipt.uri);
@@ -4405,6 +4416,32 @@ fn cli_error_from_mcp(
     }
 
     cli_error
+}
+
+fn humanize_runtime_surface_summary(code: &str, message: &str, detail: Option<&Value>) -> String {
+    if code == "unsupported-runtime-surface"
+        && let Some(detail) = detail
+        && detail.get("surface_kind").and_then(Value::as_str) == Some("component-import")
+        && let Some(surface_id) = detail.get("surface_id").and_then(Value::as_str)
+    {
+        return format!("inspect runtime rejected component import `{surface_id}`");
+    }
+
+    if code == "invalid-manifest"
+        && let Some(detail) = detail
+        && let Some(errors) = detail.as_array()
+        && let Some(runtime_error) = errors.iter().find(|entry| {
+            entry
+                .get("path")
+                .and_then(Value::as_str)
+                .is_some_and(|path| path.starts_with("runtime.") || path == "modes")
+        })
+        && let Some(runtime_message) = runtime_error.get("message").and_then(Value::as_str)
+    {
+        return runtime_message.to_owned();
+    }
+
+    message.to_owned()
 }
 
 fn oci_transport_options(allow_http: bool) -> OciRegistryTransportOptions {

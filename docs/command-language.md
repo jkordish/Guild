@@ -1,8 +1,9 @@
 # Command Language
 
-This document is the source of truth for Guild's public CLI verbs, grouped workflows, and ref grammar.
+This document is the source of truth for Guild's public command and URI grammar only.
 
-It is not the runtime-contract source of truth. For that, use `SPECS.md` section "Source Of Truth". For the frozen runtime URI roots and support vocabulary in the current release line, use `SPECS.md` section "Contract Surface v1 (core)".
+It is not the runtime-contract source of truth; see `SPECS.md` section "Source Of Truth".
+For the frozen runtime URI roots and support vocabulary in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
 
 ## Install And Run
 
@@ -226,6 +227,9 @@ The default follow-up guidance should stay local and honest:
 - use `guild show -v ...` before rerunning after authority or runtime failures
 - use `guild why ...` after a rejected run when Guild persisted a receipt
 - use `guild trust list` and `guild trust add ...` when a trust check fails closed
+
+Wrong-world manifest drift and broader Guild component imports should surface as
+`runtime/compatibility`, not `authority denial`.
 
 Representative failure examples:
 

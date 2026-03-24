@@ -486,6 +486,34 @@ fn wit_stays_aligned_with_skill_visible_execution_context() {
 }
 
 #[test]
+fn inspect_projection_docs_stay_aligned_with_the_host_boundary() {
+    let specs = fs::read_to_string(repo_root().join("SPECS.md")).unwrap();
+    let architecture = fs::read_to_string(repo_root().join("ARCHITECTURE.md")).unwrap();
+    let spec_delta =
+        fs::read_to_string(repo_root().join("docs/spec-delta-guest-abi-host-record-boundary.md"))
+            .unwrap();
+    let adr = fs::read_to_string(
+        repo_root().join("docs/adr/0005-capability-schema-and-active-inspect-profile.md"),
+    )
+    .unwrap();
+
+    for document in [&specs, &architecture, &spec_delta, &adr] {
+        assert!(
+            document.contains("now_utc"),
+            "inspect projection docs must describe `now_utc` as guest-visible context"
+        );
+        assert!(
+            document.contains("termination detail"),
+            "inspect projection docs must keep termination detail host-owned"
+        );
+        assert!(
+            document.contains("child lineage"),
+            "inspect projection docs must keep child lineage host-owned"
+        );
+    }
+}
+
+#[test]
 fn active_inspect_artifacts_only_import_the_inspect_host_interface() {
     let registry = load_registry();
     let installed = registry.resolve(&requested_skill()).unwrap();
@@ -590,13 +618,13 @@ fn broader_guild_component_imports_are_rejected_before_guest_execution() {
             "guild:skill/inspect-host@1.0.0",
         ])
     );
-    let mut unexpected_import_names: Vec<_> = termination.detail.as_ref().unwrap()["detail"]
-        ["unexpected_guild_imports"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|entry| entry.get("name").and_then(Value::as_str))
-        .collect();
+    let mut unexpected_import_names: Vec<_> =
+        termination.detail.as_ref().unwrap()["detail"]["unexpected_guild_imports"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| entry.get("name").and_then(Value::as_str))
+            .collect();
     unexpected_import_names.sort_unstable();
     assert_eq!(
         unexpected_import_names,

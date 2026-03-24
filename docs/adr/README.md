@@ -1,8 +1,9 @@
 # ADR Index
 
-Guild uses ADRs to record platform-shaping decisions and the rationale behind them.
+ADRs record rationale and accepted decisions. They are not the current normative contract surface.
 
-ADRs are not the current runtime contract surface. For how Guild behaves today, use `SPECS.md` and `ARCHITECTURE.md`. For the frozen core runtime-contract surfaces in the current release line, see `SPECS.md` section "Contract Surface v1 (core)".
+For how Guild behaves today, use `SPECS.md` and `ARCHITECTURE.md`.
+For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
 
 ## Current ADRs
 
