@@ -53,13 +53,13 @@ The main daily commands each answer a different question:
 
 - `guild ls`: list installed skills and other objects in the current root
 - `guild show`: what is installed or what stored object am I looking at?
-- `guild grants`: print read-only grant templates for the active families
+- `guild grants template`: print read-only grant templates for the active families
 - `guild run`: execute one installed skill locally
 - `guild why`: explain one persisted execution record, point to nearby stored refs when present, summarize requested-versus-granted authority, and summarize stored authority observations
 - `guild get`: read one Guild resource directly
 - `guild verify`: show installed trust and verification state for a skill
 
-`guild grants`, `guild ls`, `guild show`, `guild why`, `guild get`, and `guild verify` are read-only surfaces.
+The `guild grants` command group, `guild ls`, `guild show`, `guild why`, `guild get`, and `guild verify` are read-only surfaces.
 `guild run` is the execution surface.
 
 ## Output Modes

@@ -1311,42 +1311,38 @@ fn reason_codes(record: &ExecutionRecord) -> Vec<String> {
 fn authority_diff_groups(record: &ExecutionRecord) -> Vec<AuthorityDiffGroup> {
     #[derive(Default)]
     struct GroupedGrants {
-        id: Option<CapabilityId>,
-        access: Option<CapabilityAccess>,
         requested: Vec<GrantedCapability>,
         granted: Vec<GrantedCapability>,
     }
 
-    let mut grouped = BTreeMap::<(String, String), GroupedGrants>::new();
+    let mut grouped = BTreeMap::<(&'static str, &'static str), GroupedGrants>::new();
 
     for grant in &record.request.requested_capabilities.grants {
         let key = (
-            capability_id_label(&grant.id).to_owned(),
-            capability_access_label(&grant.access).to_owned(),
+            capability_id_label(&grant.id),
+            capability_access_label(&grant.access),
         );
         let entry = grouped.entry(key).or_default();
-        entry.id = Some(grant.id.clone());
-        entry.access = Some(grant.access.clone());
         entry.requested.push(grant.clone());
     }
 
     for grant in &record.granted_capabilities.grants {
         let key = (
-            capability_id_label(&grant.id).to_owned(),
-            capability_access_label(&grant.access).to_owned(),
+            capability_id_label(&grant.id),
+            capability_access_label(&grant.access),
         );
         let entry = grouped.entry(key).or_default();
-        entry.id = Some(grant.id.clone());
-        entry.access = Some(grant.access.clone());
         entry.granted.push(grant.clone());
     }
 
     grouped
         .into_values()
         .filter_map(|mut entry| {
-            let (Some(id), Some(access)) = (entry.id, entry.access) else {
-                return None;
-            };
+            let (id, access) = entry
+                .requested
+                .first()
+                .or(entry.granted.first())
+                .map(|grant| (grant.id.clone(), grant.access.clone()))?;
             entry.requested.sort_by_cached_key(canonical_grant_json);
             entry.granted.sort_by_cached_key(canonical_grant_json);
             let change = if entry.requested.is_empty() && !entry.granted.is_empty() {
@@ -1653,22 +1649,60 @@ fn has_blocked_authority_observations(record: &ExecutionRecord) -> bool {
 fn authority_request_hints(record: &ExecutionRecord) -> Vec<String> {
     let mut hints = Vec::new();
 
-    if let Some(termination) = &record.termination
-        && let Some(hint) =
-            authority_request_hint_for_error(&termination.code, termination.detail.as_ref())
-    {
-        hints.push(hint);
+    if let Some(termination) = &record.termination {
+        push_authority_request_hint(&mut hints, &termination.code, termination.detail.as_ref());
     }
 
     for reason in &record.policy_decision.reasons {
-        if let Some(hint) = authority_request_hint_for_error(&reason.code, reason.detail.as_ref())
-            && !hints.iter().any(|existing| existing == &hint)
-        {
-            hints.push(hint);
+        push_authority_request_hint(&mut hints, &reason.code, reason.detail.as_ref());
+    }
+
+    for observation in &record.authority_observations {
+        if authority_observation_status(observation) != &AuthorityObservationStatus::Blocked {
+            continue;
         }
+        let Some((code, detail)) = blocked_authority_observation_failure(observation) else {
+            continue;
+        };
+        push_authority_request_hint(&mut hints, code, detail);
     }
 
     hints
+}
+
+fn push_authority_request_hint(hints: &mut Vec<String>, code: &str, detail: Option<&Value>) {
+    if let Some(hint) = authority_request_hint_for_error(code, detail)
+        && !hints.iter().any(|existing| existing == &hint)
+    {
+        hints.push(hint);
+    }
+}
+
+fn blocked_authority_observation_failure(
+    observation: &AuthorityObservation,
+) -> Option<(&str, Option<&Value>)> {
+    match observation {
+        AuthorityObservation::HttpRequest { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+        AuthorityObservation::ReadResource { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+        AuthorityObservation::InvokeSkill { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+        AuthorityObservation::EmitEvidence { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+        AuthorityObservation::LogWrite { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+    }
 }
 
 pub fn authority_request_hint_for_error(code: &str, detail: Option<&Value>) -> Option<String> {
@@ -2508,6 +2542,12 @@ mod tests {
         serde_json::from_value(value).unwrap()
     }
 
+    fn execution_record_with_blocked_observation(observation: Value) -> ExecutionRecord {
+        let mut value = serde_json::to_value(execution_record_with_related_refs(0, 0)).unwrap();
+        *value.pointer_mut("/authority_observations").unwrap() = json!([observation]);
+        serde_json::from_value(value).unwrap()
+    }
+
     #[test]
     fn compact_why_output_prefers_one_child_ref_over_evidence() {
         let record = execution_record_with_related_refs(1, 1);
@@ -2704,6 +2744,45 @@ mod tests {
                 "keep redirects disabled unless needed, or request `follow_redirects=true` with a bounded `max_redirects` and destination limits that still cover the redirect target"
                     .into()
             )
+        );
+    }
+
+    #[test]
+    fn blocked_observations_add_request_hints_even_without_termination_or_policy_reasons() {
+        let record = execution_record_with_blocked_observation(json!({
+            "family": "http-request",
+            "status": "blocked",
+            "detail": {
+                "request": {
+                    "method": "get",
+                    "url": "http://127.0.0.1/blocked.json",
+                    "timeout_ms": null
+                },
+                "denial": {
+                    "code": "http-request-path-not-granted",
+                    "message": "requested path is not granted",
+                    "detail": {
+                        "path": "/blocked.json"
+                    }
+                }
+            }
+        }));
+
+        let verbose = render_execution_why(&record, test_options(1), StreamKind::Stdout);
+
+        assert!(verbose.contains("authority observations:"), "{verbose}");
+        assert!(
+            verbose.contains(
+                "- blocked http-request -> http://127.0.0.1/blocked.json / http-request-path-not-granted"
+            ),
+            "{verbose}"
+        );
+        assert!(verbose.contains("request hints:"), "{verbose}");
+        assert!(
+            verbose.contains(
+                "- request an `http-request` grant whose `allowed_path_prefixes` covers `/blocked.json`"
+            ),
+            "{verbose}"
         );
     }
 
