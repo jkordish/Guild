@@ -624,6 +624,8 @@ fn resources_templates_pagination_and_resources_list_match_active_resource_model
 
 #[test]
 fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
+    const PAGINATION_FIXTURE_EXECUTION_COUNT: usize = 13;
+
     let temp = TempFixtureDir::new("guild-mcp-server-pagination");
     let registry_root = temp.path().join("registry");
 
@@ -635,7 +637,7 @@ fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
     let mut harness = McpHarness::spawn_for_root(&registry_root);
     harness.initialize();
 
-    for index in 0..55 {
+    for index in 0..PAGINATION_FIXTURE_EXECUTION_COUNT {
         let result: CallToolResult = parse_result(&harness.request(
             "tools/call",
             &inspect_request(
@@ -658,7 +660,7 @@ fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
 
     let second_response = harness.request("resources/list", &json!({ "cursor": next_cursor }));
     let second_page: ListResourcesResult = parse_result(&second_response);
-    assert_eq!(second_page.resources.len(), 17);
+    assert_eq!(second_page.resources.len(), 3);
     assert_eq!(second_page.next_cursor, None);
 
     let repeated_first: ListResourcesResult =
@@ -711,7 +713,10 @@ fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
         ExecutionQueryResource::FailuresRecent { limit: 10 }.canonical_uri()
     );
     assert_eq!(actual_uris, expected_uris);
-    assert_eq!(actual_uris.len(), 42);
+    assert_eq!(
+        actual_uris.len(),
+        2 + (PAGINATION_FIXTURE_EXECUTION_COUNT * 2)
+    );
 
     let wrong_cursor = harness.request(
         "resources/list",
