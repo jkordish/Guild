@@ -4274,12 +4274,23 @@ fn grants_help_and_templates_cover_active_families() {
     assert!(template_help.contains("emit-evidence"));
     assert!(template_help.contains("log-write"));
     assert!(template_help.contains("http-request"));
-    assert!(template_help.contains("omit the family to print one starter set"));
+    assert!(template_help.contains("omit the family to print a read-only per-family catalog"));
 
     let all_templates = run_guild_success(&["grants", "template"], None);
     let all_value: Value = serde_json::from_str(&all_templates).unwrap();
-    let grants = all_value["grants"].as_array().unwrap();
-    assert_eq!(grants.len(), 5, "{all_templates}");
+    let templates = all_value["templates"].as_object().unwrap();
+    assert_eq!(templates.len(), 5, "{all_templates}");
+    for family in [
+        "read-resource",
+        "invoke-skill",
+        "emit-evidence",
+        "log-write",
+        "http-request",
+    ] {
+        let grants = templates[family]["grants"].as_array().unwrap();
+        assert_eq!(grants.len(), 1, "{all_templates}");
+        assert_eq!(grants[0]["id"], family, "{all_templates}");
+    }
 
     let read_resource = run_guild_success(&["grants", "template", "read-resource"], None);
     let read_resource_value: Value = serde_json::from_str(&read_resource).unwrap();
@@ -4298,7 +4309,7 @@ fn grants_help_and_templates_cover_active_families() {
     assert_eq!(invoke_skill_value["grants"][0]["id"], "invoke-skill");
     assert_eq!(
         invoke_skill_value["grants"][0]["constraints"]["aliases"][0],
-        "renderer"
+        "<declared-alias>"
     );
 
     let http_request = run_guild_success(&["grants", "template", "http-request"], None);

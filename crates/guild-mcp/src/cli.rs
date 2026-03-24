@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{self, IsTerminal, Write as _};
 use std::num::NonZeroUsize;
@@ -65,8 +65,8 @@ const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a
 const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
 const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
 const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations and requested-versus-granted authority for the execution.\n  use -v to expand nearby child and evidence ref lists, authority-observation detail, requested-versus-granted differences, and family-aware request hints.\n  use `--lineage` to append a bounded read-only ancestor/descendant view over persisted executions.\n  with `--lineage`, use -v for warning detail and -vv for full execution URIs in the lineage block.\n  `--lineage` is human-only and does not change `--json` or `--porcelain`.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
-const GRANTS_AFTER_HELP: &str = "Scope:\n  `guild grants` is a read-only grant-authoring helper.\n\nOutput:\n  template output is concrete JSON you can narrow and pass back to `guild run` through `--grants-json` or `--grants-file`.\n  the templates cover only the currently active executable capability families.\n  this surface does not widen runtime support claims.\n\nSee also:\n  guild run --help\n  guild help grants";
-const GRANTS_TEMPLATE_AFTER_HELP: &str = "Usage:\n  `guild grants template` prints one concrete `CapabilityGrantSet` template.\n  omit the family to print one starter set containing every active family.\n\nFamilies:\n  read-resource\n  invoke-skill\n  emit-evidence\n  log-write\n  http-request\n\nOutput:\n  the template is read-only JSON for editing, not a live grant request.\n  narrow the placeholder values before rerunning a skill.\n\nSee also:\n  guild help grants\n  guild run --help";
+const GRANTS_AFTER_HELP: &str = "Scope:\n  `guild grants` is a read-only grant-authoring helper.\n\nOutput:\n  `guild grants template <family>` prints concrete JSON you can narrow and pass back to `guild run` through `--grants-json` or `--grants-file`.\n  `guild grants template` without a family prints a read-only per-family catalog for discovery instead of one combined runnable request.\n  the templates cover only the currently active executable capability families.\n  this surface does not widen runtime support claims.\n\nSee also:\n  guild run --help\n  guild help grants";
+const GRANTS_TEMPLATE_AFTER_HELP: &str = "Usage:\n  `guild grants template <family>` prints one concrete `CapabilityGrantSet` template.\n  omit the family to print a read-only per-family catalog instead of one combined grant set.\n\nFamilies:\n  read-resource\n  invoke-skill\n  emit-evidence\n  log-write\n  http-request\n\nOutput:\n  family-specific template output is read-only JSON for editing and rerunning.\n  the no-family catalog is for browsing; pick one family before feeding JSON back to `guild run`.\n  replace placeholder values such as `<declared-alias>` before rerunning a skill.\n\nSee also:\n  guild help grants\n  guild run --help";
 const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nVerification details:\n  use -v after import or pull when you want the installed verification explanation.\n  that view adds signing scheme and short bundle digest details when verification metadata exists.\n\nSee also:\n  guild help trust\n  guild show --help";
 const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const IMPORT_AFTER_HELP: &str = "Preview direction:\n  use `--preview` for a read-only preflight over import and pull.\n  see `guild help preview` for the shipped scope and non-goals.";
@@ -1089,7 +1089,7 @@ struct GrantsCliArgs {
 #[derive(Debug, Clone, Subcommand)]
 enum GrantsCliCommand {
     #[command(
-        about = "Print one read-only `CapabilityGrantSet` template",
+        about = "Print read-only grant template JSON",
         after_help = GRANTS_TEMPLATE_AFTER_HELP
     )]
     Template(GrantsTemplateCliArgs),
@@ -1108,6 +1108,30 @@ enum GrantTemplateFamily {
     EmitEvidence,
     LogWrite,
     HttpRequest,
+}
+
+impl GrantTemplateFamily {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::ReadResource => "read-resource",
+            Self::InvokeSkill => "invoke-skill",
+            Self::EmitEvidence => "emit-evidence",
+            Self::LogWrite => "log-write",
+            Self::HttpRequest => "http-request",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+enum GrantTemplateOutput {
+    Template(CapabilityGrantSet),
+    Catalog(GrantTemplateCatalog),
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct GrantTemplateCatalog {
+    templates: BTreeMap<String, CapabilityGrantSet>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -1785,24 +1809,35 @@ fn run_help(command: &HelpCliArgs) -> Result<(), CliError> {
 fn run_grants(command: &GrantsCliArgs) -> Result<(), CliError> {
     match &command.command {
         GrantsCliCommand::Template(command) => {
-            print_json(&grant_template_set(command.family.as_ref()))?;
+            print_json(&grant_template_output(command.family.as_ref()))?;
         }
     }
     Ok(())
 }
 
-fn grant_template_set(family: Option<&GrantTemplateFamily>) -> CapabilityGrantSet {
-    let grants = match family {
-        Some(family) => vec![grant_template(family)],
-        None => vec![
-            grant_template(&GrantTemplateFamily::ReadResource),
-            grant_template(&GrantTemplateFamily::InvokeSkill),
-            grant_template(&GrantTemplateFamily::EmitEvidence),
-            grant_template(&GrantTemplateFamily::LogWrite),
-            grant_template(&GrantTemplateFamily::HttpRequest),
-        ],
-    };
-    CapabilityGrantSet { grants }
+fn grant_template_output(family: Option<&GrantTemplateFamily>) -> GrantTemplateOutput {
+    match family {
+        Some(family) => GrantTemplateOutput::Template(grant_template_set(family)),
+        None => {
+            let mut templates = BTreeMap::new();
+            for family in [
+                GrantTemplateFamily::ReadResource,
+                GrantTemplateFamily::InvokeSkill,
+                GrantTemplateFamily::EmitEvidence,
+                GrantTemplateFamily::LogWrite,
+                GrantTemplateFamily::HttpRequest,
+            ] {
+                templates.insert(family.as_str().into(), grant_template_set(&family));
+            }
+            GrantTemplateOutput::Catalog(GrantTemplateCatalog { templates })
+        }
+    }
+}
+
+fn grant_template_set(family: &GrantTemplateFamily) -> CapabilityGrantSet {
+    CapabilityGrantSet {
+        grants: vec![grant_template(family)],
+    }
 }
 
 fn grant_template(family: &GrantTemplateFamily) -> GrantedCapability {
@@ -1819,7 +1854,7 @@ fn grant_template(family: &GrantTemplateFamily) -> GrantedCapability {
             id: CapabilityId::InvokeSkill,
             access: CapabilityAccess::Invoke,
             constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
-                aliases: Some(vec!["renderer".into()]),
+                aliases: Some(vec!["<declared-alias>".into()]),
             }),
         },
         GrantTemplateFamily::EmitEvidence => GrantedCapability {
@@ -5130,8 +5165,9 @@ fn print_help_preview() {
 fn print_help_grants() {
     println!("Grant authoring templates");
     println!();
-    println!("Use `guild grants template` to print concrete read-only JSON you can narrow");
-    println!("and pass back to `guild run` with `--grants-json` or `--grants-file`.");
+    println!("Use `guild grants template <family>` to print concrete read-only JSON you can");
+    println!("narrow and pass back to `guild run` with `--grants-json` or `--grants-file`.");
+    println!("Omit the family to browse a read-only per-family catalog instead.");
     println!();
     println!("Active families:");
     println!("  emit-evidence  bounded payload emission for inspect-mode evidence");
@@ -5149,7 +5185,7 @@ fn print_help_grants() {
     println!();
     println!("Copy-edit direction:");
     println!("  narrow `uri_prefixes` and `resource_kinds` for `read-resource`");
-    println!("  keep `aliases` to declared child names only for `invoke-skill`");
+    println!("  replace `<declared-alias>` with the real declared child name for `invoke-skill`");
     println!(
         "  keep scheme, host, path, timeout, and destination-class limits narrow for `http-request`"
     );
