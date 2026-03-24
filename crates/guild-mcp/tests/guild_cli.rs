@@ -4266,6 +4266,48 @@ fn journey_docs_stay_centered_on_user_workflows() {
 }
 
 #[test]
+fn mcp_contract_docs_match_the_discovery_catalog_surface() {
+    let specs = fs::read_to_string(repo_root().join("SPECS.md")).unwrap();
+    for phrase in [
+        "`resources/list` as a bounded discovery catalog",
+        "`resources/list` is a bounded discovery catalog",
+        "the first listed URI is the canonical recent-executions query resource",
+        "the second listed URI is the canonical recent-failures query resource",
+        "bounded recent evidence-metadata slice",
+    ] {
+        assert!(
+            specs.contains(phrase),
+            "SPECS.md is missing MCP discovery-catalog wording: {phrase}"
+        );
+    }
+
+    let architecture = fs::read_to_string(repo_root().join("ARCHITECTURE.md")).unwrap();
+    for phrase in [
+        "a bounded discovery-oriented `resources/list` catalog",
+        "`resources/list` is a bounded discovery catalog",
+        "starts with the canonical recent-executions and recent-failures query URIs",
+        "recent evidence-metadata resources",
+        "inspect-result links",
+    ] {
+        assert!(
+            architecture.contains(phrase),
+            "ARCHITECTURE.md is missing MCP discovery-catalog wording: {phrase}"
+        );
+    }
+
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(readme.contains(
+        "`resources/list` is a bounded discovery catalog: the first entries are canonical recent-query URIs"
+    ));
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    assert!(command_language.contains(
+        "`resources/list` is a bounded discovery catalog: the first entries are canonical recent-query URIs"
+    ));
+}
+
+#[test]
 fn readme_command_language_and_testing_guide_document_failure_paths() {
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
     for phrase in [

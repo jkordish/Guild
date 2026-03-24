@@ -326,7 +326,7 @@ guild mcp serve --stdio
 The public MCP surface is intentionally small:
 
 - one public tool: `guild.inspect`
-- `resources/list` exposes canonical recent-query entry points plus recent execution and evidence-metadata URIs
+- `resources/list` is a bounded discovery catalog: the first entries are canonical recent-query URIs, followed by recent execution and evidence-metadata URIs
 - `resources/templates/list` describes the parameterized Guild URI families for execution, evidence, object, and query reads
 - `resources/read` fetches the durable execution, evidence, object, and bounded query resources behind those URIs
 - cursor-based pagination on `tools/list`, `resources/list`, and `resources/templates/list`
