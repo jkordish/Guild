@@ -55,6 +55,13 @@ In that flow, the authority lifecycle is:
 
 In this example, `--grants-json` is the caller-requested grants input for `guild run`. Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.
 
+If you want a concrete starting point instead of hand-writing that JSON, run:
+
+```bash
+guild grants template emit-evidence
+guild grants template log-write
+```
+
 Replace `<execution-id-prefix>` with the short execution id prefix from the run receipt.
 
 After the run:

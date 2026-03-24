@@ -19,6 +19,8 @@ use guild_types::{
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
+#[path = "../../../test-support/http_test_server.rs"]
+mod http_test_server;
 #[path = "../../../test-support/oci_registry_test_server.rs"]
 mod oci_registry_test_server;
 
@@ -213,6 +215,32 @@ fn emit_http_path_denial_grants_json() -> String {
                 max_response_bytes: Some(4_096),
                 follow_redirects: Some(true),
                 max_redirects: Some(2),
+                allow_loopback: Some(true),
+                allow_link_local: Some(false),
+                allow_private_networks: Some(false),
+                allow_ip_literals: Some(true),
+            }),
+        }],
+    })
+    .unwrap()
+}
+
+fn emit_http_redirect_denial_grants_json(port: u16) -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![GrantedCapability {
+            id: CapabilityId::HttpRequest,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+                allowed_schemes: Some(vec![HttpScheme::Http]),
+                allowed_hosts: Some(vec![http_test_server::HttpTestServer::host().into()]),
+                allowed_host_suffixes: None,
+                allowed_ports: Some(vec![port]),
+                allowed_methods: Some(vec![HttpMethod::Get]),
+                allowed_path_prefixes: Some(vec!["/redirect-json".into(), "/json".into()]),
+                max_timeout_ms: Some(2_000),
+                max_response_bytes: Some(8_192),
+                follow_redirects: Some(false),
+                max_redirects: None,
                 allow_loopback: Some(true),
                 allow_link_local: Some(false),
                 allow_private_networks: Some(false),
@@ -1540,6 +1568,12 @@ fn capability_denial_errors_surface_authority_follow_up_guidance() {
         stderr.contains("reason: http-request-path-not-granted"),
         "{stderr}"
     );
+    assert!(
+        stderr.contains(
+            "hint: request an `http-request` grant whose `allowed_path_prefixes` covers `/blocked.json`"
+        ),
+        "{stderr}"
+    );
     assert!(stderr.contains("where: guild://executions/"), "{stderr}");
     assert!(
         stderr.contains(&format!(
@@ -1555,6 +1589,50 @@ fn capability_denial_errors_surface_authority_follow_up_guidance() {
         )),
         "{stderr}"
     );
+}
+
+#[test]
+fn redirect_denials_surface_family_aware_follow_up_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-run-http-redirect-denial");
+    let registry_root = temp.path().join("registry");
+    install_source_with_cli(&registry_root, &http_source_dir());
+    let server = http_test_server::HttpTestServer::start();
+
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/inspect-http-json@^0.1",
+            "--input-json",
+            &command_json(json!({ "url": server.redirect_json_url() })),
+            "--grants-json",
+            &emit_http_redirect_denial_grants_json(server.port()),
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(
+        stderr.contains(
+            "authority denial: http-request received a redirect but follow_redirects was not granted"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: http-request-redirect-not-allowed"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(
+            "hint: keep redirects disabled unless needed, or request `follow_redirects=true` with a bounded `max_redirects` and destination limits that still cover the redirect target"
+        ),
+        "{stderr}"
+    );
+    assert!(stderr.contains("where: guild://executions/"), "{stderr}");
 }
 
 #[test]
@@ -4031,11 +4109,13 @@ fn top_level_help_is_grouped_and_points_to_topic_help() {
     assert!(stdout.contains("Daily use:"));
     assert!(stdout.contains("Install and publish:"));
     assert!(stdout.contains("Setup and integration:"));
+    assert!(stdout.contains("grants    Print read-only grant templates"));
     assert!(stdout.contains("guild help refs"));
     assert!(stdout.contains("guild help trust"));
     assert!(stdout.contains("guild help roots"));
     assert!(stdout.contains("guild help doctor"));
     assert!(stdout.contains("guild help preview"));
+    assert!(stdout.contains("guild help grants"));
     assert!(stdout.contains("guild <command> --help"));
     assert!(!stdout.contains("deferred:"));
     assert!(!stdout.contains("inspect path"));
@@ -4046,7 +4126,7 @@ fn top_level_help_is_grouped_and_points_to_topic_help() {
 fn shared_help_topics_are_available() {
     let help = run_guild_success(&["help"], None);
     assert!(help.contains("Guild help topics"));
-    assert!(help.contains("guild help [refs|trust|roots|doctor|preview]"));
+    assert!(help.contains("guild help [refs|trust|roots|doctor|preview|grants]"));
 
     let refs = run_guild_success(&["help", "refs"], None);
     assert!(refs.contains("Guild ref forms"));
@@ -4124,6 +4204,14 @@ fn shared_help_topics_are_available() {
     assert!(preview.contains("publisher identity, verification outcome, and local trust posture"));
     assert!(preview.contains("preview is now shipped for that first import-and-pull slice"));
     assert!(preview.contains("no preview contract for export or push in the first slice"));
+
+    let grants = run_guild_success(&["help", "grants"], None);
+    assert!(grants.contains("Grant authoring templates"));
+    assert!(grants.contains("guild grants template"));
+    assert!(grants.contains("read-resource"));
+    assert!(grants.contains("invoke-skill"));
+    assert!(grants.contains("http-request"));
+    assert!(grants.contains("This helper is read-only."));
 }
 
 #[test]
@@ -4171,6 +4259,63 @@ fn run_help_uses_input_file_flag_and_ref_topic() {
     assert!(stdout.contains("low-noise `Next:` hints"));
     assert!(stdout.contains("guild help refs"));
     assert!(stdout.contains("guild why --help"));
+}
+
+#[test]
+fn grants_help_and_templates_cover_active_families() {
+    let top_help = run_guild_success(&["grants", "--help"], None);
+    assert!(top_help.contains("Print read-only grant templates for active capability families"));
+    assert!(top_help.contains("guild help grants"));
+    assert!(top_help.contains("currently active executable capability families"));
+
+    let template_help = run_guild_success(&["grants", "template", "--help"], None);
+    assert!(template_help.contains("read-resource"));
+    assert!(template_help.contains("invoke-skill"));
+    assert!(template_help.contains("emit-evidence"));
+    assert!(template_help.contains("log-write"));
+    assert!(template_help.contains("http-request"));
+    assert!(template_help.contains("omit the family to print one starter set"));
+
+    let all_templates = run_guild_success(&["grants", "template"], None);
+    let all_value: Value = serde_json::from_str(&all_templates).unwrap();
+    let grants = all_value["grants"].as_array().unwrap();
+    assert_eq!(grants.len(), 5, "{all_templates}");
+
+    let read_resource = run_guild_success(&["grants", "template", "read-resource"], None);
+    let read_resource_value: Value = serde_json::from_str(&read_resource).unwrap();
+    assert_eq!(read_resource_value["grants"][0]["id"], "read-resource");
+    assert_eq!(
+        read_resource_value["grants"][0]["constraints"]["uri_prefixes"][0],
+        "guild://executions/"
+    );
+    assert_eq!(
+        read_resource_value["grants"][0]["constraints"]["resource_kinds"][0],
+        "execution"
+    );
+
+    let invoke_skill = run_guild_success(&["grants", "template", "invoke-skill"], None);
+    let invoke_skill_value: Value = serde_json::from_str(&invoke_skill).unwrap();
+    assert_eq!(invoke_skill_value["grants"][0]["id"], "invoke-skill");
+    assert_eq!(
+        invoke_skill_value["grants"][0]["constraints"]["aliases"][0],
+        "renderer"
+    );
+
+    let http_request = run_guild_success(&["grants", "template", "http-request"], None);
+    let http_request_value: Value = serde_json::from_str(&http_request).unwrap();
+    assert_eq!(http_request_value["grants"][0]["id"], "http-request");
+    assert_eq!(
+        http_request_value["grants"][0]["constraints"]["allowed_hosts"][0],
+        "api.example.com"
+    );
+    assert_eq!(
+        http_request_value["grants"][0]["constraints"]["allowed_path_prefixes"][0],
+        "/v1/"
+    );
+    assert_eq!(
+        http_request_value["grants"][0]["constraints"]["follow_redirects"],
+        false
+    );
 }
 
 #[test]
@@ -4961,6 +5106,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(readme.contains("guild why -v"));
     assert!(readme.contains("guild why --lineage"));
     assert!(readme.contains("guild ls evidence --limit 5"));
+    assert!(readme.contains("guild grants template"));
 
     let command_language =
         fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
@@ -4972,6 +5118,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(command_language.contains("guild why -v"));
     assert!(command_language.contains("guild why --lineage"));
     assert!(command_language.contains("guild ls evidence --limit 5"));
+    assert!(command_language.contains("guild grants template"));
 
     let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
     assert!(examples_index.contains("## User Journeys"));
@@ -4982,10 +5129,12 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(examples_index.contains("guild why -v"));
     assert!(examples_index.contains("guild why --lineage"));
     assert!(examples_index.contains("guild ls evidence --limit 5"));
+    assert!(examples_index.contains("guild grants template"));
 
     let hello_readme =
         fs::read_to_string(repo_root().join("examples/skills/hello-inspect/README.md")).unwrap();
     assert!(hello_readme.contains("User journey: install and run a skill locally."));
+    assert!(hello_readme.contains("guild grants template emit-evidence"));
     assert!(hello_readme.contains(" show skill://example/hello-inspect@^0.1"));
     assert!(hello_readme.contains(" why exec:<execution-id-prefix>"));
     assert!(hello_readme.contains(" verify skill://example/hello-inspect@^0.1"));
@@ -5015,10 +5164,16 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(how_it_works.contains("use `--porcelain` for stable one-line machine-readable output"));
     assert!(how_it_works.contains("guild help doctor"));
     assert!(how_it_works.contains("guild help preview"));
+    assert!(how_it_works.contains("guild help grants"));
     assert!(how_it_works.contains("docs/mirroring-and-promotion.md"));
     assert!(how_it_works.contains("guild why -v"));
     assert!(how_it_works.contains("guild why --lineage"));
     assert!(how_it_works.contains("guild ls evidence --limit 5"));
+
+    let incident_brief =
+        fs::read_to_string(repo_root().join("examples/skills/incident-brief/README.md")).unwrap();
+    assert!(incident_brief.contains("guild grants template read-resource"));
+    assert!(incident_brief.contains("guild grants template invoke-skill"));
 
     let ops_pack =
         fs::read_to_string(repo_root().join("examples/skills/guild-ops-starter/README.md"))

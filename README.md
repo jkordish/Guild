@@ -30,7 +30,7 @@ The goal is not a loose agent wrapper. It is a portable skill system where execu
 
 Guild already has:
 
-- a real local `guild` CLI for install, show, run, ls, get, why, verify, trust, transport, and MCP setup
+- a real local `guild` CLI for install, show, grants, run, ls, get, why, verify, trust, transport, and MCP setup
 - a local registry root with durable execution and evidence records under `guild://...`
 - signed bundle export and import with local trust verification
 - OCI image layout and OCI registry transport for installed signed bundles
@@ -54,7 +54,7 @@ Repo-local proof commands and lower-level developer helpers live in
 
 Top-level commands are grouped around daily use, distribution, and setup:
 
-- daily use: `guild show`, `guild run`, `guild ls`, `guild get`, `guild why`, `guild verify`
+- daily use: `guild show`, `guild grants template`, `guild run`, `guild ls`, `guild get`, `guild why`, `guild verify`
 - install and publish: `guild install`, `guild export`, `guild import`, `guild push`, `guild pull`, `guild trust ...`
 - setup and integration: `guild init`, `guild mcp serve --stdio`, `guild codex ...`
 
@@ -71,6 +71,7 @@ The CLI now also ships focused help topics:
 - `guild help roots`
 - `guild help doctor`
 - `guild help preview`
+- `guild help grants`
 
 Version note: the current workspace Cargo packages, including the `guild` CLI crate, are `0.1.1`. The checked-in example Guild skill manifests still resolve as `0.1.0` / `@^0.1`, and the OCI transport examples intentionally keep those manifest-driven tags. Cargo package version and Guild skill identity are separate axes.
 
@@ -109,6 +110,8 @@ Guild also uses one authority lifecycle in normal operator workflows:
 
 Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.
 
+When you want a concrete starting point instead of hand-writing grant JSON from scratch, use `guild grants template <family>` for the current active families, narrow the placeholder values, and pass the result back through `--grants-json` or `--grants-file`.
+
 ## Quickstart
 
 Guild chooses a local root in this order:
@@ -146,6 +149,8 @@ guild install examples/skills/hello-inspect
 
 guild show skill://example/hello-inspect@^0.1
 
+guild grants template emit-evidence
+
 guild run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
@@ -167,6 +172,7 @@ What that flow shows:
 - `show` is the primary non-executing summary path
 - `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
 - `show -vv` is the first requested-ref explanation path and explains why one digest was selected
+- `grants template` is the read-only starting point when you need concrete JSON for an active capability family before a run
 - `run` executes a human-facing `skill://...` ref through the real Guild path using caller-requested grants filtered through host policy into final runtime authority
 - `ls` shows installed skills and recent persisted activity
 - successful runs return a durable `guild://executions/...` receipt

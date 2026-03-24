@@ -27,6 +27,7 @@ The default help is task-oriented:
 - `guild help roots`
 - `guild help doctor`
 - `guild help preview`
+- `guild help grants`
 - `guild <command> --help`
 
 ## Command Groups
@@ -36,6 +37,7 @@ Guild's first-class local verbs are:
 ### Daily Use
 
 - `guild show`
+- `guild grants template`
 - `guild run`
 - `guild ls`
 - `guild get`
@@ -138,6 +140,8 @@ Guild uses one authority lifecycle in day-to-day CLI flows:
 
 Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.
 
+Use `guild grants template <family>` when you need a read-only concrete JSON starting point for an active capability family before narrowing it into `--grants-json` or `--grants-file`.
+
 ## Root Resolution
 
 Guild chooses a root in this order:
@@ -176,6 +180,7 @@ Non-goals:
 guild init
 guild install examples/skills/hello-inspect
 guild show skill://example/hello-inspect@^0.1
+guild grants template emit-evidence
 guild run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
@@ -193,6 +198,7 @@ What this flow teaches:
 - `show` is the primary non-executing summary path
 - `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
 - `show -vv` is the first requested-ref explanation path and explains why one digest was selected
+- `grants template` is the read-only authoring helper for current active-family grant JSON
 - `run` executes a `skill://...` ref through the real Guild runtime path after host policy computes the final granted authority for that run
 - success produces a durable `guild://executions/...` receipt
 - `why` explains one stored execution record, points to nearby child or evidence refs when present, summarizes requested-versus-granted authority, and summarizes stored authority observations

@@ -18,6 +18,18 @@ guild --registry-root target/dev-local-registry/ops-pack install examples/skills
 guild --registry-root target/dev-local-registry/ops-pack run skill://example/incident-brief@^0.1 --input-json '{"execution_uri":"guild://executions/<execution-id>"}' --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"invoke-skill","access":"invoke","constraints":{"aliases":["renderer"]}}]}'
 ```
 
+If you want a concrete starting point before composing that `--grants-json`
+payload, begin with:
+
+```bash
+guild grants template read-resource
+guild grants template invoke-skill
+```
+
+Then narrow `read-resource` to `guild://executions/` + `execution`, keep
+`invoke-skill.aliases` to `renderer`, and combine the two grants into one
+`CapabilityGrantSet`.
+
 This skill does not broaden execution semantics. It reads one stored execution
 record, derives a compact report, and uses the zero-authority `render-report`
 child once for formatting only.

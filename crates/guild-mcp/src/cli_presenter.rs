@@ -1825,6 +1825,9 @@ pub fn authority_request_hint_for_error(code: &str, detail: Option<&Value>) -> O
         "http-request-private-network-not-granted" => Some(
             "request `allow_private_networks=true` only if this execution really must reach a private-network destination".into(),
         ),
+        "http-request-redirect-not-allowed" => Some(
+            "keep redirects disabled unless needed, or request `follow_redirects=true` with a bounded `max_redirects` and destination limits that still cover the redirect target".into(),
+        ),
         "http-request-redirect-target-not-granted" => Some(
             "keep redirects disabled unless needed, or request redirect authority plus host/path limits that cover the redirect target".into(),
         ),
@@ -2679,6 +2682,26 @@ mod tests {
             hint,
             Some(
                 "request a `read-resource` `read` grant with `uri_prefixes` including `guild://executions/` and `resource_kinds` including `execution`"
+                    .into()
+            )
+        );
+    }
+
+    #[test]
+    fn redirect_not_allowed_hint_is_family_aware() {
+        let hint = authority_request_hint_for_error(
+            "http-request-redirect-not-allowed",
+            Some(&json!({
+                "url": "http://127.0.0.1:8080/redirect-json",
+                "status": 302,
+                "location": "/json"
+            })),
+        );
+
+        assert_eq!(
+            hint,
+            Some(
+                "keep redirects disabled unless needed, or request `follow_redirects=true` with a bounded `max_redirects` and destination limits that still cover the redirect target"
                     .into()
             )
         );
