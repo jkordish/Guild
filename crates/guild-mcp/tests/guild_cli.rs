@@ -3408,7 +3408,7 @@ fn import_layout_and_pull_render_human_trust_review_output() {
     );
     assert!(push_output.contains("manifest: sha256:"), "{push_output}");
     assert!(
-        push_output.contains(&format!("Next: guild pull '{reference}'")),
+        push_output.contains(&format!("Next: guild pull '{reference}' --allow-http")),
         "{push_output}"
     );
 

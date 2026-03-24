@@ -531,8 +531,12 @@ pub fn render_transport_push_summary(
 }
 
 #[must_use]
-pub fn render_transport_push_next_step(reference: &str) -> String {
-    format!("Next: guild pull {reference}")
+pub fn render_transport_push_next_step(reference: &str, allow_http: bool) -> String {
+    if allow_http {
+        format!("Next: guild pull {reference} --allow-http")
+    } else {
+        format!("Next: guild pull {reference}")
+    }
 }
 
 #[must_use]
@@ -2159,8 +2163,12 @@ mod tests {
         );
         assert!(output.contains("manifest: sha256:abcdef"), "{output}");
         assert_eq!(
-            render_transport_push_next_step("127.0.0.1:5000/guild/hello:0.1.0"),
+            render_transport_push_next_step("127.0.0.1:5000/guild/hello:0.1.0", false),
             "Next: guild pull 127.0.0.1:5000/guild/hello:0.1.0"
+        );
+        assert_eq!(
+            render_transport_push_next_step("127.0.0.1:5000/guild/hello:0.1.0", true),
+            "Next: guild pull 127.0.0.1:5000/guild/hello:0.1.0 --allow-http"
         );
     }
 

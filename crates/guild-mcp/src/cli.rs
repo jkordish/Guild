@@ -3278,7 +3278,7 @@ fn run_push(
     if json_output {
         print_json(&output)?;
     } else {
-        print_push_text(&output);
+        print_push_text(&output, allow_http);
     }
 
     Ok(())
@@ -4640,7 +4640,7 @@ fn print_import_preview_text(output: &ImportPreviewCommandOutput, allow_http: bo
     }
 }
 
-fn print_push_text(output: &PushCommandOutput) {
+fn print_push_text(output: &PushCommandOutput, allow_http: bool) {
     print!(
         "{}",
         render_transport_push_summary(
@@ -4653,7 +4653,7 @@ fn print_push_text(output: &PushCommandOutput) {
     );
     println!(
         "{}",
-        render_transport_push_next_step(&shell_quote_arg(&output.reference))
+        render_transport_push_next_step(&shell_quote_arg(&output.reference), allow_http)
     );
 }
 
