@@ -332,6 +332,24 @@ pub struct PublishedOciArtifact {
     pub bundle: InstalledSkillBundle,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ImportPreviewDecision {
+    WouldImport,
+    WouldRefuse,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct ImportPreviewReport {
+    pub bundle: InstalledSkillBundle,
+    pub signature: BundleSignatureEnvelope,
+    pub verified: bool,
+    pub verification_error: Option<RegistryError>,
+    pub trust_tier: Option<LocalTrustTier>,
+    pub decision: ImportPreviewDecision,
+    pub refusal: Option<RegistryError>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct RegistryError {
     pub code: String,
@@ -955,6 +973,35 @@ impl LocalRegistry {
         }
     }
 
+    /// Preview a signed installed-skill bundle import without mutating the selected root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the selected root does not already exist, the bundle
+    /// cannot be opened, or the preview cannot inspect the signed installed
+    /// state.
+    pub fn preview_import_bundle(
+        root: impl AsRef<Path>,
+        bundle_root: impl AsRef<Path>,
+    ) -> Result<ImportPreviewReport, RegistryError> {
+        let root = open_existing_registry_root(root)?;
+        let bundle_root = open_bundle_directory(bundle_root)?;
+        let bundle_bytes = read_bundle_index_bytes(&bundle_root)?;
+        let bundle = parse_bundle_index(&bundle_bytes)?;
+        let signature = read_bundle_signature(&bundle_root)?;
+
+        preview_bundle_import(
+            &root,
+            bundle,
+            &bundle_bytes,
+            signature,
+            |bundle, verification| {
+                let validated = validate_bundle(&bundle_root, bundle)?;
+                validate_import_targets(&root, &validated, verification)
+            },
+        )
+    }
+
     /// Import a local OCI image layout that carries a signed installed-skill bundle.
     ///
     /// # Errors
@@ -966,6 +1013,20 @@ impl LocalRegistry {
         layout_root: impl AsRef<Path>,
     ) -> Result<Vec<InstalledSkill>, RegistryError> {
         oci_layout::import_oci_layout(root.as_ref(), layout_root.as_ref())
+    }
+
+    /// Preview a local OCI image layout import without mutating the selected root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the selected root does not already exist, the OCI
+    /// layout is malformed, or the preview cannot inspect the carried signed
+    /// installed state.
+    pub fn preview_import_oci_layout(
+        root: impl AsRef<Path>,
+        layout_root: impl AsRef<Path>,
+    ) -> Result<ImportPreviewReport, RegistryError> {
+        oci_layout::preview_import_oci_layout(root.as_ref(), layout_root.as_ref())
     }
 
     /// Pull and import a signed installed-skill OCI artifact from a registry.
@@ -980,6 +1041,21 @@ impl LocalRegistry {
         options: &OciRegistryTransportOptions,
     ) -> Result<Vec<InstalledSkill>, RegistryError> {
         oci_layout::pull_oci_registry(root.as_ref(), reference, options)
+    }
+
+    /// Preview an OCI registry pull without mutating the selected root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the selected root does not already exist, the remote
+    /// artifact cannot be fetched or decoded, or the preview cannot inspect the
+    /// carried signed installed state.
+    pub fn preview_pull_oci_registry(
+        root: impl AsRef<Path>,
+        reference: &OciRegistryReference,
+        options: &OciRegistryTransportOptions,
+    ) -> Result<ImportPreviewReport, RegistryError> {
+        oci_layout::preview_pull_oci_registry(root.as_ref(), reference, options)
     }
 
     fn collect_bundle_skills(
@@ -3362,7 +3438,7 @@ fn validate_import_targets(
     validated: &[ValidatedBundleSkill],
     _verification: &InstalledVerificationRecord,
 ) -> Result<(), RegistryError> {
-    let existing_registry = LocalRegistry::load(root).map_err(|error| {
+    let existing_registry = LocalRegistry::load_existing(root).map_err(|error| {
         RegistryError::new(
             "bundle-import-target-invalid",
             "failed to load existing installed state while validating bundle import targets",
@@ -3459,6 +3535,77 @@ fn validate_import_targets(
     }
 
     Ok(())
+}
+
+fn preview_bundle_import(
+    root: &Path,
+    bundle: InstalledSkillBundle,
+    bundle_bytes: &[u8],
+    signature: BundleSignatureEnvelope,
+    validate_after_signature: impl FnOnce(
+        &InstalledSkillBundle,
+        &InstalledVerificationRecord,
+    ) -> Result<(), RegistryError>,
+) -> Result<ImportPreviewReport, RegistryError> {
+    let trusted_publisher = match load_trusted_publisher(root, &signature.publisher_id) {
+        Ok(publisher) => publisher,
+        Err(error) if error.code == "bundle-publisher-untrusted" => {
+            return Ok(ImportPreviewReport {
+                bundle,
+                signature,
+                verified: false,
+                verification_error: Some(error.clone()),
+                trust_tier: None,
+                decision: ImportPreviewDecision::WouldRefuse,
+                refusal: Some(error),
+            });
+        }
+        Err(error) => return Err(error),
+    };
+
+    let trust_tier = Some(trusted_publisher.trust_tier.clone());
+    if let Err(error) =
+        verify_bundle_signature(bundle_bytes, &bundle, &signature, &trusted_publisher)
+    {
+        return Ok(ImportPreviewReport {
+            bundle,
+            signature,
+            verified: false,
+            verification_error: Some(error.clone()),
+            trust_tier,
+            decision: ImportPreviewDecision::WouldRefuse,
+            refusal: Some(error),
+        });
+    }
+
+    let verification = InstalledVerificationRecord {
+        status: VerificationStatus::Verified,
+        publisher: bundle.publisher.clone(),
+        scheme: signature.scheme.clone(),
+        bundle_sha256: signature.bundle_sha256.clone(),
+        signature: signature.clone(),
+    };
+    if let Err(error) = validate_after_signature(&bundle, &verification) {
+        return Ok(ImportPreviewReport {
+            bundle,
+            signature,
+            verified: true,
+            verification_error: None,
+            trust_tier,
+            decision: ImportPreviewDecision::WouldRefuse,
+            refusal: Some(error),
+        });
+    }
+
+    Ok(ImportPreviewReport {
+        bundle,
+        signature,
+        verified: true,
+        verification_error: None,
+        trust_tier,
+        decision: ImportPreviewDecision::WouldImport,
+        refusal: None,
+    })
 }
 
 fn resolve_bundle_install_dir(

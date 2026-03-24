@@ -296,6 +296,34 @@ This flow stays within the current trust model:
 - `guild trust ...` manages local trust-store state only
 - OCI transport uses the same installed signed bundle contract through another transport shape
 
+The first local bundle workflow is:
+
+- `guild export bundle ...` writes one signed installed-state bundle directory
+- `guild trust add ...` records the reviewed publisher in the target root
+- `guild import bundle ...` installs that signed state into the target root
+- default human output for these commands should answer the transport shape, the source or output location, the publisher, and the next likely command
+
+The OCI workflow is the same installed-state contract through a registry-shaped transport:
+
+```bash
+guild --registry-root target/dev-local-registry/a push \
+  skill://example/hello-inspect@^0.1 \
+  --reference localhost:5000/guild/hello-inspect:0.1.0 \
+  --signer target/dev-local-registry/local.example.json \
+  --allow-http
+
+guild --registry-root target/dev-local-registry/b trust add \
+  --identity-file target/dev-local-registry/local.example.json
+
+guild --registry-root target/dev-local-registry/b pull \
+  localhost:5000/guild/hello-inspect:0.1.0 \
+  --allow-http
+```
+
+- `guild push ...` publishes the same installed signed state to an OCI reference
+- `guild pull ...` reads that OCI transport artifact, verifies it against the selected root, and installs the imported state
+- default human output for `push` and `pull` should make the registry reference and installed-state outcome obvious
+
 The current trust review loop is:
 
 - `guild trust list`
@@ -321,8 +349,8 @@ Trust-store maintenance stays local and explicit:
 
 ### Preview Direction
 
-The chosen first preflight direction is `--preview`, but the flag is not
-implemented yet.
+The chosen first preflight direction is `--preview`, and the first slice now
+ships as a read-only preflight for import and pull.
 
 First scope:
 
@@ -342,6 +370,21 @@ Non-goals:
 - no root creation, staging, installation, or trust-store mutation
 - no fake preview detached from signed bundle and trust verification semantics
 - no preview contract for `export` or `push` in the first slice
+
+Examples:
+
+```bash
+guild --registry-root target/dev-local-registry/b import bundle target/dev-local-registry/portable-bundle --preview
+guild --registry-root target/dev-local-registry/b import oci-layout target/dev-local-registry/portable-layout --preview
+guild --registry-root target/dev-local-registry/b pull 127.0.0.1:5000/guild-example-hello-inspect:0.1.0 --allow-http --preview
+```
+
+For the current operator workflow that mirrors reviewed artifacts or promotes
+them between roots and OCI locations, read
+[`docs/mirroring-and-promotion.md`](mirroring-and-promotion.md). That guide
+keeps the current boundary explicit: `guild export ...` and `guild push ...`
+are publication steps over installed state, not silent registry-copy or retag
+primitives.
 
 ### Execution Plan Signing
 

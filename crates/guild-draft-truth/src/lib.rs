@@ -1,3 +1,23 @@
+#![allow(
+    clippy::cargo_common_metadata,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::collapsible_else_if,
+    clippy::large_types_passed_by_value,
+    clippy::map_unwrap_or,
+    clippy::missing_errors_doc,
+    clippy::missing_panics_doc,
+    clippy::must_use_candidate,
+    clippy::multiple_crate_versions,
+    clippy::needless_pass_by_value,
+    clippy::redundant_closure_for_method_calls,
+    clippy::struct_field_names,
+    clippy::too_many_lines,
+    clippy::uninlined_format_args,
+    clippy::unnecessary_wraps
+)]
+
 pub mod benchmark;
 pub mod compatibility;
 pub mod patent_packet;

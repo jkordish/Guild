@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use guild_mcp::{GuildMcpFacade, InspectRequest};
-use guild_registry::{LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller};
+use guild_registry::{
+    ImportPreviewDecision, ImportPreviewReport, LocalPublisherIdentity, LocalRegistry,
+    LocalSourceInstaller,
+};
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
@@ -59,6 +62,29 @@ fn emit_evidence_grant() -> GrantedCapability {
     }
 }
 
+fn preview_decision_label(decision: &ImportPreviewDecision) -> &'static str {
+    match decision {
+        ImportPreviewDecision::WouldImport => "would-import",
+        ImportPreviewDecision::WouldRefuse => "would-refuse",
+    }
+}
+
+fn print_preview(label: &str, preview: &ImportPreviewReport) {
+    let trust_tier = preview
+        .trust_tier
+        .as_ref()
+        .map_or_else(|| "none".to_owned(), ToString::to_string);
+    let refusal = preview
+        .refusal
+        .as_ref()
+        .map_or("none", |error| error.code.as_str());
+    println!(
+        "{label}: decision={}, verified={}, trust_tier={trust_tier}, refusal={refusal}",
+        preview_decision_label(&preview.decision),
+        preview.verified,
+    );
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base_root = base_root();
     reset_root(&base_root)?;
@@ -76,7 +102,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &identity,
     )?;
 
+    let _preview_target = LocalRegistry::load(registry_b_root())?;
+    let pretrust_preview = LocalRegistry::preview_import_bundle(registry_b_root(), bundle_root())?;
     LocalRegistry::trust_publisher(registry_b_root(), &identity.trusted_record())?;
+    let posttrust_preview = LocalRegistry::preview_import_bundle(registry_b_root(), bundle_root())?;
     let imported = LocalRegistry::import_bundle(registry_b_root(), bundle_root())?;
     let imported_registry = LocalRegistry::load(registry_b_root())?;
     let facade = GuildMcpFacade::new(imported_registry, WasmtimeRuntimeAdapter::new()?);
@@ -107,6 +136,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("bundle root: {}", bundle_root().display());
     println!("bundle skills: {}", bundle.skills.len());
+    print_preview("pre-trust preview", &pretrust_preview);
+    print_preview("post-trust preview", &posttrust_preview);
     println!("imported skills: {}", imported.len());
     println!(
         "imported digest: {}",

@@ -1401,6 +1401,7 @@ fn local_policy_can_vary_http_by_imported_trust_tier() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn diff_execution_authority_skill_highlights_profile_driven_http_grant_changes() {
     let server = http_test_server::HttpTestServer::start();
     let temp = TempFixtureDir::new("guild-diff-authority-skill");

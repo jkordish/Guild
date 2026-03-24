@@ -270,6 +270,34 @@ That flow demonstrates the current trust model:
 - `guild trust ...` manages local trust-store state only
 - OCI transport carries the same installed signed bundle contract through another transport shape
 
+The first local bundle workflow is:
+
+- `guild export bundle ...` writes one signed installed-state bundle directory
+- `guild trust add ...` records the reviewed publisher in the target root
+- `guild import bundle ...` installs that signed state into the target root
+- default human output for these commands should answer the transport shape, the source or output location, the publisher, and the next likely command
+
+The OCI workflow is the same installed-state contract through a registry-shaped transport:
+
+```bash
+guild --registry-root target/dev-local-registry/a push \
+  skill://example/hello-inspect@^0.1 \
+  --reference localhost:5000/guild/hello-inspect:0.1.0 \
+  --signer target/dev-local-registry/local.example.json \
+  --allow-http
+
+guild --registry-root target/dev-local-registry/b trust add \
+  --identity-file target/dev-local-registry/local.example.json
+
+guild --registry-root target/dev-local-registry/b pull \
+  localhost:5000/guild/hello-inspect:0.1.0 \
+  --allow-http
+```
+
+- `guild push ...` publishes the same installed signed state to an OCI reference
+- `guild pull ...` reads that OCI transport artifact, verifies it against the selected root, and installs the imported state
+- default human output for `push` and `pull` should make the registry reference and installed-state outcome obvious
+
 The current trust review loop is:
 
 - `guild trust list`
@@ -305,7 +333,7 @@ guild --registry-root target/dev-local-registry/b trust verify-plan \
   --plan target/dev-local-registry/zero-authority.admit.signed.plan.json
 ```
 
-Preview direction for risky flows is now chosen, even though the flag is not implemented yet:
+Preview direction for risky flows is now shipped for the first slice:
 
 - first preview flag: `--preview`
 - first scope: `guild import bundle`, `guild import oci-layout`, and `guild pull`
@@ -313,7 +341,20 @@ Preview direction for risky flows is now chosen, even though the flag is not imp
 - preview must stay read-only: no root creation, staging, installation, trust mutation, or fake detached summary
 - `export` and `push` stay out of the first preview slice
 
+Example:
+
+```bash
+guild --registry-root target/dev-local-registry/b import bundle target/dev-local-registry/portable-bundle --preview
+guild --registry-root target/dev-local-registry/b pull 127.0.0.1:5000/guild-example-hello-inspect:0.1.0 --allow-http --preview
+```
+
 Use `guild help preview` for the shipped CLI wording of that contract direction.
+
+For the current operator story around mirroring reviewed artifacts and promoting
+them between roots or OCI locations, read
+[`docs/mirroring-and-promotion.md`](docs/mirroring-and-promotion.md). That
+guide keeps one limit explicit: `guild export ...` and `guild push ...` are
+publication steps over installed state, not silent copy or retag primitives.
 
 ## MCP And Codex
 
@@ -380,6 +421,7 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 - `docs/how-guild-works.md` - short daily-user mental model for identity, authority, and the main CLI surfaces
 - `docs/mcp-agent-recipes.md` - task-shaped MCP recipes for agent users and integrators
 - `docs/command-language.md` - public CLI verbs, grouped workflows, and ref grammar
+- `docs/mirroring-and-promotion.md` - current operator guidance for mirroring and promoting signed installed-state artifacts
 - `docs/testing.md` - verification commands, proof workflows, and smoke paths
 - `SPECS.md` - normative contract and conformance language
 - `ARCHITECTURE.md` - practical system view and trust boundaries

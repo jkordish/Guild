@@ -266,7 +266,7 @@ guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow render-report
 
 For the user-facing quickstart and exact capability-grant snippets, see [`../examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md). For the surrounding examples index, see [`../examples/README.md`](../examples/README.md).
 
-Trust and signed-bundle smoke:
+Trust and signed-bundle smoke with preview:
 
 ```bash
 guild trust generate \
@@ -279,14 +279,27 @@ guild --registry-root target/dev-local-registry/a export bundle \
   --signer target/dev-local-registry/local.example.json \
   --output target/dev-local-registry/bundle
 
-guild --registry-root target/dev-local-registry/b trust add \
+guild init --registry-root target/dev-local-registry/b-preview
+
+guild --registry-root target/dev-local-registry/b-preview import bundle \
+  target/dev-local-registry/bundle \
+  --preview
+
+guild --registry-root target/dev-local-registry/b-preview trust add \
   --identity-file target/dev-local-registry/local.example.json
 
-guild --registry-root target/dev-local-registry/b import bundle \
+guild --registry-root target/dev-local-registry/b-preview import bundle \
+  target/dev-local-registry/bundle \
+  --preview
+
+guild --registry-root target/dev-local-registry/b-preview import bundle \
   target/dev-local-registry/bundle
 ```
 
-OCI registry smoke:
+`--preview` should refuse cleanly before trust is recorded, then report
+`would-import` after `guild trust add ...` and before the final import.
+
+OCI registry smoke with preview:
 
 ```bash
 guild --registry-root target/dev-local-registry/a push \
@@ -295,10 +308,29 @@ guild --registry-root target/dev-local-registry/a push \
   --signer target/dev-local-registry/local.example.json \
   --allow-http
 
-guild --registry-root target/dev-local-registry/b pull \
+guild init --registry-root target/dev-local-registry/c-preview
+
+guild --registry-root target/dev-local-registry/c-preview pull \
+  127.0.0.1:5000/guild-example-hello-inspect:0.1.0 \
+  --allow-http \
+  --preview
+
+guild --registry-root target/dev-local-registry/c-preview trust add \
+  --identity-file target/dev-local-registry/local.example.json
+
+guild --registry-root target/dev-local-registry/c-preview pull \
+  127.0.0.1:5000/guild-example-hello-inspect:0.1.0 \
+  --allow-http \
+  --preview
+
+guild --registry-root target/dev-local-registry/c-preview pull \
   127.0.0.1:5000/guild-example-hello-inspect:0.1.0 \
   --allow-http
 ```
+
+For the operator story that connects those preview-first proof steps to
+artifact mirroring and environment promotion, read
+[`mirroring-and-promotion.md`](mirroring-and-promotion.md).
 
 Failure-oriented CLI smoke:
 
@@ -396,6 +428,10 @@ cargo run -p guild-mcp --example push_pull_oci_registry_local
 cargo run -p guild-mcp --example push_pull_composite_oci_registry_local
 cargo run -p guild-mcp --example signed_pull_oci_registry_failures_local
 ```
+
+The primitive and composite success-path transport examples now preflight
+preview before the real import or pull step so the proof path matches the
+shipped operator workflow.
 
 MCP stdio proof:
 

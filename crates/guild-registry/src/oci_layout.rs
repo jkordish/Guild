@@ -1,9 +1,11 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use futures_util::TryStreamExt;
+use guild_manifest::{SkillManifest, SourceSkillManifest};
+use guild_types::{InstalledVerificationState, LocalTrustTier, ResolvedSkillRef};
 use http::HeaderValue;
 use oci_client::client::ClientConfig;
 use oci_client::client::ClientProtocol;
@@ -12,11 +14,16 @@ use oci_client::{Client, Reference, RegistryOperation};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    InstalledSkill, InstalledSkillBundle, LocalRegistry, OciRegistryAuth, OciRegistryReference,
-    OciRegistryTarget, OciRegistryTransportOptions, PublishedOciArtifact, RegistryError,
-    SignedBundlePayload, bundle_file_relative_from_str, bundle_index_path, bundle_signature_path,
-    ensure_registry_layout, json_bytes, parse_bundle_index, parse_bundle_signature_bytes,
-    sha256_bytes, write_bytes, write_json,
+    ImportPreviewReport, InstalledSkill, InstalledSkillBundle, InstalledTrustMetadata,
+    LocalRegistry, OciRegistryAuth, OciRegistryReference, OciRegistryTarget,
+    OciRegistryTransportOptions, PublishedOciArtifact, RegistryError, SignedBundlePayload,
+    VERIFICATION_FILENAME, ValidatedBundleSkill, bundle_file_relative_from_str, bundle_index_path,
+    bundle_install_dir_relative_from_str, bundle_signature_path, ensure_registry_layout,
+    json_bytes, maybe_resolve_local_file, open_existing_registry_root, parse_bundle_index,
+    parse_bundle_signature_bytes, path_string, preview_bundle_import, resolve_local_file,
+    sha256_bytes, validate_bundle_file_set_alignment, validate_bundle_index_shape,
+    validate_bundle_root_and_dependency_closure, validate_import_targets,
+    validate_installed_manifest, write_bytes, write_json,
 };
 
 const OCI_IMAGE_LAYOUT_VERSION: &str = "1.0.0";
@@ -153,6 +160,26 @@ pub(super) fn import_oci_layout(
         &|descriptor| read_oci_blob_bytes(&layout_root, descriptor),
     )?;
     import_decoded_oci_artifact(root, &decoded, ".oci-layout-import-staging", "oci-layout")
+}
+
+pub(super) fn preview_import_oci_layout(
+    root: &Path,
+    layout_root: &Path,
+) -> Result<ImportPreviewReport, RegistryError> {
+    let root = open_existing_registry_root(root)?;
+    let layout_root = open_oci_layout_root(layout_root)?;
+    validate_layout_metadata(&layout_root)?;
+    let index_bytes = read_layout_index_bytes(&layout_root)?;
+    let validated_manifest = load_validated_root_manifest(&index_bytes, &|descriptor| {
+        read_oci_blob_bytes(&layout_root, descriptor)
+    })?;
+    let decoded = decode_oci_artifact(
+        &validated_manifest.root_descriptor,
+        &validated_manifest.manifest,
+        &|descriptor| read_oci_blob_bytes(&layout_root, descriptor),
+    )?;
+
+    preview_decoded_oci_artifact(&root, &decoded)
 }
 
 pub(super) fn push_oci_registry(
@@ -305,6 +332,70 @@ pub(super) fn pull_oci_registry(
     })?;
 
     import_decoded_oci_artifact(root, &decoded, ".oci-registry-pull-staging", "oci-registry")
+}
+
+pub(super) fn preview_pull_oci_registry(
+    root: &Path,
+    reference: &OciRegistryReference,
+    options: &OciRegistryTransportOptions,
+) -> Result<ImportPreviewReport, RegistryError> {
+    let root = open_existing_registry_root(root)?;
+    let reference = reference.clone();
+    let options = options.clone();
+    let decoded = run_registry_future(async move {
+        let client_reference = parse_registry_reference(&reference)?;
+        let client = build_registry_client(&reference, &options);
+        let auth = registry_auth(&options.auth);
+        authenticate_registry(&client, &client_reference, &auth, RegistryOperation::Pull).await?;
+
+        let (index_bytes, _) = client
+            .pull_manifest_raw(&client_reference, &auth, &[OCI_IMAGE_INDEX_MEDIA_TYPE])
+            .await
+            .map_err(|error| {
+                RegistryError::new(
+                    "oci-registry-index-fetch-failed",
+                    "failed to pull the OCI image index for the requested Guild artifact",
+                )
+                .with_detail(serde_json::json!({
+                    "reference": registry_reference_string(&reference),
+                    "cause": error.to_string(),
+                }))
+            })?;
+        let root_descriptor = parse_and_validate_root_index(&index_bytes)?;
+        let manifest_reference = parse_registry_reference(&reference_with_digest(
+            &reference,
+            root_descriptor.digest.clone(),
+        ))?;
+        let (manifest_bytes, _) = client
+            .pull_manifest_raw(&manifest_reference, &auth, &[OCI_IMAGE_MANIFEST_MEDIA_TYPE])
+            .await
+            .map_err(|error| {
+                RegistryError::new(
+                    "oci-registry-manifest-fetch-failed",
+                    "failed to pull the OCI image manifest for the requested Guild artifact",
+                )
+                .with_detail(serde_json::json!({
+                    "reference": registry_reference_string(&reference),
+                    "manifest_digest": root_descriptor.digest,
+                    "cause": error.to_string(),
+                }))
+            })?;
+        validate_registry_bytes(&manifest_bytes, &root_descriptor)?;
+        let manifest = parse_and_validate_root_manifest(&manifest_bytes)?;
+        let blob_bytes = fetch_registry_blobs(&client, &client_reference, &manifest).await?;
+
+        decode_oci_artifact(&root_descriptor, &manifest, &|descriptor| {
+            blob_bytes.get(&descriptor.digest).cloned().ok_or_else(|| {
+                RegistryError::new(
+                    "oci-registry-blob-missing",
+                    "pulled OCI registry content was missing a required blob",
+                )
+                .with_detail(descriptor.digest.clone())
+            })
+        })
+    })?;
+
+    preview_decoded_oci_artifact(&root, &decoded)
 }
 
 fn build_oci_artifact(payload: &SignedBundlePayload) -> Result<BuiltOciArtifact, RegistryError> {
@@ -699,6 +790,350 @@ fn import_decoded_oci_artifact(
         (Ok(imported), Ok(())) => Ok(imported),
         (Err(error), _) | (Ok(_), Err(error)) => Err(error),
     }
+}
+
+fn preview_decoded_oci_artifact(
+    root: &Path,
+    decoded: &DecodedOciArtifact,
+) -> Result<ImportPreviewReport, RegistryError> {
+    let bundle = parse_bundle_index(&decoded.bundle_bytes)?;
+    let signature = parse_bundle_signature_bytes(&decoded.signature_bytes)?;
+
+    preview_bundle_import(
+        root,
+        bundle,
+        &decoded.bundle_bytes,
+        signature,
+        |bundle, verification| {
+            let validated = validate_decoded_bundle(bundle, &decoded.files)?;
+            validate_import_targets(root, &validated, verification)
+        },
+    )
+}
+
+fn validate_decoded_bundle(
+    bundle: &InstalledSkillBundle,
+    files: &[DecodedOciFile],
+) -> Result<Vec<ValidatedBundleSkill>, RegistryError> {
+    validate_bundle_index_shape(bundle)?;
+    let files_by_path = decoded_files_by_path(files)?;
+    let validated = validate_decoded_bundle_skill_entries(bundle, &files_by_path)?;
+    validate_bundle_root_and_dependency_closure(bundle, &validated)?;
+    let listed_paths = validate_decoded_listed_bundle_files(bundle, &files_by_path)?;
+    let actual_files = collect_decoded_bundle_files(&validated, &files_by_path)?;
+    validate_bundle_file_set_alignment(&listed_paths, &actual_files)?;
+    Ok(validated)
+}
+
+fn decoded_files_by_path(
+    files: &[DecodedOciFile],
+) -> Result<BTreeMap<String, &[u8]>, RegistryError> {
+    let mut indexed = BTreeMap::new();
+    for file in files {
+        let relative = bundle_file_relative_from_str(&file.relative_path)?;
+        let key = normalized_decoded_file_key(&relative)?;
+        if indexed.insert(key.clone(), file.bytes.as_slice()).is_some() {
+            return Err(RegistryError::new(
+                "bundle-index-invalid",
+                "bundle.json declared the same bundled file more than once",
+            )
+            .with_detail(key));
+        }
+    }
+    Ok(indexed)
+}
+
+fn validate_decoded_bundle_skill_entries(
+    bundle: &InstalledSkillBundle,
+    files_by_path: &BTreeMap<String, &[u8]>,
+) -> Result<Vec<ValidatedBundleSkill>, RegistryError> {
+    let mut seen_refs = HashSet::new();
+    let mut seen_dirs = HashSet::new();
+    let mut validated = Vec::with_capacity(bundle.skills.len());
+
+    for entry in &bundle.skills {
+        if !seen_refs.insert(entry.resolved_ref.clone()) {
+            return Err(RegistryError::new(
+                "bundle-index-invalid",
+                "bundle.json declared the same resolved skill more than once",
+            )
+            .with_detail(serde_json::json!({ "resolved_ref": entry.resolved_ref })));
+        }
+
+        let install_dir = bundle_install_dir_relative_from_str(&entry.install_dir)?;
+        let install_dir_string = path_string(&install_dir)?;
+        if !seen_dirs.insert(install_dir_string.clone()) {
+            return Err(RegistryError::new(
+                "bundle-index-invalid",
+                "bundle.json declared the same install directory more than once",
+            )
+            .with_detail(install_dir_string));
+        }
+
+        let manifest_path = install_dir.join("manifest.json");
+        let manifest = decoded_installed_manifest(&manifest_path, files_by_path)?;
+        validate_installed_manifest(&manifest)?;
+        let artifact_path = resolve_local_file(&install_dir, &manifest.package.artifact_uri)
+            .map_err(|error| {
+                RegistryError::new(
+                    "artifact-uri-invalid",
+                    "local registry only supports relative artifact paths",
+                )
+                .with_detail(error.to_string())
+            })?;
+        let artifact_bytes =
+            decoded_file_bytes(files_by_path, &artifact_path).ok_or_else(|| {
+                RegistryError::new("artifact-missing", "artifact file does not exist")
+                    .with_detail(path_string(&artifact_path).expect("decoded OCI paths stay utf-8"))
+            })?;
+        let digest = format!("sha256:{}", sha256_bytes(artifact_bytes));
+        if digest != manifest.package.artifact_digest {
+            return Err(RegistryError::new(
+                "artifact-digest-mismatch",
+                "artifact digest does not match manifest",
+            )
+            .with_detail(serde_json::json!({
+                "expected": manifest.package.artifact_digest,
+                "actual": digest,
+                "artifact_path": path_string(&artifact_path)?,
+            })));
+        }
+        validate_decoded_support_files(&install_dir, &manifest, files_by_path)?;
+
+        let resolved_ref = ResolvedSkillRef {
+            key: manifest.key.clone(),
+            version: manifest.version.clone(),
+            digest: digest.clone(),
+        };
+        if resolved_ref != entry.resolved_ref {
+            return Err(RegistryError::new(
+                "bundle-entry-mismatch",
+                "bundled installed manifest did not match its declared resolved skill reference",
+            )
+            .with_detail(serde_json::json!({
+                "expected": entry.resolved_ref,
+                "actual": resolved_ref,
+                "install_dir": entry.install_dir,
+            })));
+        }
+
+        if manifest.publisher.id != bundle.publisher.id {
+            return Err(RegistryError::new(
+                "bundle-publisher-mismatch",
+                "bundled installed manifest publisher did not match the bundle publisher",
+            )
+            .with_detail(serde_json::json!({
+                "bundle_publisher": bundle.publisher,
+                "manifest_publisher": manifest.publisher,
+                "resolved_ref": resolved_ref,
+            })));
+        }
+
+        validated.push(ValidatedBundleSkill {
+            entry: entry.clone(),
+            install_dir: install_dir.clone(),
+            installed: InstalledSkill {
+                manifest,
+                resolved_ref,
+                manifest_path,
+                artifact_path,
+                root_dir: install_dir,
+                verification: None,
+                trust: InstalledTrustMetadata {
+                    verification_state: InstalledVerificationState::LocalSource,
+                    trust_tier: LocalTrustTier::LocalDev,
+                },
+            },
+        });
+    }
+
+    Ok(validated)
+}
+
+fn decoded_installed_manifest(
+    manifest_path: &Path,
+    files_by_path: &BTreeMap<String, &[u8]>,
+) -> Result<SkillManifest, RegistryError> {
+    let Some(bytes) = decoded_file_bytes(files_by_path, manifest_path) else {
+        return Err(RegistryError::new(
+            "bundle-content-missing",
+            "bundle.json referenced an installed skill directory that did not exist",
+        )
+        .with_detail(serde_json::json!({
+            "path": path_string(manifest_path)?,
+        })));
+    };
+
+    match serde_json::from_slice(bytes) {
+        Ok(manifest) => Ok(manifest),
+        Err(error) => {
+            if serde_json::from_slice::<SourceSkillManifest>(bytes).is_ok() {
+                Err(RegistryError::new(
+                    "source-skill-not-installed",
+                    "source manifests are not executable; install the skill into a local registry first",
+                )
+                .with_detail(path_string(manifest_path)?))
+            } else {
+                Err(RegistryError::new(
+                    "manifest-parse-failed",
+                    "failed to parse installed manifest JSON",
+                )
+                .with_detail(error.to_string()))
+            }
+        }
+    }
+}
+
+fn validate_decoded_support_files(
+    install_dir: &Path,
+    manifest: &SkillManifest,
+    files_by_path: &BTreeMap<String, &[u8]>,
+) -> Result<(), RegistryError> {
+    let mut uris = vec![
+        manifest.interface.input_schema_uri.as_str(),
+        manifest.interface.output_schema_uri.as_str(),
+    ];
+    if let Some(examples_uri) = &manifest.interface.examples_uri {
+        uris.push(examples_uri);
+    }
+    if let Some(sbom_uri) = &manifest.package.sbom_uri {
+        uris.push(sbom_uri);
+    }
+    if let Some(signature_uri) = &manifest.package.signature_uri {
+        uris.push(signature_uri);
+    }
+    for test in &manifest.tests {
+        uris.push(&test.fixtures_uri);
+        uris.push(&test.expected_output_uri);
+    }
+
+    for uri in uris {
+        let Some(path) = maybe_resolve_local_file(install_dir, uri).map_err(|error| {
+            RegistryError::new(
+                "staged-file-uri-invalid",
+                "installed manifest referenced an unsupported local file URI",
+            )
+            .with_detail(serde_json::json!({
+                "uri": uri,
+                "error": error,
+            }))
+        })?
+        else {
+            continue;
+        };
+        if decoded_file_bytes(files_by_path, &path).is_none() {
+            return Err(RegistryError::new(
+                "staged-file-missing",
+                "installed manifest referenced a staged support file that did not exist",
+            )
+            .with_detail(path_string(&path)?));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_decoded_listed_bundle_files(
+    bundle: &InstalledSkillBundle,
+    files_by_path: &BTreeMap<String, &[u8]>,
+) -> Result<HashSet<String>, RegistryError> {
+    let mut listed_paths = HashSet::new();
+
+    for file in &bundle.files {
+        if !listed_paths.insert(file.path.clone()) {
+            return Err(RegistryError::new(
+                "bundle-index-invalid",
+                "bundle.json declared the same bundled file more than once",
+            )
+            .with_detail(file.path.clone()));
+        }
+
+        let relative = bundle_file_relative_from_str(&file.path)?;
+        let bytes = decoded_file_bytes(files_by_path, &relative).ok_or_else(|| {
+            RegistryError::new(
+                "bundle-content-missing",
+                "bundle.json referenced a bundled file that did not exist",
+            )
+            .with_detail(serde_json::json!({
+                "path": file.path,
+                "file_path": path_string(&relative).expect("decoded OCI paths stay utf-8"),
+            }))
+        })?;
+
+        let digest = format!("sha256:{}", sha256_bytes(bytes));
+        if digest != file.sha256 {
+            return Err(RegistryError::new(
+                "bundle-file-digest-mismatch",
+                "bundled file digest did not match bundle.json",
+            )
+            .with_detail(serde_json::json!({
+                "path": file.path,
+                "expected": file.sha256,
+                "actual": digest,
+            })));
+        }
+    }
+
+    Ok(listed_paths)
+}
+
+fn collect_decoded_bundle_files(
+    validated: &[ValidatedBundleSkill],
+    files_by_path: &BTreeMap<String, &[u8]>,
+) -> Result<HashSet<String>, RegistryError> {
+    let mut actual_files = HashSet::new();
+
+    for skill in validated {
+        for relative in files_by_path.keys() {
+            let relative_path = Path::new(relative);
+            if !relative_path.starts_with(&skill.install_dir) {
+                continue;
+            }
+
+            if relative_path.file_name().and_then(|name| name.to_str())
+                == Some(VERIFICATION_FILENAME)
+            {
+                return Err(RegistryError::new(
+                    "bundle-content-invalid",
+                    "bundled installed skill directories must not contain local verification metadata",
+                )
+                .with_detail(relative.clone()));
+            }
+
+            actual_files.insert(relative.clone());
+        }
+    }
+
+    Ok(actual_files)
+}
+
+fn decoded_file_bytes<'a>(
+    files_by_path: &'a BTreeMap<String, &'a [u8]>,
+    path: &Path,
+) -> Option<&'a [u8]> {
+    let key = normalized_decoded_file_key(path).ok()?;
+    files_by_path.get(&key).copied()
+}
+
+fn normalized_decoded_file_key(path: &Path) -> Result<String, RegistryError> {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(part) => normalized.push(part),
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(RegistryError::new(
+                    "bundle-file-path-invalid",
+                    "bundle.json file paths must stay under the installed/ subtree",
+                )
+                .with_detail(path.display().to_string()));
+            }
+        }
+    }
+
+    path_string(&normalized)
 }
 
 fn write_decoded_files(

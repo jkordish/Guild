@@ -583,6 +583,7 @@ fn resources_read_returns_execution_evidence_payload_and_evidence_metadata_conte
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn resources_templates_pagination_and_resources_list_match_active_resource_model() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
