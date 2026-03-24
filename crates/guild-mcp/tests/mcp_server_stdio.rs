@@ -14,9 +14,9 @@ use guild_mcp::protocol::{
 use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
-    EvidenceAudience, ExecutionQueryResult, ExecutionStatus, GrantedCapability,
-    PolicyDecisionOutcome, ReadResourceConstraints, RedactionClass, RequestedSkillRef,
-    ResourceKind, SkillKey, VersionRequirement,
+    EvidenceAudience, EvidenceRecord, ExecutionQueryResource, ExecutionQueryResult,
+    ExecutionStatus, GrantedCapability, PolicyDecisionOutcome, ReadResourceConstraints,
+    RedactionClass, RequestedSkillRef, ResourceKind, SkillKey, VersionRequirement,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -260,6 +260,34 @@ fn stdio_server_handshake_returns_honest_capabilities() {
     assert_eq!(resources.subscribe, None);
     assert_eq!(resources.list_changed, None);
     assert_eq!(initialized.server_info.name, "guild-mcp");
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("resources/list")
+    );
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("resources/templates/list")
+    );
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("resources/read")
+    );
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("guild.inspect")
+    );
 }
 
 #[test]
@@ -293,6 +321,16 @@ fn tools_list_returns_truthful_guild_inspect_annotations() {
     assert!(result.tools[0].input_schema.is_object());
     assert!(result.tools[0].output_schema.as_ref().unwrap().is_object());
     assert_eq!(result.next_cursor, None);
+    assert!(
+        result.tools[0]
+            .description
+            .contains("persist durable execution records")
+    );
+    assert!(
+        result.tools[0]
+            .description
+            .contains("may also emit evidence")
+    );
 
     let annotations = result.tools[0]
         .annotations
@@ -356,6 +394,11 @@ fn guild_inspect_success_returns_structured_content_text_and_resource_links() {
     assert!(result.content.iter().any(|block| matches!(
         block,
         ContentBlock::ResourceLink(link) if link.uri == record.emitted_evidence[0].uri
+    )));
+    assert!(result.content.iter().any(|block| matches!(
+        block,
+        ContentBlock::ResourceLink(link)
+            if link.uri == format!("{}/metadata", record.emitted_evidence[0].uri)
     )));
 }
 
@@ -437,7 +480,7 @@ fn resources_read_returns_execution_evidence_payload_and_evidence_metadata_conte
 }
 
 #[test]
-fn resources_templates_pagination_and_recent_execution_list_match_active_resource_model() {
+fn resources_templates_pagination_and_resources_list_match_active_resource_model() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
 
@@ -515,6 +558,21 @@ fn resources_templates_pagination_and_recent_execution_list_match_active_resourc
             .iter()
             .any(|resource| resource.uri == record.receipt.uri)
     );
+    assert_eq!(
+        resources.resources[0].uri,
+        ExecutionQueryResource::Recent { limit: 10 }.canonical_uri()
+    );
+    assert_eq!(
+        resources.resources[1].uri,
+        ExecutionQueryResource::FailuresRecent { limit: 10 }.canonical_uri()
+    );
+    let evidence_metadata_uri = format!("{}/metadata", record.emitted_evidence[0].uri);
+    assert!(
+        resources
+            .resources
+            .iter()
+            .any(|resource| resource.uri == evidence_metadata_uri)
+    );
 
     let wrong_cursor = harness.request(
         "resources/templates/list",
@@ -545,6 +603,22 @@ fn resources_templates_pagination_and_recent_execution_list_match_active_resourc
             .results
             .iter()
             .any(|item| item.receipt.uri == record.receipt.uri)
+    );
+
+    let metadata_response =
+        harness.request("resources/read", &json!({ "uri": evidence_metadata_uri }));
+    let metadata: ReadResourceResult = parse_result(&metadata_response);
+    let metadata_contents = match &metadata.contents[0] {
+        ResourceContents::Text(text) => text,
+        other @ ResourceContents::Blob(_) => {
+            panic!("expected text metadata contents, got {other:?}")
+        }
+    };
+    let evidence_record: EvidenceRecord = serde_json::from_str(&metadata_contents.text).unwrap();
+    assert_eq!(evidence_record.uri, record.emitted_evidence[0].uri);
+    assert_eq!(
+        evidence_record.blob_uri,
+        record.emitted_evidence[0].blob_uri
     );
 }
 
@@ -584,7 +658,7 @@ fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
 
     let second_response = harness.request("resources/list", &json!({ "cursor": next_cursor }));
     let second_page: ListResourcesResult = parse_result(&second_response);
-    assert_eq!(second_page.resources.len(), 25);
+    assert_eq!(second_page.resources.len(), 17);
     assert_eq!(second_page.next_cursor, None);
 
     let repeated_first: ListResourcesResult =
@@ -601,19 +675,43 @@ fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
 
     let expected_uris = LocalRegistry::load(&registry_root)
         .unwrap()
-        .list_recent_execution_records(50)
+        .list_recent_execution_records(20)
         .unwrap()
         .into_iter()
         .map(|record| record.receipt.uri)
         .collect::<Vec<_>>();
+    let expected_evidence_metadata_uris = LocalRegistry::load(&registry_root)
+        .unwrap()
+        .list_recent_evidence_records(20)
+        .unwrap()
+        .into_iter()
+        .map(|record| format!("{}/metadata", record.uri))
+        .collect::<Vec<_>>();
+    let expected_uris = [
+        vec![
+            ExecutionQueryResource::Recent { limit: 10 }.canonical_uri(),
+            ExecutionQueryResource::FailuresRecent { limit: 10 }.canonical_uri(),
+        ],
+        expected_uris,
+        expected_evidence_metadata_uris,
+    ]
+    .concat();
     let actual_uris = first_page
         .resources
         .iter()
         .chain(second_page.resources.iter())
         .map(|resource| resource.uri.clone())
         .collect::<Vec<_>>();
+    assert_eq!(
+        actual_uris[0],
+        ExecutionQueryResource::Recent { limit: 10 }.canonical_uri()
+    );
+    assert_eq!(
+        actual_uris[1],
+        ExecutionQueryResource::FailuresRecent { limit: 10 }.canonical_uri()
+    );
     assert_eq!(actual_uris, expected_uris);
-    assert_eq!(actual_uris.len(), 50);
+    assert_eq!(actual_uris.len(), 42);
 
     let wrong_cursor = harness.request(
         "resources/list",

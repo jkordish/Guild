@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use base64::Engine as _;
 use guild_registry::LocalRegistry;
 use guild_runner::WasmtimeRuntimeAdapter;
-use guild_types::{ExecutionRecord, ResourceReadResult};
+use guild_types::{EvidenceRecord, ExecutionQueryResource, ExecutionRecord, ResourceReadResult};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -23,7 +23,9 @@ use crate::protocol::{
 };
 use crate::{GuildMcpFacade, INSPECT_TOOL, InspectToolRequest, McpError, SERVER_NAME};
 
-const DEFAULT_RECENT_EXECUTION_LIMIT: usize = 50;
+const DEFAULT_DISCOVERY_QUERY_LIMIT: usize = 10;
+const DEFAULT_RECENT_EXECUTION_RESOURCE_LIMIT: usize = 20;
+const DEFAULT_RECENT_EVIDENCE_RESOURCE_LIMIT: usize = 20;
 const TOOLS_LIST_PAGE_SIZE: usize = 25;
 const RESOURCES_LIST_PAGE_SIZE: usize = 25;
 const RESOURCE_TEMPLATES_LIST_PAGE_SIZE: usize = 4;
@@ -318,8 +320,11 @@ impl GuildMcpServer {
                     title: Some("Guild MCP Server".into()),
                 },
                 instructions: Some(
-                    "Guild exposes one inspect-only tool (`guild.inspect`) plus durable execution \
-                     and evidence resources over stdio MCP."
+                    "Use `resources/list` to discover canonical recent-query entry points plus \
+                     durable execution and evidence metadata URIs. Use \
+                     `resources/templates/list` for parameterized Guild URI families, \
+                     `resources/read` for durable reads, and `guild.inspect` to execute inspect \
+                     mode through the local Guild runtime."
                         .into(),
                 ),
             },
@@ -330,8 +335,10 @@ impl GuildMcpServer {
         let mut tools = vec![Tool {
             name: INSPECT_TOOL.into(),
             title: Some("Guild Inspect".into()),
-            description: "Resolve and execute a Guild skill in inspect mode using the \
-                          existing local Guild runtime path."
+            description: "Resolve and execute a Guild skill in inspect mode through the local \
+                          Guild runtime. Successful and rejected runs persist durable execution \
+                          records, and inspect execution may also emit evidence with resource \
+                          links."
                 .into(),
             input_schema: schema_value::<InspectToolRequest>(),
             output_schema: Some(schema_value::<ExecutionRecord>()),
@@ -439,15 +446,29 @@ impl GuildMcpServer {
     }
 
     fn handle_resources_list(&mut self, id: Value, params: Option<&Value>) -> Value {
-        match self
+        let execution_records = self
             .registry
-            .list_recent_execution_records(DEFAULT_RECENT_EXECUTION_LIMIT)
-        {
-            Ok(records) => {
-                let resources = records
-                    .into_iter()
-                    .map(|record| execution_record_to_resource(&record))
-                    .collect::<Vec<_>>();
+            .list_recent_execution_records(DEFAULT_RECENT_EXECUTION_RESOURCE_LIMIT);
+        let evidence_records = self
+            .registry
+            .list_recent_evidence_records(DEFAULT_RECENT_EVIDENCE_RESOURCE_LIMIT);
+
+        match (execution_records, evidence_records) {
+            (Ok(execution_records), Ok(evidence_records)) => {
+                let mut resources = vec![
+                    recent_executions_query_resource(),
+                    recent_failures_query_resource(),
+                ];
+                resources.extend(
+                    execution_records
+                        .into_iter()
+                        .map(|record| execution_record_to_resource(&record)),
+                );
+                resources.extend(
+                    evidence_records
+                        .into_iter()
+                        .map(|record| evidence_metadata_resource(&record)),
+                );
                 let offset =
                     match list_offset_from_params(params, LIST_CURSOR_RESOURCES, resources.len()) {
                         Ok(offset) => offset,
@@ -475,7 +496,7 @@ impl GuildMcpServer {
                     },
                 )
             }
-            Err(error) => {
+            (Err(error), _) | (_, Err(error)) => {
                 let error = McpError::from(error);
                 error_response(
                     id,
@@ -790,13 +811,7 @@ fn inspect_success_content(record: &ExecutionRecord) -> Vec<ContentBlock> {
         text: serde_json::to_string_pretty(record).expect("execution record serializes"),
     })];
     content.push(ContentBlock::ResourceLink(execution_resource_link(record)));
-    content.extend(
-        record
-            .emitted_evidence
-            .iter()
-            .map(evidence_resource_link)
-            .map(ContentBlock::ResourceLink),
-    );
+    content.extend(evidence_content_blocks(record));
     content
 }
 
@@ -805,13 +820,18 @@ fn inspect_failure_content(record: &ExecutionRecord) -> Vec<ContentBlock> {
         text: serde_json::to_string_pretty(record).expect("execution record serializes"),
     })];
     content.push(ContentBlock::ResourceLink(execution_resource_link(record)));
-    content.extend(
-        record
-            .emitted_evidence
-            .iter()
-            .map(evidence_resource_link)
-            .map(ContentBlock::ResourceLink),
-    );
+    content.extend(evidence_content_blocks(record));
+    content
+}
+
+fn evidence_content_blocks(record: &ExecutionRecord) -> Vec<ContentBlock> {
+    let mut content = Vec::with_capacity(record.emitted_evidence.len().saturating_mul(2));
+    for evidence in &record.emitted_evidence {
+        content.push(ContentBlock::ResourceLink(evidence_resource_link(evidence)));
+        content.push(ContentBlock::ResourceLink(evidence_metadata_resource_link(
+            evidence,
+        )));
+    }
     content
 }
 
@@ -832,16 +852,28 @@ fn execution_resource_link(record: &ExecutionRecord) -> ResourceLink {
 fn evidence_resource_link(record: &guild_types::EvidenceRecord) -> ResourceLink {
     ResourceLink {
         uri: record.uri.clone(),
-        name: record
-            .title
-            .clone()
-            .unwrap_or_else(|| format!("evidence-{}", record.sha256)),
+        name: evidence_payload_name(record),
         title: record.title.clone(),
         description: Some(
             "Persisted evidence emission addressed by host-issued evidence record URI.".into(),
         ),
         mime_type: Some(record.mime_type.clone()),
         size: Some(record.size_bytes),
+    }
+}
+
+fn evidence_metadata_resource_link(record: &EvidenceRecord) -> ResourceLink {
+    ResourceLink {
+        uri: evidence_metadata_uri(record),
+        name: evidence_metadata_name(record),
+        title: evidence_metadata_title(record),
+        description: Some(
+            "Host-owned JSON metadata for a persisted evidence emission; read this before \
+             fetching payload bytes when you only need the record context."
+                .into(),
+        ),
+        mime_type: Some("application/json".into()),
+        size: None,
     }
 }
 
@@ -861,6 +893,76 @@ fn execution_record_to_resource(record: &ExecutionRecord) -> Resource {
                 .len() as u64,
         ),
     }
+}
+
+fn recent_executions_query_resource() -> Resource {
+    let query = ExecutionQueryResource::Recent {
+        limit: DEFAULT_DISCOVERY_QUERY_LIMIT,
+    };
+    Resource {
+        uri: query.canonical_uri(),
+        name: "recent-executions-query".into(),
+        title: Some("Guild Recent Executions Query".into()),
+        description: Some(
+            "Read a bounded recent-executions summary to discover stored runs before following \
+             exact execution URIs."
+                .into(),
+        ),
+        mime_type: Some("application/json".into()),
+        size: None,
+    }
+}
+
+fn recent_failures_query_resource() -> Resource {
+    let query = ExecutionQueryResource::FailuresRecent {
+        limit: DEFAULT_DISCOVERY_QUERY_LIMIT,
+    };
+    Resource {
+        uri: query.canonical_uri(),
+        name: "recent-failures-query".into(),
+        title: Some("Guild Recent Failures Query".into()),
+        description: Some(
+            "Read a bounded recent failures summary to find failed or rejected executions \
+             without already knowing execution ids."
+                .into(),
+        ),
+        mime_type: Some("application/json".into()),
+        size: None,
+    }
+}
+
+fn evidence_metadata_resource(record: &EvidenceRecord) -> Resource {
+    Resource {
+        uri: evidence_metadata_uri(record),
+        name: evidence_metadata_name(record),
+        title: evidence_metadata_title(record),
+        description: Some("Host-owned JSON metadata for a persisted evidence emission.".into()),
+        mime_type: Some("application/json".into()),
+        size: None,
+    }
+}
+
+fn evidence_payload_name(record: &EvidenceRecord) -> String {
+    record
+        .title
+        .clone()
+        .unwrap_or_else(|| format!("evidence-{}", record.sha256))
+}
+
+fn evidence_metadata_name(record: &EvidenceRecord) -> String {
+    format!("{}-metadata", evidence_payload_name(record))
+}
+
+fn evidence_metadata_title(record: &EvidenceRecord) -> Option<String> {
+    record
+        .title
+        .as_ref()
+        .map(|title| format!("{title} metadata"))
+        .or_else(|| Some(format!("Guild evidence metadata {}", record.sha256)))
+}
+
+fn evidence_metadata_uri(record: &EvidenceRecord) -> String {
+    format!("{}/metadata", record.uri)
 }
 
 fn resource_contents(resource: ResourceReadResult) -> ResourceContents {
