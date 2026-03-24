@@ -831,7 +831,7 @@ fn decoded_files_by_path(
     let mut indexed = BTreeMap::new();
     for file in files {
         let relative = bundle_file_relative_from_str(&file.relative_path)?;
-        let key = path_string(&relative)?;
+        let key = normalized_decoded_file_key(&relative)?;
         if indexed.insert(key.clone(), file.bytes.as_slice()).is_some() {
             return Err(RegistryError::new(
                 "bundle-index-invalid",

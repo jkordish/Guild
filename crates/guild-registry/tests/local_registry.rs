@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use guild_manifest::PublisherRef;
 use guild_registry::{
     BundleSignatureEnvelope, ExecutionPlanSignatureEnvelope, ImportPreviewDecision, InstalledSkill,
@@ -88,6 +88,27 @@ fn oci_bundle_json(layout_root: &Path) -> InstalledSkillBundle {
     serde_json::from_str(&fs::read_to_string(oci_blob_path(layout_root, digest)).unwrap()).unwrap()
 }
 
+fn oci_root_manifest_bytes(layout_root: &Path) -> Vec<u8> {
+    let index = oci_index(layout_root);
+    let digest = index["manifests"][0]["digest"].as_str().unwrap();
+    fs::read(oci_blob_path(layout_root, digest)).unwrap()
+}
+
+fn oci_signature(layout_root: &Path) -> BundleSignatureEnvelope {
+    let manifest = oci_root_manifest(layout_root);
+    let digest = manifest["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|layer| {
+            layer["mediaType"].as_str()
+                == Some("application/vnd.guild.installed-bundle.signature.v1+json")
+        })
+        .and_then(|layer| layer["digest"].as_str())
+        .expect("OCI signature layer digest exists");
+    serde_json::from_slice(&fs::read(oci_blob_path(layout_root, digest)).unwrap()).unwrap()
+}
+
 fn registry_reference(
     server: &oci_registry_test_server::OciRegistryTestServer,
     repository: &str,
@@ -113,6 +134,153 @@ fn json_value(bytes: &[u8]) -> serde_json::Value {
 
 fn sha256_digest(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
+}
+
+fn equivalent_curdir_path(path: &str) -> String {
+    let (parent, file_name) = path
+        .rsplit_once('/')
+        .expect("bundle file path includes a parent directory");
+    format!("{parent}/./{file_name}")
+}
+
+fn resign_bundle_bytes_for_tests(
+    bundle_bytes: &[u8],
+    template: &BundleSignatureEnvelope,
+    identity: &LocalPublisherIdentity,
+) -> BundleSignatureEnvelope {
+    let secret_key: [u8; 32] = base64::engine::general_purpose::STANDARD
+        .decode(&identity.secret_key_base64)
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let signing_key = SigningKey::from_bytes(&secret_key);
+    let signature = signing_key.sign(bundle_bytes);
+
+    BundleSignatureEnvelope {
+        format_version: template.format_version.clone(),
+        scheme: template.scheme.clone(),
+        publisher_id: template.publisher_id.clone(),
+        bundle_sha256: sha256_digest(bundle_bytes),
+        signature_base64: base64::engine::general_purpose::STANDARD.encode(signature.to_bytes()),
+    }
+}
+
+fn write_oci_blob_bytes(layout_root: &Path, bytes: &[u8]) -> String {
+    let digest = sha256_digest(bytes);
+    fs::write(oci_blob_path(layout_root, &digest), bytes).unwrap();
+    digest
+}
+
+fn introduce_equivalent_curdir_component_path(
+    layout_root: &Path,
+    identity: &LocalPublisherIdentity,
+) {
+    let mut bundle = oci_bundle_json(layout_root);
+    let component_path = bundle
+        .files
+        .iter()
+        .find(|file| file.path.ends_with("/component.wasm"))
+        .expect("exported OCI bundle includes component.wasm")
+        .path
+        .clone();
+    let duplicate_path = equivalent_curdir_path(&component_path);
+    let duplicate_entry = bundle
+        .files
+        .iter()
+        .find(|file| file.path == component_path)
+        .expect("component file entry exists")
+        .clone();
+    bundle.files.push(guild_registry::BundleFileEntry {
+        path: duplicate_path.clone(),
+        ..duplicate_entry
+    });
+
+    let signature_template = oci_signature(layout_root);
+    let bundle_bytes = serde_json::to_vec_pretty(&bundle).unwrap();
+    let signature = resign_bundle_bytes_for_tests(&bundle_bytes, &signature_template, identity);
+    let signature_bytes = serde_json::to_vec_pretty(&signature).unwrap();
+
+    let mut manifest = oci_root_manifest(layout_root);
+    {
+        let layers = manifest["layers"].as_array_mut().unwrap();
+        let component_layer = layers
+            .iter()
+            .find(|layer| {
+                layer["annotations"]["org.opencontainers.image.title"].as_str()
+                    == Some(component_path.as_str())
+            })
+            .expect("component layer descriptor exists")
+            .clone();
+        let mut duplicate_layer = component_layer;
+        duplicate_layer["annotations"]["org.opencontainers.image.title"] =
+            serde_json::Value::String(duplicate_path);
+        layers.push(duplicate_layer);
+    }
+
+    let bundle_digest = write_oci_blob_bytes(layout_root, &bundle_bytes);
+    manifest["config"]["digest"] = serde_json::Value::String(bundle_digest);
+    manifest["config"]["size"] = serde_json::Value::Number((bundle_bytes.len() as u64).into());
+
+    let signature_digest = write_oci_blob_bytes(layout_root, &signature_bytes);
+    {
+        let layers = manifest["layers"].as_array_mut().unwrap();
+        let signature_layer = layers
+            .iter_mut()
+            .find(|layer| {
+                layer["mediaType"].as_str()
+                    == Some("application/vnd.guild.installed-bundle.signature.v1+json")
+            })
+            .expect("signature layer descriptor exists");
+        signature_layer["digest"] = serde_json::Value::String(signature_digest);
+        signature_layer["size"] = serde_json::Value::Number((signature_bytes.len() as u64).into());
+    }
+
+    let manifest_bytes = serde_json::to_vec_pretty(&manifest).unwrap();
+    let manifest_digest = write_oci_blob_bytes(layout_root, &manifest_bytes);
+    let mut index = oci_index(layout_root);
+    index["manifests"][0]["digest"] = serde_json::Value::String(manifest_digest);
+    index["manifests"][0]["size"] = serde_json::Value::Number((manifest_bytes.len() as u64).into());
+    fs::write(
+        layout_root.join("index.json"),
+        serde_json::to_vec_pretty(&index).unwrap(),
+    )
+    .unwrap();
+}
+
+fn mirror_layout_artifact_to_registry(
+    layout_root: &Path,
+    server: &oci_registry_test_server::OciRegistryTestServer,
+    repository: &str,
+    tag: &str,
+) {
+    let index_bytes = fs::read(layout_root.join("index.json")).unwrap();
+    let index: serde_json::Value = serde_json::from_slice(&index_bytes).unwrap();
+    let manifest_digest = index["manifests"][0]["digest"]
+        .as_str()
+        .expect("index root manifest digest exists");
+    let manifest_bytes = oci_root_manifest_bytes(layout_root);
+    let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).unwrap();
+
+    fs::write(server.tag_manifest_path(repository, tag), &index_bytes).unwrap();
+    fs::write(
+        server.digest_manifest_path(repository, manifest_digest),
+        &manifest_bytes,
+    )
+    .unwrap();
+
+    let config_digest = manifest["config"]["digest"]
+        .as_str()
+        .expect("manifest config digest exists");
+    fs::copy(
+        oci_blob_path(layout_root, config_digest),
+        server.blob_path(config_digest),
+    )
+    .unwrap();
+
+    for layer in manifest["layers"].as_array().unwrap() {
+        let digest = layer["digest"].as_str().expect("layer digest exists");
+        fs::copy(oci_blob_path(layout_root, digest), server.blob_path(digest)).unwrap();
+    }
 }
 
 fn publisher_identity(installed: &InstalledSkill, path: &Path) -> LocalPublisherIdentity {
@@ -875,6 +1043,49 @@ fn primitive_oci_import_preview_reports_would_import_without_mutation() {
 }
 
 #[test]
+fn primitive_oci_import_preview_refuses_equivalent_curdir_paths_like_real_import() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+
+    registry
+        .export_oci_layout(
+            &installed_skill.resolved_ref,
+            false,
+            &layout_root,
+            &identity,
+        )
+        .unwrap();
+    introduce_equivalent_curdir_component_path(&layout_root, &identity);
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+
+    let preview = LocalRegistry::preview_import_oci_layout(&registry_b, &layout_root).unwrap();
+    assert_eq!(preview.decision, ImportPreviewDecision::WouldRefuse);
+    assert_eq!(
+        preview
+            .refusal
+            .as_ref()
+            .expect("preview reports refusal")
+            .code,
+        "bundle-index-invalid"
+    );
+
+    let error = LocalRegistry::import_oci_layout(&registry_b, &layout_root).unwrap_err();
+    assert_eq!(error.code, "bundle-index-invalid");
+    assert!(
+        LocalRegistry::load_existing(&registry_b)
+            .unwrap()
+            .installed()
+            .is_empty()
+    );
+}
+
+#[test]
 fn primitive_oci_registry_pull_resolves_digest_pinned_skill_in_fresh_registry() {
     let temp = TempFixtureDir::new();
     let registry_a = temp.path().join("registry-a");
@@ -962,6 +1173,69 @@ fn primitive_oci_registry_pull_preview_reports_untrusted_without_mutation() {
             .code,
         "bundle-publisher-untrusted"
     );
+    assert!(
+        LocalRegistry::load_existing(&registry_b)
+            .unwrap()
+            .installed()
+            .is_empty()
+    );
+}
+
+#[test]
+fn primitive_oci_registry_pull_preview_refuses_equivalent_curdir_paths_like_real_pull() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_store = temp.path().join("oci-registry-store");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let repository = "guild-example-hello-inspect";
+    let tag = "0.1.0";
+    let reference = registry_reference(&server, repository, tag);
+
+    registry
+        .export_oci_layout(
+            &installed_skill.resolved_ref,
+            false,
+            &layout_root,
+            &identity,
+        )
+        .unwrap();
+    introduce_equivalent_curdir_component_path(&layout_root, &identity);
+
+    registry
+        .push_oci_registry(
+            &installed_skill.resolved_ref,
+            false,
+            &reference,
+            &registry_options(),
+            &identity,
+        )
+        .unwrap();
+    mirror_layout_artifact_to_registry(&layout_root, &server, repository, tag);
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+    LocalRegistry::load(&registry_b).unwrap();
+
+    let preview =
+        LocalRegistry::preview_pull_oci_registry(&registry_b, &reference, &registry_options())
+            .unwrap();
+    assert_eq!(preview.decision, ImportPreviewDecision::WouldRefuse);
+    assert_eq!(
+        preview
+            .refusal
+            .as_ref()
+            .expect("preview reports refusal")
+            .code,
+        "bundle-index-invalid"
+    );
+
+    let error =
+        LocalRegistry::pull_oci_registry(&registry_b, &reference, &registry_options()).unwrap_err();
+    assert_eq!(error.code, "bundle-index-invalid");
     assert!(
         LocalRegistry::load_existing(&registry_b)
             .unwrap()
