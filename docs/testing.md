@@ -403,7 +403,11 @@ MCP stdio proof:
 cargo run -p guild-mcp --example mcp_stdio_local
 ```
 
-That example now proves one real paginated MCP interaction by walking `resources/templates/list` across two cursor-linked pages before exercising `guild.inspect` and `resources/read`.
+That example now proves one real discovery-first paginated MCP interaction: it
+starts from `resources/list`, reads the canonical recent-executions query
+through `resources/read`, then uses `resources/templates/list` for the custom
+URI families before exercising `guild.inspect` and reading back the discovered
+execution and evidence metadata resources.
 
 ## Where To Go Next
 
