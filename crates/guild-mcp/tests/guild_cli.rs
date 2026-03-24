@@ -3562,6 +3562,9 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     assert!(
         why_help.contains("default output is a short human explanation for reading, not parsing.")
     );
+    assert!(why_help.contains("--lineage"));
+    assert!(why_help.contains("bounded read-only ancestor/descendant view"));
+    assert!(why_help.contains("human-only"));
     assert!(why_help.contains("low-noise `Next:` hints"));
     assert!(why_help.contains("persisted execution record"));
     assert!(why_help.contains("guild get --help"));
@@ -4010,6 +4013,140 @@ fn why_human_output_prefers_child_execution_navigation_when_lineage_exists() {
 }
 
 #[test]
+fn why_lineage_rejects_machine_output_modes() {
+    let temp = TempFixtureDir::new("guild-cli-why-lineage-machine-modes");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let inspect_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let execution_id = inspect_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+
+    let json_output = run_guild_failure_output(
+        &["why", &exec_prefix, "--lineage", "--json"],
+        Some(&registry_root),
+    );
+    let json_stderr = String::from_utf8(json_output.stderr).unwrap();
+    assert!(
+        json_stderr.contains("`guild why --lineage` does not support --json or --porcelain"),
+        "{json_stderr}"
+    );
+
+    let porcelain_output = run_guild_failure_output(
+        &["why", &exec_prefix, "--lineage", "--porcelain"],
+        Some(&registry_root),
+    );
+    let porcelain_stderr = String::from_utf8(porcelain_output.stderr).unwrap();
+    assert!(
+        porcelain_stderr.contains("`guild why --lineage` does not support --json or --porcelain"),
+        "{porcelain_stderr}"
+    );
+}
+
+#[test]
+fn why_lineage_human_output_renders_descendant_tree() {
+    let temp = TempFixtureDir::new("guild-cli-why-lineage-descendants");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    install_source_with_cli(&registry_root, &composite_source_dir());
+
+    let run_output = run_guild_success_output(
+        &[
+            "run",
+            "skill://example/hello-composite@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &composite_invoke_and_emit_evidence_grants_json(),
+            "--json",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(run_output.stdout).unwrap();
+    let run_value: Value = parse_json_stdout(&stdout);
+    let execution_id = run_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let child_execution_id = run_value["record"]["child_executions"][0]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+    let child_execution_ref = format!("exec:{}", &child_execution_id[..12]);
+
+    let why_output = run_guild_success(
+        &["why", &exec_prefix, "--lineage", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(why_output.contains("lineage:"), "{why_output}");
+    assert!(why_output.contains("ancestry: none"), "{why_output}");
+    assert!(why_output.contains("descendants:"), "{why_output}");
+    assert!(why_output.contains(&exec_prefix), "{why_output}");
+    assert!(
+        why_output.contains(&format!("alias hello  succeeded  {child_execution_ref}")),
+        "{why_output}"
+    );
+    assert!(!why_output.contains("lineage warnings:"), "{why_output}");
+}
+
+#[test]
+fn why_lineage_very_verbose_output_shows_full_execution_uris() {
+    let temp = TempFixtureDir::new("guild-cli-why-lineage-very-verbose");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    install_source_with_cli(&registry_root, &composite_source_dir());
+
+    let run_output = run_guild_success_output(
+        &[
+            "run",
+            "skill://example/hello-composite@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &composite_invoke_and_emit_evidence_grants_json(),
+            "--json",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(run_output.stdout).unwrap();
+    let run_value: Value = parse_json_stdout(&stdout);
+    let child_execution_uri = run_value["record"]["child_executions"][0]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let execution_uri = run_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let why_output = run_guild_success(
+        &[
+            "why",
+            &child_execution_uri,
+            "--lineage",
+            "-vv",
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+    assert!(why_output.contains("ancestry:"), "{why_output}");
+    assert!(
+        why_output.contains(&format!("uri: {execution_uri}")),
+        "{why_output}"
+    );
+    assert!(
+        why_output.contains(&format!("uri: {child_execution_uri}")),
+        "{why_output}"
+    );
+}
+
+#[test]
 fn user_facing_docs_use_installed_guild_cli_after_install() {
     let mut paths = vec![
         repo_root().join("README.md"),
@@ -4043,6 +4180,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(readme.contains("Verify trust state and move installed state"));
     assert!(readme.contains("Debug failures and compare runs"));
     assert!(readme.contains("guild why -v"));
+    assert!(readme.contains("guild why --lineage"));
     assert!(readme.contains("guild ls evidence --limit 5"));
 
     let command_language =
@@ -4053,6 +4191,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(command_language.contains("Verify trust state and move installed state"));
     assert!(command_language.contains("Debug failures and compare runs"));
     assert!(command_language.contains("guild why -v"));
+    assert!(command_language.contains("guild why --lineage"));
     assert!(command_language.contains("guild ls evidence --limit 5"));
 
     let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
@@ -4062,6 +4201,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(examples_index.contains("### Verify trust state and move installed state"));
     assert!(examples_index.contains("### Debug failures and compare runs"));
     assert!(examples_index.contains("guild why -v"));
+    assert!(examples_index.contains("guild why --lineage"));
     assert!(examples_index.contains("guild ls evidence --limit 5"));
 
     let hello_readme =
@@ -4076,6 +4216,11 @@ fn journey_docs_stay_centered_on_user_workflows() {
             .unwrap();
     assert!(explain_readme.contains("Use `guild why` first"));
     assert!(explain_readme.contains("User journey: explain a stored execution."));
+
+    let explain_tree_readme =
+        fs::read_to_string(repo_root().join("examples/skills/explain-execution-tree/README.md"))
+            .unwrap();
+    assert!(explain_tree_readme.contains("guild why --lineage"));
 
     let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
     assert!(how_it_works.contains("## Output Modes"));
@@ -4092,6 +4237,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(how_it_works.contains("guild help doctor"));
     assert!(how_it_works.contains("guild help preview"));
     assert!(how_it_works.contains("guild why -v"));
+    assert!(how_it_works.contains("guild why --lineage"));
     assert!(how_it_works.contains("guild ls evidence --limit 5"));
 
     let ops_pack =
@@ -4101,6 +4247,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(ops_pack.contains("## Journey 2: Compare Two Stored Executions"));
     assert!(ops_pack.contains("## Journey 3: Scan Recent Failures"));
     assert!(ops_pack.contains("## Journey 4: Discover And Inspect One Stored Evidence Record"));
+    assert!(ops_pack.contains("guild why --lineage"));
     assert!(ops_pack.contains("guild ls evidence --limit 5"));
     assert!(ops_pack.contains("## Keep Going With The Normal CLI"));
 }

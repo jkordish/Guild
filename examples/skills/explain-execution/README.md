@@ -2,9 +2,10 @@
 
 `explain-execution` is an inspect-only example skill that reads a stored Guild execution resource through the host-mediated `read-resource` import and returns a structured explanation.
 
-Use `guild why` first for the normal compact operator path. Use
-`explain-execution` when you want a reusable skill that reads the same stored
-execution resource and produces a richer structured report.
+Use `guild why` first for the normal compact operator path, and use
+`guild why --lineage` when you want the native bounded ancestor/descendant
+view. Use `explain-execution` when you want a reusable skill that reads the
+same stored execution resource and produces a richer structured report.
 
 It proves:
 

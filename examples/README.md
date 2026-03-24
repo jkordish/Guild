@@ -40,6 +40,7 @@ Use the current primary CLI first:
 
 - `guild why` for the compact persisted-execution explanation path
 - `guild why -v` when you need nearby child/evidence refs and authority observations
+- `guild why --lineage` when you want the native bounded ancestor/descendant view
 - `guild get` when you want the raw stored resource
 - `guild ls evidence --limit 5` when you need to discover stored evidence first
 

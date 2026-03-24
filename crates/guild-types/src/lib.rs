@@ -2399,8 +2399,8 @@ mod tests {
                 "input": {},
                 "budget": {
                     "max_millis": 1000,
-                    "max_memory_bytes": 1048576,
-                    "max_output_bytes": 65536,
+                    "max_memory_bytes": 1_048_576,
+                    "max_output_bytes": 65_536,
                     "max_network_requests": 4,
                     "max_child_executions": 4
                 },

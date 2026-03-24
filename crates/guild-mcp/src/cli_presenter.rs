@@ -83,6 +83,30 @@ pub struct WhySummary {
     pub reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhyLineageNode {
+    pub depth: usize,
+    pub alias_from_parent: Option<String>,
+    pub record: ExecutionRecord,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WhyLineageWarning {
+    pub relation: String,
+    pub code: String,
+    pub message: String,
+    pub execution_uri: Option<String>,
+    pub depth: usize,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhyLineage {
+    pub ancestry: Vec<ExecutionRecord>,
+    pub descendants: Vec<WhyLineageNode>,
+    pub warnings: Vec<WhyLineageWarning>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tone {
     Success,
@@ -253,12 +277,12 @@ pub fn render_skill_show(
     let _ = writeln!(
         output,
         "status: {}",
-        render_trust_status_pair(Some(&styler), &verification, &trust)
+        render_trust_status_pair(Some(styler), &verification, &trust)
     );
     let _ = writeln!(
         output,
         "support: {}",
-        render_support_summary(&support, &styler)
+        render_support_summary(&support, styler)
     );
     let _ = writeln!(
         output,
@@ -343,12 +367,12 @@ pub fn render_skill_verify(
     let _ = writeln!(
         output,
         "status: {}",
-        render_trust_status_pair(Some(&styler), &verification, &trust)
+        render_trust_status_pair(Some(styler), &verification, &trust)
     );
     let _ = writeln!(
         output,
         "publisher: {}",
-        render_publisher_label(Some(&styler), publisher)
+        render_publisher_label(Some(styler), publisher)
     );
     if let Some(verification) = &installed.verification
         && options.verbose()
@@ -443,7 +467,7 @@ pub fn render_execution_show(
     let _ = writeln!(
         output,
         "{}  {}",
-        paint_status_word(&styler, status),
+        paint_status_word(styler, status),
         styler.paint(Tone::Ref, short_execution_ref(record))
     );
     let _ = writeln!(
@@ -455,7 +479,7 @@ pub fn render_execution_show(
     let _ = writeln!(
         output,
         "support: {}",
-        render_support_summary(&support, &styler)
+        render_support_summary(&support, styler)
     );
     let _ = writeln!(
         output,
@@ -523,28 +547,24 @@ pub fn render_execution_why(
     let _ = writeln!(
         output,
         "{}  {}",
-        paint_status_word(&styler, status),
+        paint_status_word(styler, status),
         styler.paint(Tone::Ref, short_execution_ref(record))
     );
-    let _ = writeln!(
-        output,
-        "plan: {}",
-        paint_status_word(&styler, &summary.plan)
-    );
+    let _ = writeln!(output, "plan: {}", paint_status_word(styler, &summary.plan));
     let _ = writeln!(
         output,
         "proof: {}",
-        paint_status_word(&styler, &summary.proof)
+        paint_status_word(styler, &summary.proof)
     );
     let _ = writeln!(
         output,
         "token: {}",
-        paint_status_word(&styler, &summary.token)
+        paint_status_word(styler, &summary.token)
     );
     let _ = writeln!(
         output,
         "witness: {}",
-        paint_status_word(&styler, &summary.witness)
+        paint_status_word(styler, &summary.witness)
     );
     if !summary.reason_codes.is_empty() {
         let _ = writeln!(output, "reason: {}", summary.reason_codes.join(", "));
@@ -566,22 +586,20 @@ pub fn render_execution_why(
     let _ = writeln!(output, "authority: {}", authority_summary(record));
     if options.verbose() {
         append_authority_observation_list(&mut output, record);
-        append_ref_list(&mut output, "nearby child refs", &child_refs, &styler);
-        append_ref_list(&mut output, "nearby evidence refs", &evidence_refs, &styler);
-    } else {
-        if let Some(child_ref) = child_refs.first() {
-            let _ = writeln!(
-                output,
-                "nearby child: {}",
-                styler.paint(Tone::Ref, child_ref)
-            );
-        } else if let Some(evidence_ref) = evidence_refs.first() {
-            let _ = writeln!(
-                output,
-                "nearby evidence: {}",
-                styler.paint(Tone::Ref, evidence_ref)
-            );
-        }
+        append_ref_list(&mut output, "nearby child refs", &child_refs, styler);
+        append_ref_list(&mut output, "nearby evidence refs", &evidence_refs, styler);
+    } else if let Some(child_ref) = child_refs.first() {
+        let _ = writeln!(
+            output,
+            "nearby child: {}",
+            styler.paint(Tone::Ref, child_ref)
+        );
+    } else if let Some(evidence_ref) = evidence_refs.first() {
+        let _ = writeln!(
+            output,
+            "nearby evidence: {}",
+            styler.paint(Tone::Ref, evidence_ref)
+        );
     }
     if options.verbose() {
         let trust = record.policy_decision.trust_tier.to_string();
@@ -592,6 +610,20 @@ pub fn render_execution_why(
             styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill))
         );
         let _ = writeln!(output, "trust: {trust} / {verification}");
+    }
+    output
+}
+
+#[must_use]
+pub fn render_execution_why_with_lineage(
+    record: &ExecutionRecord,
+    lineage: Option<&WhyLineage>,
+    options: PresentationOptions,
+    stream: StreamKind,
+) -> String {
+    let mut output = render_execution_why(record, options, stream);
+    if let Some(lineage) = lineage {
+        append_execution_lineage(&mut output, lineage, options, stream);
     }
     output
 }
@@ -609,8 +641,8 @@ pub fn render_run_status(
     let _ = write!(
         output,
         "{}  {}  {}  {}",
-        paint_status_word(&styler, status),
-        paint_status_word(&styler, proof),
+        paint_status_word(styler, status),
+        paint_status_word(styler, proof),
         styler.paint(Tone::Ref, short_execution_ref(record)),
         styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill))
     );
@@ -652,9 +684,9 @@ pub fn render_skills_list(
             output,
             "{}  {}  {}  {}",
             styler.paint(Tone::Ref, short_skill_ref(skill)),
-            paint_status_word(&styler, &verification),
-            paint_status_word(&styler, &trust),
-            paint_status_word(&styler, overall_support_word(&support))
+            paint_status_word(styler, &verification),
+            paint_status_word(styler, &trust),
+            paint_status_word(styler, overall_support_word(&support))
         );
     }
     output
@@ -676,7 +708,7 @@ pub fn render_runs_list(
         let _ = writeln!(
             output,
             "{}  {}  {}",
-            paint_status_word(&styler, execution_status_label(&record.status)),
+            paint_status_word(styler, execution_status_label(&record.status)),
             styler.paint(Tone::Ref, short_execution_ref(record)),
             styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill))
         );
@@ -869,6 +901,118 @@ pub fn render_why_porcelain(record: &ExecutionRecord) -> String {
     )
 }
 
+fn append_execution_lineage(
+    output: &mut String,
+    lineage: &WhyLineage,
+    options: PresentationOptions,
+    stream: StreamKind,
+) {
+    let styler = options.styler(stream);
+    let _ = writeln!(output);
+    let _ = writeln!(output, "lineage:");
+    if lineage.ancestry.is_empty() {
+        let _ = writeln!(output, "ancestry: none");
+    } else {
+        let _ = writeln!(output, "ancestry:");
+        for record in &lineage.ancestry {
+            append_lineage_record(output, record, 0, None, options, styler);
+        }
+    }
+    let _ = writeln!(output, "descendants:");
+    for node in &lineage.descendants {
+        append_lineage_record(
+            output,
+            &node.record,
+            node.depth,
+            node.alias_from_parent.as_deref(),
+            options,
+            styler,
+        );
+    }
+    if lineage.warnings.is_empty() {
+        return;
+    }
+    if !options.verbose() {
+        let _ = writeln!(
+            output,
+            "lineage warnings: {} (use -v to inspect)",
+            lineage.warnings.len()
+        );
+        return;
+    }
+
+    let _ = writeln!(output, "lineage warnings:");
+    for warning in &lineage.warnings {
+        let mut line = format!(
+            "- {} / {} / depth {}",
+            warning.relation, warning.code, warning.depth
+        );
+        if let Some(uri) = warning.execution_uri.as_deref() {
+            let location = if options.very_verbose() {
+                uri.to_owned()
+            } else {
+                display_resource_ref_or_uri(uri)
+            };
+            line.push_str(" / ");
+            line.push_str(&styler.paint(Tone::Ref, location));
+        }
+        line.push_str(" / ");
+        line.push_str(&warning.message);
+        if let Some(detail) = warning.detail.as_deref() {
+            line.push_str(" / ");
+            line.push_str(detail);
+        }
+        let _ = writeln!(output, "{line}");
+    }
+}
+
+fn append_lineage_record(
+    output: &mut String,
+    record: &ExecutionRecord,
+    depth: usize,
+    alias_from_parent: Option<&str>,
+    options: PresentationOptions,
+    styler: Styler,
+) {
+    let indent = "  ".repeat(depth);
+    let mut line = format!("{indent}- ");
+    if let Some(alias) = alias_from_parent {
+        line.push_str("alias ");
+        line.push_str(alias);
+        line.push_str("  ");
+    }
+    line.push_str(&paint_status_word(
+        styler,
+        execution_status_label(&record.status),
+    ));
+    line.push_str("  ");
+    line.push_str(&styler.paint(Tone::Ref, short_execution_ref(record)));
+    line.push_str("  ");
+    line.push_str(&styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill)));
+    let _ = write!(
+        line,
+        "  child {}  evidence {}",
+        record.child_executions.len(),
+        record.emitted_evidence.len()
+    );
+    if options.verbose() {
+        let reasons = reason_codes(record);
+        if !reasons.is_empty() {
+            line.push_str("  reason ");
+            line.push_str(&reasons.join(", "));
+        }
+    }
+    let _ = writeln!(output, "{line}");
+    if options.very_verbose() {
+        let _ = writeln!(
+            output,
+            "{}  uri: {}",
+            indent,
+            styler.paint(Tone::Ref, record.receipt.uri.as_str())
+        );
+    }
+}
+
 fn support_summary_for_capabilities<'a>(
     capabilities: impl IntoIterator<Item = &'a CapabilityId>,
 ) -> SupportSummary {
@@ -1011,7 +1155,7 @@ fn nearby_evidence_refs(record: &ExecutionRecord, limit: usize) -> Vec<String> {
         .collect()
 }
 
-fn append_ref_list(output: &mut String, label: &str, refs: &[String], styler: &Styler) {
+fn append_ref_list(output: &mut String, label: &str, refs: &[String], styler: Styler) {
     if refs.is_empty() {
         return;
     }
@@ -1098,8 +1242,7 @@ fn authority_observation_line(observation: &AuthorityObservation) -> String {
                     detail
                         .resource_kind
                         .as_ref()
-                        .map(resource_kind_label)
-                        .unwrap_or("resource")
+                        .map_or("resource", resource_kind_label)
                         .into(),
                 ],
                 detail.denial.as_ref().map(|failure| failure.code.as_str()),
@@ -1137,8 +1280,7 @@ fn authority_observation_line(observation: &AuthorityObservation) -> String {
                     detail
                         .evidence_uri
                         .as_deref()
-                        .map(display_resource_ref_or_uri)
-                        .unwrap_or_else(|| detail.mime_type.clone()),
+                        .map_or_else(|| detail.mime_type.clone(), display_resource_ref_or_uri),
                     format_bytes(detail.size_bytes),
                 ],
                 detail.denial.as_ref().map(|failure| failure.code.as_str()),
@@ -1300,8 +1442,7 @@ fn append_trusted_publisher_details(output: &mut String, publisher: &TrustedPubl
     }
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn render_support_summary(summary: &SupportSummary, styler: &Styler) -> String {
+fn render_support_summary(summary: &SupportSummary, styler: Styler) -> String {
     summary
         .buckets
         .iter()
@@ -1317,9 +1458,10 @@ fn render_support_summary(summary: &SupportSummary, styler: &Styler) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     fn test_options(verbosity: u8) -> PresentationOptions {
         PresentationOptions {
@@ -1423,8 +1565,8 @@ mod tests {
                 "input": {},
                 "budget": {
                     "max_millis": 1000,
-                    "max_memory_bytes": 1048576,
-                    "max_output_bytes": 65536,
+                    "max_memory_bytes": 1_048_576,
+                    "max_output_bytes": 65_536,
                     "max_network_requests": 4,
                     "max_child_executions": 4
                 },
@@ -1466,6 +1608,47 @@ mod tests {
             "child_executions": (0..child_count).map(child_record_json).collect::<Vec<_>>()
         }))
         .unwrap()
+    }
+
+    fn lineage_execution_record(
+        execution_id: &str,
+        parent_execution_id: Option<&str>,
+        skill_name: &str,
+        status: &str,
+        child_count: usize,
+        evidence_count: usize,
+        reason_code: Option<&str>,
+    ) -> ExecutionRecord {
+        let mut value = serde_json::to_value(execution_record_with_related_refs(
+            child_count,
+            evidence_count,
+        ))
+        .unwrap();
+        *value.pointer_mut("/receipt/execution_id").unwrap() = json!(execution_id);
+        *value.pointer_mut("/receipt/uri").unwrap() = json!(execution_uri(execution_id));
+        *value.pointer_mut("/receipt/trace_id").unwrap() = json!(format!("trace-{execution_id}"));
+        *value.pointer_mut("/receipt/status").unwrap() = json!(status);
+        *value.pointer_mut("/request/request_id").unwrap() =
+            json!(format!("request-{execution_id}"));
+        *value.pointer_mut("/request/trace_id").unwrap() = json!(format!("trace-{execution_id}"));
+        *value.pointer_mut("/request/skill/key/name").unwrap() = json!(skill_name);
+        *value.pointer_mut("/resolved_skill/key/name").unwrap() = json!(skill_name);
+        *value.pointer_mut("/parent_execution_id").unwrap() =
+            parent_execution_id.map_or(Value::Null, |parent| json!(parent));
+        *value.pointer_mut("/status").unwrap() = json!(status);
+        *value.pointer_mut("/policy_decision/summary").unwrap() = match status {
+            "rejected" => json!("rejected"),
+            _ => json!("allowed"),
+        };
+        *value.pointer_mut("/policy_decision/outcome").unwrap() = match status {
+            "rejected" => json!("rejected"),
+            _ => json!("allowed"),
+        };
+        *value.pointer_mut("/policy_decision/reasons").unwrap() = reason_code.map_or_else(
+            || json!([]),
+            |code| json!([{ "code": code, "message": code, "detail": null }]),
+        );
+        serde_json::from_value(value).unwrap()
     }
 
     fn legacy_execution_record_without_authority_observations() -> ExecutionRecord {
@@ -1585,6 +1768,114 @@ mod tests {
             "{verbose}"
         );
     }
+
+    #[test]
+    fn compact_lineage_output_renders_bounded_tree_shape() {
+        let root = execution_record_with_related_refs(1, 0);
+        let child = lineage_execution_record(
+            "child-exec-0000-abcdef1234567890",
+            Some("parent-exec-0001-abcdef1234567890"),
+            "hello-child",
+            "succeeded",
+            0,
+            1,
+            None,
+        );
+        let lineage = WhyLineage {
+            ancestry: Vec::new(),
+            descendants: vec![
+                WhyLineageNode {
+                    depth: 0,
+                    alias_from_parent: None,
+                    record: root.clone(),
+                },
+                WhyLineageNode {
+                    depth: 1,
+                    alias_from_parent: Some("child-0".into()),
+                    record: child,
+                },
+            ],
+            warnings: Vec::new(),
+        };
+
+        let output = render_execution_why_with_lineage(
+            &root,
+            Some(&lineage),
+            test_options(0),
+            StreamKind::Stdout,
+        );
+
+        assert!(output.contains("lineage:"), "{output}");
+        assert!(output.contains("ancestry: none"), "{output}");
+        assert!(output.contains("descendants:"), "{output}");
+        assert!(
+            output.contains(
+                "- succeeded  exec:parent-exec-  example/hello-inspect@0.1.0  child 1  evidence 0"
+            ),
+            "{output}"
+        );
+        assert!(
+            output.contains("  - alias child-0  succeeded  exec:child-exec-0"),
+            "{output}"
+        );
+        assert!(!output.contains("lineage warnings:"), "{output}");
+        assert!(!output.contains("uri: guild://executions/"), "{output}");
+    }
+
+    #[test]
+    fn very_verbose_lineage_output_shows_ancestry_reason_and_warning_details() {
+        let root = execution_record_with_related_refs(1, 0);
+        let child = lineage_execution_record(
+            "child-exec-0000-abcdef1234567890",
+            Some("parent-exec-0001-abcdef1234567890"),
+            "hello-child",
+            "rejected",
+            0,
+            1,
+            Some("grant:policy-denied"),
+        );
+        let lineage = WhyLineage {
+            ancestry: vec![root.clone()],
+            descendants: vec![WhyLineageNode {
+                depth: 0,
+                alias_from_parent: None,
+                record: child.clone(),
+            }],
+            warnings: vec![WhyLineageWarning {
+                relation: "descendants".into(),
+                code: "child-read-failed".into(),
+                message: "failed to load a persisted child execution while walking descendants"
+                    .into(),
+                execution_uri: Some(child.receipt.uri.clone()),
+                depth: 1,
+                detail: Some("resource/read: missing".into()),
+            }],
+        };
+
+        let output = render_execution_why_with_lineage(
+            &child,
+            Some(&lineage),
+            test_options(2),
+            StreamKind::Stdout,
+        );
+
+        assert!(output.contains("ancestry:"), "{output}");
+        assert!(
+            output.contains("- succeeded  exec:parent-exec-  example/hello-inspect@0.1.0"),
+            "{output}"
+        );
+        assert!(
+            output.contains("uri: guild://executions/parent-exec-0001-abcdef1234567890"),
+            "{output}"
+        );
+        assert!(output.contains("reason grant:policy-denied"), "{output}");
+        assert!(output.contains("lineage warnings:"), "{output}");
+        assert!(
+            output.contains("descendants / child-read-failed / depth 1 / guild://executions/child-exec-0000-abcdef1234567890"),
+            "{output}"
+        );
+        assert!(output.contains("resource/read: missing"), "{output}");
+    }
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -1595,8 +1886,7 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn paint_status_word(styler: &Styler, word: &str) -> String {
+fn paint_status_word(styler: Styler, word: &str) -> String {
     match word {
         PRESENTATION_STATUS_PROOF_BACKED
         | PRESENTATION_STATUS_LINKED
@@ -1617,7 +1907,7 @@ fn paint_status_word(styler: &Styler, word: &str) -> String {
     }
 }
 
-fn render_publisher_label(styler: Option<&Styler>, publisher: &str) -> String {
+fn render_publisher_label(styler: Option<Styler>, publisher: &str) -> String {
     match styler {
         Some(styler) if publisher == "local-source" => styler.paint(Tone::Dim, publisher),
         Some(styler) => styler.paint(Tone::Ref, publisher),
@@ -1625,7 +1915,7 @@ fn render_publisher_label(styler: Option<&Styler>, publisher: &str) -> String {
     }
 }
 
-fn render_trust_status_pair(styler: Option<&Styler>, verification: &str, trust: &str) -> String {
+fn render_trust_status_pair(styler: Option<Styler>, verification: &str, trust: &str) -> String {
     match styler {
         Some(styler) => format!(
             "{} / {}",
