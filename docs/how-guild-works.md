@@ -140,5 +140,6 @@ themselves are not implemented yet:
   `guild help doctor`, and `guild help preview` when you want the shipped CLI
   wording first.
 - Read [`docs/command-language.md`](command-language.md) for the full public CLI surface.
+- Read [`docs/mirroring-and-promotion.md`](mirroring-and-promotion.md) when you are moving reviewed installed state between roots or OCI locations.
 - Read [`docs/testing.md`](testing.md) for proof commands and smoke flows.
 - Read `SPECS.md` if you need exact contract language.

@@ -9,11 +9,12 @@ use clap::error::ErrorKind;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use guild_manifest::{PublisherRef, SkillManifest};
 use guild_registry::{
-    ExecutionPlanSignatureEnvelope, ExecutionPlanVerification, InstalledSkill,
-    InstalledTrustMetadata, InstalledVerificationRecord, LocalPublisherIdentity, LocalRegistry,
-    LocalSourceInstaller, OciRegistryReference, OciRegistryTransportOptions, RegistryError,
-    SkillRegistry, SkillResolutionExplanation, StructuredDigest, TrustedPublisherRecord,
-    sign_execution_plan, verify_execution_plan,
+    ExecutionPlanSignatureEnvelope, ExecutionPlanVerification, ImportPreviewDecision,
+    ImportPreviewReport, InstalledSkill, InstalledTrustMetadata, InstalledVerificationRecord,
+    LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller, OciRegistryReference,
+    OciRegistryTransportOptions, RegistryError, SignatureScheme, SkillRegistry,
+    SkillResolutionExplanation, StructuredDigest, TrustedPublisherRecord, sign_execution_plan,
+    verify_execution_plan,
 };
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
@@ -32,10 +33,13 @@ use crate::cli_presenter::{
     render_object_show, render_objects_list, render_run_next_steps, render_run_porcelain,
     render_run_status, render_runs_list, render_skill_porcelain, render_skill_show,
     render_skill_show_next_steps, render_skill_verify, render_skill_verify_next_step,
-    render_skills_list, render_trust_add_success, render_trusted_publishers_list,
-    render_verify_porcelain, render_why_next_step, render_why_porcelain,
-    resolved_skill_ref as presenter_resolved_skill_ref, runtime_label as presenter_runtime_label,
-    short_execution_ref, support_summary_for_execution, support_summary_for_skill, why_summary,
+    render_skills_list, render_transport_export_next_step, render_transport_export_summary,
+    render_transport_import_preview_summary, render_transport_import_summary,
+    render_transport_push_next_step, render_transport_push_summary, render_trust_add_success,
+    render_trusted_publishers_list, render_verify_porcelain, render_why_next_step,
+    render_why_porcelain, resolved_skill_ref as presenter_resolved_skill_ref,
+    runtime_label as presenter_runtime_label, short_execution_ref, support_summary_for_execution,
+    support_summary_for_skill, why_summary,
 };
 use crate::codex::{
     CodexConfigWriteResult, CodexServerConfig, DEFAULT_CODEX_SERVER_NAME,
@@ -59,10 +63,10 @@ const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-i
 const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations for the execution.\n  use -v to expand nearby child and evidence ref lists plus authority-observation detail.\n  use `--lineage` to append a bounded read-only ancestor/descendant view over persisted executions.\n  with `--lineage`, use -v for warning detail and -vv for full execution URIs in the lineage block.\n  `--lineage` is human-only and does not change `--json` or `--porcelain`.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
 const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nVerification details:\n  use -v after import or pull when you want the installed verification explanation.\n  that view adds signing scheme and short bundle digest details when verification metadata exists.\n\nSee also:\n  guild help trust\n  guild show --help";
 const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
-const IMPORT_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview` for import and pull, but the flag is not implemented yet.\n  see `guild help preview` for the planned read-only scope.";
-const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  planned `--preview` is not implemented yet; when it lands, it stays read-only and uses the same signed bundle and trust checks as import.\n  see `guild help preview` for the first contract.";
+const IMPORT_AFTER_HELP: &str = "Preview direction:\n  use `--preview` for a read-only preflight over import and pull.\n  see `guild help preview` for the shipped scope and non-goals.";
+const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  `--preview` stays read-only and uses the same signed bundle and trust checks as import.\n  see `guild help preview` for the first contract.";
 const PUSH_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for push in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
-const PULL_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview`, but the flag is not implemented yet.\n  see `guild help preview` for the planned read-only scope.";
+const PULL_AFTER_HELP: &str = "Preview direction:\n  use `--preview` for a read-only preflight over import and pull.\n  see `guild help preview` for the shipped scope and non-goals.";
 const TRUST_AFTER_HELP: &str = "Review loop:\n  trust list -> import/pull -> verify -v\n\nMaintenance:\n  add/list/remove trusted publishers under the selected local root.\n  use `trust add --record-file` when you already have a reviewed trust record.\n\nSigning:\n  `sign-plan` writes a signed plan.\n  `verify-plan` checks it against the selected root's trust store.";
 const TRUST_ADD_AFTER_HELP: &str = "Identity sources:\n  use `--identity-file` for one local publisher identity.\n  use `--record-file` for one reviewed trust record without secret key material.";
 const TRUST_LIST_AFTER_HELP: &str =
@@ -726,6 +730,25 @@ struct ImportCommandOutput {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct ImportPreviewCommandOutput {
+    preview: bool,
+    format: &'static str,
+    source: String,
+    registry_root: String,
+    decision: ImportPreviewDecision,
+    root_skill: String,
+    includes_dependency_closure: bool,
+    skill_count: usize,
+    publisher_id: String,
+    signature_scheme: SignatureScheme,
+    bundle_sha256: String,
+    verified: bool,
+    verification_error: Option<RegistryError>,
+    trust_tier: Option<LocalTrustTier>,
+    refusal: Option<RegistryError>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct ExportCommandOutput {
     format: &'static str,
     output_root: String,
@@ -1095,6 +1118,8 @@ struct ImportBundleCliArgs {
     #[arg(value_name = "dir")]
     directory: PathBuf,
     #[arg(long)]
+    preview: bool,
+    #[arg(long)]
     json: bool,
 }
 
@@ -1102,6 +1127,8 @@ struct ImportBundleCliArgs {
 struct ImportOciLayoutCliArgs {
     #[arg(value_name = "dir")]
     directory: PathBuf,
+    #[arg(long)]
+    preview: bool,
     #[arg(long)]
     json: bool,
 }
@@ -1128,6 +1155,8 @@ struct PullCliArgs {
     reference: String,
     #[arg(long)]
     allow_http: bool,
+    #[arg(long)]
+    preview: bool,
     #[arg(long)]
     json: bool,
 }
@@ -1436,6 +1465,9 @@ impl ImportCliArgs {
         match &self.command {
             ImportCliCommand::Bundle(command) => {
                 let mut args = vec!["bundle".into(), command.directory.display().to_string()];
+                if command.preview {
+                    args.push("--preview".into());
+                }
                 if command.json {
                     args.push("--json".into());
                 }
@@ -1443,6 +1475,9 @@ impl ImportCliArgs {
             }
             ImportCliCommand::OciLayout(command) => {
                 let mut args = vec!["oci-layout".into(), command.directory.display().to_string()];
+                if command.preview {
+                    args.push("--preview".into());
+                }
                 if command.json {
                     args.push("--json".into());
                 }
@@ -1477,6 +1512,9 @@ impl PullCliArgs {
         let mut args = vec![self.reference.clone()];
         if self.allow_http {
             args.push("--allow-http".into());
+        }
+        if self.preview {
+            args.push("--preview".into());
         }
         if self.json {
             args.push("--json".into());
@@ -2948,7 +2986,7 @@ fn run_export_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
     if json_output {
         print_json(&output)?;
     } else {
-        println!("exported {} to {}", output.root_skill, output.output_root);
+        print_export_text(&output);
     }
 
     Ok(())
@@ -3011,7 +3049,7 @@ fn run_export_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
     if json_output {
         print_json(&output)?;
     } else {
-        println!("exported {} to {}", output.root_skill, output.output_root);
+        print_export_text(&output);
     }
 
     Ok(())
@@ -3048,10 +3086,12 @@ fn run_import_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
     }
 
     let source_root = PathBuf::from(&args[0]);
+    let mut preview = false;
     let mut json_output = false;
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
+            "--preview" => preview = true,
             "--json" => json_output = true,
             other => {
                 return Err(CliError::new(format!(
@@ -3062,21 +3102,43 @@ fn run_import_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
         index += 1;
     }
 
-    let installed = LocalRegistry::import_bundle(registry_root, &source_root)
-        .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
-    let output = ImportCommandOutput {
-        format: "bundle",
-        registry_root: registry_root.display().to_string(),
-        installed: installed
-            .iter()
-            .map(|skill| summarize_installed_skill(skill, registry_root))
-            .collect(),
-    };
-
-    if json_output {
-        print_json(&output)?;
+    if preview {
+        ensure_existing_registry_root(registry_root)?;
+        let preview = LocalRegistry::preview_import_bundle(registry_root, &source_root)
+            .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
+        let output = summarize_import_preview(
+            "bundle",
+            &source_root.display().to_string(),
+            registry_root,
+            preview,
+        );
+        if json_output {
+            print_json(&output)?;
+        } else {
+            print_import_preview_text(&output, false);
+        }
     } else {
-        print_import_text(&installed, registry_root);
+        let installed = LocalRegistry::import_bundle(registry_root, &source_root)
+            .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
+        let output = ImportCommandOutput {
+            format: "bundle",
+            registry_root: registry_root.display().to_string(),
+            installed: installed
+                .iter()
+                .map(|skill| summarize_installed_skill(skill, registry_root))
+                .collect(),
+        };
+
+        if json_output {
+            print_json(&output)?;
+        } else {
+            print_import_text(
+                "bundle",
+                &source_root.display().to_string(),
+                &installed,
+                registry_root,
+            );
+        }
     }
 
     Ok(())
@@ -3089,10 +3151,12 @@ fn run_import_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
     }
 
     let source_root = PathBuf::from(&args[0]);
+    let mut preview = false;
     let mut json_output = false;
     let mut index = 1;
     while index < args.len() {
         match args[index].as_str() {
+            "--preview" => preview = true,
             "--json" => json_output = true,
             other => {
                 return Err(CliError::new(format!(
@@ -3103,21 +3167,43 @@ fn run_import_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
         index += 1;
     }
 
-    let installed = LocalRegistry::import_oci_layout(registry_root, &source_root)
-        .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
-    let output = ImportCommandOutput {
-        format: "oci-layout",
-        registry_root: registry_root.display().to_string(),
-        installed: installed
-            .iter()
-            .map(|skill| summarize_installed_skill(skill, registry_root))
-            .collect(),
-    };
-
-    if json_output {
-        print_json(&output)?;
+    if preview {
+        ensure_existing_registry_root(registry_root)?;
+        let preview = LocalRegistry::preview_import_oci_layout(registry_root, &source_root)
+            .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
+        let output = summarize_import_preview(
+            "oci-layout",
+            &source_root.display().to_string(),
+            registry_root,
+            preview,
+        );
+        if json_output {
+            print_json(&output)?;
+        } else {
+            print_import_preview_text(&output, false);
+        }
     } else {
-        print_import_text(&installed, registry_root);
+        let installed = LocalRegistry::import_oci_layout(registry_root, &source_root)
+            .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
+        let output = ImportCommandOutput {
+            format: "oci-layout",
+            registry_root: registry_root.display().to_string(),
+            installed: installed
+                .iter()
+                .map(|skill| summarize_installed_skill(skill, registry_root))
+                .collect(),
+        };
+
+        if json_output {
+            print_json(&output)?;
+        } else {
+            print_import_text(
+                "oci-layout",
+                &source_root.display().to_string(),
+                &installed,
+                registry_root,
+            );
+        }
     }
 
     Ok(())
@@ -3192,8 +3278,7 @@ fn run_push(
     if json_output {
         print_json(&output)?;
     } else {
-        println!("pushed {} to {}", output.root_skill, output.reference);
-        println!("manifest: {}", output.manifest_digest);
+        print_push_text(&output);
     }
 
     Ok(())
@@ -3212,12 +3297,14 @@ fn run_pull(
     let registry_root = resolve_registry_root(global, env_registry_root)?;
     let reference = parse_oci_reference(&args[0])?;
     let mut allow_http = false;
+    let mut preview = false;
     let mut json_output = false;
     let mut index = 1;
 
     while index < args.len() {
         match args[index].as_str() {
             "--allow-http" => allow_http = true,
+            "--preview" => preview = true,
             "--json" => json_output = true,
             other => {
                 return Err(CliError::new(format!(
@@ -3228,25 +3315,51 @@ fn run_pull(
         index += 1;
     }
 
-    let installed = LocalRegistry::pull_oci_registry(
-        &registry_root,
-        &reference,
-        &oci_transport_options(allow_http),
-    )
-    .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
-    let output = ImportCommandOutput {
-        format: "oci-registry",
-        registry_root: registry_root.display().to_string(),
-        installed: installed
-            .iter()
-            .map(|skill| summarize_installed_skill(skill, &registry_root))
-            .collect(),
-    };
-
-    if json_output {
-        print_json(&output)?;
+    if preview {
+        ensure_existing_registry_root(&registry_root)?;
+        let preview = LocalRegistry::preview_pull_oci_registry(
+            &registry_root,
+            &reference,
+            &oci_transport_options(allow_http),
+        )
+        .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
+        let output = summarize_import_preview(
+            "oci-registry",
+            &reference.to_string(),
+            &registry_root,
+            preview,
+        );
+        if json_output {
+            print_json(&output)?;
+        } else {
+            print_import_preview_text(&output, allow_http);
+        }
     } else {
-        print_import_text(&installed, &registry_root);
+        let installed = LocalRegistry::pull_oci_registry(
+            &registry_root,
+            &reference,
+            &oci_transport_options(allow_http),
+        )
+        .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
+        let output = ImportCommandOutput {
+            format: "oci-registry",
+            registry_root: registry_root.display().to_string(),
+            installed: installed
+                .iter()
+                .map(|skill| summarize_installed_skill(skill, &registry_root))
+                .collect(),
+        };
+
+        if json_output {
+            print_json(&output)?;
+        } else {
+            print_import_text(
+                "oci-registry",
+                &reference.to_string(),
+                &installed,
+                &registry_root,
+            );
+        }
     }
 
     Ok(())
@@ -4314,6 +4427,31 @@ fn summarize_installed_skill(skill: &InstalledSkill, registry_root: &Path) -> In
     }
 }
 
+fn summarize_import_preview(
+    format: &'static str,
+    source: &str,
+    registry_root: &Path,
+    preview: ImportPreviewReport,
+) -> ImportPreviewCommandOutput {
+    ImportPreviewCommandOutput {
+        preview: true,
+        format,
+        source: source.to_owned(),
+        registry_root: registry_root.display().to_string(),
+        decision: preview.decision,
+        root_skill: format_resolved_skill_ref(&preview.bundle.root_skill),
+        includes_dependency_closure: preview.bundle.includes_dependency_closure,
+        skill_count: preview.bundle.skills.len(),
+        publisher_id: preview.signature.publisher_id,
+        signature_scheme: preview.signature.scheme,
+        bundle_sha256: preview.signature.bundle_sha256,
+        verified: preview.verified,
+        verification_error: preview.verification_error,
+        trust_tier: preview.trust_tier,
+        refusal: preview.refusal,
+    }
+}
+
 fn summarize_listed_installed_skills(skills: &[InstalledSkill]) -> Vec<ListedInstalledSkillOutput> {
     skills
         .iter()
@@ -4427,12 +4565,38 @@ fn print_init_text(output: &InitCommandOutput) {
     );
 }
 
-fn print_import_text(installed: &[InstalledSkill], registry_root: &Path) {
+fn print_export_text(output: &ExportCommandOutput) {
+    print!(
+        "{}",
+        render_transport_export_summary(
+            output.format,
+            &output.root_skill,
+            &output.publisher_id,
+            output.includes_dependency_closure,
+            &output.output_root,
+        )
+    );
+    println!(
+        "{}",
+        render_transport_export_next_step(output.format, &shell_quote_arg(&output.output_root))
+    );
+}
+
+fn print_import_text(
+    format: &str,
+    source: &str,
+    installed: &[InstalledSkill],
+    registry_root: &Path,
+) {
+    print!(
+        "{}",
+        render_transport_import_summary(format, source, installed.len())
+    );
     if installed.is_empty() {
-        println!("no installed skills were imported");
         return;
     }
 
+    println!();
     for (index, skill) in installed.iter().enumerate() {
         print!("{}", render_imported_skill_review(skill));
         if index + 1 < installed.len() {
@@ -4442,6 +4606,54 @@ fn print_import_text(installed: &[InstalledSkill], registry_root: &Path) {
     println!(
         "{}",
         qualify_next_steps_for_registry_root(&render_import_next_step(installed), registry_root)
+    );
+}
+
+fn print_import_preview_text(output: &ImportPreviewCommandOutput, allow_http: bool) {
+    print!(
+        "{}",
+        render_transport_import_preview_summary(
+            output.format,
+            &output.source,
+            import_preview_decision_label(&output.decision),
+            &output.root_skill,
+            output.includes_dependency_closure,
+            output.skill_count,
+            &output.publisher_id,
+            &output.signature_scheme,
+            &output.bundle_sha256,
+            output.verified,
+            output.trust_tier.as_ref(),
+            output.verification_error.as_ref(),
+            output.refusal.as_ref(),
+        )
+    );
+
+    if output.decision == ImportPreviewDecision::WouldImport {
+        println!(
+            "{}",
+            qualify_next_steps_for_registry_root(
+                &import_preview_next_step(output.format, &output.source, allow_http),
+                Path::new(&output.registry_root),
+            )
+        );
+    }
+}
+
+fn print_push_text(output: &PushCommandOutput) {
+    print!(
+        "{}",
+        render_transport_push_summary(
+            &output.root_skill,
+            &output.publisher_id,
+            output.includes_dependency_closure,
+            &output.reference,
+            &output.manifest_digest,
+        )
+    );
+    println!(
+        "{}",
+        render_transport_push_next_step(&shell_quote_arg(&output.reference))
     );
 }
 
@@ -4477,6 +4689,26 @@ fn print_trust_verify_plan_text(output: &TrustVerifyPlanOutput) {
 
 fn format_structured_digest(digest: &StructuredDigest) -> String {
     format!("{}:{}", digest.algorithm, digest.value)
+}
+
+fn import_preview_next_step(format: &str, source: &str, allow_http: bool) -> String {
+    let source = shell_quote_arg(source);
+    match format {
+        "bundle" => format!("Next: guild import bundle {source}"),
+        "oci-layout" => format!("Next: guild import oci-layout {source}"),
+        "oci-registry" if allow_http => {
+            format!("Next: guild pull {source} --allow-http")
+        }
+        "oci-registry" => format!("Next: guild pull {source}"),
+        _ => "Next: guild help preview".to_owned(),
+    }
+}
+
+fn import_preview_decision_label(decision: &ImportPreviewDecision) -> &'static str {
+    match decision {
+        ImportPreviewDecision::WouldImport => "would-import",
+        ImportPreviewDecision::WouldRefuse => "would-refuse",
+    }
 }
 
 fn print_usage() {
@@ -4670,7 +4902,7 @@ fn print_help_preview() {
     println!("Chosen direction:");
     println!("  use `--preview` as the first preflight flag");
     println!("  first scope: `guild import bundle`, `guild import oci-layout`, and `guild pull`");
-    println!("  this is a contract-direction decision; the flag is not implemented yet");
+    println!("  preview is now shipped for that first import-and-pull slice");
     println!();
     println!("Preview must stay grounded in the real installer and trust model:");
     println!("  inspect the signed installed-state metadata that import or pull would use");
@@ -4766,21 +4998,21 @@ fn print_export_oci_layout_usage() {
 fn print_import_usage() {
     println!("usage: guild [--registry-root <path>] import <bundle|oci-layout> ...");
     println!(
-        "direction: the first preview contract is planned as `--preview` for import and pull, but the flag is not implemented yet; see `guild help preview`."
+        "direction: use `--preview` for a read-only preflight over the same signed bundle and trust checks import would use; see `guild help preview`."
     );
 }
 
 fn print_import_bundle_usage() {
-    println!("usage: guild [--registry-root <path>] import bundle <dir> [--json]");
+    println!("usage: guild [--registry-root <path>] import bundle <dir> [--preview] [--json]");
     println!(
-        "direction: planned `--preview` is not implemented yet; when it lands, it stays read-only and uses the same signed bundle and trust checks as import."
+        "direction: `--preview` stays read-only and uses the same signed bundle and trust checks as import."
     );
 }
 
 fn print_import_oci_layout_usage() {
-    println!("usage: guild [--registry-root <path>] import oci-layout <dir> [--json]");
+    println!("usage: guild [--registry-root <path>] import oci-layout <dir> [--preview] [--json]");
     println!(
-        "direction: planned `--preview` is not implemented yet; when it lands, it stays read-only and uses the same signed bundle and trust checks as import."
+        "direction: `--preview` stays read-only and uses the same signed bundle and trust checks as import."
     );
 }
 
@@ -4797,9 +5029,11 @@ fn print_push_usage() {
 }
 
 fn print_pull_usage() {
-    println!("usage: guild [--registry-root <path>] pull <oci-ref> [--allow-http] [--json]");
     println!(
-        "direction: the first preview contract is planned as `--preview`, but the flag is not implemented yet; see `guild help preview`."
+        "usage: guild [--registry-root <path>] pull <oci-ref> [--allow-http] [--preview] [--json]"
+    );
+    println!(
+        "direction: use `--preview` for a read-only preflight over the same signed bundle and trust checks pull would use; see `guild help preview`."
     );
 }
 

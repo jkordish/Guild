@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use guild_mcp::{GuildMcpFacade, InspectRequest};
-use guild_registry::{LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller};
+use guild_registry::{
+    ImportPreviewDecision, ImportPreviewReport, LocalPublisherIdentity, LocalRegistry,
+    LocalSourceInstaller,
+};
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
@@ -73,6 +76,31 @@ fn emit_evidence_grant() -> GrantedCapability {
     }
 }
 
+fn preview_decision_label(decision: &ImportPreviewDecision) -> &'static str {
+    match decision {
+        ImportPreviewDecision::WouldImport => "would-import",
+        ImportPreviewDecision::WouldRefuse => "would-refuse",
+    }
+}
+
+fn print_preview(label: &str, preview: &ImportPreviewReport) {
+    let trust_tier = preview
+        .trust_tier
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "none".to_owned());
+    let refusal = preview
+        .refusal
+        .as_ref()
+        .map(|error| error.code.as_str())
+        .unwrap_or("none");
+    println!(
+        "{label}: decision={}, verified={}, trust_tier={trust_tier}, refusal={refusal}",
+        preview_decision_label(&preview.decision),
+        preview.verified,
+    );
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base_root = base_root();
     reset_root(&base_root)?;
@@ -87,7 +115,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry_a = LocalRegistry::load(registry_a_root())?;
     let bundle =
         registry_a.export_oci_layout(&composite.resolved_ref, true, layout_root(), &identity)?;
+    let _preview_target = LocalRegistry::load(registry_b_root())?;
+    let pretrust_preview =
+        LocalRegistry::preview_import_oci_layout(registry_b_root(), layout_root())?;
     LocalRegistry::trust_publisher(registry_b_root(), &identity.trusted_record())?;
+    let posttrust_preview =
+        LocalRegistry::preview_import_oci_layout(registry_b_root(), layout_root())?;
     let imported = LocalRegistry::import_oci_layout(registry_b_root(), layout_root())?;
 
     let registry_b = LocalRegistry::load(registry_b_root())?;
@@ -123,6 +156,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("oci layout root: {}", layout_root().display());
     println!("bundle skills: {}", bundle.skills.len());
+    print_preview("pre-trust preview", &pretrust_preview);
+    print_preview("post-trust preview", &posttrust_preview);
     println!("imported skills: {}", imported.len());
     println!("{}", response.summary);
     println!(

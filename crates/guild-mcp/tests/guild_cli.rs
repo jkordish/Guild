@@ -449,16 +449,70 @@ fn generate_identity_with_cli(identity_path: &Path) {
     );
 }
 
-fn expected_import_review_output(registry_root: &Path) -> String {
+fn expected_export_review_output(transport: &str, output_root: &Path) -> String {
     format!(
         concat!(
+            "exported installed state\n",
+            "transport: {}\n",
+            "skill: skill://example/hello-inspect@0.1.0\n",
+            "publisher: local.example\n",
+            "contents: root skill only\n",
+            "output: {}\n",
+            "Next: guild import {} {}\n",
+        ),
+        transport,
+        output_root.display(),
+        transport,
+        output_root.display()
+    )
+}
+
+fn expected_import_review_output(registry_root: &Path, transport: &str, source: &str) -> String {
+    format!(
+        concat!(
+            "imported installed state\n",
+            "transport: {}\n",
+            "source: {}\n",
+            "installed: 1 skill\n",
+            "\n",
             "installed skill://example/hello-inspect@0.1.0\n",
             "status: verified-import / trusted-imported\n",
             "publisher: local.example\n",
             "Next: guild --registry-root {} verify -v skill://example/hello-inspect@0.1.0\n",
         ),
+        transport,
+        source,
         registry_root.display()
     )
+}
+
+fn assert_import_preview_output(
+    output: &str,
+    transport: &str,
+    source: &str,
+    decision: &str,
+    trust: &str,
+) {
+    assert!(output.contains("previewed installed state"), "{output}");
+    assert!(
+        output.contains(&format!("transport: {transport}")),
+        "{output}"
+    );
+    assert!(output.contains(&format!("source: {source}")), "{output}");
+    assert!(
+        output.contains(&format!("decision: {decision}")),
+        "{output}"
+    );
+    assert!(
+        output.contains("skill: skill://example/hello-inspect@0.1.0"),
+        "{output}"
+    );
+    assert!(output.contains("publisher: local.example"), "{output}");
+    assert!(output.contains(&format!("trust: {trust}")), "{output}");
+    assert!(output.contains("scheme: ed25519"), "{output}");
+    assert!(output.contains("bundle: sha256:"), "{output}");
+    assert!(output.contains("contents: root skill only"), "{output}");
+    assert!(output.contains("skills: 1 skill"), "{output}");
 }
 
 fn expected_trust_add_output(registry_root: &Path) -> String {
@@ -2094,6 +2148,40 @@ fn install_export_import_and_trust_commands_work_for_bundle_transport() {
 }
 
 #[test]
+fn export_bundle_renders_human_transport_review_output() {
+    let temp = TempFixtureDir::new("guild-cli-export-human-review");
+    let registry_root = temp.path().join("registry");
+    let identity_path = temp.path().join("publisher.json");
+    let bundle_root = temp.path().join("bundle");
+    let registry_root_display = registry_root.display().to_string();
+    let identity = identity_path.display().to_string();
+    let bundle = bundle_root.display().to_string();
+
+    install_with_cli(&registry_root);
+    generate_identity_with_cli(&identity_path);
+
+    let export_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "export",
+            "bundle",
+            "skill://example/hello-inspect@^0.1",
+            "--signer",
+            &identity,
+            "--output",
+            &bundle,
+        ],
+        None,
+    );
+
+    assert_eq!(
+        export_output,
+        expected_export_review_output("bundle", &bundle_root)
+    );
+}
+
+#[test]
 fn import_bundle_renders_human_trust_review_output() {
     let temp = TempFixtureDir::new("guild-cli-bundle-human-review");
     let registry_a = temp.path().join("registry-a");
@@ -2144,7 +2232,92 @@ fn import_bundle_renders_human_trust_review_output() {
         ],
         None,
     );
-    assert_eq!(import_output, expected_import_review_output(&registry_b));
+    assert_eq!(
+        import_output,
+        expected_import_review_output(&registry_b, "bundle", &bundle)
+    );
+}
+
+#[test]
+fn import_bundle_preview_json_reports_would_import_without_installing() {
+    let temp = TempFixtureDir::new("guild-cli-bundle-preview-json");
+    let registry_a = temp.path().join("registry-a");
+    let registry_b = temp.path().join("registry-b");
+    let identity_path = temp.path().join("publisher.json");
+    let bundle_root = temp.path().join("bundle");
+    let registry_a_root = registry_a.display().to_string();
+    let registry_b_root = registry_b.display().to_string();
+    let identity = identity_path.display().to_string();
+    let bundle = bundle_root.display().to_string();
+
+    install_with_cli(&registry_a);
+    generate_identity_with_cli(&identity_path);
+
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "export",
+            "bundle",
+            "skill://example/hello-inspect@^0.1",
+            "--signer",
+            &identity,
+            "--output",
+            &bundle,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let preview_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "import",
+            "bundle",
+            &bundle,
+            "--preview",
+            "--json",
+        ],
+        None,
+    );
+    let preview: Value = parse_json_stdout(&preview_output);
+
+    assert_eq!(preview["preview"], json!(true));
+    assert_eq!(preview["format"], json!("bundle"));
+    assert_eq!(preview["decision"], json!("would-import"));
+    assert_eq!(
+        preview["root_skill"],
+        json!("skill://example/hello-inspect@0.1.0")
+    );
+    assert_eq!(preview["publisher_id"], json!("local.example"));
+    assert_eq!(preview["verified"], json!(true));
+    assert_eq!(preview["trust_tier"], json!("trusted-imported"));
+    assert_eq!(preview["refusal"], Value::Null);
+    assert_eq!(preview["skill_count"], json!(1));
+
+    let installed = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "ls",
+            "skills",
+            "--json",
+        ],
+        None,
+    );
+    let installed: Value = parse_json_stdout(&installed);
+    assert_eq!(installed["installed_count"], json!(0));
 }
 
 #[test]
@@ -3185,12 +3358,12 @@ fn import_layout_and_pull_render_human_trust_review_output() {
     );
     assert_eq!(
         import_layout_output,
-        expected_import_review_output(&registry_b)
+        expected_import_review_output(&registry_b, "oci-layout", &layout)
     );
 
     let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
     let reference = server.reference("guild-example-hello-inspect", "0.1.0");
-    let _ = run_guild_success(
+    let push_output = run_guild_success(
         &[
             "--registry-root",
             &registry_a_root,
@@ -3204,6 +3377,36 @@ fn import_layout_and_pull_render_human_trust_review_output() {
         ],
         None,
     );
+    assert!(
+        push_output.contains("published installed state"),
+        "{push_output}"
+    );
+    assert!(
+        push_output.contains("transport: oci-registry"),
+        "{push_output}"
+    );
+    assert!(
+        push_output.contains("skill: skill://example/hello-inspect@0.1.0"),
+        "{push_output}"
+    );
+    assert!(
+        push_output.contains("publisher: local.example"),
+        "{push_output}"
+    );
+    assert!(
+        push_output.contains("contents: root skill only"),
+        "{push_output}"
+    );
+    assert!(
+        push_output.contains(&format!("reference: {reference}")),
+        "{push_output}"
+    );
+    assert!(push_output.contains("manifest: sha256:"), "{push_output}");
+    assert!(
+        push_output.contains(&format!("Next: guild pull '{reference}'")),
+        "{push_output}"
+    );
+
     let _ = run_guild_success(
         &[
             "--registry-root",
@@ -3226,7 +3429,87 @@ fn import_layout_and_pull_render_human_trust_review_output() {
         ],
         None,
     );
-    assert_eq!(pull_output, expected_import_review_output(&registry_c));
+    assert_eq!(
+        pull_output,
+        expected_import_review_output(&registry_c, "oci-registry", &reference)
+    );
+}
+
+#[test]
+fn pull_preview_renders_refusal_without_installing() {
+    let temp = TempFixtureDir::new("guild-cli-pull-preview-refusal");
+    let registry_a = temp.path().join("registry-a");
+    let registry_b = temp.path().join("registry-b");
+    let registry_store = temp.path().join("oci-registry-store");
+    let identity_path = temp.path().join("publisher.json");
+    let registry_a_root = registry_a.display().to_string();
+    let registry_b_root = registry_b.display().to_string();
+    let identity = identity_path.display().to_string();
+
+    install_with_cli(&registry_a);
+    generate_identity_with_cli(&identity_path);
+
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = server.reference("guild-example-hello-inspect", "0.1.0");
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "push",
+            "skill://example/hello-inspect@^0.1",
+            "--reference",
+            &reference,
+            "--signer",
+            &identity,
+            "--allow-http",
+        ],
+        None,
+    );
+    let _ = run_guild_success(&["--registry-root", &registry_b_root, "init"], None);
+
+    let preview_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "pull",
+            &reference,
+            "--allow-http",
+            "--preview",
+        ],
+        None,
+    );
+
+    assert_import_preview_output(
+        &preview_output,
+        "oci-registry",
+        &reference,
+        "would-refuse",
+        "untrusted",
+    );
+    assert!(
+        preview_output.contains("verification: refused (bundle-publisher-untrusted)"),
+        "{preview_output}"
+    );
+    assert!(
+        preview_output.contains(
+            "reason: bundle-publisher-untrusted: signed bundle publisher was not trusted by the target Guild root"
+        ),
+        "{preview_output}"
+    );
+    assert!(!preview_output.contains("Next:"), "{preview_output}");
+
+    let installed = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "ls",
+            "skills",
+            "--json",
+        ],
+        None,
+    );
+    let installed: Value = parse_json_stdout(&installed);
+    assert_eq!(installed["installed_count"], json!(0));
 }
 
 struct McpHarness {
@@ -3498,6 +3781,7 @@ fn shared_help_topics_are_available() {
     assert!(preview.contains("guild import oci-layout"));
     assert!(preview.contains("guild pull"));
     assert!(preview.contains("publisher identity, verification outcome, and local trust posture"));
+    assert!(preview.contains("preview is now shipped for that first import-and-pull slice"));
     assert!(preview.contains("no preview contract for export or push in the first slice"));
 }
 
@@ -3603,26 +3887,27 @@ fn ls_get_why_and_verify_help_call_out_scope() {
 fn import_pull_and_transport_help_point_to_preview_direction() {
     let import_help = run_guild_success(&["import", "--help"], None);
     assert!(import_help.contains("Import a signed bundle or OCI layout into a Guild root"));
-    assert!(
-        import_help.contains(
-            "first preview contract is planned as `--preview` for import and pull, but the flag is not implemented yet"
-        )
-    );
+    assert!(import_help.contains("use `--preview` for a read-only preflight"));
     assert!(import_help.contains("guild help preview"));
 
     let import_bundle_help = run_guild_success(&["import", "bundle", "--help"], None);
-    assert!(import_bundle_help.contains("planned `--preview` is not implemented yet"));
+    assert!(import_bundle_help.contains("Usage: guild import bundle [OPTIONS] <dir>"));
+    assert!(import_bundle_help.contains("--preview"));
+    assert!(import_bundle_help.contains("`--preview` stays read-only"));
     assert!(import_bundle_help.contains("same signed bundle and trust checks as import"));
 
     let import_oci_help = run_guild_success(&["import", "oci-layout", "--help"], None);
-    assert!(import_oci_help.contains("planned `--preview` is not implemented yet"));
+    assert!(import_oci_help.contains("Usage: guild import oci-layout [OPTIONS] <dir>"));
+    assert!(import_oci_help.contains("--preview"));
+    assert!(import_oci_help.contains("`--preview` stays read-only"));
     assert!(import_oci_help.contains("same signed bundle and trust checks as import"));
 
     let pull_help = run_guild_success(&["pull", "--help"], None);
     assert!(pull_help.contains("Pull and import installed state from an OCI registry"));
-    assert!(pull_help.contains(
-        "first preview contract is planned as `--preview`, but the flag is not implemented yet"
-    ));
+    assert!(pull_help.contains("Usage: guild pull [OPTIONS] <oci-ref>"));
+    assert!(pull_help.contains("--allow-http"));
+    assert!(pull_help.contains("--preview"));
+    assert!(pull_help.contains("use `--preview` for a read-only preflight"));
     assert!(pull_help.contains("guild help preview"));
 
     let export_help = run_guild_success(&["export", "--help"], None);
@@ -4253,6 +4538,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(how_it_works.contains("use `--porcelain` for stable one-line machine-readable output"));
     assert!(how_it_works.contains("guild help doctor"));
     assert!(how_it_works.contains("guild help preview"));
+    assert!(how_it_works.contains("docs/mirroring-and-promotion.md"));
     assert!(how_it_works.contains("guild why -v"));
     assert!(how_it_works.contains("guild why --lineage"));
     assert!(how_it_works.contains("guild ls evidence --limit 5"));
@@ -4280,6 +4566,59 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(mcp_recipes.contains("`guild.inspect`"));
     assert!(mcp_recipes.contains("guild://queries/executions/failures/recent/10"));
     assert!(mcp_recipes.contains("guild://objects/records/<evidence-record-id>/metadata"));
+}
+
+#[test]
+fn mirroring_and_promotion_docs_stay_linked_and_honest() {
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(readme.contains("docs/mirroring-and-promotion.md"));
+    assert!(readme.contains("not silent copy or retag primitives"));
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    assert!(command_language.contains("docs/mirroring-and-promotion.md"));
+    assert!(command_language.contains("not silent registry-copy or retag"));
+
+    let guide = fs::read_to_string(repo_root().join("docs/mirroring-and-promotion.md")).unwrap();
+    for phrase in [
+        "`guild mirror`",
+        "`guild promote`",
+        "`guild import ... --preview`",
+        "`guild pull ... --preview`",
+        "`guild export ...` and `guild push ...`",
+        "Treat them as new publication events",
+        "registry-to-registry copy",
+        "`guild verify -v <skill-ref>`",
+        "cargo run -p guild-mcp --example export_import_local",
+        "cargo run -p guild-mcp --example push_pull_oci_registry_local",
+    ] {
+        assert!(
+            guide.contains(phrase),
+            "docs/mirroring-and-promotion.md is missing operator guidance: {phrase}"
+        );
+    }
+}
+
+#[test]
+fn testing_guide_tracks_preview_first_transport_proofs() {
+    let testing = fs::read_to_string(repo_root().join("docs/testing.md")).unwrap();
+    for phrase in [
+        "Trust and signed-bundle smoke with preview:",
+        "guild init --registry-root target/dev-local-registry/b-preview",
+        "target/dev-local-registry/bundle \\",
+        "--preview",
+        "`would-import` after `guild trust add ...`",
+        "OCI registry smoke with preview:",
+        "guild init --registry-root target/dev-local-registry/c-preview",
+        "[`mirroring-and-promotion.md`](mirroring-and-promotion.md)",
+        "The primitive and composite success-path transport examples now preflight",
+        "preview before the real import or pull step",
+    ] {
+        assert!(
+            testing.contains(phrase),
+            "docs/testing.md is missing preview-first transport guidance: {phrase}"
+        );
+    }
 }
 
 #[test]

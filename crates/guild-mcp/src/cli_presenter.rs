@@ -1,13 +1,13 @@
 use std::fmt::Write as _;
 
 use guild_manifest::SkillManifest;
-use guild_registry::{InstalledSkill, SignatureScheme, TrustedPublisherRecord};
+use guild_registry::{InstalledSkill, RegistryError, SignatureScheme, TrustedPublisherRecord};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
     CapabilityRequirement, ChildExecutionRecord, EvidenceAudience, EvidenceBlobRecord,
     EvidenceRecord, ExecutionPhase, ExecutionRecord, ExecutionStatus,
     GUILD_EXECUTION_QUERY_URI_PREFIX, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
-    GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX, GUILD_OBJECT_RECORD_URI_PREFIX,
+    GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX, GUILD_OBJECT_RECORD_URI_PREFIX, LocalTrustTier,
     PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED,
     PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND, RedactionClass,
     ResolvedSkillRef, ResourceKind, RuntimeKind, SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN,
@@ -397,6 +397,144 @@ pub fn render_skill_verify_next_step(installed: &InstalledSkill) -> String {
         "Next: guild show -v {}",
         resolved_skill_ref(&installed.resolved_ref)
     )
+}
+
+#[must_use]
+pub fn render_transport_import_summary(
+    format: &str,
+    source: &str,
+    installed_count: usize,
+) -> String {
+    let mut output = String::new();
+    let noun = if installed_count == 1 {
+        "skill"
+    } else {
+        "skills"
+    };
+    let _ = writeln!(output, "imported installed state");
+    let _ = writeln!(output, "transport: {format}");
+    let _ = writeln!(output, "source: {source}");
+    let _ = writeln!(output, "installed: {installed_count} {noun}");
+    output
+}
+
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn render_transport_import_preview_summary(
+    format: &str,
+    source: &str,
+    decision: &str,
+    root_skill: &str,
+    includes_dependency_closure: bool,
+    skill_count: usize,
+    publisher_id: &str,
+    signature_scheme: &SignatureScheme,
+    bundle_sha256: &str,
+    verified: bool,
+    trust_tier: Option<&LocalTrustTier>,
+    verification_error: Option<&RegistryError>,
+    refusal: Option<&RegistryError>,
+) -> String {
+    let mut output = String::new();
+    let contents = if includes_dependency_closure {
+        "root skill plus dependency closure"
+    } else {
+        "root skill only"
+    };
+    let noun = if skill_count == 1 { "skill" } else { "skills" };
+    let verification = if verified {
+        "verified".to_owned()
+    } else {
+        verification_error.map_or_else(
+            || "refused".to_owned(),
+            |error| format!("refused ({})", error.code),
+        )
+    };
+    let trust = trust_tier
+        .map(std::string::ToString::to_string)
+        .unwrap_or_else(|| "untrusted".to_owned());
+
+    let _ = writeln!(output, "previewed installed state");
+    let _ = writeln!(output, "transport: {format}");
+    let _ = writeln!(output, "source: {source}");
+    let _ = writeln!(output, "decision: {decision}");
+    let _ = writeln!(output, "skill: {root_skill}");
+    let _ = writeln!(output, "publisher: {publisher_id}");
+    let _ = writeln!(output, "verification: {verification}");
+    let _ = writeln!(output, "trust: {trust}");
+    let _ = writeln!(
+        output,
+        "scheme: {}",
+        signature_scheme_label(signature_scheme)
+    );
+    let _ = writeln!(output, "bundle: {bundle_sha256}");
+    let _ = writeln!(output, "contents: {contents}");
+    let _ = writeln!(output, "skills: {skill_count} {noun}");
+    if let Some(error) = refusal {
+        let _ = writeln!(output, "reason: {}: {}", error.code, error.message);
+    }
+    output
+}
+
+#[must_use]
+pub fn render_transport_export_summary(
+    format: &str,
+    root_skill: &str,
+    publisher_id: &str,
+    includes_dependency_closure: bool,
+    output_root: &str,
+) -> String {
+    let mut output = String::new();
+    let contents = if includes_dependency_closure {
+        "root skill plus dependency closure"
+    } else {
+        "root skill only"
+    };
+    let _ = writeln!(output, "exported installed state");
+    let _ = writeln!(output, "transport: {format}");
+    let _ = writeln!(output, "skill: {root_skill}");
+    let _ = writeln!(output, "publisher: {publisher_id}");
+    let _ = writeln!(output, "contents: {contents}");
+    let _ = writeln!(output, "output: {output_root}");
+    output
+}
+
+#[must_use]
+pub fn render_transport_export_next_step(format: &str, output_root: &str) -> String {
+    match format {
+        "bundle" => format!("Next: guild import bundle {output_root}"),
+        "oci-layout" => format!("Next: guild import oci-layout {output_root}"),
+        _ => "Next: guild help preview".to_owned(),
+    }
+}
+
+#[must_use]
+pub fn render_transport_push_summary(
+    root_skill: &str,
+    publisher_id: &str,
+    includes_dependency_closure: bool,
+    reference: &str,
+    manifest_digest: &str,
+) -> String {
+    let mut output = String::new();
+    let contents = if includes_dependency_closure {
+        "root skill plus dependency closure"
+    } else {
+        "root skill only"
+    };
+    let _ = writeln!(output, "published installed state");
+    let _ = writeln!(output, "transport: oci-registry");
+    let _ = writeln!(output, "skill: {root_skill}");
+    let _ = writeln!(output, "publisher: {publisher_id}");
+    let _ = writeln!(output, "contents: {contents}");
+    let _ = writeln!(output, "reference: {reference}");
+    let _ = writeln!(output, "manifest: {manifest_digest}");
+    output
+}
+
+#[must_use]
+pub fn render_transport_push_next_step(reference: &str) -> String {
+    format!("Next: guild pull {reference}")
 }
 
 #[must_use]
@@ -1461,6 +1599,13 @@ fn render_support_summary(summary: &SupportSummary, styler: Styler) -> String {
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    use guild_registry::{
+        BundleSignatureEnvelope, InstalledTrustMetadata, InstalledVerificationRecord,
+        VerificationStatus,
+    };
+    use guild_types::{InstalledVerificationState, LocalTrustTier};
     use serde_json::{Value, json};
 
     fn test_options(verbosity: u8) -> PresentationOptions {
@@ -1482,6 +1627,94 @@ mod tests {
             "version": "0.1.0",
             "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         })
+    }
+
+    fn installed_skill_for_transport_tests() -> InstalledSkill {
+        let manifest: SkillManifest = serde_json::from_value(json!({
+            "manifest_schema_version": "guild-manifest-v1",
+            "skill_api_version": "guild-skill-v1",
+            "key": {
+                "namespace": "example",
+                "name": "hello-inspect"
+            },
+            "version": "0.1.0",
+            "display_name": "Hello Inspect",
+            "description": "A tiny inspect-only example skill.",
+            "runtime": {
+                "kind": "wasm-component",
+                "entrypoint": "guild-skill-inspect-v1",
+                "guest_abi_version": "guild-skill-inspect-v1"
+            },
+            "interface": {
+                "input_schema_uri": "./input.schema.json",
+                "output_schema_uri": "./output.schema.json",
+                "examples_uri": "./examples.json"
+            },
+            "behavior": {
+                "category": "explain",
+                "mutability": "read-only",
+                "idempotent": true,
+                "open_world": false,
+                "freshness": "deterministic",
+                "modes": {
+                    "supported": ["inspect"],
+                    "apply_requires_approval": false,
+                    "apply_requires_idempotency_key": false
+                }
+            },
+            "capabilities": [],
+            "dependencies": [],
+            "publisher": {
+                "id": "local.example",
+                "display_name": "Local Example",
+                "homepage": null
+            },
+            "package": {
+                "visibility": "private",
+                "trust_tier": "local",
+                "artifact_uri": "./component.wasm",
+                "artifact_digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "sbom_uri": null,
+                "signature_uri": null
+            },
+            "tests": []
+        }))
+        .unwrap();
+
+        InstalledSkill {
+            manifest,
+            resolved_ref: serde_json::from_value(resolved_skill_json()).unwrap(),
+            manifest_path: PathBuf::from("/tmp/manifest.json"),
+            artifact_path: PathBuf::from("/tmp/component.wasm"),
+            root_dir: PathBuf::from("/tmp/install"),
+            verification: Some(InstalledVerificationRecord {
+                status: VerificationStatus::Verified,
+                publisher: manifest_publisher(),
+                scheme: SignatureScheme::Ed25519,
+                bundle_sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .into(),
+                signature: BundleSignatureEnvelope {
+                    format_version: "guild-installed-bundle-signature-v1".into(),
+                    scheme: SignatureScheme::Ed25519,
+                    publisher_id: "local.example".into(),
+                    bundle_sha256:
+                        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
+                    signature_base64: "c2lnbmF0dXJl".into(),
+                },
+            }),
+            trust: InstalledTrustMetadata {
+                verification_state: InstalledVerificationState::VerifiedImport,
+                trust_tier: LocalTrustTier::TrustedImported,
+            },
+        }
+    }
+
+    fn manifest_publisher() -> guild_manifest::PublisherRef {
+        guild_manifest::PublisherRef {
+            id: "local.example".into(),
+            display_name: "Local Example".into(),
+            homepage: None,
+        }
     }
 
     fn child_record_json(index: usize) -> serde_json::Value {
@@ -1875,6 +2108,123 @@ mod tests {
             "{output}"
         );
         assert!(output.contains("resource/read: missing"), "{output}");
+    }
+
+    #[test]
+    fn transport_export_summary_calls_out_shape_and_contents() {
+        let output = render_transport_export_summary(
+            "bundle",
+            "skill://example/hello-inspect@0.1.0",
+            "local.example",
+            true,
+            "/tmp/bundle",
+        );
+
+        assert!(output.contains("exported installed state"), "{output}");
+        assert!(output.contains("transport: bundle"), "{output}");
+        assert!(
+            output.contains("skill: skill://example/hello-inspect@0.1.0"),
+            "{output}"
+        );
+        assert!(output.contains("publisher: local.example"), "{output}");
+        assert!(
+            output.contains("contents: root skill plus dependency closure"),
+            "{output}"
+        );
+        assert!(output.contains("output: /tmp/bundle"), "{output}");
+        assert_eq!(
+            render_transport_export_next_step("bundle", "/tmp/bundle"),
+            "Next: guild import bundle /tmp/bundle"
+        );
+        assert_eq!(
+            render_transport_export_next_step("oci-layout", "/tmp/layout"),
+            "Next: guild import oci-layout /tmp/layout"
+        );
+    }
+
+    #[test]
+    fn transport_push_summary_calls_out_registry_destination() {
+        let output = render_transport_push_summary(
+            "skill://example/hello-inspect@0.1.0",
+            "local.example",
+            false,
+            "127.0.0.1:5000/guild/hello:0.1.0",
+            "sha256:abcdef",
+        );
+
+        assert!(output.contains("published installed state"), "{output}");
+        assert!(output.contains("transport: oci-registry"), "{output}");
+        assert!(output.contains("contents: root skill only"), "{output}");
+        assert!(
+            output.contains("reference: 127.0.0.1:5000/guild/hello:0.1.0"),
+            "{output}"
+        );
+        assert!(output.contains("manifest: sha256:abcdef"), "{output}");
+        assert_eq!(
+            render_transport_push_next_step("127.0.0.1:5000/guild/hello:0.1.0"),
+            "Next: guild pull 127.0.0.1:5000/guild/hello:0.1.0"
+        );
+    }
+
+    #[test]
+    fn transport_import_summary_and_next_step_stay_compact() {
+        let installed = vec![installed_skill_for_transport_tests()];
+        let output = render_transport_import_summary("bundle", "/tmp/bundle", installed.len());
+
+        assert!(output.contains("imported installed state"), "{output}");
+        assert!(output.contains("transport: bundle"), "{output}");
+        assert!(output.contains("source: /tmp/bundle"), "{output}");
+        assert!(output.contains("installed: 1 skill"), "{output}");
+        assert_eq!(
+            render_import_next_step(&installed),
+            "Next: guild verify -v skill://example/hello-inspect@0.1.0"
+        );
+        assert_eq!(
+            render_import_next_step(&[
+                installed_skill_for_transport_tests(),
+                installed_skill_for_transport_tests()
+            ]),
+            "Next: guild ls skills"
+        );
+    }
+
+    #[test]
+    fn transport_import_preview_summary_reports_decision_and_reason() {
+        let output = render_transport_import_preview_summary(
+            "bundle",
+            "/tmp/bundle",
+            "would-refuse",
+            "skill://example/hello-inspect@0.1.0",
+            false,
+            1,
+            "local.example",
+            &SignatureScheme::Ed25519,
+            "sha256:abcdef",
+            false,
+            None,
+            Some(&RegistryError::new(
+                "bundle-publisher-untrusted",
+                "signed bundle publisher was not trusted by the target Guild root",
+            )),
+            Some(&RegistryError::new(
+                "bundle-publisher-untrusted",
+                "signed bundle publisher was not trusted by the target Guild root",
+            )),
+        );
+
+        assert!(output.contains("previewed installed state"), "{output}");
+        assert!(output.contains("decision: would-refuse"), "{output}");
+        assert!(
+            output.contains("verification: refused (bundle-publisher-untrusted)"),
+            "{output}"
+        );
+        assert!(output.contains("trust: untrusted"), "{output}");
+        assert!(
+            output.contains(
+                "reason: bundle-publisher-untrusted: signed bundle publisher was not trusted by the target Guild root"
+            ),
+            "{output}"
+        );
     }
 }
 

@@ -7,11 +7,11 @@ use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use guild_manifest::PublisherRef;
 use guild_registry::{
-    BundleSignatureEnvelope, ExecutionPlanSignatureEnvelope, InstalledSkill, InstalledSkillBundle,
-    LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller, OciRegistryAuth,
-    OciRegistryReference, OciRegistryTarget, OciRegistryTransportOptions, SkillRegistry,
-    VerificationStatus, execution_query_resource_uri, execution_resource_uri, sign_execution_plan,
-    verify_execution_plan,
+    BundleSignatureEnvelope, ExecutionPlanSignatureEnvelope, ImportPreviewDecision, InstalledSkill,
+    InstalledSkillBundle, LocalPublisherIdentity, LocalRegistry, LocalSourceInstaller,
+    OciRegistryAuth, OciRegistryReference, OciRegistryTarget, OciRegistryTransportOptions,
+    SkillRegistry, VerificationStatus, execution_query_resource_uri, execution_resource_uri,
+    sign_execution_plan, verify_execution_plan,
 };
 use guild_types::{
     AbiVersion, CapabilityGrantSet, EvidenceAudience, EvidenceEmissionRequest, EvidenceRecord,
@@ -839,6 +839,42 @@ fn primitive_oci_import_resolves_digest_pinned_skill_in_fresh_registry() {
 }
 
 #[test]
+fn primitive_oci_import_preview_reports_would_import_without_mutation() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let layout_root = temp.path().join("oci-layout");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+
+    registry
+        .export_oci_layout(
+            &installed_skill.resolved_ref,
+            false,
+            &layout_root,
+            &identity,
+        )
+        .unwrap();
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+
+    let preview = LocalRegistry::preview_import_oci_layout(&registry_b, &layout_root).unwrap();
+    assert_eq!(preview.decision, ImportPreviewDecision::WouldImport);
+    assert!(preview.verified);
+    assert_eq!(preview.trust_tier, Some(LocalTrustTier::TrustedImported));
+    assert!(preview.refusal.is_none());
+    assert_eq!(preview.bundle.root_skill, installed_skill.resolved_ref);
+    assert_eq!(preview.signature.publisher_id, identity.publisher.id);
+    assert!(
+        LocalRegistry::load_existing(&registry_b)
+            .unwrap()
+            .installed()
+            .is_empty()
+    );
+}
+
+#[test]
 fn primitive_oci_registry_pull_resolves_digest_pinned_skill_in_fresh_registry() {
     let temp = TempFixtureDir::new();
     let registry_a = temp.path().join("registry-a");
@@ -881,6 +917,60 @@ fn primitive_oci_registry_pull_resolves_digest_pinned_skill_in_fresh_registry() 
 }
 
 #[test]
+fn primitive_oci_registry_pull_preview_reports_untrusted_without_mutation() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let registry_store = temp.path().join("oci-registry-store");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+    let server = oci_registry_test_server::OciRegistryTestServer::start(&registry_store);
+    let reference = registry_reference(&server, "guild-example-hello-inspect", "0.1.0");
+
+    registry
+        .push_oci_registry(
+            &installed_skill.resolved_ref,
+            false,
+            &reference,
+            &registry_options(),
+            &identity,
+        )
+        .unwrap();
+    LocalRegistry::load(&registry_b).unwrap();
+
+    let preview =
+        LocalRegistry::preview_pull_oci_registry(&registry_b, &reference, &registry_options())
+            .unwrap();
+    assert_eq!(preview.decision, ImportPreviewDecision::WouldRefuse);
+    assert!(!preview.verified);
+    assert_eq!(preview.trust_tier, None);
+    assert_eq!(
+        preview
+            .verification_error
+            .as_ref()
+            .expect("untrusted preview reports verification failure")
+            .code,
+        "bundle-publisher-untrusted"
+    );
+    assert_eq!(
+        preview
+            .refusal
+            .as_ref()
+            .expect("untrusted preview reports refusal")
+            .code,
+        "bundle-publisher-untrusted"
+    );
+    assert!(
+        LocalRegistry::load_existing(&registry_b)
+            .unwrap()
+            .installed()
+            .is_empty()
+    );
+}
+
+#[test]
 fn primitive_bundle_import_resolves_digest_pinned_skill_in_fresh_registry() {
     let temp = TempFixtureDir::new();
     let registry_a = temp.path().join("registry-a");
@@ -917,6 +1007,42 @@ fn primitive_bundle_import_resolves_digest_pinned_skill_in_fresh_registry() {
         .expect("imported skills carry verification metadata");
     assert_eq!(verification.status, VerificationStatus::Verified);
     assert_eq!(verification.publisher.id, identity.publisher.id);
+}
+
+#[test]
+fn primitive_bundle_import_preview_reports_would_import_without_mutation() {
+    let temp = TempFixtureDir::new();
+    let registry_a = temp.path().join("registry-a");
+    let bundle_root = temp.path().join("bundle");
+    let registry_b = temp.path().join("registry-b");
+    let source_installer = LocalSourceInstaller::new(&registry_a).unwrap();
+    let installed_skill = source_installer.install(example_source_dir()).unwrap();
+    let identity = publisher_identity(&installed_skill, &temp.path().join("publisher.json"));
+    let registry = LocalRegistry::load(&registry_a).unwrap();
+
+    registry
+        .export_bundle(
+            &installed_skill.resolved_ref,
+            false,
+            &bundle_root,
+            &identity,
+        )
+        .unwrap();
+    LocalRegistry::trust_publisher(&registry_b, &identity.trusted_record()).unwrap();
+
+    let preview = LocalRegistry::preview_import_bundle(&registry_b, &bundle_root).unwrap();
+    assert_eq!(preview.decision, ImportPreviewDecision::WouldImport);
+    assert!(preview.verified);
+    assert_eq!(preview.trust_tier, Some(LocalTrustTier::TrustedImported));
+    assert!(preview.refusal.is_none());
+    assert_eq!(preview.bundle.root_skill, installed_skill.resolved_ref);
+    assert_eq!(preview.signature.publisher_id, identity.publisher.id);
+    assert!(
+        LocalRegistry::load_existing(&registry_b)
+            .unwrap()
+            .installed()
+            .is_empty()
+    );
 }
 
 #[test]
