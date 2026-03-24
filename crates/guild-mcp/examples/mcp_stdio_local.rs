@@ -3,14 +3,15 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use guild_mcp::protocol::{
-    CallToolResult, InitializeResult, ListResourceTemplatesResult, ListToolsResult,
-    PROTOCOL_VERSION_2025_11_25, ReadResourceResult, ResourceContents,
+    CallToolResult, InitializeResult, ListResourceTemplatesResult, ListResourcesResult,
+    ListToolsResult, PROTOCOL_VERSION_2025_11_25, ReadResourceResult, ResourceContents,
+    ToolTaskSupport,
 };
 use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
-    EmitEvidenceConstraints, EvidenceAudience, GrantedCapability, RedactionClass,
-    RequestedSkillRef, SkillKey, VersionRequirement,
+    EmitEvidenceConstraints, EvidenceAudience, ExecutionQueryResource, ExecutionQueryResult,
+    GrantedCapability, RedactionClass, RequestedSkillRef, SkillKey, VersionRequirement,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -186,8 +187,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "initialized Guild MCP server {} {}",
         initialized.server_info.name, initialized.protocol_version
     );
+    if initialized
+        .capabilities
+        .tools
+        .as_ref()
+        .and_then(|tools| tools.list_changed)
+        != Some(false)
+    {
+        return Err("initialize did not advertise the expected one-tool capability surface".into());
+    }
 
     let tools: ListToolsResult = parse_result(&client.request("tools/list", &json!({}))?)?;
+    if tools.tools.len() != 1 {
+        return Err("tools/list did not expose exactly one public Guild tool".into());
+    }
+    let inspect_tool = tools
+        .tools
+        .iter()
+        .find(|tool| tool.name == "guild.inspect")
+        .ok_or("tools/list did not expose guild.inspect")?;
+    if inspect_tool.title.as_deref() != Some("Guild Inspect") {
+        return Err("guild.inspect did not expose the expected title".into());
+    }
+    if inspect_tool
+        .annotations
+        .as_ref()
+        .and_then(|annotations| annotations.title.as_deref())
+        != Some("Guild Inspect")
+    {
+        return Err("guild.inspect did not expose the expected annotation title".into());
+    }
+    if inspect_tool
+        .execution
+        .as_ref()
+        .and_then(|execution| execution.task_support.as_ref())
+        != Some(&ToolTaskSupport::Forbidden)
+    {
+        return Err("guild.inspect did not advertise taskSupport=forbidden".into());
+    }
     println!(
         "tools: {}",
         tools
@@ -196,6 +233,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>()
             .join(", ")
+    );
+
+    let discovery_resources: ListResourcesResult =
+        parse_result(&client.request("resources/list", &json!({}))?)?;
+    let recent_query_uri = ExecutionQueryResource::Recent { limit: 10 }.canonical_uri();
+    let recent_failures_query_uri =
+        ExecutionQueryResource::FailuresRecent { limit: 10 }.canonical_uri();
+    if discovery_resources
+        .resources
+        .first()
+        .map(|resource| resource.uri.as_str())
+        != Some(recent_query_uri.as_str())
+    {
+        return Err(
+            "resources/list did not expose the canonical recent-executions query first".into(),
+        );
+    }
+    if discovery_resources
+        .resources
+        .get(1)
+        .map(|resource| resource.uri.as_str())
+        != Some(recent_failures_query_uri.as_str())
+    {
+        return Err(
+            "resources/list did not expose the canonical recent-failures query second".into(),
+        );
+    }
+    println!(
+        "discovery resources: {} item(s), first query {}",
+        discovery_resources.resources.len(),
+        recent_query_uri
+    );
+
+    let recent_query_resource: ReadResourceResult =
+        parse_result(&client.request("resources/read", &json!({ "uri": recent_query_uri }))?)?;
+    let ResourceContents::Text(recent_query_text) = &recent_query_resource.contents[0] else {
+        return Err("expected recent executions query resource to be textual JSON".into());
+    };
+    let recent_query: ExecutionQueryResult = serde_json::from_str(&recent_query_text.text)?;
+    if recent_query.returned_matches != 0 {
+        return Err("fresh MCP stdio proof root unexpectedly already had recent executions".into());
+    }
+    println!(
+        "recent executions before inspect: {}",
+        recent_query.returned_matches
     );
 
     let first_templates: ListResourceTemplatesResult =
@@ -246,6 +328,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("evidence uri: {}", first.uri);
     }
 
+    let post_inspect_resources: ListResourcesResult =
+        parse_result(&client.request("resources/list", &json!({}))?)?;
+    if !post_inspect_resources
+        .resources
+        .iter()
+        .any(|resource| resource.uri == record.receipt.uri)
+    {
+        return Err("resources/list did not expose the persisted execution after inspect".into());
+    }
+    let discovered_metadata_uri = record
+        .emitted_evidence
+        .first()
+        .and_then(|evidence| {
+            let uri = format!("{}/metadata", evidence.uri);
+            post_inspect_resources
+                .resources
+                .iter()
+                .find(|resource| resource.uri == uri)
+                .map(|resource| resource.uri.clone())
+        })
+        .ok_or("resources/list did not expose the persisted evidence metadata after inspect")?;
+    println!("discovery resources after inspect: execution + evidence metadata surfaced");
+
     let execution_resource: ReadResourceResult =
         parse_result(&client.request("resources/read", &json!({ "uri": record.receipt.uri }))?)?;
     println!(
@@ -261,9 +366,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             evidence_resource.contents.len()
         );
 
-        let metadata_uri = format!("{}/metadata", first.uri);
-        let metadata_resource: ReadResourceResult =
-            parse_result(&client.request("resources/read", &json!({ "uri": metadata_uri }))?)?;
+        let metadata_resource: ReadResourceResult = parse_result(
+            &client.request("resources/read", &json!({ "uri": discovered_metadata_uri }))?,
+        )?;
         println!(
             "evidence metadata resource contents: {} item(s)",
             metadata_resource.contents.len()

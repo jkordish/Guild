@@ -4,7 +4,10 @@ use std::path::{Path, PathBuf};
 use base64::Engine as _;
 use guild_registry::LocalRegistry;
 use guild_runner::WasmtimeRuntimeAdapter;
-use guild_types::{ExecutionRecord, ResourceReadResult};
+use guild_types::{
+    EvidenceRecord, ExecutionQueryResource, ExecutionRecord, GUILD_EXECUTION_URI_PREFIX,
+    ResourceReadResult,
+};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -19,11 +22,14 @@ use crate::protocol::{
     METHOD_RESOURCES_READ, METHOD_TOOLS_CALL, METHOD_TOOLS_LIST, NOTIFICATION_INITIALIZED,
     ReadResourceParams, ReadResourceResult, Resource, ResourceContents, ResourceLink,
     ResourceTemplate, ResourcesCapabilities, SUPPORTED_PROTOCOL_VERSIONS, ServerCapabilities,
-    TextContent, TextResourceContents, Tool, ToolAnnotations, ToolsCapabilities,
+    TextContent, TextResourceContents, Tool, ToolAnnotations, ToolExecution, ToolTaskSupport,
+    ToolsCapabilities,
 };
 use crate::{GuildMcpFacade, INSPECT_TOOL, InspectToolRequest, McpError, SERVER_NAME};
 
-const DEFAULT_RECENT_EXECUTION_LIMIT: usize = 50;
+const DEFAULT_DISCOVERY_QUERY_LIMIT: usize = 10;
+const DEFAULT_RECENT_EXECUTION_RESOURCE_LIMIT: usize = 20;
+const DEFAULT_RECENT_EVIDENCE_RESOURCE_LIMIT: usize = 20;
 const TOOLS_LIST_PAGE_SIZE: usize = 25;
 const RESOURCES_LIST_PAGE_SIZE: usize = 25;
 const RESOURCE_TEMPLATES_LIST_PAGE_SIZE: usize = 4;
@@ -306,7 +312,9 @@ impl GuildMcpServer {
             InitializeResult {
                 protocol_version: negotiated,
                 capabilities: ServerCapabilities {
-                    tools: Some(ToolsCapabilities::default()),
+                    tools: Some(ToolsCapabilities {
+                        list_changed: Some(false),
+                    }),
                     resources: Some(ResourcesCapabilities {
                         subscribe: None,
                         list_changed: None,
@@ -318,8 +326,12 @@ impl GuildMcpServer {
                     title: Some("Guild MCP Server".into()),
                 },
                 instructions: Some(
-                    "Guild exposes one inspect-only tool (`guild.inspect`) plus durable execution \
-                     and evidence resources over stdio MCP."
+                    "Use `tools/list` to confirm the current public tool inventory, then use \
+                     `resources/list` to discover canonical recent-query entry points plus \
+                     durable execution and evidence metadata URIs. Use \
+                     `resources/templates/list` for parameterized Guild URI families, \
+                     `resources/read` for durable reads, and `guild.inspect` to execute inspect \
+                     mode through the local Guild runtime."
                         .into(),
                 ),
             },
@@ -330,12 +342,18 @@ impl GuildMcpServer {
         let mut tools = vec![Tool {
             name: INSPECT_TOOL.into(),
             title: Some("Guild Inspect".into()),
-            description: "Resolve and execute a Guild skill in inspect mode using the \
-                          existing local Guild runtime path."
+            description: "Resolve and execute a Guild skill in inspect mode through the local \
+                          Guild runtime. Successful and rejected runs persist durable execution \
+                          records, and inspect execution may also emit evidence with resource \
+                          links."
                 .into(),
             input_schema: schema_value::<InspectToolRequest>(),
+            execution: Some(ToolExecution {
+                task_support: Some(ToolTaskSupport::Forbidden),
+            }),
             output_schema: Some(schema_value::<ExecutionRecord>()),
             annotations: Some(ToolAnnotations {
+                title: Some("Guild Inspect".into()),
                 // Inspect execution persists durable execution records and may persist
                 // evidence records, so the tool is not read-only or idempotent.
                 // It stays non-destructive because apply remains gated off and the
@@ -348,6 +366,7 @@ impl GuildMcpServer {
                 idempotent_hint: false,
                 open_world_hint: true,
             }),
+            meta: None,
         }];
         tools.sort_by(|left, right| left.name.cmp(&right.name));
         let offset = match list_offset_from_params(params, LIST_CURSOR_TOOLS, tools.len()) {
@@ -439,15 +458,29 @@ impl GuildMcpServer {
     }
 
     fn handle_resources_list(&mut self, id: Value, params: Option<&Value>) -> Value {
-        match self
+        let execution_records = self
             .registry
-            .list_recent_execution_records(DEFAULT_RECENT_EXECUTION_LIMIT)
-        {
-            Ok(records) => {
-                let resources = records
-                    .into_iter()
-                    .map(|record| execution_record_to_resource(&record))
-                    .collect::<Vec<_>>();
+            .list_recent_execution_records(DEFAULT_RECENT_EXECUTION_RESOURCE_LIMIT);
+        let evidence_records = self
+            .registry
+            .list_recent_evidence_records(DEFAULT_RECENT_EVIDENCE_RESOURCE_LIMIT);
+
+        match (execution_records, evidence_records) {
+            (Ok(execution_records), Ok(evidence_records)) => {
+                let mut resources = vec![
+                    recent_executions_query_resource(),
+                    recent_failures_query_resource(),
+                ];
+                resources.extend(
+                    execution_records
+                        .into_iter()
+                        .map(|record| execution_record_to_resource(&record)),
+                );
+                resources.extend(
+                    evidence_records
+                        .into_iter()
+                        .map(|record| evidence_metadata_resource(&record)),
+                );
                 let offset =
                     match list_offset_from_params(params, LIST_CURSOR_RESOURCES, resources.len()) {
                         Ok(offset) => offset,
@@ -475,7 +508,7 @@ impl GuildMcpServer {
                     },
                 )
             }
-            Err(error) => {
+            (Err(error), _) | (_, Err(error)) => {
                 let error = McpError::from(error);
                 error_response(
                     id,
@@ -652,16 +685,21 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild execution record".into(),
             title: Some("Guild Execution Record".into()),
             description: Some(
-                "Read a persisted Guild execution record by host-minted execution id.".into(),
+                "Read one persisted execution record by host-minted execution id; use this after a \
+                 query result or inspect run points you at an exact execution URI."
+                    .into(),
             ),
             mime_type: Some("application/json".into()),
         },
         ResourceTemplate {
             uri_template: "guild://objects/records/{evidence_record_id}".into(),
             name: "Guild evidence record payload".into(),
-            title: Some("Guild Evidence Record".into()),
+            title: Some("Guild Evidence Payload".into()),
             description: Some(
-                "Read a persisted evidence emission through its host-issued record URI.".into(),
+                "Read the persisted evidence payload through its host-issued record URI; prefer the \
+                 metadata URI first when you only need context, MIME type, size, audience, or \
+                 producing execution details."
+                    .into(),
             ),
             mime_type: None,
         },
@@ -670,7 +708,9 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild evidence record metadata".into(),
             title: Some("Guild Evidence Record Metadata".into()),
             description: Some(
-                "Read the host-owned metadata record for a persisted evidence emission.".into(),
+                "Read the host-owned JSON metadata for a persisted evidence emission before opening \
+                 the payload URI."
+                    .into(),
             ),
             mime_type: Some("application/json".into()),
         },
@@ -678,7 +718,11 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             uri_template: "guild://objects/sha256/{digest}".into(),
             name: "Guild evidence blob".into(),
             title: Some("Guild Evidence Blob".into()),
-            description: Some("Read a raw content-addressed evidence blob by its digest URI.".into()),
+            description: Some(
+                "Read a raw content-addressed evidence blob by digest when you explicitly need the \
+                 blob URI rather than the evidence record URI."
+                    .into(),
+            ),
             mime_type: None,
         },
         ResourceTemplate {
@@ -686,7 +730,8 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild recent executions query".into(),
             title: Some("Guild Execution Query".into()),
             description: Some(
-                "Read a bounded recent-executions query result from the local Guild execution store."
+                "Read a bounded recent-executions query result from the local Guild execution \
+                 store to discover execution URIs, statuses, and nearby evidence counts."
                     .into(),
             ),
             mime_type: Some("application/json".into()),
@@ -696,7 +741,9 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild recent failures query".into(),
             title: Some("Guild Recent Failures Query".into()),
             description: Some(
-                "Read a bounded recent failed or rejected execution query result.".into(),
+                "Read a bounded recent failed or rejected execution query result to find failure \
+                 records before you already know an exact execution URI."
+                    .into(),
             ),
             mime_type: Some("application/json".into()),
         },
@@ -714,7 +761,9 @@ fn resource_templates_catalog() -> Vec<ResourceTemplate> {
             name: "Guild executions by skill query".into(),
             title: Some("Guild Executions By Skill Query".into()),
             description: Some(
-                "Read a bounded execution query result filtered by resolved skill key.".into(),
+                "Read a bounded execution query result filtered by resolved skill namespace and \
+                 name, not by a requested ref."
+                    .into(),
             ),
             mime_type: Some("application/json".into()),
         },
@@ -790,13 +839,8 @@ fn inspect_success_content(record: &ExecutionRecord) -> Vec<ContentBlock> {
         text: serde_json::to_string_pretty(record).expect("execution record serializes"),
     })];
     content.push(ContentBlock::ResourceLink(execution_resource_link(record)));
-    content.extend(
-        record
-            .emitted_evidence
-            .iter()
-            .map(evidence_resource_link)
-            .map(ContentBlock::ResourceLink),
-    );
+    content.extend(child_execution_content_blocks(record));
+    content.extend(evidence_content_blocks(record));
     content
 }
 
@@ -805,13 +849,28 @@ fn inspect_failure_content(record: &ExecutionRecord) -> Vec<ContentBlock> {
         text: serde_json::to_string_pretty(record).expect("execution record serializes"),
     })];
     content.push(ContentBlock::ResourceLink(execution_resource_link(record)));
-    content.extend(
-        record
-            .emitted_evidence
-            .iter()
-            .map(evidence_resource_link)
-            .map(ContentBlock::ResourceLink),
-    );
+    content.extend(child_execution_content_blocks(record));
+    content.extend(evidence_content_blocks(record));
+    content
+}
+
+fn child_execution_content_blocks(record: &ExecutionRecord) -> Vec<ContentBlock> {
+    record
+        .child_executions
+        .iter()
+        .map(child_execution_resource_link)
+        .map(ContentBlock::ResourceLink)
+        .collect()
+}
+
+fn evidence_content_blocks(record: &ExecutionRecord) -> Vec<ContentBlock> {
+    let mut content = Vec::with_capacity(record.emitted_evidence.len().saturating_mul(2));
+    for evidence in &record.emitted_evidence {
+        content.push(ContentBlock::ResourceLink(evidence_resource_link(evidence)));
+        content.push(ContentBlock::ResourceLink(evidence_metadata_resource_link(
+            evidence,
+        )));
+    }
     content
 }
 
@@ -820,9 +879,28 @@ fn execution_resource_link(record: &ExecutionRecord) -> ResourceLink {
         uri: record.receipt.uri.clone(),
         name: format!("execution-{}", record.receipt.execution_id),
         title: Some(format!("Guild execution {}", record.receipt.execution_id)),
+        description: Some(execution_description(
+            &record.status,
+            &resolved_skill_label(&record.resolved_skill),
+        )),
+        mime_type: Some("application/json".into()),
+        size: None,
+    }
+}
+
+fn child_execution_resource_link(record: &guild_types::ChildExecutionRecord) -> ResourceLink {
+    ResourceLink {
+        uri: record.uri.clone(),
+        name: format!("child-execution-{}", record.execution_id),
+        title: Some(format!(
+            "Guild child execution {} ({})",
+            record.execution_id, record.alias
+        )),
         description: Some(format!(
-            "Persisted execution record with status {}",
-            status_name(record)
+            "Persisted child execution for alias `{}` with status {} targeting {}.",
+            record.alias,
+            status_name(&record.status),
+            resolved_skill_label(&record.provenance.resolved_skill)
         )),
         mime_type: Some("application/json".into()),
         size: None,
@@ -832,16 +910,22 @@ fn execution_resource_link(record: &ExecutionRecord) -> ResourceLink {
 fn evidence_resource_link(record: &guild_types::EvidenceRecord) -> ResourceLink {
     ResourceLink {
         uri: record.uri.clone(),
-        name: record
-            .title
-            .clone()
-            .unwrap_or_else(|| format!("evidence-{}", record.sha256)),
-        title: record.title.clone(),
-        description: Some(
-            "Persisted evidence emission addressed by host-issued evidence record URI.".into(),
-        ),
+        name: evidence_payload_name(record),
+        title: Some(evidence_payload_title(record)),
+        description: Some(evidence_payload_description(record)),
         mime_type: Some(record.mime_type.clone()),
         size: Some(record.size_bytes),
+    }
+}
+
+fn evidence_metadata_resource_link(record: &EvidenceRecord) -> ResourceLink {
+    ResourceLink {
+        uri: evidence_metadata_uri(record),
+        name: evidence_metadata_name(record),
+        title: Some(evidence_metadata_title(record)),
+        description: Some(evidence_metadata_description(record)),
+        mime_type: Some("application/json".into()),
+        size: Some(evidence_metadata_size(record)),
     }
 }
 
@@ -850,9 +934,9 @@ fn execution_record_to_resource(record: &ExecutionRecord) -> Resource {
         uri: record.receipt.uri.clone(),
         name: format!("execution-{}", record.receipt.execution_id),
         title: Some(format!("Guild execution {}", record.receipt.execution_id)),
-        description: Some(format!(
-            "Persisted execution record with status {}",
-            status_name(record)
+        description: Some(execution_description(
+            &record.status,
+            &resolved_skill_label(&record.resolved_skill),
         )),
         mime_type: Some("application/json".into()),
         size: Some(
@@ -861,6 +945,130 @@ fn execution_record_to_resource(record: &ExecutionRecord) -> Resource {
                 .len() as u64,
         ),
     }
+}
+
+fn recent_executions_query_resource() -> Resource {
+    let query = ExecutionQueryResource::Recent {
+        limit: DEFAULT_DISCOVERY_QUERY_LIMIT,
+    };
+    Resource {
+        uri: query.canonical_uri(),
+        name: "recent-executions-query".into(),
+        title: Some("Guild Recent Executions Query".into()),
+        description: Some(
+            "Read a bounded recent-executions summary to discover stored runs before following \
+             exact execution URIs."
+                .into(),
+        ),
+        mime_type: Some("application/json".into()),
+        size: None,
+    }
+}
+
+fn recent_failures_query_resource() -> Resource {
+    let query = ExecutionQueryResource::FailuresRecent {
+        limit: DEFAULT_DISCOVERY_QUERY_LIMIT,
+    };
+    Resource {
+        uri: query.canonical_uri(),
+        name: "recent-failures-query".into(),
+        title: Some("Guild Recent Failures Query".into()),
+        description: Some(
+            "Read a bounded recent failures summary to find failed or rejected executions \
+             without already knowing execution ids."
+                .into(),
+        ),
+        mime_type: Some("application/json".into()),
+        size: None,
+    }
+}
+
+fn evidence_metadata_resource(record: &EvidenceRecord) -> Resource {
+    Resource {
+        uri: evidence_metadata_uri(record),
+        name: evidence_metadata_name(record),
+        title: Some(evidence_metadata_title(record)),
+        description: Some(evidence_metadata_description(record)),
+        mime_type: Some("application/json".into()),
+        size: Some(evidence_metadata_size(record)),
+    }
+}
+
+fn execution_description(status: &guild_types::ExecutionStatus, resolved_skill: &str) -> String {
+    format!(
+        "Persisted {} execution record for {}.",
+        status_name(status),
+        resolved_skill
+    )
+}
+
+fn resolved_skill_label(skill: &guild_types::ResolvedSkillRef) -> String {
+    format!(
+        "{}/{}@{}",
+        skill.key.namespace, skill.key.name, skill.version
+    )
+}
+
+fn evidence_payload_name(record: &EvidenceRecord) -> String {
+    record
+        .title
+        .clone()
+        .unwrap_or_else(|| format!("evidence-{}", record.sha256))
+}
+
+fn evidence_payload_title(record: &EvidenceRecord) -> String {
+    record
+        .title
+        .clone()
+        .unwrap_or_else(|| format!("Guild evidence payload {}", record.sha256))
+}
+
+fn evidence_payload_description(record: &EvidenceRecord) -> String {
+    format!(
+        "Persisted evidence payload ({}, {} bytes). Read the metadata URI first when you only \
+         need audience, redaction, MIME type, size, or producing execution context.",
+        record.mime_type, record.size_bytes
+    )
+}
+
+fn evidence_metadata_name(record: &EvidenceRecord) -> String {
+    format!("{}-metadata", evidence_payload_name(record))
+}
+
+fn evidence_metadata_title(record: &EvidenceRecord) -> String {
+    record
+        .title
+        .as_ref()
+        .map(|title| format!("{title} metadata"))
+        .unwrap_or_else(|| format!("Guild evidence metadata {}", record.sha256))
+}
+
+fn evidence_metadata_uri(record: &EvidenceRecord) -> String {
+    format!("{}/metadata", record.uri)
+}
+
+fn evidence_metadata_description(record: &EvidenceRecord) -> String {
+    let mut description = format!(
+        "Host-owned JSON metadata for a persisted evidence emission ({} audience, {} redaction, \
+         {} payload, {} bytes).",
+        evidence_audience_label(&record.audience),
+        redaction_class_label(&record.redaction),
+        record.mime_type,
+        record.size_bytes
+    );
+
+    if let Some(execution_id) = &record.produced_by_execution {
+        description.push_str(&format!(" Produced by {}.", execution_uri(execution_id)));
+    }
+
+    description.push_str(" Read this before the payload URI when you only need record context.");
+    description
+}
+
+fn evidence_metadata_size(record: &EvidenceRecord) -> u64 {
+    serde_json::to_vec_pretty(record)
+        .expect("evidence metadata serializes")
+        .len() as u64
 }
 
 fn resource_contents(resource: ResourceReadResult) -> ResourceContents {
@@ -887,11 +1095,32 @@ fn is_textual_mime(mime_type: &str) -> bool {
         || mime_type.starts_with("application/") && mime_type.ends_with("+json")
 }
 
-fn status_name(record: &ExecutionRecord) -> &'static str {
-    match record.status {
+fn status_name(status: &guild_types::ExecutionStatus) -> &'static str {
+    match status {
         guild_types::ExecutionStatus::Succeeded => "succeeded",
         guild_types::ExecutionStatus::Failed => "failed",
         guild_types::ExecutionStatus::Partial => "partial",
         guild_types::ExecutionStatus::Rejected => "rejected",
     }
+}
+
+fn evidence_audience_label(audience: &guild_types::EvidenceAudience) -> &'static str {
+    match audience {
+        guild_types::EvidenceAudience::User => "user",
+        guild_types::EvidenceAudience::Assistant => "assistant",
+        guild_types::EvidenceAudience::Internal => "internal",
+    }
+}
+
+fn redaction_class_label(redaction: &guild_types::RedactionClass) -> &'static str {
+    match redaction {
+        guild_types::RedactionClass::None => "none",
+        guild_types::RedactionClass::SecretsRemoved => "secrets-removed",
+        guild_types::RedactionClass::PiiRemoved => "pii-removed",
+        guild_types::RedactionClass::TenantSensitive => "tenant-sensitive",
+    }
+}
+
+fn execution_uri(execution_id: &str) -> String {
+    format!("{GUILD_EXECUTION_URI_PREFIX}{execution_id}")
 }

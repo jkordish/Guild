@@ -326,8 +326,22 @@ guild mcp serve --stdio
 The public MCP surface is intentionally small:
 
 - one public tool: `guild.inspect`
-- Guild execution, evidence, object, and bounded query resources through `resources/read`
+- `resources/list` is a bounded discovery catalog: the first entries are canonical recent-query URIs, followed by recent execution and evidence-metadata URIs
+- `resources/templates/list` describes the parameterized Guild URI families for execution, evidence, object, and query reads
+- `resources/read` fetches the durable execution, evidence, object, and bounded query resources behind those URIs
 - cursor-based pagination on `tools/list`, `resources/list`, and `resources/templates/list`
+
+For agent discovery, start with `tools/list` and expect exactly one public tool,
+`guild.inspect`. Then use `resources/list`, read the returned URIs through
+`resources/read`, move to `resources/templates/list` when you need a custom
+query shape or exact URI family, and use `guild.inspect` only when you mean to
+execute inspect mode and persist a new execution record.
+
+If a client renders `Tools: (none)` against this server, treat that as a client
+compatibility regression rather than the intended Guild MCP surface.
+
+For task-shaped agent workflows, use
+[`docs/mcp-agent-recipes.md`](docs/mcp-agent-recipes.md).
 
 For persistent Codex integration, use the explicit setup workflow:
 
@@ -364,6 +378,7 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 ## Canonical Docs
 
 - `docs/how-guild-works.md` - short daily-user mental model for identity, authority, and the main CLI surfaces
+- `docs/mcp-agent-recipes.md` - task-shaped MCP recipes for agent users and integrators
 - `docs/command-language.md` - public CLI verbs, grouped workflows, and ref grammar
 - `docs/testing.md` - verification commands, proof workflows, and smoke paths
 - `SPECS.md` - normative contract and conformance language

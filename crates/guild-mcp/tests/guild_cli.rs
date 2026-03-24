@@ -3332,11 +3332,27 @@ fn mcp_stdio_launches_through_guild_cli() {
     let mut harness = McpHarness::spawn(&registry_root);
     let initialized = harness.initialize();
     assert_eq!(initialized.server_info.name, "guild-mcp");
+    assert_eq!(
+        initialized
+            .capabilities
+            .tools
+            .as_ref()
+            .and_then(|tools| tools.list_changed),
+        Some(false)
+    );
 
     let tools_response = harness.request("tools/list", &json!({}));
     let tools: ListToolsResult = serde_json::from_value(tools_response["result"].clone()).unwrap();
     assert_eq!(tools.tools.len(), 1);
     assert_eq!(tools.tools[0].name, "guild.inspect");
+    assert_eq!(tools.tools[0].title.as_deref(), Some("Guild Inspect"));
+    assert_eq!(
+        tools.tools[0]
+            .annotations
+            .as_ref()
+            .and_then(|annotations| annotations.title.as_deref()),
+        Some("Guild Inspect")
+    );
 }
 
 #[test]
@@ -4152,6 +4168,7 @@ fn user_facing_docs_use_installed_guild_cli_after_install() {
         repo_root().join("README.md"),
         repo_root().join("docs/command-language.md"),
         repo_root().join("docs/how-guild-works.md"),
+        repo_root().join("docs/mcp-agent-recipes.md"),
         repo_root().join("docs/adr/0019-thin-guild-cli.md"),
         repo_root().join("docs/testing.md"),
         repo_root().join("examples/README.md"),
@@ -4250,6 +4267,68 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(ops_pack.contains("guild why --lineage"));
     assert!(ops_pack.contains("guild ls evidence --limit 5"));
     assert!(ops_pack.contains("## Keep Going With The Normal CLI"));
+
+    let mcp_recipes = fs::read_to_string(repo_root().join("docs/mcp-agent-recipes.md")).unwrap();
+    assert!(mcp_recipes.contains("## Recipe 1: Inspect A Skill"));
+    assert!(mcp_recipes.contains("## Recipe 2: Find An Execution"));
+    assert!(mcp_recipes.contains("## Recipe 3: Fetch Evidence Safely"));
+    assert!(mcp_recipes.contains("## Recipe 4: Explain A Failure"));
+    assert!(mcp_recipes.contains("`tools/list`"));
+    assert!(mcp_recipes.contains("`resources/list`"));
+    assert!(mcp_recipes.contains("`resources/templates/list`"));
+    assert!(mcp_recipes.contains("`resources/read`"));
+    assert!(mcp_recipes.contains("`guild.inspect`"));
+    assert!(mcp_recipes.contains("guild://queries/executions/failures/recent/10"));
+    assert!(mcp_recipes.contains("guild://objects/records/<evidence-record-id>/metadata"));
+}
+
+#[test]
+fn mcp_contract_docs_match_the_discovery_catalog_surface() {
+    let specs = fs::read_to_string(repo_root().join("SPECS.md")).unwrap();
+    for phrase in [
+        "`resources/list` as a bounded discovery catalog",
+        "`resources/list` is a bounded discovery catalog",
+        "the first listed URI is the canonical recent-executions query resource",
+        "the second listed URI is the canonical recent-failures query resource",
+        "bounded recent evidence-metadata slice",
+    ] {
+        assert!(
+            specs.contains(phrase),
+            "SPECS.md is missing MCP discovery-catalog wording: {phrase}"
+        );
+    }
+
+    let architecture = fs::read_to_string(repo_root().join("ARCHITECTURE.md")).unwrap();
+    for phrase in [
+        "a bounded discovery-oriented `resources/list` catalog",
+        "`resources/list` is a bounded discovery catalog",
+        "starts with the canonical recent-executions and recent-failures query URIs",
+        "recent evidence-metadata resources",
+        "inspect-result links",
+    ] {
+        assert!(
+            architecture.contains(phrase),
+            "ARCHITECTURE.md is missing MCP discovery-catalog wording: {phrase}"
+        );
+    }
+
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(readme.contains("start with `tools/list` and expect exactly one public tool"));
+    assert!(readme.contains("`Tools: (none)`"));
+    assert!(readme.contains(
+        "`resources/list` is a bounded discovery catalog: the first entries are canonical recent-query URIs"
+    ));
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    assert!(
+        command_language
+            .contains("`tools/list` to confirm the one current public tool, `guild.inspect`")
+    );
+    assert!(command_language.contains("`Tools: (none)`"));
+    assert!(command_language.contains(
+        "`resources/list` is a bounded discovery catalog: the first entries are canonical recent-query URIs"
+    ));
 }
 
 #[test]

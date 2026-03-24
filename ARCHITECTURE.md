@@ -393,14 +393,16 @@ That M7 layer is intentionally honest about what it is and what it is not:
 
 So the current draft M7 path is useful for bounded exercised-authority verification across the five active canonical families, but it still does not justify runtime-general witness completeness claims across the full live Rust capability surface.
 
-The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), bounded recent execution resource listing, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
+The current MCP layer is intentionally smaller still: a stdio server, one public tool (`guild.inspect`), a bounded discovery-oriented `resources/list` catalog, Guild resource reads, and Guild URI resource templates for direct artifacts and bounded execution-query views.
 
 In the current repository, MCP protocol hygiene is also explicit:
 
 - `guild.inspect` advertises truthful client hints rather than optimistic ones: it is not read-only, not idempotent, not destructive, and open-world in the MCP hint sense because real inspect execution persists durable records and may use bounded outbound HTTP
 - `tools/list`, `resources/list`, and `resources/templates/list` page through deterministic ordered slices using opaque endpoint-scoped cursors
 - pagination is applied only after Guild has built the already-bounded, already-authorized result set for that endpoint, so cursors do not widen access or bypass boundedness
-- `resources/list` remains a bounded recent-execution view, not a general resource search surface
+- `resources/list` is a bounded discovery catalog, not a general resource search surface
+- `resources/list` starts with the canonical recent-executions and recent-failures query URIs, then lists recent execution resources, then recent evidence-metadata resources
+- evidence payload and blob URIs remain readable and discoverable through `resources/read`, `resources/templates/list`, and inspect-result links rather than by default listing
 
 ## 7. Registry and Resolution Architecture
 

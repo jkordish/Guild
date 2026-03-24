@@ -422,8 +422,24 @@ guild mcp serve --stdio
 The public MCP surface is intentionally small:
 
 - one public tool: `guild.inspect`
-- Guild execution, evidence, object, and bounded query resources through `resources/read`
+- `resources/list` is a bounded discovery catalog: the first entries are canonical recent-query URIs, followed by recent execution and evidence-metadata URIs
+- `resources/templates/list` describes the parameterized Guild URI families for execution, evidence, object, and query reads
+- `resources/read` fetches the durable execution, evidence, object, and bounded query resources behind those URIs
 - cursor-based pagination on `tools/list`, `resources/list`, and `resources/templates/list`
+
+For agent-facing workflows, use the MCP surfaces in this order:
+
+- `tools/list` to confirm the one current public tool, `guild.inspect`
+- `resources/list` to discover the first useful URIs under the selected Guild root
+- `resources/read` to inspect those durable resources directly
+- `resources/templates/list` when you need a specific query URI family or a URI you do not already have
+- `guild.inspect` when you actually want to execute inspect mode and persist a new execution record
+
+If a client renders `Tools: (none)` against this server, treat that as a client
+compatibility regression rather than the intended Guild MCP surface.
+
+For the concrete task-shaped versions of those flows, read
+[`docs/mcp-agent-recipes.md`](mcp-agent-recipes.md).
 
 For persistent Codex integration, use:
 

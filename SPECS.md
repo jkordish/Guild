@@ -412,9 +412,9 @@ The current repository now also exposes a real stdio MCP server surface over tha
 - stdio transport only in this milestone
 - one public tool, `guild.inspect`
 - `guild.inspect` tool annotations now truthfully advertise that inspect execution is not read-only, not idempotent, not destructive, and open-world in the MCP hint sense because the real inspect path persists durable records and may reach bounded external HTTP targets
-- bounded recent-execution `resources/list` plus `resources/read` and `resources/templates/list` for durable Guild URIs and bounded execution-query resources
+- `resources/list` as a bounded discovery catalog: canonical recent-query entry points first, then recent execution resources, then recent evidence-metadata resources; plus `resources/read` and `resources/templates/list` for durable Guild URIs and bounded execution-query resources
 - `tools/list`, `resources/list`, and `resources/templates/list` accept opaque cursor-based pagination and return `nextCursor` when more results remain
-- list pagination stays endpoint-scoped, deterministic, and bounded; cursors do not widen authorization or bypass the existing bounded recent-view behavior
+- list pagination stays endpoint-scoped, deterministic, and bounded; cursors do not widen authorization or bypass the existing bounded discovery-catalog behavior
 - no subscriptions, no list-changed notifications, and no HTTP transport in this milestone
 
 Unsuccessful `guild.inspect` executions that reached a real resolved execution attempt MUST be surfaced over MCP as tool execution errors while preserving the persisted execution record and receipt URI.
@@ -545,7 +545,14 @@ The current repository advertises `guild.inspect` with truthful MCP hints for th
 
 Guild durable execution and evidence artifacts MAY be exposed through MCP resources, but resource URIs, resource contents, and linkage metadata remain host-owned Guild concepts. MCP resource access does not replace Guild runtime capability enforcement inside guest execution.
 
-Where Guild exposes MCP list operations, the current repository uses opaque cursor-based pagination with deterministic ordering over already-bounded result sets. `resources/list` remains a bounded recent-execution view over the persisted execution store rather than a broader discovery or search interface.
+Where Guild exposes MCP list operations, the current repository uses opaque cursor-based pagination with deterministic ordering over already-bounded result sets. `resources/list` is a bounded discovery catalog over persisted Guild resources rather than a broad discovery or search interface.
+
+The current repository `resources/list` contract is:
+
+- the first listed URI is the canonical recent-executions query resource, `guild://queries/executions/recent/10`
+- the second listed URI is the canonical recent-failures query resource, `guild://queries/executions/failures/recent/10`
+- those query entry points are followed by a bounded recent-execution slice and then a bounded recent evidence-metadata slice from the same selected Guild root
+- evidence payload URIs and raw blob URIs remain readable through `resources/read` and discoverable through `resources/templates/list` or inspect-result links, but they are not listed by default in `resources/list`
 
 #### 12.4.5 Tool error semantics
 

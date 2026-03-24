@@ -9,14 +9,15 @@ use base64::Engine as _;
 use guild_mcp::protocol::{
     CallToolResult, ContentBlock, InitializeResult, ListResourceTemplatesResult,
     ListResourcesResult, ListToolsResult, PROTOCOL_VERSION_2025_11_25, ReadResourceResult,
-    ResourceContents,
+    ResourceContents, ToolTaskSupport,
 };
 use guild_registry::{LocalRegistry, LocalSourceInstaller};
 use guild_types::{
     CapabilityAccess, CapabilityConstraints, CapabilityId, EmitEvidenceConstraints,
-    EvidenceAudience, ExecutionQueryResult, ExecutionStatus, GrantedCapability,
-    PolicyDecisionOutcome, ReadResourceConstraints, RedactionClass, RequestedSkillRef,
-    ResourceKind, SkillKey, VersionRequirement,
+    EvidenceAudience, EvidenceRecord, ExecutionQueryResource, ExecutionQueryResult,
+    ExecutionStatus, GrantedCapability, InvokeDependencyConstraints, PolicyDecisionOutcome,
+    ReadResourceConstraints, RedactionClass, RequestedSkillRef, ResourceKind, SkillKey,
+    VersionRequirement,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -43,6 +44,10 @@ fn explain_tree_source_dir() -> PathBuf {
     repo_root().join("examples/skills/explain-execution-tree")
 }
 
+fn composite_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/hello-composite")
+}
+
 fn prepared_registry_root() -> &'static PathBuf {
     static ROOT: OnceLock<PathBuf> = OnceLock::new();
 
@@ -63,6 +68,10 @@ fn prepared_registry_root() -> &'static PathBuf {
         LocalSourceInstaller::new(&root)
             .unwrap()
             .install(explain_tree_source_dir())
+            .unwrap();
+        LocalSourceInstaller::new(&root)
+            .unwrap()
+            .install(composite_source_dir())
             .unwrap();
         root
     })
@@ -226,6 +235,17 @@ fn emit_evidence_grant_json() -> Value {
     .unwrap()
 }
 
+fn invoke_hello_grant_json() -> Value {
+    serde_json::to_value(GrantedCapability {
+        id: CapabilityId::InvokeSkill,
+        access: CapabilityAccess::Invoke,
+        constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+            aliases: Some(vec!["hello".into()]),
+        }),
+    })
+    .unwrap()
+}
+
 fn read_resource_grant_json(prefixes: &[&str]) -> Value {
     let resource_kinds = prefixes
         .iter()
@@ -256,10 +276,47 @@ fn stdio_server_handshake_returns_honest_capabilities() {
     assert_eq!(initialized.protocol_version, PROTOCOL_VERSION_2025_11_25);
     assert!(initialized.capabilities.tools.is_some());
     assert!(initialized.capabilities.resources.is_some());
+    let tools = initialized.capabilities.tools.unwrap();
+    assert_eq!(tools.list_changed, Some(false));
     let resources = initialized.capabilities.resources.unwrap();
     assert_eq!(resources.subscribe, None);
     assert_eq!(resources.list_changed, None);
     assert_eq!(initialized.server_info.name, "guild-mcp");
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("tools/list")
+    );
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("resources/list")
+    );
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("resources/templates/list")
+    );
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("resources/read")
+    );
+    assert!(
+        initialized
+            .instructions
+            .as_deref()
+            .unwrap()
+            .contains("guild.inspect")
+    );
 }
 
 #[test]
@@ -290,18 +347,36 @@ fn tools_list_returns_truthful_guild_inspect_annotations() {
     let result: ListToolsResult = parse_result(&tools_response);
     assert_eq!(result.tools.len(), 1);
     assert_eq!(result.tools[0].name, "guild.inspect");
+    assert_eq!(result.tools[0].title.as_deref(), Some("Guild Inspect"));
     assert!(result.tools[0].input_schema.is_object());
     assert!(result.tools[0].output_schema.as_ref().unwrap().is_object());
     assert_eq!(result.next_cursor, None);
+    assert!(
+        result.tools[0]
+            .description
+            .contains("persist durable execution records")
+    );
+    assert!(
+        result.tools[0]
+            .description
+            .contains("may also emit evidence")
+    );
 
     let annotations = result.tools[0]
         .annotations
         .as_ref()
         .expect("guild.inspect exposes annotations");
+    assert_eq!(annotations.title.as_deref(), Some("Guild Inspect"));
     assert!(!annotations.read_only_hint);
     assert!(!annotations.destructive_hint);
     assert!(!annotations.idempotent_hint);
     assert!(annotations.open_world_hint);
+
+    let execution = result.tools[0]
+        .execution
+        .as_ref()
+        .expect("guild.inspect exposes execution metadata");
+    assert_eq!(execution.task_support, Some(ToolTaskSupport::Forbidden));
 }
 
 #[test]
@@ -355,7 +430,78 @@ fn guild_inspect_success_returns_structured_content_text_and_resource_links() {
     )));
     assert!(result.content.iter().any(|block| matches!(
         block,
-        ContentBlock::ResourceLink(link) if link.uri == record.emitted_evidence[0].uri
+        ContentBlock::ResourceLink(link)
+            if link.uri == record.receipt.uri
+                && link.description.as_deref().unwrap().contains("example/hello-inspect@0.1.0")
+                && link.description.as_deref().unwrap().contains("succeeded")
+    )));
+    assert!(result.content.iter().any(|block| matches!(
+        block,
+        ContentBlock::ResourceLink(link)
+            if link.uri == record.emitted_evidence[0].uri
+                && link.title.as_deref().unwrap().contains("hello-inspect snapshot")
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("Read the metadata URI first")
+    )));
+    assert!(result.content.iter().any(|block| matches!(
+        block,
+        ContentBlock::ResourceLink(link)
+            if link.uri == format!("{}/metadata", record.emitted_evidence[0].uri)
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("user audience")
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("none redaction")
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains(&record.receipt.uri)
+    )));
+}
+
+#[test]
+fn guild_inspect_composite_surfaces_child_execution_resource_links() {
+    let mut harness = McpHarness::spawn();
+    harness.initialize();
+
+    let response = harness.request(
+        "tools/call",
+        &inspect_request(
+            "hello-composite",
+            &json!({ "name": "Ada" }),
+            &json!([invoke_hello_grant_json(), emit_evidence_grant_json()]),
+        ),
+    );
+    let result: CallToolResult = parse_result(&response);
+    let record = guild_inspect_helpers::parse_execution_record(&result);
+
+    assert_eq!(result.is_error, None);
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.child_executions.len(), 1);
+    assert!(result.content.iter().any(|block| matches!(
+        block,
+        ContentBlock::ResourceLink(link)
+            if link.uri == record.child_executions[0].uri
+                && link.title.as_deref().unwrap().contains(&record.child_executions[0].alias)
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("example/hello-inspect@0.1.0")
+                && link
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("succeeded")
     )));
 }
 
@@ -437,7 +583,7 @@ fn resources_read_returns_execution_evidence_payload_and_evidence_metadata_conte
 }
 
 #[test]
-fn resources_templates_pagination_and_recent_execution_list_match_active_resource_model() {
+fn resources_templates_pagination_and_resources_list_match_active_resource_model() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
 
@@ -487,13 +633,52 @@ fn resources_templates_pagination_and_recent_execution_list_match_active_resourc
     assert!(templates
         .iter()
         .any(|template| template.uri_template == "guild://objects/records/{evidence_record_id}"));
+    let payload_template = templates
+        .iter()
+        .find(|template| template.uri_template == "guild://objects/records/{evidence_record_id}")
+        .unwrap();
+    assert_eq!(
+        payload_template.title.as_deref(),
+        Some("Guild Evidence Payload")
+    );
+    assert!(
+        payload_template
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("prefer the metadata URI first")
+    );
     assert!(templates.iter().any(|template| {
         template.uri_template == "guild://objects/records/{evidence_record_id}/metadata"
     }));
+    let metadata_template = templates
+        .iter()
+        .find(|template| {
+            template.uri_template == "guild://objects/records/{evidence_record_id}/metadata"
+        })
+        .unwrap();
+    assert!(
+        metadata_template
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("before opening the payload URI")
+    );
     assert!(
         templates
             .iter()
             .any(|template| template.uri_template == "guild://objects/sha256/{digest}")
+    );
+    let blob_template = templates
+        .iter()
+        .find(|template| template.uri_template == "guild://objects/sha256/{digest}")
+        .unwrap();
+    assert!(
+        blob_template
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("explicitly need the blob URI")
     );
     assert!(
         templates
@@ -515,6 +700,64 @@ fn resources_templates_pagination_and_recent_execution_list_match_active_resourc
             .iter()
             .any(|resource| resource.uri == record.receipt.uri)
     );
+    let execution_resource = resources
+        .resources
+        .iter()
+        .find(|resource| resource.uri == record.receipt.uri)
+        .unwrap();
+    assert!(
+        execution_resource
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("example/hello-inspect@0.1.0")
+    );
+    assert!(
+        execution_resource
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("succeeded")
+    );
+    assert_eq!(
+        resources.resources[0].uri,
+        ExecutionQueryResource::Recent { limit: 10 }.canonical_uri()
+    );
+    assert_eq!(
+        resources.resources[1].uri,
+        ExecutionQueryResource::FailuresRecent { limit: 10 }.canonical_uri()
+    );
+    let evidence_metadata_uri = format!("{}/metadata", record.emitted_evidence[0].uri);
+    assert!(
+        resources
+            .resources
+            .iter()
+            .any(|resource| resource.uri == evidence_metadata_uri)
+    );
+    let evidence_metadata_resource = resources
+        .resources
+        .iter()
+        .find(|resource| resource.uri == evidence_metadata_uri)
+        .unwrap();
+    assert!(
+        evidence_metadata_resource
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("user audience")
+    );
+    assert!(
+        evidence_metadata_resource
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("none redaction")
+    );
+    assert_eq!(
+        evidence_metadata_resource.mime_type.as_deref(),
+        Some("application/json")
+    );
+    assert!(evidence_metadata_resource.size.unwrap() > 0);
 
     let wrong_cursor = harness.request(
         "resources/templates/list",
@@ -546,10 +789,28 @@ fn resources_templates_pagination_and_recent_execution_list_match_active_resourc
             .iter()
             .any(|item| item.receipt.uri == record.receipt.uri)
     );
+
+    let metadata_response =
+        harness.request("resources/read", &json!({ "uri": evidence_metadata_uri }));
+    let metadata: ReadResourceResult = parse_result(&metadata_response);
+    let metadata_contents = match &metadata.contents[0] {
+        ResourceContents::Text(text) => text,
+        other @ ResourceContents::Blob(_) => {
+            panic!("expected text metadata contents, got {other:?}")
+        }
+    };
+    let evidence_record: EvidenceRecord = serde_json::from_str(&metadata_contents.text).unwrap();
+    assert_eq!(evidence_record.uri, record.emitted_evidence[0].uri);
+    assert_eq!(
+        evidence_record.blob_uri,
+        record.emitted_evidence[0].blob_uri
+    );
 }
 
 #[test]
 fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
+    const PAGINATION_FIXTURE_EXECUTION_COUNT: usize = 13;
+
     let temp = TempFixtureDir::new("guild-mcp-server-pagination");
     let registry_root = temp.path().join("registry");
 
@@ -561,7 +822,7 @@ fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
     let mut harness = McpHarness::spawn_for_root(&registry_root);
     harness.initialize();
 
-    for index in 0..55 {
+    for index in 0..PAGINATION_FIXTURE_EXECUTION_COUNT {
         let result: CallToolResult = parse_result(&harness.request(
             "tools/call",
             &inspect_request(
@@ -584,7 +845,7 @@ fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
 
     let second_response = harness.request("resources/list", &json!({ "cursor": next_cursor }));
     let second_page: ListResourcesResult = parse_result(&second_response);
-    assert_eq!(second_page.resources.len(), 25);
+    assert_eq!(second_page.resources.len(), 3);
     assert_eq!(second_page.next_cursor, None);
 
     let repeated_first: ListResourcesResult =
@@ -601,19 +862,46 @@ fn resources_list_cursor_pagination_preserves_bounded_recent_view() {
 
     let expected_uris = LocalRegistry::load(&registry_root)
         .unwrap()
-        .list_recent_execution_records(50)
+        .list_recent_execution_records(20)
         .unwrap()
         .into_iter()
         .map(|record| record.receipt.uri)
         .collect::<Vec<_>>();
+    let expected_evidence_metadata_uris = LocalRegistry::load(&registry_root)
+        .unwrap()
+        .list_recent_evidence_records(20)
+        .unwrap()
+        .into_iter()
+        .map(|record| format!("{}/metadata", record.uri))
+        .collect::<Vec<_>>();
+    let expected_uris = [
+        vec![
+            ExecutionQueryResource::Recent { limit: 10 }.canonical_uri(),
+            ExecutionQueryResource::FailuresRecent { limit: 10 }.canonical_uri(),
+        ],
+        expected_uris,
+        expected_evidence_metadata_uris,
+    ]
+    .concat();
     let actual_uris = first_page
         .resources
         .iter()
         .chain(second_page.resources.iter())
         .map(|resource| resource.uri.clone())
         .collect::<Vec<_>>();
+    assert_eq!(
+        actual_uris[0],
+        ExecutionQueryResource::Recent { limit: 10 }.canonical_uri()
+    );
+    assert_eq!(
+        actual_uris[1],
+        ExecutionQueryResource::FailuresRecent { limit: 10 }.canonical_uri()
+    );
     assert_eq!(actual_uris, expected_uris);
-    assert_eq!(actual_uris.len(), 50);
+    assert_eq!(
+        actual_uris.len(),
+        2 + (PAGINATION_FIXTURE_EXECUTION_COUNT * 2)
+    );
 
     let wrong_cursor = harness.request(
         "resources/list",
