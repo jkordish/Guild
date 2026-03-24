@@ -993,7 +993,7 @@ impl LocalRegistry {
         preview_bundle_import(
             &root,
             bundle,
-            bundle_bytes,
+            &bundle_bytes,
             signature,
             |bundle, verification| {
                 let validated = validate_bundle(&bundle_root, bundle)?;
@@ -3540,7 +3540,7 @@ fn validate_import_targets(
 fn preview_bundle_import(
     root: &Path,
     bundle: InstalledSkillBundle,
-    bundle_bytes: Vec<u8>,
+    bundle_bytes: &[u8],
     signature: BundleSignatureEnvelope,
     validate_after_signature: impl FnOnce(
         &InstalledSkillBundle,
@@ -3565,7 +3565,7 @@ fn preview_bundle_import(
 
     let trust_tier = Some(trusted_publisher.trust_tier.clone());
     if let Err(error) =
-        verify_bundle_signature(&bundle_bytes, &bundle, &signature, &trusted_publisher)
+        verify_bundle_signature(bundle_bytes, &bundle, &signature, &trusted_publisher)
     {
         return Ok(ImportPreviewReport {
             bundle,

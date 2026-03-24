@@ -450,9 +450,7 @@ pub fn render_transport_import_preview_summary(
             |error| format!("refused ({})", error.code),
         )
     };
-    let trust = trust_tier
-        .map(std::string::ToString::to_string)
-        .unwrap_or_else(|| "untrusted".to_owned());
+    let trust = trust_tier.map_or_else(|| "untrusted".to_owned(), std::string::ToString::to_string);
 
     let _ = writeln!(output, "previewed installed state");
     let _ = writeln!(output, "transport: {format}");

@@ -802,7 +802,7 @@ fn preview_decoded_oci_artifact(
     preview_bundle_import(
         root,
         bundle,
-        decoded.bundle_bytes.clone(),
+        &decoded.bundle_bytes,
         signature,
         |bundle, verification| {
             let validated = validate_decoded_bundle(bundle, &decoded.files)?;

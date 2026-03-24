@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
@@ -1036,11 +1037,10 @@ fn evidence_metadata_name(record: &EvidenceRecord) -> String {
 }
 
 fn evidence_metadata_title(record: &EvidenceRecord) -> String {
-    record
-        .title
-        .as_ref()
-        .map(|title| format!("{title} metadata"))
-        .unwrap_or_else(|| format!("Guild evidence metadata {}", record.sha256))
+    record.title.as_ref().map_or_else(
+        || format!("Guild evidence metadata {}", record.sha256),
+        |title| format!("{title} metadata"),
+    )
 }
 
 fn evidence_metadata_uri(record: &EvidenceRecord) -> String {
@@ -1058,7 +1058,7 @@ fn evidence_metadata_description(record: &EvidenceRecord) -> String {
     );
 
     if let Some(execution_id) = &record.produced_by_execution {
-        description.push_str(&format!(" Produced by {}.", execution_uri(execution_id)));
+        let _ = write!(description, " Produced by {}.", execution_uri(execution_id));
     }
 
     description.push_str(" Read this before the payload URI when you only need record context.");
