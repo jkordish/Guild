@@ -195,7 +195,7 @@ What this flow teaches:
 - `show -vv` is the first requested-ref explanation path and explains why one digest was selected
 - `run` executes a `skill://...` ref through the real Guild runtime path after host policy computes the final granted authority for that run
 - success produces a durable `guild://executions/...` receipt
-- `why` explains one stored execution record, points to nearby child or evidence refs when present, and summarizes stored authority observations
+- `why` explains one stored execution record, points to nearby child or evidence refs when present, summarizes requested-versus-granted authority, and summarizes stored authority observations
 - `get` reads the same backend used by MCP and guest `read-resource`
 - `verify` reports installed trust and verification state for skill refs only
 
@@ -204,7 +204,7 @@ What this flow teaches:
 Use the examples and docs in this order when you want the current practical path rather than the full maintainer proof surface:
 
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](../examples/skills/hello-inspect/README.md)
-- Explain what happened: start with `guild why` as the first nearby-ref and authority-observation surface, use `guild why -v` for expanded stored detail, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md) or the [`Guild Ops Starter Pack`](../examples/skills/guild-ops-starter/README.md)
+- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md), [`examples/skills/explain-capability-denial/README.md`](../examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](../examples/skills/diff-execution-authority/README.md), [`examples/skills/explain-http-authority/README.md`](../examples/skills/explain-http-authority/README.md), or the [`Guild Ops Starter Pack`](../examples/skills/guild-ops-starter/README.md)
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
 - Debug failures and compare runs: use the [`Guild Ops Starter Pack`](../examples/skills/guild-ops-starter/README.md) and the surrounding examples index at [`examples/README.md`](../examples/README.md)
 
@@ -416,7 +416,8 @@ Default human output is compact and status-forward:
 - short refs and short ids by default rather than full digest and URI dumps
 - default human output is for reading, not parsing, and may gain low-noise hints such as `Next: ...`
 - `guild why` may include one nearby short execution or evidence ref when related stored refs exist
-- `guild why` also summarizes stored authority observations and expands them under `-v`
+- `guild why` also reports a compact requested-versus-granted authority summary and summarizes stored authority observations
+- `guild why -v` expands the requested-versus-granted authority diff and any family-aware request hints
 - `guild why --lineage` adds a bounded read-only ancestor/descendant view without changing machine-readable output modes
 - stable vocabulary across commands:
   - `proof-backed`
@@ -445,6 +446,8 @@ Human-only hints and extra readability text do not belong to `--json` or `--porc
 
 - stdout carries the payload or structured result
 - stderr carries the human execution summary and any low-noise next-step hints
+- successful runs may point to `guild why -v <execution-uri>` when granted authority was reduced or blocked during the run
+- authority-denial failures may include one bounded family-aware `hint:` before the follow-up `Next:` lines
 - `--json` and `--porcelain` keep those machine surfaces free of human hint text
 
 ## Trust Scope

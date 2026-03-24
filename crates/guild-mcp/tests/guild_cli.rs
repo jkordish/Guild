@@ -144,6 +144,30 @@ fn emit_evidence_and_log_write_grants_json() -> String {
     .unwrap()
 }
 
+fn emit_evidence_and_broad_log_write_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![
+            GrantedCapability {
+                id: CapabilityId::EmitEvidence,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
+                    max_bytes: Some(65_536),
+                    audiences: Some(vec![EvidenceAudience::User]),
+                    redactions: Some(vec![RedactionClass::None]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::LogWrite,
+                access: CapabilityAccess::Write,
+                constraints: CapabilityConstraints::Log(LogConstraints {
+                    levels: Some(vec![Severity::Info, Severity::Warn]),
+                }),
+            },
+        ],
+    })
+    .unwrap()
+}
+
 fn emit_filesystem_rejection_grants_json() -> String {
     serde_json::to_string(&CapabilityGrantSet {
         grants: vec![
@@ -1579,6 +1603,12 @@ fn child_capability_mismatch_errors_surface_authority_follow_up_guidance() {
         "{stderr}"
     );
     assert!(stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(
+        stderr.contains(
+            "hint: expand the parent request so it covers `log-write` `write`, then compare the parent and child declared capabilities with `guild show -v <skill-ref>`"
+        ),
+        "{stderr}"
+    );
     assert!(
         stderr.contains(&format!(
             "Next: guild --registry-root {} why guild://executions/",
@@ -4497,6 +4527,102 @@ fn why_human_output_reports_blocked_authority_observations() {
             "- blocked http-request -> http://127.0.0.1/blocked.json / http-request-path-not-granted"
         ),
         "{verbose_output}"
+    );
+    assert!(
+        verbose_output.contains("request hints:"),
+        "{verbose_output}"
+    );
+    assert!(
+        verbose_output.contains(
+            "- request an `http-request` grant whose `allowed_path_prefixes` covers `/blocked.json`"
+        ),
+        "{verbose_output}"
+    );
+}
+
+#[test]
+fn why_human_output_summarizes_requested_vs_granted_reduction() {
+    let temp = TempFixtureDir::new("guild-cli-why-requested-vs-granted");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let run_output = run_guild_success_output(
+        &[
+            "run",
+            "hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada", "emit_log": true })),
+            "--grants-json",
+            &emit_evidence_and_broad_log_write_grants_json(),
+            "--json",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(run_output.stdout).unwrap();
+    let stderr = String::from_utf8(run_output.stderr).unwrap();
+    assert!(stderr.trim().is_empty(), "{stderr}");
+    let run_value: Value = parse_json_stdout(&stdout);
+    let execution_id = run_value["record"]["receipt"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let exec_prefix = format!("exec:{}", &execution_id[..12]);
+
+    let why_output = run_guild_success(
+        &["why", &exec_prefix, "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(
+        why_output.contains("requested vs granted: reduced(log-write)"),
+        "{why_output}"
+    );
+
+    let verbose_output = run_guild_success(
+        &["why", &exec_prefix, "-v", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(
+        verbose_output.contains("requested vs granted:"),
+        "{verbose_output}"
+    );
+    assert!(
+        verbose_output.contains("- reduced log-write/write:"),
+        "{verbose_output}"
+    );
+    assert!(
+        verbose_output.contains("levels=info,warn"),
+        "{verbose_output}"
+    );
+    assert!(verbose_output.contains("levels=info"), "{verbose_output}");
+}
+
+#[test]
+fn successful_runs_suggest_verbose_why_when_requested_authority_is_reduced() {
+    let temp = TempFixtureDir::new("guild-cli-run-why-verbose-hint");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let output = run_guild_success_output(
+        &[
+            "run",
+            "hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada", "emit_log": true })),
+            "--grants-json",
+            &emit_evidence_and_broad_log_write_grants_json(),
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(
+        stderr.contains(&format!(
+            "Next: guild --registry-root {} why -v guild://executions/",
+            registry_root.display()
+        )),
+        "{stderr}"
     );
 }
 

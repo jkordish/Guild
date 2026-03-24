@@ -57,6 +57,12 @@ In this example, `--grants-json` is the caller-requested grants input for `guild
 
 Replace `<execution-id-prefix>` with the short execution id prefix from the run receipt.
 
+After the run:
+
+- use `guild why exec:<execution-id-prefix>` for the compact execution summary and the stored `requested vs granted:` line
+- use `guild why -v exec:<execution-id-prefix>` when you want the expanded requested-versus-granted diff and any family-aware request hints
+- move to `explain-capability-denial`, `diff-execution-authority`, or `explain-http-authority` only when the native CLI summary stops being enough
+
 Deep developer proof helpers:
 
 ```bash

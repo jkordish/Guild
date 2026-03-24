@@ -39,3 +39,7 @@ restricted-profile redirect denial after the local policy profile caps the
 granted HTTP authority, and follow-up inspection through
 `explain-execution`, `explain-capability-denial`, `diff-execution-authority`,
 and `explain-http-authority`.
+
+On the native CLI path, start with `guild why` for the compact receipt summary.
+Use `guild why -v` when you want the requested-versus-granted HTTP authority
+diff or the family-aware denial hint before moving to the richer example skills.

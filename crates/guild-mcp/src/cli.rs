@@ -27,19 +27,19 @@ use serde_json::Value;
 
 use crate::cli_presenter::{
     PresentationOptions, StreamKind, SupportSummary, WhyLineage, WhyLineageNode, WhyLineageWarning,
-    WhySummary, color_mode, render_evidence_list, render_evidence_show,
-    render_evidence_show_next_step, render_execution_show, render_execution_show_next_step,
-    render_execution_why_with_lineage, render_import_next_step, render_imported_skill_review,
-    render_object_show, render_objects_list, render_run_next_steps, render_run_porcelain,
-    render_run_status, render_runs_list, render_skill_porcelain, render_skill_show,
-    render_skill_show_next_steps, render_skill_verify, render_skill_verify_next_step,
-    render_skills_list, render_transport_export_next_step, render_transport_export_summary,
-    render_transport_import_preview_summary, render_transport_import_summary,
-    render_transport_push_next_step, render_transport_push_summary, render_trust_add_success,
-    render_trusted_publishers_list, render_verify_porcelain, render_why_next_step,
-    render_why_porcelain, resolved_skill_ref as presenter_resolved_skill_ref,
-    runtime_label as presenter_runtime_label, short_execution_ref, support_summary_for_execution,
-    support_summary_for_skill, why_summary,
+    WhySummary, authority_request_hint_for_error, color_mode, render_evidence_list,
+    render_evidence_show, render_evidence_show_next_step, render_execution_show,
+    render_execution_show_next_step, render_execution_why_with_lineage, render_import_next_step,
+    render_imported_skill_review, render_object_show, render_objects_list, render_run_next_steps,
+    render_run_porcelain, render_run_status, render_runs_list, render_skill_porcelain,
+    render_skill_show, render_skill_show_next_steps, render_skill_verify,
+    render_skill_verify_next_step, render_skills_list, render_transport_export_next_step,
+    render_transport_export_summary, render_transport_import_preview_summary,
+    render_transport_import_summary, render_transport_push_next_step,
+    render_transport_push_summary, render_trust_add_success, render_trusted_publishers_list,
+    render_verify_porcelain, render_why_next_step, render_why_porcelain,
+    resolved_skill_ref as presenter_resolved_skill_ref, runtime_label as presenter_runtime_label,
+    short_execution_ref, support_summary_for_execution, support_summary_for_skill, why_summary,
 };
 use crate::codex::{
     CodexConfigWriteResult, CodexServerConfig, DEFAULT_CODEX_SERVER_NAME,
@@ -57,10 +57,10 @@ const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
 const DEFAULT_WHY_LINEAGE_MAX_DEPTH: usize = 4;
 const DEFAULT_WHY_LINEAGE_MAX_NODES: usize = 32;
 const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nOutput:\n  default output is a short human summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild why --help";
-const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  granted authority is the final capability slice the host policy allows for that run.\n  effective at runtime is the authority the guest can actually exercise during execution.\n  Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.\n\nOutput:\n  in the default human mode, stdout carries the result payload.\n  in the default human mode, stderr carries the human status summary for reading, not parsing.\n  with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.\n  that human status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain when you need a stable machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
+const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  granted authority is the final capability slice the host policy allows for that run.\n  effective at runtime is the authority the guest can actually exercise during execution.\n  Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.\n\nOutput:\n  in the default human mode, stdout carries the result payload.\n  in the default human mode, stderr carries the human status summary for reading, not parsing.\n  successful runs may point you to `guild why -v <exec-ref>` when requested authority differed from the final granted slice or a bounded authority check was blocked.\n  authority-denial failures may include one family-aware `hint:` line before the command follow-up steps.\n  with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.\n  that human status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain when you need a stable machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
 const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
 const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
-const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations for the execution.\n  use -v to expand nearby child and evidence ref lists plus authority-observation detail.\n  use `--lineage` to append a bounded read-only ancestor/descendant view over persisted executions.\n  with `--lineage`, use -v for warning detail and -vv for full execution URIs in the lineage block.\n  `--lineage` is human-only and does not change `--json` or `--porcelain`.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
+const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations and requested-versus-granted authority for the execution.\n  use -v to expand nearby child and evidence ref lists, authority-observation detail, requested-versus-granted differences, and family-aware request hints.\n  use `--lineage` to append a bounded read-only ancestor/descendant view over persisted executions.\n  with `--lineage`, use -v for warning detail and -vv for full execution URIs in the lineage block.\n  `--lineage` is human-only and does not change `--json` or `--porcelain`.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
 const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nVerification details:\n  use -v after import or pull when you want the installed verification explanation.\n  that view adds signing scheme and short bundle digest details when verification metadata exists.\n\nSee also:\n  guild help trust\n  guild show --help";
 const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const IMPORT_AFTER_HELP: &str = "Preview direction:\n  use `--preview` for a read-only preflight over import and pull.\n  see `guild help preview` for the shipped scope and non-goals.";
@@ -108,6 +108,7 @@ pub struct CliError {
     reason_code: Option<Box<str>>,
     detail: Option<Box<str>>,
     location: Option<Box<str>>,
+    hint: Option<Box<str>>,
     next_steps: Option<Box<str>>,
 }
 
@@ -122,6 +123,7 @@ impl CliError {
             reason_code: None,
             detail: None,
             location: None,
+            hint: None,
             next_steps: next_steps.map(String::into_boxed_str),
         }
     }
@@ -133,6 +135,7 @@ impl CliError {
             reason_code: None,
             detail: None,
             location: None,
+            hint: None,
             next_steps: None,
         }
     }
@@ -154,6 +157,14 @@ impl CliError {
         let location = location.into();
         if !location.trim().is_empty() {
             self.location = Some(location.into_boxed_str());
+        }
+        self
+    }
+
+    fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        let hint = hint.into();
+        if !hint.trim().is_empty() {
+            self.hint = Some(hint.into_boxed_str());
         }
         self
     }
@@ -193,6 +204,9 @@ impl std::fmt::Display for CliError {
         }
         if let Some(location) = &self.location {
             write!(f, "\nwhere: {location}")?;
+        }
+        if let Some(hint) = &self.hint {
+            write!(f, "\nhint: {hint}")?;
         }
         if let Some(next_steps) = &self.next_steps {
             write!(f, "\n{next_steps}")?;
@@ -4421,10 +4435,13 @@ fn cli_error_from_mcp(
         category,
         humanize_runtime_surface_summary(&error.code, &error.message, error.detail.as_deref()),
     )
-    .with_reason_code(error.code);
+    .with_reason_code(error.code.clone());
 
     if let Some(receipt) = error.receipt {
         cli_error = cli_error.with_location(receipt.uri);
+    }
+    if let Some(hint) = authority_request_hint_for_error(&error.code, error.detail.as_deref()) {
+        cli_error = cli_error.with_hint(hint);
     }
     if let Some(next_steps) = next_steps {
         cli_error = cli_error.with_next_steps(next_steps);
