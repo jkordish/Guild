@@ -304,6 +304,19 @@ fn guild_component_import_names(component_path: &Path) -> Vec<String> {
     imports
 }
 
+fn assert_manifest_validation_error(detail: &Value, path: &str, message: &str) {
+    let errors = detail
+        .as_array()
+        .expect("manifest validation detail serializes as an array");
+    assert!(
+        errors.iter().any(|entry| {
+            entry.get("path").and_then(Value::as_str) == Some(path)
+                && entry.get("message").and_then(Value::as_str) == Some(message)
+        }),
+        "missing manifest validation error `{path}` -> `{message}` in {detail}"
+    );
+}
+
 fn broad_world_fixture_source() -> &'static str {
     r#"use serde_json::{json, Value};
 use wit_bindgen::generate;
@@ -473,6 +486,34 @@ fn wit_stays_aligned_with_skill_visible_execution_context() {
 }
 
 #[test]
+fn inspect_projection_docs_stay_aligned_with_the_host_boundary() {
+    let specs = fs::read_to_string(repo_root().join("SPECS.md")).unwrap();
+    let architecture = fs::read_to_string(repo_root().join("ARCHITECTURE.md")).unwrap();
+    let spec_delta =
+        fs::read_to_string(repo_root().join("docs/spec-delta-guest-abi-host-record-boundary.md"))
+            .unwrap();
+    let adr = fs::read_to_string(
+        repo_root().join("docs/adr/0005-capability-schema-and-active-inspect-profile.md"),
+    )
+    .unwrap();
+
+    for document in [&specs, &architecture, &spec_delta, &adr] {
+        assert!(
+            document.contains("now_utc"),
+            "inspect projection docs must describe `now_utc` as guest-visible context"
+        );
+        assert!(
+            document.contains("termination detail"),
+            "inspect projection docs must keep termination detail host-owned"
+        );
+        assert!(
+            document.contains("child lineage"),
+            "inspect projection docs must keep child lineage host-owned"
+        );
+    }
+}
+
+#[test]
 fn active_inspect_artifacts_only_import_the_inspect_host_interface() {
     let registry = load_registry();
     let installed = registry.resolve(&requested_skill()).unwrap();
@@ -569,6 +610,25 @@ fn broader_guild_component_imports_are_rejected_before_guest_execution() {
     assert_eq!(
         termination.detail.as_ref().unwrap()["surface_id"],
         "guild:skill/host@1.0.0"
+    );
+    assert_eq!(
+        termination.detail.as_ref().unwrap()["detail"]["allowed_guild_imports"],
+        json!([
+            "guild:skill/inspect-types@1.0.0",
+            "guild:skill/inspect-host@1.0.0",
+        ])
+    );
+    let mut unexpected_import_names: Vec<_> =
+        termination.detail.as_ref().unwrap()["detail"]["unexpected_guild_imports"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|entry| entry.get("name").and_then(Value::as_str))
+            .collect();
+    unexpected_import_names.sort_unstable();
+    assert_eq!(
+        unexpected_import_names,
+        vec!["guild:skill/host@1.0.0", "guild:skill/types@1.0.0"]
     );
     assert_eq!(
         stored.policy_decision.outcome,
@@ -1087,17 +1147,16 @@ fn emit_evidence_denials_are_host_owned_rejections() {
 }
 
 #[test]
-fn inspect_runtime_rejects_non_inspect_guest_abi_versions() {
+fn inspect_runtime_rejects_non_inspect_guest_abi_versions_via_manifest_validation() {
     let (mut installed, request) =
         sample_request(CapabilityGrantSet::default(), ExecutionMode::Inspect);
-    installed.manifest.runtime.entrypoint = "guild-skill".into();
     installed.manifest.runtime.guest_abi_version = AbiVersion::GuildSkillV1;
 
     let registry = load_registry();
     let runner = build_runner();
     let error = runner.execute(&registry, &installed, &request).unwrap_err();
 
-    assert_eq!(error.code, "component-abi-mismatch");
+    assert_eq!(error.code, "invalid-manifest");
     let receipt = error
         .receipt
         .expect("broad guest ABI rejection is persisted");
@@ -1105,6 +1164,42 @@ fn inspect_runtime_rejects_non_inspect_guest_abi_versions() {
         .load_execution_record(&receipt.execution_id)
         .unwrap();
     assert_eq!(stored.status, ExecutionStatus::Rejected);
+    let termination = stored.termination.as_ref().unwrap();
+    assert_eq!(termination.phase, guild_types::ExecutionPhase::Validation);
+    assert_eq!(termination.code, "invalid-manifest");
+    assert_manifest_validation_error(
+        termination.detail.as_ref().unwrap(),
+        "runtime.guest_abi_version",
+        "guild-skill-inspect-v1 entrypoint requires guest_abi_version = guild-skill-inspect-v1",
+    );
+}
+
+#[test]
+fn inspect_runtime_rejects_non_inspect_entrypoints_via_manifest_validation() {
+    let (mut installed, request) =
+        sample_request(CapabilityGrantSet::default(), ExecutionMode::Inspect);
+    installed.manifest.runtime.entrypoint = "guild-skill".into();
+
+    let registry = load_registry();
+    let runner = build_runner();
+    let error = runner.execute(&registry, &installed, &request).unwrap_err();
+
+    assert_eq!(error.code, "invalid-manifest");
+    let receipt = error
+        .receipt
+        .expect("non-inspect entrypoint rejection is persisted");
+    let stored = registry
+        .load_execution_record(&receipt.execution_id)
+        .unwrap();
+    assert_eq!(stored.status, ExecutionStatus::Rejected);
+    let termination = stored.termination.as_ref().unwrap();
+    assert_eq!(termination.phase, guild_types::ExecutionPhase::Validation);
+    assert_eq!(termination.code, "invalid-manifest");
+    assert_manifest_validation_error(
+        termination.detail.as_ref().unwrap(),
+        "runtime.entrypoint",
+        "guild-skill-inspect-v1 guest ABI requires runtime.entrypoint = guild-skill-inspect-v1",
+    );
 }
 
 #[test]

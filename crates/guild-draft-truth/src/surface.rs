@@ -32,6 +32,12 @@ pub use guild_types::{
     TOKEN_LINKAGE_STATUS_UPPER_BOUND_FALLBACK as TOKEN_LINKAGE_UPPER_BOUND_FALLBACK,
 };
 
+const ACTIVE_INSPECT_WORLD: &str = "guild-skill-inspect-v1";
+const BUNDLED_RUNTIME_EXAMPLES: &[&str] = &[
+    "examples/wasmtime-strict.runtime.json",
+    "examples/node-wasi-basic.runtime.json",
+];
+
 pub fn active_runtime_families() -> Vec<CapabilityId> {
     let mut families = Vec::new();
     for (capability_id, _) in active_wasm_inspect_capability_surface() {
@@ -85,7 +91,30 @@ pub fn ensure_exact_string_set(
     )
 }
 
+pub fn ensure_exact_string_list(actual: &[String], expected: &[&str], context: &str) -> Result<()> {
+    let expected = expected
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<Vec<_>>();
+    if actual == expected {
+        return Ok(());
+    }
+    bail!(
+        "{context} drifted from the canonical ordered list; expected {:?}, found {:?}",
+        expected,
+        actual
+    )
+}
+
 pub fn verify_active_runtime_example_alignment() -> Result<()> {
+    for relative_path in BUNDLED_RUNTIME_EXAMPLES {
+        let runtime = read_json(&draft_v1_dir().join(relative_path))?;
+        let context =
+            format!("docs/schemas/draft-v1/{relative_path} component_model_support.wit_worlds");
+        let published_worlds = published_wit_worlds(&runtime, &context)?;
+        ensure_exact_string_list(&published_worlds, &[ACTIVE_INSPECT_WORLD], &context)?;
+    }
+
     let runtime = read_json(&draft_v1_dir().join("examples/wasmtime-strict.runtime.json"))?;
     let actual = json_array(
         runtime
@@ -106,6 +135,25 @@ pub fn verify_active_runtime_example_alignment() -> Result<()> {
         active_runtime_family_names(),
         "docs/schemas/draft-v1/examples/wasmtime-strict.runtime.json supported_canonical_families",
     )
+}
+
+fn published_wit_worlds(runtime: &serde_json::Value, context: &str) -> Result<Vec<String>> {
+    let component_support = runtime
+        .get("component_model_support")
+        .context(format!("{context} missing component_model_support"))?;
+    let wit_worlds = component_support
+        .get("wit_worlds")
+        .context(format!("{context} missing wit_worlds"))?;
+
+    json_array(wit_worlds, context)?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_owned)
+                .context(format!("{context} entries must be strings"))
+        })
+        .collect()
 }
 
 pub fn verify_removed_truth_entrypoints() -> Result<()> {
@@ -193,6 +241,7 @@ fn doc_truth_checks() -> &'static [DocTruthCheck] {
                 "The source-of-truth declaration lives in `SPECS.md` section \"Source Of Truth\".",
                 "The checked JSON and Markdown artifacts remain outputs of that Rust-native path; they do not become runtime-contract sources just because they are checked into the repo.",
                 "For the frozen runtime-contract surfaces in this milestone, use `SPECS.md` section \"Contract Surface v1 (core)\" rather than treating this testing guide as a parallel source.",
+                "bundled runtime examples and contracts stay pinned to exactly the one active inspect world `guild-skill-inspect-v1`",
             ],
             forbidden: &[],
         },
@@ -201,6 +250,7 @@ fn doc_truth_checks() -> &'static [DocTruthCheck] {
             required: &[
                 "This bundle is normative only for the draft proof/control-plane harness under `docs/schemas/draft-v1/`.",
                 "For runtime-contract truth, use `SPECS.md` section \"Source Of Truth\", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.",
+                "The bundled runtime examples in this directory stay pinned to exactly the active inspect world `guild-skill-inspect-v1`.",
             ],
             forbidden: &[],
         },
@@ -398,4 +448,24 @@ fn expected_identity_block() -> String {
         ),
     ]
     .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ACTIVE_INSPECT_WORLD, ensure_exact_string_list};
+
+    #[test]
+    fn exact_string_list_rejects_duplicate_entries() {
+        let error = ensure_exact_string_list(
+            &[
+                ACTIVE_INSPECT_WORLD.to_owned(),
+                ACTIVE_INSPECT_WORLD.to_owned(),
+            ],
+            &[ACTIVE_INSPECT_WORLD],
+            "test-context",
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("canonical ordered list"));
+    }
 }

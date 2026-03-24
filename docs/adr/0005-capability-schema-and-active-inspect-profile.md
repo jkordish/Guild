@@ -62,8 +62,9 @@ The active inspect runner also owns one explicit host-to-guest projection layer.
 In the current repository that means:
 
 - inspect guest `ExecutionContext` is a bounded subset and intentionally omits `mode`
+- inspect guest `ExecutionContext` carries host-minted execution identity, trace/tenant IDs, resolved skill identity, input hash, `now_utc`, budget, and guest-visible granted capabilities only
 - current active grant projections for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are all full at the current guest-visible grant-shape level
-- host-owned request intent, `PolicyDecision`, provenance, and durable evidence metadata remain outside the guest ABI and are read through durable records or Guild resources when needed
+- host-owned request intent, `PolicyDecision`, provenance, termination detail, durable evidence metadata, and child lineage remain outside the guest ABI and are read through durable records or Guild resources when needed
 
 That preflight rule applies to both:
 

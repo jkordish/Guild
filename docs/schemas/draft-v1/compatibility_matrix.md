@@ -12,7 +12,9 @@ Bundled runtime examples now publish two different vocabulary surfaces on purpos
 
 This table therefore mixes both surfaces on purpose: the new runtime-* fixtures exercise direct canonical family support, while the older bounded fixtures still prove the explicit compatibility paths that remain in scope after M8c.
 
-All bundled contracts in this directory now declare the live inspect world `guild-skill-inspect-v1`, so WIT-world checks here are aligned to the real Rust inspect entrypoint rather than the older example-local names.
+All bundled contracts in this directory now declare the live inspect world `guild-skill-inspect-v1`, so WIT-world checks here stay aligned to the real Rust inspect entrypoint rather than the older example-local names.
+
+The compatibility precheck only requires a runtime to publish the contract's required world, but the Rust-native truth gate separately keeps the bundled runtime examples pinned to exactly that one active inspect world so they cannot silently widen away from the live inspect contract.
 
 Published `witness_support` values in this table are M4 hard-requirement inputs only. They do not by themselves imply runtime-general M7 observation completeness.
 

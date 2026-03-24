@@ -10,6 +10,10 @@ It gives you a local CLI, a small MCP surface, and explicit host-owned execution
 >
 > If you want the short daily-user model first, start with [`docs/how-guild-works.md`](docs/how-guild-works.md).
 
+Normative runtime sources live in `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
+Generated support, compatibility, and benchmark artifacts remain checked outputs, not primary contract definitions.
+For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
+
 ## Why Guild
 
 Guild is strict about a few things on purpose:
@@ -199,6 +203,9 @@ The follow-up guidance should stay boring and local:
 - use `guild show -v ...` before rerunning when the problem is authority or runtime shape
 - use `guild why ...` after a rejected run when Guild persisted an execution receipt
 - use `guild trust list` and `guild trust add ...` when a trust check fails closed
+
+Wrong-world manifest drift and broader Guild component imports should surface as
+`runtime/compatibility`, not `authority denial`.
 
 Representative failure paths:
 

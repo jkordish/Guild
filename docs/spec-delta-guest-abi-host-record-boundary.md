@@ -25,10 +25,10 @@ Applies to: shared Rust types, manifests, runtime translation, examples, and con
 | Concern | Contract |
 | --- | --- |
 | Entry point | Keep `run(ctx, input) -> result<SkillOutput, SkillError>`. |
-| Guest context | The active inspect `ExecutionContext` contains host-minted execution identity, trace/tenant IDs, resolved skill identity, input hash, budget, and guest-visible granted capabilities only. Inspect mode is implied by the `guild-skill-inspect-v1` world and is not carried as a guest field. |
+| Guest context | The active inspect `ExecutionContext` contains host-minted execution identity, trace/tenant IDs, resolved skill identity, input hash, `now_utc`, budget, and guest-visible granted capabilities only. Inspect mode is implied by the `guild-skill-inspect-v1` world and is not carried as a guest field. |
 | Host imports | Keep explicit host-mediated capability imports such as `http-request`, `read-resource`, `emit-evidence`, `invoke-dependency`, and `log`. |
 | Child invocation | The guest receives child `SkillOutput` or `SkillError`; host-owned child execution records remain on the host side. |
-| Forbidden ABI growth | Do not add execution status, metrics, provenance, policy results, receipts, trust metadata, or durable URIs to WIT outputs. |
+| Forbidden ABI growth | Do not add execution status, metrics, provenance, policy results, receipts, trust metadata, termination detail, child lineage, or durable URIs to WIT outputs. |
 
 ## Durable host records
 

@@ -364,7 +364,7 @@ Guild freezes the guest and host contract boundary as follows:
 
 In the active inspect slice, the current projection contract is:
 
-- inspect guest `ExecutionContext` is a bounded subset of the richer host execution model
+- inspect guest `ExecutionContext` is a bounded subset of the richer host execution model and carries host-minted execution identity, trace/tenant IDs, resolved skill identity, input hash, `now_utc`, budget, and guest-visible granted capabilities only
 - `ExecutionContext.mode` is intentionally omitted because `guild-skill-inspect-v1` is inspect-only by world contract
 - current active grant projections for `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write` are full at the current guest-visible grant-shape level
 - host-owned request intent, `PolicyDecision`, provenance, termination detail, durable evidence metadata, and child lineage remain host truth rather than guest ABI truth
