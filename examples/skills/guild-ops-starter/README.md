@@ -75,6 +75,7 @@ Start with the primary CLI explanation path:
 
 ```bash
 guild why <paste one subject_execution_uri>
+guild why --lineage <paste one subject_execution_uri>
 ```
 
 Then run `incident-brief` when you want a compact markdown report over that

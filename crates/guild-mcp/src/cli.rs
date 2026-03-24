@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::io::{self, IsTerminal, Write as _};
 use std::num::NonZeroUsize;
@@ -17,24 +18,24 @@ use guild_registry::{
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
     CapabilityGrantSet, EvidenceBlobRecord, EvidenceRecord, ExecutionRecord, ExecutionStatus,
-    GuildResourceUri, InstalledVerificationState, LocalTrustTier, RequestedSkillRef,
-    ResourceReadResult, SkillKey, VersionRequirement, execution_status_label,
+    GUILD_EXECUTION_URI_PREFIX, GuildResourceUri, InstalledVerificationState, LocalTrustTier,
+    RequestedSkillRef, ResourceReadResult, SkillKey, VersionRequirement, execution_status_label,
 };
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::cli_presenter::{
-    PresentationOptions, StreamKind, SupportSummary, WhySummary, color_mode, render_evidence_list,
-    render_evidence_show, render_evidence_show_next_step, render_execution_show,
-    render_execution_show_next_step, render_execution_why, render_import_next_step,
-    render_imported_skill_review, render_object_show, render_objects_list, render_run_next_steps,
-    render_run_porcelain, render_run_status, render_runs_list, render_skill_porcelain,
-    render_skill_show, render_skill_show_next_steps, render_skill_verify,
-    render_skill_verify_next_step, render_skills_list, render_trust_add_success,
-    render_trusted_publishers_list, render_verify_porcelain, render_why_next_step,
-    render_why_porcelain, resolved_skill_ref as presenter_resolved_skill_ref,
-    runtime_label as presenter_runtime_label, short_execution_ref, support_summary_for_execution,
-    support_summary_for_skill, why_summary,
+    PresentationOptions, StreamKind, SupportSummary, WhyLineage, WhyLineageNode, WhyLineageWarning,
+    WhySummary, color_mode, render_evidence_list, render_evidence_show,
+    render_evidence_show_next_step, render_execution_show, render_execution_show_next_step,
+    render_execution_why_with_lineage, render_import_next_step, render_imported_skill_review,
+    render_object_show, render_objects_list, render_run_next_steps, render_run_porcelain,
+    render_run_status, render_runs_list, render_skill_porcelain, render_skill_show,
+    render_skill_show_next_steps, render_skill_verify, render_skill_verify_next_step,
+    render_skills_list, render_trust_add_success, render_trusted_publishers_list,
+    render_verify_porcelain, render_why_next_step, render_why_porcelain,
+    resolved_skill_ref as presenter_resolved_skill_ref, runtime_label as presenter_runtime_label,
+    short_execution_ref, support_summary_for_execution, support_summary_for_skill, why_summary,
 };
 use crate::codex::{
     CodexConfigWriteResult, CodexServerConfig, DEFAULT_CODEX_SERVER_NAME,
@@ -49,11 +50,13 @@ const DEFAULT_TENANT_ID: &str = "local";
 const DEFAULT_ACTOR_ID: &str = "guild-cli";
 const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
 const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
+const DEFAULT_WHY_LINEAGE_MAX_DEPTH: usize = 4;
+const DEFAULT_WHY_LINEAGE_MAX_NODES: usize = 32;
 const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nOutput:\n  default output is a short human summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild why --help";
 const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  granted authority is the final capability slice the host policy allows for that run.\n  effective at runtime is the authority the guest can actually exercise during execution.\n  Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.\n\nOutput:\n  in the default human mode, stdout carries the result payload.\n  in the default human mode, stderr carries the human status summary for reading, not parsing.\n  with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.\n  that human status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain when you need a stable machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
 const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
 const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
-const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations for the execution.\n  use -v to expand nearby child and evidence ref lists plus authority-observation detail.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
+const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations for the execution.\n  use -v to expand nearby child and evidence ref lists plus authority-observation detail.\n  use `--lineage` to append a bounded read-only ancestor/descendant view over persisted executions.\n  with `--lineage`, use -v for warning detail and -vv for full execution URIs in the lineage block.\n  `--lineage` is human-only and does not change `--json` or `--porcelain`.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
 const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nVerification details:\n  use -v after import or pull when you want the installed verification explanation.\n  that view adds signing scheme and short bundle digest details when verification metadata exists.\n\nSee also:\n  guild help trust\n  guild show --help";
 const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const IMPORT_AFTER_HELP: &str = "Preview direction:\n  the first preview contract is planned as `--preview` for import and pull, but the flag is not implemented yet.\n  see `guild help preview` for the planned read-only scope.";
@@ -535,6 +538,27 @@ struct RenderFlags {
     color: Option<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct WhyFlags {
+    render: RenderFlags,
+    lineage: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WhyLineageLimits {
+    max_depth: usize,
+    max_nodes: usize,
+}
+
+impl Default for WhyLineageLimits {
+    fn default() -> Self {
+        Self {
+            max_depth: DEFAULT_WHY_LINEAGE_MAX_DEPTH,
+            max_nodes: DEFAULT_WHY_LINEAGE_MAX_NODES,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct InitCodexOutput {
     guild_binary: String,
@@ -979,6 +1003,8 @@ struct GetCliArgs {
 struct WhyCliArgs {
     #[arg(value_name = "exec-ref")]
     execution_ref: String,
+    #[arg(long)]
+    lineage: bool,
     #[command(flatten)]
     render: RenderCliArgs,
 }
@@ -1330,6 +1356,9 @@ impl GetCliArgs {
 impl WhyCliArgs {
     fn to_args(&self) -> Vec<String> {
         let mut args = vec![self.execution_ref.clone()];
+        if self.lineage {
+            args.push("--lineage".into());
+        }
         append_render_cli_args(&mut args, &self.render);
         args
     }
@@ -2057,7 +2086,7 @@ fn run_why(
 
     let registry_root = resolve_registry_root(global, env_registry_root)?;
     let registry = build_existing_registry(&registry_root)?;
-    let (render, positional) = parse_render_flags(args)?;
+    let (why_flags, positional) = parse_why_flags(args)?;
     if positional.len() != 1 {
         return Err(CliError::new(
             "`guild why` requires exactly one execution ref",
@@ -2074,18 +2103,26 @@ fn run_why(
                 .with_preferred_location(uri.clone())
         })?;
 
-    if render.json_output {
+    if why_flags.render.json_output {
         print_json(&WhyCommandOutput {
             summary: why_summary(&record),
             record,
         })?;
-    } else if render.porcelain_output {
+    } else if why_flags.render.porcelain_output {
         println!("{}", render_why_porcelain(&record));
     } else {
-        let presentation = presentation_options(&render);
+        let presentation = presentation_options(&why_flags.render);
+        let lineage = why_flags
+            .lineage
+            .then(|| load_why_lineage(&registry, &record));
         print!(
             "{}",
-            render_execution_why(&record, presentation, StreamKind::Stdout)
+            render_execution_why_with_lineage(
+                &record,
+                lineage.as_ref(),
+                presentation,
+                StreamKind::Stdout,
+            )
         );
         println!(
             "{}",
@@ -2093,6 +2130,230 @@ fn run_why(
         );
     }
     Ok(())
+}
+
+fn load_why_lineage(registry: &LocalRegistry, record: &ExecutionRecord) -> WhyLineage {
+    let limits = WhyLineageLimits::default();
+    let mut ancestry = Vec::new();
+    let mut warnings = Vec::new();
+    let mut nodes_visited = 1usize;
+    let mut seen_ancestor_ids = HashSet::from([record.receipt.execution_id.clone()]);
+    let mut current_parent_id = record.parent_execution_id.clone();
+    let mut ancestry_depth = 0usize;
+
+    while let Some(parent_execution_id) = current_parent_id {
+        let parent_uri = execution_uri_for_id(&parent_execution_id);
+        if ancestry_depth >= limits.max_depth {
+            warnings.push(lineage_warning(
+                "ancestry",
+                "max-depth-reached",
+                "ancestry traversal stopped after reaching the configured depth limit",
+                Some(parent_uri),
+                ancestry_depth + 1,
+                Some(format!("max_depth={}", limits.max_depth)),
+            ));
+            break;
+        }
+        if nodes_visited >= limits.max_nodes {
+            warnings.push(lineage_warning(
+                "ancestry",
+                "max-nodes-reached",
+                "lineage traversal stopped after reaching the configured node limit",
+                Some(parent_uri),
+                ancestry_depth + 1,
+                Some(format!("max_nodes={}", limits.max_nodes)),
+            ));
+            break;
+        }
+        if seen_ancestor_ids.contains(&parent_execution_id) {
+            warnings.push(lineage_warning(
+                "ancestry",
+                "execution-uri-revisited",
+                "ancestry traversal referenced a previously visited execution; traversal stopped on that branch",
+                Some(parent_uri),
+                ancestry_depth + 1,
+                None,
+            ));
+            break;
+        }
+
+        match registry.load_execution_record(&parent_execution_id) {
+            Ok(parent_record) => {
+                seen_ancestor_ids.insert(parent_execution_id);
+                current_parent_id = parent_record.parent_execution_id.clone();
+                ancestry.push(parent_record);
+                ancestry_depth += 1;
+                nodes_visited += 1;
+            }
+            Err(error) => {
+                warnings.push(lineage_warning(
+                    "ancestry",
+                    "parent-read-failed",
+                    "failed to load a persisted parent execution while walking ancestry",
+                    Some(parent_uri),
+                    ancestry_depth + 1,
+                    Some(error.to_string()),
+                ));
+                break;
+            }
+        }
+    }
+
+    ancestry.reverse();
+
+    let mut descendants = Vec::new();
+    let mut seen_descendant_ids = seen_ancestor_ids;
+    seen_descendant_ids.remove(&record.receipt.execution_id);
+    visit_why_descendants(
+        registry,
+        record.clone(),
+        0,
+        None,
+        limits,
+        &mut nodes_visited,
+        &mut seen_descendant_ids,
+        &mut descendants,
+        &mut warnings,
+    );
+
+    WhyLineage {
+        ancestry,
+        descendants,
+        warnings,
+    }
+}
+
+fn visit_why_descendants(
+    registry: &LocalRegistry,
+    record: ExecutionRecord,
+    depth: usize,
+    alias_from_parent: Option<String>,
+    limits: WhyLineageLimits,
+    nodes_visited: &mut usize,
+    seen_execution_ids: &mut HashSet<String>,
+    descendants: &mut Vec<WhyLineageNode>,
+    warnings: &mut Vec<WhyLineageWarning>,
+) {
+    if seen_execution_ids.contains(&record.receipt.execution_id) {
+        warnings.push(lineage_warning(
+            "descendants",
+            "execution-uri-revisited",
+            "descendant traversal referenced a previously visited execution; traversal stopped on that branch",
+            Some(record.receipt.uri.clone()),
+            depth,
+            alias_from_parent.map(|alias| format!("alias={alias}")),
+        ));
+        return;
+    }
+
+    if depth > 0 {
+        if *nodes_visited >= limits.max_nodes {
+            warnings.push(lineage_warning(
+                "descendants",
+                "max-nodes-reached",
+                "lineage traversal stopped after reaching the configured node limit",
+                Some(record.receipt.uri.clone()),
+                depth,
+                Some(format!("max_nodes={}", limits.max_nodes)),
+            ));
+            return;
+        }
+        *nodes_visited += 1;
+    }
+
+    seen_execution_ids.insert(record.receipt.execution_id.clone());
+    descendants.push(WhyLineageNode {
+        depth,
+        alias_from_parent,
+        record: record.clone(),
+    });
+
+    if depth >= limits.max_depth {
+        if !record.child_executions.is_empty() {
+            warnings.push(lineage_warning(
+                "descendants",
+                "max-depth-reached",
+                "descendant traversal stopped after reaching the configured depth limit",
+                Some(record.receipt.uri.clone()),
+                depth,
+                Some(format!(
+                    "max_depth={} remaining_children={}",
+                    limits.max_depth,
+                    record.child_executions.len()
+                )),
+            ));
+        }
+        return;
+    }
+
+    for child in &record.child_executions {
+        if *nodes_visited >= limits.max_nodes {
+            warnings.push(lineage_warning(
+                "descendants",
+                "max-nodes-reached",
+                "lineage traversal stopped after reaching the configured node limit",
+                Some(child.uri.clone()),
+                depth + 1,
+                Some(format!("max_nodes={}", limits.max_nodes)),
+            ));
+            break;
+        }
+        if seen_execution_ids.contains(&child.execution_id) {
+            warnings.push(lineage_warning(
+                "descendants",
+                "execution-uri-revisited",
+                "descendant traversal referenced a previously visited execution; traversal stopped on that branch",
+                Some(child.uri.clone()),
+                depth + 1,
+                Some(format!("alias={}", child.alias)),
+            ));
+            continue;
+        }
+
+        match registry.load_execution_record(&child.execution_id) {
+            Ok(child_record) => visit_why_descendants(
+                registry,
+                child_record,
+                depth + 1,
+                Some(child.alias.clone()),
+                limits,
+                nodes_visited,
+                seen_execution_ids,
+                descendants,
+                warnings,
+            ),
+            Err(error) => warnings.push(lineage_warning(
+                "descendants",
+                "child-read-failed",
+                "failed to load a persisted child execution while walking descendants",
+                Some(child.uri.clone()),
+                depth + 1,
+                Some(error.to_string()),
+            )),
+        }
+    }
+}
+
+fn lineage_warning(
+    relation: &str,
+    code: &str,
+    message: &str,
+    execution_uri: Option<String>,
+    depth: usize,
+    detail: Option<String>,
+) -> WhyLineageWarning {
+    WhyLineageWarning {
+        relation: relation.into(),
+        code: code.into(),
+        message: message.into(),
+        execution_uri,
+        depth,
+        detail,
+    }
+}
+
+fn execution_uri_for_id(execution_id: &str) -> String {
+    format!("{GUILD_EXECUTION_URI_PREFIX}{execution_id}")
 }
 
 fn run_verify(
@@ -2194,6 +2455,30 @@ fn parse_render_flags(args: &[String]) -> Result<(RenderFlags, Vec<String>), Cli
     }
     validate_render_flags(&render)?;
     Ok((render, positional))
+}
+
+fn parse_why_flags(args: &[String]) -> Result<(WhyFlags, Vec<String>), CliError> {
+    let mut flags = WhyFlags::default();
+    let mut positional = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        if consume_render_flag(args, &mut index, &mut flags.render)? {
+            index += 1;
+            continue;
+        }
+        match args[index].as_str() {
+            "--lineage" => flags.lineage = true,
+            other => positional.push(other.to_owned()),
+        }
+        index += 1;
+    }
+    validate_render_flags(&flags.render)?;
+    if flags.lineage && (flags.render.json_output || flags.render.porcelain_output) {
+        return Err(CliError::new(
+            "`guild why --lineage` does not support --json or --porcelain",
+        ));
+    }
+    Ok((flags, positional))
 }
 
 fn consume_render_flag(
@@ -4430,7 +4715,7 @@ fn print_get_usage() {
 
 fn print_why_usage() {
     println!(
-        "usage: guild [--registry-root <path>] why <exec-ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
+        "usage: guild [--registry-root <path>] why <exec-ref> [--lineage] [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
     );
     println!("{WHY_AFTER_HELP}");
 }

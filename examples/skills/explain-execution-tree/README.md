@@ -2,6 +2,8 @@
 
 `explain-execution-tree` is an inspect-only example skill that walks stored Guild execution lineage through the host-mediated `read-resource` import and returns a deterministic tree report.
 
+Use `guild why --lineage` first when the native bounded CLI lineage view is enough. Use `explain-execution-tree` when you want a reusable structured tree report over the same persisted execution lineage.
+
 It proves:
 
 - persisted execution records are rich enough to explain parent and child lineage without adding a search subsystem

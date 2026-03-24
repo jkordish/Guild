@@ -172,7 +172,7 @@ What that flow shows:
 
 Default human output is concise and meant for reading, not parsing. It may include low-noise follow-up hints such as `Next: ...` on clear success paths. Use `--json` for structured machine-readable output and `--porcelain` for stable one-line machine-readable output.
 
-`guild why` stays compact by default and may include one nearby short execution or evidence ref so you can keep navigating stored work without pasting full URIs first. Use `guild why -v` when you need the expanded nearby-ref lists and authority-observation detail for that stored execution.
+`guild why` stays compact by default and may include one nearby short execution or evidence ref so you can keep navigating stored work without pasting full URIs first. Use `guild why -v` when you need the expanded nearby-ref lists and authority-observation detail for that stored execution. Use `guild why --lineage` when you want the native bounded ancestor and descendant view over persisted executions without dropping into an example skill yet.
 
 `guild run` keeps the payload on stdout and writes the human execution summary to stderr. `guild get` stays the raw resource-read path and supports `--json`, `--porcelain`, and `--output <path>` when you want machine-stable reads instead of styled summaries.
 
@@ -223,7 +223,7 @@ Next: run `guild trust list` to inspect the target root, then add the publisher 
 If you are deciding where to start, use the user-facing docs in this order:
 
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](examples/skills/hello-inspect/README.md)
-- Explain what happened: start with `guild why` as the first nearby-ref and authority-observation surface, use `guild why -v` for expanded stored detail, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md) or the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md)
+- Explain what happened: start with `guild why` as the first nearby-ref and authority-observation surface, use `guild why -v` for expanded stored detail, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md) or the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md)
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
 - Debug failures and compare runs: use the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md) and the surrounding index at [`examples/README.md`](examples/README.md)
 
