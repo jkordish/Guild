@@ -1,19 +1,22 @@
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use guild_manifest::SkillManifest;
 use guild_registry::{InstalledSkill, RegistryError, SignatureScheme, TrustedPublisherRecord};
 use guild_types::{
-    AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess, CapabilityId,
-    CapabilityRequirement, ChildExecutionRecord, EvidenceAudience, EvidenceBlobRecord,
-    EvidenceRecord, ExecutionPhase, ExecutionRecord, ExecutionStatus,
-    GUILD_EXECUTION_QUERY_URI_PREFIX, GUILD_EXECUTION_URI_PREFIX, GUILD_OBJECT_BLOB_URI_PREFIX,
-    GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX, GUILD_OBJECT_RECORD_URI_PREFIX, LocalTrustTier,
-    PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED,
-    PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND, RedactionClass,
-    ResolvedSkillRef, ResourceKind, RuntimeKind, SUPPORT_STATUS_BOUNDED, SUPPORT_STATUS_NOT_PROVEN,
-    Severity, SkillCategory, TerminationDetail, execution_status_label,
+    AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess,
+    CapabilityConstraints, CapabilityId, CapabilityRequirement, ChildExecutionRecord,
+    EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionPhase, ExecutionRecord,
+    ExecutionStatus, GUILD_EXECUTION_QUERY_URI_PREFIX, GUILD_EXECUTION_URI_PREFIX,
+    GUILD_OBJECT_BLOB_URI_PREFIX, GUILD_OBJECT_RECORD_METADATA_URI_SUFFIX,
+    GUILD_OBJECT_RECORD_URI_PREFIX, GrantedCapability, GuildResourceUri, HttpMethod, HttpScheme,
+    LocalTrustTier, PRESENTATION_STATUS_LINKED, PRESENTATION_STATUS_PROOF_BACKED,
+    PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED, PRESENTATION_STATUS_UPPER_BOUND,
+    RedactionClass, ResolvedSkillRef, ResourceKind, RuntimeKind, SUPPORT_STATUS_BOUNDED,
+    SUPPORT_STATUS_NOT_PROVEN, Severity, SkillCategory, TerminationDetail, execution_status_label,
 };
 use serde::Serialize;
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamKind {
@@ -105,6 +108,23 @@ pub struct WhyLineage {
     pub ancestry: Vec<ExecutionRecord>,
     pub descendants: Vec<WhyLineageNode>,
     pub warnings: Vec<WhyLineageWarning>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AuthorityDiffChange {
+    Same,
+    Changed,
+    RequestedOnly,
+    GrantedOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AuthorityDiffGroup {
+    id: CapabilityId,
+    access: CapabilityAccess,
+    requested: Vec<GrantedCapability>,
+    granted: Vec<GrantedCapability>,
+    change: AuthorityDiffChange,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -724,8 +744,21 @@ pub fn render_execution_why(
         record.emitted_evidence.len()
     );
     let _ = writeln!(output, "authority: {}", authority_summary(record));
+    let _ = writeln!(
+        output,
+        "requested vs granted: {}",
+        requested_vs_granted_summary(record)
+    );
     if options.verbose() {
         append_authority_observation_list(&mut output, record);
+        append_requested_vs_granted_details(&mut output, record);
+        let hints = authority_request_hints(record);
+        if !hints.is_empty() {
+            let _ = writeln!(output, "request hints:");
+            for hint in hints {
+                let _ = writeln!(output, "- {hint}");
+            }
+        }
         append_ref_list(&mut output, "nearby child refs", &child_refs, styler);
         append_ref_list(&mut output, "nearby evidence refs", &evidence_refs, styler);
     } else if let Some(child_ref) = child_refs.first() {
@@ -798,10 +831,13 @@ pub fn render_run_next_steps(record: &ExecutionRecord) -> Option<String> {
         return None;
     }
 
-    Some(format!(
-        "Next: guild why {}\nNext: guild get {}",
-        record.receipt.uri, record.receipt.uri
-    ))
+    let mut lines = Vec::new();
+    if has_requested_vs_granted_changes(record) || has_blocked_authority_observations(record) {
+        lines.push(format!("Next: guild why -v {}", record.receipt.uri));
+    }
+    lines.push(format!("Next: guild why {}", record.receipt.uri));
+    lines.push(format!("Next: guild get {}", record.receipt.uri));
+    Some(lines.join("\n"))
 }
 
 #[must_use]
@@ -1272,6 +1308,584 @@ fn reason_codes(record: &ExecutionRecord) -> Vec<String> {
     codes
 }
 
+fn authority_diff_groups(record: &ExecutionRecord) -> Vec<AuthorityDiffGroup> {
+    #[derive(Default)]
+    struct GroupedGrants {
+        requested: Vec<GrantedCapability>,
+        granted: Vec<GrantedCapability>,
+    }
+
+    let mut grouped = BTreeMap::<(&'static str, &'static str), GroupedGrants>::new();
+
+    for grant in &record.request.requested_capabilities.grants {
+        let key = (
+            capability_id_label(&grant.id),
+            capability_access_label(&grant.access),
+        );
+        let entry = grouped.entry(key).or_default();
+        entry.requested.push(grant.clone());
+    }
+
+    for grant in &record.granted_capabilities.grants {
+        let key = (
+            capability_id_label(&grant.id),
+            capability_access_label(&grant.access),
+        );
+        let entry = grouped.entry(key).or_default();
+        entry.granted.push(grant.clone());
+    }
+
+    grouped
+        .into_values()
+        .filter_map(|mut entry| {
+            let (id, access) = entry
+                .requested
+                .first()
+                .or(entry.granted.first())
+                .map(|grant| (grant.id.clone(), grant.access.clone()))?;
+            entry.requested.sort_by_cached_key(canonical_grant_json);
+            entry.granted.sort_by_cached_key(canonical_grant_json);
+            let change = if entry.requested.is_empty() && !entry.granted.is_empty() {
+                AuthorityDiffChange::GrantedOnly
+            } else if !entry.requested.is_empty() && entry.granted.is_empty() {
+                AuthorityDiffChange::RequestedOnly
+            } else if canonical_grants(&entry.requested) == canonical_grants(&entry.granted) {
+                AuthorityDiffChange::Same
+            } else {
+                AuthorityDiffChange::Changed
+            };
+
+            Some(AuthorityDiffGroup {
+                id,
+                access,
+                requested: entry.requested,
+                granted: entry.granted,
+                change,
+            })
+        })
+        .collect()
+}
+
+fn requested_vs_granted_summary(record: &ExecutionRecord) -> String {
+    let mut reduced = Vec::new();
+    let mut denied = Vec::new();
+    let mut added = Vec::new();
+
+    for group in authority_diff_groups(record) {
+        let family = capability_id_label(&group.id);
+        match group.change {
+            AuthorityDiffChange::Same => {}
+            AuthorityDiffChange::Changed => push_unique(&mut reduced, family),
+            AuthorityDiffChange::RequestedOnly => push_unique(&mut denied, family),
+            AuthorityDiffChange::GrantedOnly => push_unique(&mut added, family),
+        }
+    }
+
+    if reduced.is_empty() && denied.is_empty() && added.is_empty() {
+        return "unchanged".into();
+    }
+
+    let mut parts = Vec::new();
+    if !reduced.is_empty() {
+        parts.push(format!("reduced({})", reduced.join(", ")));
+    }
+    if !denied.is_empty() {
+        parts.push(format!("denied({})", denied.join(", ")));
+    }
+    if !added.is_empty() {
+        parts.push(format!("added({})", added.join(", ")));
+    }
+    parts.join(" ")
+}
+
+fn has_requested_vs_granted_changes(record: &ExecutionRecord) -> bool {
+    authority_diff_groups(record)
+        .into_iter()
+        .any(|group| group.change != AuthorityDiffChange::Same)
+}
+
+fn append_requested_vs_granted_details(output: &mut String, record: &ExecutionRecord) {
+    let groups = authority_diff_groups(record)
+        .into_iter()
+        .filter(|group| group.change != AuthorityDiffChange::Same)
+        .collect::<Vec<_>>();
+    if groups.is_empty() {
+        return;
+    }
+
+    let _ = writeln!(output, "requested vs granted:");
+    for group in groups {
+        let label = format!(
+            "{}/{}",
+            capability_id_label(&group.id),
+            capability_access_label(&group.access)
+        );
+        match group.change {
+            AuthorityDiffChange::Changed => {
+                let _ = writeln!(
+                    output,
+                    "- reduced {label}: requested {} -> granted {}",
+                    render_grant_group(&group.requested),
+                    render_grant_group(&group.granted)
+                );
+            }
+            AuthorityDiffChange::RequestedOnly => {
+                let _ = writeln!(
+                    output,
+                    "- denied {label}: requested {} -> granted none",
+                    render_grant_group(&group.requested)
+                );
+            }
+            AuthorityDiffChange::GrantedOnly => {
+                let _ = writeln!(
+                    output,
+                    "- added {label}: requested none -> granted {}",
+                    render_grant_group(&group.granted)
+                );
+            }
+            AuthorityDiffChange::Same => {}
+        }
+    }
+}
+
+fn render_grant_group(grants: &[GrantedCapability]) -> String {
+    grants
+        .iter()
+        .map(render_grant_constraints)
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+fn render_grant_constraints(grant: &GrantedCapability) -> String {
+    match &grant.constraints {
+        CapabilityConstraints::None(_) => "any".into(),
+        CapabilityConstraints::ReadResource(constraints) => {
+            let mut parts = Vec::new();
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "uri_prefixes",
+                    constraints.uri_prefixes.as_deref(),
+                    Some("any"),
+                    |value| value.to_owned(),
+                ),
+            );
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "resource_kinds",
+                    constraints.resource_kinds.as_deref(),
+                    Some("any"),
+                    |kind| resource_kind_label(kind).to_owned(),
+                ),
+            );
+            parts.join(" ")
+        }
+        CapabilityConstraints::InvokeDependency(constraints) => option_vec_summary(
+            "aliases",
+            constraints.aliases.as_deref(),
+            Some("any-declared"),
+            |value| value.to_owned(),
+        ),
+        CapabilityConstraints::EmitEvidence(constraints) => {
+            let mut parts = Vec::new();
+            if let Some(max_bytes) = constraints.max_bytes {
+                parts.push(format!("max_bytes<={max_bytes}"));
+            }
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "audiences",
+                    constraints.audiences.as_deref(),
+                    Some("any"),
+                    |audience| evidence_audience_label(audience).to_owned(),
+                ),
+            );
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "redactions",
+                    constraints.redactions.as_deref(),
+                    Some("any"),
+                    |redaction| redaction_class_label(redaction).to_owned(),
+                ),
+            );
+            parts.join(" ")
+        }
+        CapabilityConstraints::Log(constraints) => option_vec_summary(
+            "levels",
+            constraints.levels.as_deref(),
+            Some("any"),
+            |level| severity_label(level).to_owned(),
+        ),
+        CapabilityConstraints::HttpRequest(constraints) => {
+            let mut parts = Vec::new();
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "schemes",
+                    constraints.allowed_schemes.as_deref(),
+                    None,
+                    |scheme| http_scheme_label(scheme).to_owned(),
+                ),
+            );
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "hosts",
+                    constraints.allowed_hosts.as_deref(),
+                    None,
+                    |value| value.to_owned(),
+                ),
+            );
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "host_suffixes",
+                    constraints.allowed_host_suffixes.as_deref(),
+                    None,
+                    |value| value.to_owned(),
+                ),
+            );
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "ports",
+                    constraints.allowed_ports.as_deref(),
+                    None,
+                    |value| value.to_string(),
+                ),
+            );
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "methods",
+                    constraints.allowed_methods.as_deref(),
+                    None,
+                    |method| http_method_label(method).to_owned(),
+                ),
+            );
+            push_part(
+                &mut parts,
+                option_vec_summary(
+                    "paths",
+                    constraints.allowed_path_prefixes.as_deref(),
+                    None,
+                    |value| value.to_owned(),
+                ),
+            );
+            if let Some(max_timeout_ms) = constraints.max_timeout_ms {
+                parts.push(format!("timeout<={max_timeout_ms}"));
+            }
+            if let Some(max_response_bytes) = constraints.max_response_bytes {
+                parts.push(format!("response_bytes<={max_response_bytes}"));
+            }
+            if let Some(follow_redirects) = constraints.follow_redirects {
+                parts.push(format!(
+                    "redirects={}",
+                    if follow_redirects { "yes" } else { "no" }
+                ));
+            }
+            if let Some(max_redirects) = constraints.max_redirects {
+                parts.push(format!("max_redirects<={max_redirects}"));
+            }
+            append_bool_part(&mut parts, "loopback", constraints.allow_loopback);
+            append_bool_part(&mut parts, "link_local", constraints.allow_link_local);
+            append_bool_part(
+                &mut parts,
+                "private_networks",
+                constraints.allow_private_networks,
+            );
+            append_bool_part(&mut parts, "ip_literals", constraints.allow_ip_literals);
+            if parts.is_empty() {
+                "any".into()
+            } else {
+                parts.join(" ")
+            }
+        }
+        other => canonical_value(other),
+    }
+}
+
+fn append_bool_part(parts: &mut Vec<String>, label: &str, value: Option<bool>) {
+    if let Some(value) = value {
+        parts.push(format!("{label}={}", if value { "yes" } else { "no" }));
+    }
+}
+
+fn option_vec_summary<T>(
+    label: &str,
+    values: Option<&[T]>,
+    fallback: Option<&str>,
+    render: impl Fn(&T) -> String,
+) -> String {
+    match values {
+        Some(values) => format!(
+            "{label}={}",
+            values.iter().map(render).collect::<Vec<_>>().join(",")
+        ),
+        None => fallback.map_or_else(String::new, |fallback| format!("{label}={fallback}")),
+    }
+}
+
+fn canonical_grants(grants: &[GrantedCapability]) -> Vec<String> {
+    grants.iter().map(canonical_grant_json).collect()
+}
+
+fn canonical_grant_json(grant: &GrantedCapability) -> String {
+    serde_json::to_string(grant).unwrap_or_else(|_| "null".into())
+}
+
+fn canonical_value(value: &impl Serialize) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "null".into())
+}
+
+fn has_blocked_authority_observations(record: &ExecutionRecord) -> bool {
+    record.authority_observations.iter().any(|observation| {
+        authority_observation_status(observation) == &AuthorityObservationStatus::Blocked
+    })
+}
+
+fn authority_request_hints(record: &ExecutionRecord) -> Vec<String> {
+    let mut hints = Vec::new();
+
+    if let Some(termination) = &record.termination {
+        push_authority_request_hint(&mut hints, &termination.code, termination.detail.as_ref());
+    }
+
+    for reason in &record.policy_decision.reasons {
+        push_authority_request_hint(&mut hints, &reason.code, reason.detail.as_ref());
+    }
+
+    for observation in &record.authority_observations {
+        if authority_observation_status(observation) != &AuthorityObservationStatus::Blocked {
+            continue;
+        }
+        let Some((code, detail)) = blocked_authority_observation_failure(observation) else {
+            continue;
+        };
+        push_authority_request_hint(&mut hints, code, detail);
+    }
+
+    hints
+}
+
+fn push_authority_request_hint(hints: &mut Vec<String>, code: &str, detail: Option<&Value>) {
+    if let Some(hint) = authority_request_hint_for_error(code, detail)
+        && !hints.iter().any(|existing| existing == &hint)
+    {
+        hints.push(hint);
+    }
+}
+
+fn blocked_authority_observation_failure(
+    observation: &AuthorityObservation,
+) -> Option<(&str, Option<&Value>)> {
+    match observation {
+        AuthorityObservation::HttpRequest { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+        AuthorityObservation::ReadResource { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+        AuthorityObservation::InvokeSkill { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+        AuthorityObservation::EmitEvidence { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+        AuthorityObservation::LogWrite { detail, .. } => detail
+            .denial
+            .as_ref()
+            .map(|failure| (failure.code.as_str(), failure.detail.as_ref())),
+    }
+}
+
+pub fn authority_request_hint_for_error(code: &str, detail: Option<&Value>) -> Option<String> {
+    match code {
+        "policy-denied" => detail
+            .and_then(|detail| detail.get("reasons").and_then(Value::as_array))
+            .and_then(|reasons| {
+                reasons.iter().find_map(|reason| {
+                    Some(authority_request_hint_for_error(
+                        reason.get("code").and_then(Value::as_str)?,
+                        reason.get("detail"),
+                    )?)
+                })
+            }),
+        "policy-requested-capability-invalid" => Some(
+            "fix the requested grant JSON so each family uses a valid typed constraint shape before rerunning".into(),
+        ),
+        "policy-required-capability-missing" => {
+            let requirement = detail
+                .and_then(|detail| detail.get("missing").and_then(Value::as_array))
+                .and_then(|missing| missing.first())
+                .and_then(requirement_selector_label)
+                .unwrap_or_else(|| "the skill's required authority".into());
+            Some(format!(
+                "request {requirement} and confirm the declared required surface with `guild show -v <skill-ref>` before rerunning"
+            ))
+        }
+        "read-resource-not-granted" | "read-resource-kind-denied" => {
+            let prefix = detail
+                .and_then(|detail| detail.get("uri").and_then(Value::as_str))
+                .and_then(canonical_uri_prefix_for)
+                .unwrap_or("guild://executions/");
+            let kind = detail
+                .and_then(|detail| detail.get("resource_kind").and_then(Value::as_str))
+                .unwrap_or("execution");
+            Some(format!(
+                "request a `read-resource` `read` grant with `uri_prefixes` including `{prefix}` and `resource_kinds` including `{kind}`"
+            ))
+        }
+        "dependency-invoke-not-granted" => {
+            let alias = detail
+                .and_then(|detail| detail.get("alias").and_then(Value::as_str))
+                .unwrap_or("<alias>");
+            Some(format!(
+                "request an `invoke-skill` `invoke` grant with `aliases` including `{alias}`"
+            ))
+        }
+        "child-capability-mismatch" => {
+            let requirement = detail
+                .and_then(requirement_selector_label)
+                .unwrap_or_else(|| "the child skill's required authority".into());
+            Some(format!(
+                "expand the parent request so it covers {requirement}, then compare the parent and child declared capabilities with `guild show -v <skill-ref>`"
+            ))
+        }
+        "emit-evidence-not-granted" => Some(
+            "request an `emit-evidence` `write` grant with a bounded `max_bytes` plus explicit `audiences` and `redactions`".into(),
+        ),
+        "emit-evidence-too-large" => {
+            let max_bytes = detail
+                .and_then(|detail| detail.get("payload_bytes").and_then(Value::as_u64))
+                .map_or_else(|| "the emitted payload size".into(), |bytes| bytes.to_string());
+            Some(format!(
+                "raise `emit-evidence.max_bytes` so it safely covers {max_bytes} bytes, or shrink the emitted payload"
+            ))
+        }
+        "emit-evidence-audience-not-granted" => {
+            let audience = detail
+                .and_then(|detail| detail.get("audience").and_then(Value::as_str))
+                .unwrap_or("the needed audience");
+            Some(format!(
+                "request an `emit-evidence` grant whose `audiences` includes `{audience}`"
+            ))
+        }
+        "emit-evidence-redaction-not-granted" => {
+            let redaction = detail
+                .and_then(|detail| detail.get("redaction").and_then(Value::as_str))
+                .unwrap_or("the needed redaction");
+            Some(format!(
+                "request an `emit-evidence` grant whose `redactions` includes `{redaction}`"
+            ))
+        }
+        "log-write-not-granted" => Some(
+            "request a `log-write` `write` grant with only the log levels the skill actually needs".into(),
+        ),
+        "log-level-not-granted" => {
+            let level = detail
+                .and_then(|detail| detail.get("level").and_then(Value::as_str))
+                .unwrap_or("the needed level");
+            Some(format!(
+                "request a `log-write` grant whose `levels` includes `{level}`"
+            ))
+        }
+        "http-request-not-granted" => Some(
+            "request an `http-request` `read` grant with the narrow scheme, host, method, path, and destination-class limits the call actually needs".into(),
+        ),
+        "http-request-method-not-granted" => {
+            let method = detail
+                .and_then(|detail| detail.get("method").and_then(Value::as_str))
+                .unwrap_or("get");
+            Some(format!(
+                "request an `http-request` grant whose `allowed_methods` includes `{method}`"
+            ))
+        }
+        "http-request-scheme-not-granted" => {
+            let scheme = detail
+                .and_then(|detail| detail.get("scheme").and_then(Value::as_str))
+                .unwrap_or("http");
+            Some(format!(
+                "request an `http-request` grant whose `allowed_schemes` includes `{scheme}`"
+            ))
+        }
+        "http-request-host-not-granted" => {
+            let host = detail
+                .and_then(|detail| detail.get("host").and_then(Value::as_str))
+                .unwrap_or("<host>");
+            Some(format!(
+                "request an `http-request` grant whose `allowed_hosts` or `allowed_host_suffixes` covers `{host}`"
+            ))
+        }
+        "http-request-port-not-granted" => {
+            let port = detail
+                .and_then(|detail| detail.get("port").and_then(Value::as_u64))
+                .map_or_else(|| "<port>".into(), |port| port.to_string());
+            Some(format!(
+                "request an `http-request` grant whose `allowed_ports` includes `{port}`"
+            ))
+        }
+        "http-request-path-not-granted" => {
+            let path = detail
+                .and_then(|detail| detail.get("path").and_then(Value::as_str))
+                .unwrap_or("/");
+            Some(format!(
+                "request an `http-request` grant whose `allowed_path_prefixes` covers `{path}`"
+            ))
+        }
+        "http-request-timeout-not-granted" => {
+            let timeout = detail
+                .and_then(|detail| detail.get("requested_timeout_ms").and_then(Value::as_u64))
+                .map_or_else(|| "the needed timeout".into(), |timeout| timeout.to_string());
+            Some(format!(
+                "request an `http-request` grant whose `max_timeout_ms` safely covers `{timeout}`"
+            ))
+        }
+        "http-request-ip-literal-not-granted" => Some(
+            "use a hostname that fits the existing grant, or request `allow_ip_literals=true` only when raw IP targets are actually required".into(),
+        ),
+        "http-request-loopback-not-granted" => Some(
+            "request `allow_loopback=true` only if this execution really must reach a loopback destination".into(),
+        ),
+        "http-request-link-local-not-granted" => Some(
+            "request `allow_link_local=true` only if this execution really must reach a link-local destination".into(),
+        ),
+        "http-request-private-network-not-granted" => Some(
+            "request `allow_private_networks=true` only if this execution really must reach a private-network destination".into(),
+        ),
+        "http-request-redirect-not-allowed" => Some(
+            "keep redirects disabled unless needed, or request `follow_redirects=true` with a bounded `max_redirects` and destination limits that still cover the redirect target".into(),
+        ),
+        "http-request-redirect-target-not-granted" => Some(
+            "keep redirects disabled unless needed, or request redirect authority plus host/path limits that cover the redirect target".into(),
+        ),
+        _ => None,
+    }
+}
+
+fn requirement_selector_label(detail: &Value) -> Option<String> {
+    let id = detail.get("id").and_then(Value::as_str)?;
+    let access = detail.get("access").and_then(Value::as_str)?;
+    Some(format!("`{id}` `{access}`"))
+}
+
+fn canonical_uri_prefix_for(uri: &str) -> Option<&'static str> {
+    match GuildResourceUri::parse(uri).ok()? {
+        GuildResourceUri::Execution { .. } => Some(GUILD_EXECUTION_URI_PREFIX),
+        GuildResourceUri::ObjectBlob { .. } => Some(GUILD_OBJECT_BLOB_URI_PREFIX),
+        GuildResourceUri::ObjectRecord { .. } | GuildResourceUri::ObjectRecordMetadata { .. } => {
+            Some(GUILD_OBJECT_RECORD_URI_PREFIX)
+        }
+        GuildResourceUri::ExecutionQuery { .. } => Some(GUILD_EXECUTION_QUERY_URI_PREFIX),
+    }
+}
+
 fn nearby_child_execution_refs(record: &ExecutionRecord, limit: usize) -> Vec<String> {
     record
         .child_executions
@@ -1515,6 +2129,20 @@ fn resource_kind_label(kind: &ResourceKind) -> &'static str {
     }
 }
 
+fn http_method_label(method: &HttpMethod) -> &'static str {
+    match method {
+        HttpMethod::Get => "get",
+        HttpMethod::Head => "head",
+    }
+}
+
+fn http_scheme_label(scheme: &HttpScheme) -> &'static str {
+    match scheme {
+        HttpScheme::Http => "http",
+        HttpScheme::Https => "https",
+    }
+}
+
 fn severity_label(level: &Severity) -> &'static str {
     match level {
         Severity::Info => "info",
@@ -1526,6 +2154,12 @@ fn severity_label(level: &Severity) -> &'static str {
 fn push_unique<'a>(items: &mut Vec<&'a str>, value: &'a str) {
     if !items.iter().any(|existing| existing == &value) {
         items.push(value);
+    }
+}
+
+fn push_part(parts: &mut Vec<String>, value: String) {
+    if !value.is_empty() {
+        parts.push(value);
     }
 }
 
@@ -1894,6 +2528,26 @@ mod tests {
         serde_json::from_value(value).unwrap()
     }
 
+    fn execution_record_with_authority_diff(
+        requested_grants: Value,
+        granted_grants: Value,
+        termination: Option<Value>,
+    ) -> ExecutionRecord {
+        let mut value = serde_json::to_value(execution_record_with_related_refs(0, 0)).unwrap();
+        *value
+            .pointer_mut("/request/requested_capabilities/grants")
+            .unwrap() = requested_grants;
+        *value.pointer_mut("/granted_capabilities/grants").unwrap() = granted_grants;
+        *value.pointer_mut("/termination").unwrap() = termination.unwrap_or(Value::Null);
+        serde_json::from_value(value).unwrap()
+    }
+
+    fn execution_record_with_blocked_observation(observation: Value) -> ExecutionRecord {
+        let mut value = serde_json::to_value(execution_record_with_related_refs(0, 0)).unwrap();
+        *value.pointer_mut("/authority_observations").unwrap() = json!([observation]);
+        serde_json::from_value(value).unwrap()
+    }
+
     #[test]
     fn compact_why_output_prefers_one_child_ref_over_evidence() {
         let record = execution_record_with_related_refs(1, 1);
@@ -2000,6 +2654,134 @@ mod tests {
         assert!(compact.contains("authority: not-recorded"), "{compact}");
         assert!(
             verbose.contains("authority observations: not recorded"),
+            "{verbose}"
+        );
+    }
+
+    #[test]
+    fn why_output_includes_requested_vs_granted_summary_and_detail() {
+        let record = execution_record_with_authority_diff(
+            json!([
+                {
+                    "id": "emit-evidence",
+                    "access": "write",
+                    "constraints": {
+                        "max_bytes": 65536,
+                        "audiences": ["user"],
+                        "redactions": ["none"]
+                    }
+                }
+            ]),
+            json!([
+                {
+                    "id": "emit-evidence",
+                    "access": "write",
+                    "constraints": {
+                        "max_bytes": 1024,
+                        "audiences": ["user"],
+                        "redactions": ["none"]
+                    }
+                }
+            ]),
+            None,
+        );
+
+        let compact = render_execution_why(&record, test_options(0), StreamKind::Stdout);
+        let verbose = render_execution_why(&record, test_options(1), StreamKind::Stdout);
+
+        assert!(
+            compact.contains("requested vs granted: reduced(emit-evidence)"),
+            "{compact}"
+        );
+        assert!(
+            verbose.contains("- reduced emit-evidence/write:"),
+            "{verbose}"
+        );
+        assert!(verbose.contains("max_bytes<=65536"), "{verbose}");
+        assert!(verbose.contains("max_bytes<=1024"), "{verbose}");
+    }
+
+    #[test]
+    fn nested_policy_denial_hint_uses_reason_detail() {
+        let hint = authority_request_hint_for_error(
+            "policy-denied",
+            Some(&json!({
+                "reasons": [
+                    {
+                        "code": "read-resource-not-granted",
+                        "detail": {
+                            "uri": "guild://executions/exec-1",
+                            "resource_kind": "execution"
+                        }
+                    }
+                ]
+            })),
+        );
+
+        assert_eq!(
+            hint,
+            Some(
+                "request a `read-resource` `read` grant with `uri_prefixes` including `guild://executions/` and `resource_kinds` including `execution`"
+                    .into()
+            )
+        );
+    }
+
+    #[test]
+    fn redirect_not_allowed_hint_is_family_aware() {
+        let hint = authority_request_hint_for_error(
+            "http-request-redirect-not-allowed",
+            Some(&json!({
+                "url": "http://127.0.0.1:8080/redirect-json",
+                "status": 302,
+                "location": "/json"
+            })),
+        );
+
+        assert_eq!(
+            hint,
+            Some(
+                "keep redirects disabled unless needed, or request `follow_redirects=true` with a bounded `max_redirects` and destination limits that still cover the redirect target"
+                    .into()
+            )
+        );
+    }
+
+    #[test]
+    fn blocked_observations_add_request_hints_even_without_termination_or_policy_reasons() {
+        let record = execution_record_with_blocked_observation(json!({
+            "family": "http-request",
+            "status": "blocked",
+            "detail": {
+                "request": {
+                    "method": "get",
+                    "url": "http://127.0.0.1/blocked.json",
+                    "timeout_ms": null
+                },
+                "denial": {
+                    "code": "http-request-path-not-granted",
+                    "message": "requested path is not granted",
+                    "detail": {
+                        "path": "/blocked.json"
+                    }
+                }
+            }
+        }));
+
+        let verbose = render_execution_why(&record, test_options(1), StreamKind::Stdout);
+
+        assert!(verbose.contains("authority observations:"), "{verbose}");
+        assert!(
+            verbose.contains(
+                "- blocked http-request -> http://127.0.0.1/blocked.json / http-request-path-not-granted"
+            ),
+            "{verbose}"
+        );
+        assert!(verbose.contains("request hints:"), "{verbose}");
+        assert!(
+            verbose.contains(
+                "- request an `http-request` grant whose `allowed_path_prefixes` covers `/blocked.json`"
+            ),
             "{verbose}"
         );
     }

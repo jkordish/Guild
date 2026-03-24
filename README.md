@@ -30,7 +30,7 @@ The goal is not a loose agent wrapper. It is a portable skill system where execu
 
 Guild already has:
 
-- a real local `guild` CLI for install, show, run, ls, get, why, verify, trust, transport, and MCP setup
+- a real local `guild` CLI for install, show, grants, run, ls, get, why, verify, trust, transport, and MCP setup
 - a local registry root with durable execution and evidence records under `guild://...`
 - signed bundle export and import with local trust verification
 - OCI image layout and OCI registry transport for installed signed bundles
@@ -54,7 +54,7 @@ Repo-local proof commands and lower-level developer helpers live in
 
 Top-level commands are grouped around daily use, distribution, and setup:
 
-- daily use: `guild show`, `guild run`, `guild ls`, `guild get`, `guild why`, `guild verify`
+- daily use: `guild show`, `guild grants template`, `guild run`, `guild ls`, `guild get`, `guild why`, `guild verify`
 - install and publish: `guild install`, `guild export`, `guild import`, `guild push`, `guild pull`, `guild trust ...`
 - setup and integration: `guild init`, `guild mcp serve --stdio`, `guild codex ...`
 
@@ -71,6 +71,7 @@ The CLI now also ships focused help topics:
 - `guild help roots`
 - `guild help doctor`
 - `guild help preview`
+- `guild help grants`
 
 Version note: the current workspace Cargo packages, including the `guild` CLI crate, are `0.1.1`. The checked-in example Guild skill manifests still resolve as `0.1.0` / `@^0.1`, and the OCI transport examples intentionally keep those manifest-driven tags. Cargo package version and Guild skill identity are separate axes.
 
@@ -109,6 +110,8 @@ Guild also uses one authority lifecycle in normal operator workflows:
 
 Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.
 
+When you want a concrete starting point instead of hand-writing grant JSON from scratch, use `guild grants template <family>` for the current active families, narrow the placeholder values, and pass the result back through `--grants-json` or `--grants-file`.
+
 ## Quickstart
 
 Guild chooses a local root in this order:
@@ -146,6 +149,8 @@ guild install examples/skills/hello-inspect
 
 guild show skill://example/hello-inspect@^0.1
 
+guild grants template emit-evidence
+
 guild run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
@@ -167,18 +172,19 @@ What that flow shows:
 - `show` is the primary non-executing summary path
 - `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
 - `show -vv` is the first requested-ref explanation path and explains why one digest was selected
+- `grants template` is the read-only starting point when you need concrete JSON for an active capability family before a run
 - `run` executes a human-facing `skill://...` ref through the real Guild path using caller-requested grants filtered through host policy into final runtime authority
 - `ls` shows installed skills and recent persisted activity
 - successful runs return a durable `guild://executions/...` receipt
-- `why` explains a persisted execution record, points to nearby child or evidence refs when present, and summarizes stored authority observations
+- `why` explains a persisted execution record, points to nearby child or evidence refs when present, summarizes requested-versus-granted authority, and summarizes stored authority observations
 - `get` reads the same resource backend used by MCP and guest `read-resource`
 - `verify` reports installed trust and verification state for skill refs only
 
 Default human output is concise and meant for reading, not parsing. It may include low-noise follow-up hints such as `Next: ...` on clear success paths. Use `--json` for structured machine-readable output and `--porcelain` for stable one-line machine-readable output.
 
-`guild why` stays compact by default and may include one nearby short execution or evidence ref so you can keep navigating stored work without pasting full URIs first. Use `guild why -v` when you need the expanded nearby-ref lists and authority-observation detail for that stored execution. Use `guild why --lineage` when you want the native bounded ancestor and descendant view over persisted executions without dropping into an example skill yet.
+`guild why` stays compact by default and may include one nearby short execution or evidence ref so you can keep navigating stored work without pasting full URIs first. It also reports a compact `requested vs granted:` summary for the stored execution. Use `guild why -v` when you need the expanded nearby-ref lists, the requested-versus-granted authority diff, and family-aware request hints for that stored execution. Use `guild why --lineage` when you want the native bounded ancestor and descendant view over persisted executions without dropping into an example skill yet.
 
-`guild run` keeps the payload on stdout and writes the human execution summary to stderr. `guild get` stays the raw resource-read path and supports `--json`, `--porcelain`, and `--output <path>` when you want machine-stable reads instead of styled summaries.
+`guild run` keeps the payload on stdout and writes the human execution summary to stderr. When host policy reduced the granted slice or stored observations show blocked authority, the success path may point you straight to `guild why -v <execution-uri>`. Authority-denial failures may also include one bounded family-aware `hint:` before the usual follow-up commands. `guild get` stays the raw resource-read path and supports `--json`, `--porcelain`, and `--output <path>` when you want machine-stable reads instead of styled summaries.
 
 If you want an explicit non-default root for local proofs or CI, keep passing it:
 
@@ -202,6 +208,7 @@ The follow-up guidance should stay boring and local:
 - use `guild ls ...` to find durable state when a read path is missing
 - use `guild show -v ...` before rerunning when the problem is authority or runtime shape
 - use `guild why ...` after a rejected run when Guild persisted an execution receipt
+- use `guild why -v ...` when you need the stored requested-versus-granted diff or family-aware authority hints
 - use `guild trust list` and `guild trust add ...` when a trust check fails closed
 
 Wrong-world manifest drift and broader Guild component imports should surface as
@@ -230,7 +237,7 @@ Next: run `guild trust list` to inspect the target root, then add the publisher 
 If you are deciding where to start, use the user-facing docs in this order:
 
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](examples/skills/hello-inspect/README.md)
-- Explain what happened: start with `guild why` as the first nearby-ref and authority-observation surface, use `guild why -v` for expanded stored detail, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md) or the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md)
+- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md), [`examples/skills/explain-capability-denial/README.md`](examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](examples/skills/diff-execution-authority/README.md), [`examples/skills/explain-http-authority/README.md`](examples/skills/explain-http-authority/README.md), or the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md)
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
 - Debug failures and compare runs: use the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md) and the surrounding index at [`examples/README.md`](examples/README.md)
 

@@ -25,6 +25,13 @@ cargo run -p guild-mcp --example inspect_http_json_local
 That local proof flow uses an explicit loopback + IP-literal grant for the
 deterministic local server and also shows a denied host-mismatch execution.
 
+If you want a concrete starting point for the bounded HTTP grant instead of
+writing the JSON by hand, start with:
+
+```bash
+guild grants template http-request
+```
+
 For the trust-tier-aware local policy proof flow that imports the same skill
 under different host-owned trust tiers and profile selections, then explains
 the persisted denial plus stored authority state through the new authority-debug
@@ -39,3 +46,7 @@ restricted-profile redirect denial after the local policy profile caps the
 granted HTTP authority, and follow-up inspection through
 `explain-execution`, `explain-capability-denial`, `diff-execution-authority`,
 and `explain-http-authority`.
+
+On the native CLI path, start with `guild why` for the compact receipt summary.
+Use `guild why -v` when you want the requested-versus-granted HTTP authority
+diff or the family-aware denial hint before moving to the richer example skills.

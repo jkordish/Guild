@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{self, IsTerminal, Write as _};
 use std::num::NonZeroUsize;
@@ -18,28 +18,32 @@ use guild_registry::{
 };
 use guild_runner::WasmtimeRuntimeAdapter;
 use guild_types::{
-    CapabilityGrantSet, EvidenceBlobRecord, EvidenceRecord, ExecutionRecord, ExecutionStatus,
-    GUILD_EXECUTION_URI_PREFIX, GuildResourceUri, InstalledVerificationState, LocalTrustTier,
-    RequestedSkillRef, ResourceReadResult, SkillKey, VersionRequirement, execution_status_label,
+    CapabilityAccess, CapabilityConstraints, CapabilityGrantSet, CapabilityId,
+    EmitEvidenceConstraints, EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionRecord,
+    ExecutionStatus, GUILD_EXECUTION_URI_PREFIX, GrantedCapability, GuildResourceUri, HttpMethod,
+    HttpRequestConstraints, HttpScheme, InstalledVerificationState, InvokeDependencyConstraints,
+    LocalTrustTier, LogConstraints, ReadResourceConstraints, RedactionClass, RequestedSkillRef,
+    ResourceKind, ResourceReadResult, Severity, SkillKey, VersionRequirement,
+    execution_status_label,
 };
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::cli_presenter::{
     PresentationOptions, StreamKind, SupportSummary, WhyLineage, WhyLineageNode, WhyLineageWarning,
-    WhySummary, color_mode, render_evidence_list, render_evidence_show,
-    render_evidence_show_next_step, render_execution_show, render_execution_show_next_step,
-    render_execution_why_with_lineage, render_import_next_step, render_imported_skill_review,
-    render_object_show, render_objects_list, render_run_next_steps, render_run_porcelain,
-    render_run_status, render_runs_list, render_skill_porcelain, render_skill_show,
-    render_skill_show_next_steps, render_skill_verify, render_skill_verify_next_step,
-    render_skills_list, render_transport_export_next_step, render_transport_export_summary,
-    render_transport_import_preview_summary, render_transport_import_summary,
-    render_transport_push_next_step, render_transport_push_summary, render_trust_add_success,
-    render_trusted_publishers_list, render_verify_porcelain, render_why_next_step,
-    render_why_porcelain, resolved_skill_ref as presenter_resolved_skill_ref,
-    runtime_label as presenter_runtime_label, short_execution_ref, support_summary_for_execution,
-    support_summary_for_skill, why_summary,
+    WhySummary, authority_request_hint_for_error, color_mode, render_evidence_list,
+    render_evidence_show, render_evidence_show_next_step, render_execution_show,
+    render_execution_show_next_step, render_execution_why_with_lineage, render_import_next_step,
+    render_imported_skill_review, render_object_show, render_objects_list, render_run_next_steps,
+    render_run_porcelain, render_run_status, render_runs_list, render_skill_porcelain,
+    render_skill_show, render_skill_show_next_steps, render_skill_verify,
+    render_skill_verify_next_step, render_skills_list, render_transport_export_next_step,
+    render_transport_export_summary, render_transport_import_preview_summary,
+    render_transport_import_summary, render_transport_push_next_step,
+    render_transport_push_summary, render_trust_add_success, render_trusted_publishers_list,
+    render_verify_porcelain, render_why_next_step, render_why_porcelain,
+    resolved_skill_ref as presenter_resolved_skill_ref, runtime_label as presenter_runtime_label,
+    short_execution_ref, support_summary_for_execution, support_summary_for_skill, why_summary,
 };
 use crate::codex::{
     CodexConfigWriteResult, CodexServerConfig, DEFAULT_CODEX_SERVER_NAME,
@@ -57,10 +61,12 @@ const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
 const DEFAULT_WHY_LINEAGE_MAX_DEPTH: usize = 4;
 const DEFAULT_WHY_LINEAGE_MAX_NODES: usize = 32;
 const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nOutput:\n  default output is a short human summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild why --help";
-const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  granted authority is the final capability slice the host policy allows for that run.\n  effective at runtime is the authority the guest can actually exercise during execution.\n  Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.\n\nOutput:\n  in the default human mode, stdout carries the result payload.\n  in the default human mode, stderr carries the human status summary for reading, not parsing.\n  with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.\n  that human status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain when you need a stable machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
+const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  granted authority is the final capability slice the host policy allows for that run.\n  effective at runtime is the authority the guest can actually exercise during execution.\n  Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.\n\nOutput:\n  in the default human mode, stdout carries the result payload.\n  in the default human mode, stderr carries the human status summary for reading, not parsing.\n  successful runs may point you to `guild why -v <exec-ref>` when requested authority differed from the final granted slice or a bounded authority check was blocked.\n  authority-denial failures may include one family-aware `hint:` line before the command follow-up steps.\n  with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.\n  that human status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain when you need a stable machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
 const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
 const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
-const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations for the execution.\n  use -v to expand nearby child and evidence ref lists plus authority-observation detail.\n  use `--lineage` to append a bounded read-only ancestor/descendant view over persisted executions.\n  with `--lineage`, use -v for warning detail and -vv for full execution URIs in the lineage block.\n  `--lineage` is human-only and does not change `--json` or `--porcelain`.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
+const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations and requested-versus-granted authority for the execution.\n  use -v to expand nearby child and evidence ref lists, authority-observation detail, requested-versus-granted differences, and family-aware request hints.\n  use `--lineage` to append a bounded read-only ancestor/descendant view over persisted executions.\n  with `--lineage`, use -v for warning detail and -vv for full execution URIs in the lineage block.\n  `--lineage` is human-only and does not change `--json` or `--porcelain`.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
+const GRANTS_AFTER_HELP: &str = "Scope:\n  `guild grants` is a read-only grant-authoring helper.\n\nOutput:\n  `guild grants template <family>` prints concrete JSON you can narrow and pass back to `guild run` through `--grants-json` or `--grants-file`.\n  `guild grants template` without a family prints a read-only per-family catalog for discovery instead of one combined runnable request.\n  the templates cover only the currently active executable capability families.\n  this surface does not widen runtime support claims.\n\nSee also:\n  guild run --help\n  guild help grants";
+const GRANTS_TEMPLATE_AFTER_HELP: &str = "Usage:\n  `guild grants template <family>` prints one concrete `CapabilityGrantSet` template.\n  omit the family to print a read-only per-family catalog instead of one combined grant set.\n\nFamilies:\n  read-resource\n  invoke-skill\n  emit-evidence\n  log-write\n  http-request\n\nOutput:\n  family-specific template output is read-only JSON for editing and rerunning.\n  the no-family catalog is for browsing; pick one family before feeding JSON back to `guild run`.\n  replace placeholder values such as `<declared-alias>` before rerunning a skill.\n\nSee also:\n  guild help grants\n  guild run --help";
 const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nVerification details:\n  use -v after import or pull when you want the installed verification explanation.\n  that view adds signing scheme and short bundle digest details when verification metadata exists.\n\nSee also:\n  guild help trust\n  guild show --help";
 const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const IMPORT_AFTER_HELP: &str = "Preview direction:\n  use `--preview` for a read-only preflight over import and pull.\n  see `guild help preview` for the shipped scope and non-goals.";
@@ -108,6 +114,7 @@ pub struct CliError {
     reason_code: Option<Box<str>>,
     detail: Option<Box<str>>,
     location: Option<Box<str>>,
+    hint: Option<Box<str>>,
     next_steps: Option<Box<str>>,
 }
 
@@ -122,6 +129,7 @@ impl CliError {
             reason_code: None,
             detail: None,
             location: None,
+            hint: None,
             next_steps: next_steps.map(String::into_boxed_str),
         }
     }
@@ -133,6 +141,7 @@ impl CliError {
             reason_code: None,
             detail: None,
             location: None,
+            hint: None,
             next_steps: None,
         }
     }
@@ -154,6 +163,14 @@ impl CliError {
         let location = location.into();
         if !location.trim().is_empty() {
             self.location = Some(location.into_boxed_str());
+        }
+        self
+    }
+
+    fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        let hint = hint.into();
+        if !hint.trim().is_empty() {
+            self.hint = Some(hint.into_boxed_str());
         }
         self
     }
@@ -193,6 +210,9 @@ impl std::fmt::Display for CliError {
         }
         if let Some(location) = &self.location {
             write!(f, "\nwhere: {location}")?;
+        }
+        if let Some(hint) = &self.hint {
+            write!(f, "\nhint: {hint}")?;
         }
         if let Some(next_steps) = &self.next_steps {
             write!(f, "\n{next_steps}")?;
@@ -874,6 +894,7 @@ enum HelpTopic {
     Roots,
     Doctor,
     Preview,
+    Grants,
 }
 
 #[derive(Debug, Clone, Args, Default)]
@@ -946,6 +967,11 @@ enum CliCommand {
     Get(GetCliArgs),
     #[command(about = "Explain a persisted execution", after_help = WHY_AFTER_HELP)]
     Why(WhyCliArgs),
+    #[command(
+        about = "Print read-only grant templates for active capability families",
+        after_help = GRANTS_AFTER_HELP
+    )]
+    Grants(GrantsCliArgs),
     #[command(
         about = "Show installed trust and verification status",
         after_help = VERIFY_AFTER_HELP
@@ -1052,6 +1078,60 @@ struct VerifyCliArgs {
     skill_ref: String,
     #[command(flatten)]
     render: RenderCliArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+struct GrantsCliArgs {
+    #[command(subcommand)]
+    command: GrantsCliCommand,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+enum GrantsCliCommand {
+    #[command(
+        about = "Print read-only grant template JSON",
+        after_help = GRANTS_TEMPLATE_AFTER_HELP
+    )]
+    Template(GrantsTemplateCliArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+struct GrantsTemplateCliArgs {
+    #[arg(value_enum, value_name = "family")]
+    family: Option<GrantTemplateFamily>,
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+enum GrantTemplateFamily {
+    ReadResource,
+    InvokeSkill,
+    EmitEvidence,
+    LogWrite,
+    HttpRequest,
+}
+
+impl GrantTemplateFamily {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::ReadResource => "read-resource",
+            Self::InvokeSkill => "invoke-skill",
+            Self::EmitEvidence => "emit-evidence",
+            Self::LogWrite => "log-write",
+            Self::HttpRequest => "http-request",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+enum GrantTemplateOutput {
+    Template(CapabilityGrantSet),
+    Catalog(GrantTemplateCatalog),
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct GrantTemplateCatalog {
+    templates: BTreeMap<String, CapabilityGrantSet>,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -1678,6 +1758,7 @@ pub fn run(
         CliCommand::Ls(command) => run_ls(&command.to_args(), &global, env_registry_root),
         CliCommand::Get(command) => run_get(&command.to_args(), &global, env_registry_root),
         CliCommand::Why(command) => run_why(&command.to_args(), &global, env_registry_root),
+        CliCommand::Grants(command) => run_grants(&command),
         CliCommand::Verify(command) => run_verify(&command.to_args(), &global, env_registry_root),
         CliCommand::Init(command) => run_init(&command.to_args(), &global, env_registry_root),
         CliCommand::Install(command) => run_install(&command.to_args(), &global, env_registry_root),
@@ -1719,9 +1800,100 @@ fn run_help(command: &HelpCliArgs) -> Result<(), CliError> {
         Some(HelpTopic::Roots) => print_help_roots(),
         Some(HelpTopic::Doctor) => print_help_doctor(),
         Some(HelpTopic::Preview) => print_help_preview(),
+        Some(HelpTopic::Grants) => print_help_grants(),
     }
     io::stdout().flush()?;
     Ok(())
+}
+
+fn run_grants(command: &GrantsCliArgs) -> Result<(), CliError> {
+    match &command.command {
+        GrantsCliCommand::Template(command) => {
+            print_json(&grant_template_output(command.family.as_ref()))?;
+        }
+    }
+    Ok(())
+}
+
+fn grant_template_output(family: Option<&GrantTemplateFamily>) -> GrantTemplateOutput {
+    match family {
+        Some(family) => GrantTemplateOutput::Template(grant_template_set(family)),
+        None => {
+            let mut templates = BTreeMap::new();
+            for family in [
+                GrantTemplateFamily::ReadResource,
+                GrantTemplateFamily::InvokeSkill,
+                GrantTemplateFamily::EmitEvidence,
+                GrantTemplateFamily::LogWrite,
+                GrantTemplateFamily::HttpRequest,
+            ] {
+                templates.insert(family.as_str().into(), grant_template_set(&family));
+            }
+            GrantTemplateOutput::Catalog(GrantTemplateCatalog { templates })
+        }
+    }
+}
+
+fn grant_template_set(family: &GrantTemplateFamily) -> CapabilityGrantSet {
+    CapabilityGrantSet {
+        grants: vec![grant_template(family)],
+    }
+}
+
+fn grant_template(family: &GrantTemplateFamily) -> GrantedCapability {
+    match family {
+        GrantTemplateFamily::ReadResource => GrantedCapability {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec!["guild://executions/".into()]),
+                resource_kinds: Some(vec![ResourceKind::Execution]),
+            }),
+        },
+        GrantTemplateFamily::InvokeSkill => GrantedCapability {
+            id: CapabilityId::InvokeSkill,
+            access: CapabilityAccess::Invoke,
+            constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
+                aliases: Some(vec!["<declared-alias>".into()]),
+            }),
+        },
+        GrantTemplateFamily::EmitEvidence => GrantedCapability {
+            id: CapabilityId::EmitEvidence,
+            access: CapabilityAccess::Write,
+            constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
+                max_bytes: Some(65_536),
+                audiences: Some(vec![EvidenceAudience::User]),
+                redactions: Some(vec![RedactionClass::None]),
+            }),
+        },
+        GrantTemplateFamily::LogWrite => GrantedCapability {
+            id: CapabilityId::LogWrite,
+            access: CapabilityAccess::Write,
+            constraints: CapabilityConstraints::Log(LogConstraints {
+                levels: Some(vec![Severity::Info]),
+            }),
+        },
+        GrantTemplateFamily::HttpRequest => GrantedCapability {
+            id: CapabilityId::HttpRequest,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::HttpRequest(HttpRequestConstraints {
+                allowed_schemes: Some(vec![HttpScheme::Https]),
+                allowed_hosts: Some(vec!["api.example.com".into()]),
+                allowed_host_suffixes: None,
+                allowed_ports: None,
+                allowed_methods: Some(vec![HttpMethod::Get]),
+                allowed_path_prefixes: Some(vec!["/v1/".into()]),
+                max_timeout_ms: Some(2_000),
+                max_response_bytes: Some(32_768),
+                follow_redirects: Some(false),
+                max_redirects: None,
+                allow_loopback: Some(false),
+                allow_link_local: Some(false),
+                allow_private_networks: Some(false),
+                allow_ip_literals: Some(false),
+            }),
+        },
+    }
 }
 
 fn run_show(
@@ -4421,10 +4593,13 @@ fn cli_error_from_mcp(
         category,
         humanize_runtime_surface_summary(&error.code, &error.message, error.detail.as_deref()),
     )
-    .with_reason_code(error.code);
+    .with_reason_code(error.code.clone());
 
     if let Some(receipt) = error.receipt {
         cli_error = cli_error.with_location(receipt.uri);
+    }
+    if let Some(hint) = authority_request_hint_for_error(&error.code, error.detail.as_deref()) {
+        cli_error = cli_error.with_hint(hint);
     }
     if let Some(next_steps) = next_steps {
         cli_error = cli_error.with_next_steps(next_steps);
@@ -4789,6 +4964,7 @@ fn print_usage() {
     println!();
     println!("Daily use:");
     println!("  show      Show a skill, run, object, or evidence summary");
+    println!("  grants    Print read-only grant templates");
     println!("  run       Run a skill locally");
     println!("  ls        List skills, runs, objects, or evidence");
     println!("  get       Read a Guild resource");
@@ -4825,6 +5001,7 @@ fn print_usage() {
     println!("  guild help roots");
     println!("  guild help doctor");
     println!("  guild help preview");
+    println!("  guild help grants");
     println!("  guild <command> --help");
 }
 
@@ -4832,7 +5009,7 @@ fn print_help_topics() {
     println!("Guild help topics");
     println!();
     println!("Usage:");
-    println!("  guild help [refs|trust|roots|doctor|preview]");
+    println!("  guild help [refs|trust|roots|doctor|preview|grants]");
     println!();
     println!("Topics:");
     println!("  refs    Accepted skill and resource ref forms");
@@ -4840,6 +5017,7 @@ fn print_help_topics() {
     println!("  roots   Guild root selection and initialization");
     println!("  doctor  Chosen read-only diagnostic command direction");
     println!("  preview Chosen preflight direction for risky import and pull flows");
+    println!("  grants  Read-only grant authoring templates for active families");
     println!();
     println!("See also:");
     println!("  guild --help");
@@ -4982,6 +5160,45 @@ fn print_help_preview() {
     println!("  no root creation, staging, installation, or trust-store mutation");
     println!("  no fake preview detached from signed bundle and trust verification semantics");
     println!("  no preview contract for export or push in the first slice");
+}
+
+fn print_help_grants() {
+    println!("Grant authoring templates");
+    println!();
+    println!("Use `guild grants template <family>` to print concrete read-only JSON you can");
+    println!("narrow and pass back to `guild run` with `--grants-json` or `--grants-file`.");
+    println!("Omit the family to browse a read-only per-family catalog instead.");
+    println!();
+    println!("Active families:");
+    println!("  emit-evidence  bounded payload emission for inspect-mode evidence");
+    println!("  log-write      bounded log levels");
+    println!("  read-resource  bounded Guild URI/resource-kind reads");
+    println!("  invoke-skill   bounded child invocation by declared alias");
+    println!("  http-request   bounded outbound HTTP reads");
+    println!();
+    println!("Examples:");
+    println!("  guild grants template");
+    println!("  guild grants template emit-evidence");
+    println!("  guild grants template read-resource");
+    println!("  guild grants template invoke-skill");
+    println!("  guild grants template http-request");
+    println!();
+    println!("Copy-edit direction:");
+    println!("  narrow `uri_prefixes` and `resource_kinds` for `read-resource`");
+    println!("  replace `<declared-alias>` with the real declared child name for `invoke-skill`");
+    println!(
+        "  keep scheme, host, path, timeout, and destination-class limits narrow for `http-request`"
+    );
+    println!("  keep `max_bytes`, `audiences`, and `redactions` explicit for `emit-evidence`");
+    println!("  keep `levels` to the minimum real need for `log-write`");
+    println!();
+    println!("This helper is read-only. It does not widen runtime support claims, and it");
+    println!("does not imply that unsupported families are runnable today.");
+    println!();
+    println!("See also:");
+    println!("  guild grants template --help");
+    println!("  guild run --help");
+    println!("  guild why --help");
 }
 
 fn print_show_usage() {

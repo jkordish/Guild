@@ -32,17 +32,20 @@ analysis over durable Guild refs. It uses:
 
 Start with [`examples/skills/hello-inspect/README.md`](./skills/hello-inspect/README.md).
 It teaches the normal `guild install`, `guild show`, `guild run`, `guild why`,
-and `guild verify` path with the smallest real skill in the repo.
+and `guild verify` path with the smallest real skill in the repo. Use
+`guild grants template emit-evidence` when you want the concrete JSON starting
+point before editing `--grants-json`.
 
 ### Explain what happened
 
 Use the current primary CLI first:
 
 - `guild why` for the compact persisted-execution explanation path
-- `guild why -v` when you need nearby child/evidence refs and authority observations
+- `guild why -v` when you need requested-versus-granted diff, nearby child/evidence refs, and authority observations
 - `guild why --lineage` when you want the native bounded ancestor/descendant view
 - `guild get` when you want the raw stored resource
 - `guild ls evidence --limit 5` when you need to discover stored evidence first
+- `guild grants template read-resource` and `guild grants template invoke-skill` when you need concrete bounded grant JSON before running the reusable analysis skills
 
 Then move to the example skills when you want richer reusable reports:
 
