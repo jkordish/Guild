@@ -277,12 +277,12 @@ pub fn render_skill_show(
     let _ = writeln!(
         output,
         "status: {}",
-        render_trust_status_pair(Some(&styler), &verification, &trust)
+        render_trust_status_pair(Some(styler), &verification, &trust)
     );
     let _ = writeln!(
         output,
         "support: {}",
-        render_support_summary(&support, &styler)
+        render_support_summary(&support, styler)
     );
     let _ = writeln!(
         output,
@@ -367,12 +367,12 @@ pub fn render_skill_verify(
     let _ = writeln!(
         output,
         "status: {}",
-        render_trust_status_pair(Some(&styler), &verification, &trust)
+        render_trust_status_pair(Some(styler), &verification, &trust)
     );
     let _ = writeln!(
         output,
         "publisher: {}",
-        render_publisher_label(Some(&styler), publisher)
+        render_publisher_label(Some(styler), publisher)
     );
     if let Some(verification) = &installed.verification
         && options.verbose()
@@ -467,7 +467,7 @@ pub fn render_execution_show(
     let _ = writeln!(
         output,
         "{}  {}",
-        paint_status_word(&styler, status),
+        paint_status_word(styler, status),
         styler.paint(Tone::Ref, short_execution_ref(record))
     );
     let _ = writeln!(
@@ -479,7 +479,7 @@ pub fn render_execution_show(
     let _ = writeln!(
         output,
         "support: {}",
-        render_support_summary(&support, &styler)
+        render_support_summary(&support, styler)
     );
     let _ = writeln!(
         output,
@@ -547,28 +547,24 @@ pub fn render_execution_why(
     let _ = writeln!(
         output,
         "{}  {}",
-        paint_status_word(&styler, status),
+        paint_status_word(styler, status),
         styler.paint(Tone::Ref, short_execution_ref(record))
     );
-    let _ = writeln!(
-        output,
-        "plan: {}",
-        paint_status_word(&styler, &summary.plan)
-    );
+    let _ = writeln!(output, "plan: {}", paint_status_word(styler, &summary.plan));
     let _ = writeln!(
         output,
         "proof: {}",
-        paint_status_word(&styler, &summary.proof)
+        paint_status_word(styler, &summary.proof)
     );
     let _ = writeln!(
         output,
         "token: {}",
-        paint_status_word(&styler, &summary.token)
+        paint_status_word(styler, &summary.token)
     );
     let _ = writeln!(
         output,
         "witness: {}",
-        paint_status_word(&styler, &summary.witness)
+        paint_status_word(styler, &summary.witness)
     );
     if !summary.reason_codes.is_empty() {
         let _ = writeln!(output, "reason: {}", summary.reason_codes.join(", "));
@@ -590,22 +586,20 @@ pub fn render_execution_why(
     let _ = writeln!(output, "authority: {}", authority_summary(record));
     if options.verbose() {
         append_authority_observation_list(&mut output, record);
-        append_ref_list(&mut output, "nearby child refs", &child_refs, &styler);
-        append_ref_list(&mut output, "nearby evidence refs", &evidence_refs, &styler);
-    } else {
-        if let Some(child_ref) = child_refs.first() {
-            let _ = writeln!(
-                output,
-                "nearby child: {}",
-                styler.paint(Tone::Ref, child_ref)
-            );
-        } else if let Some(evidence_ref) = evidence_refs.first() {
-            let _ = writeln!(
-                output,
-                "nearby evidence: {}",
-                styler.paint(Tone::Ref, evidence_ref)
-            );
-        }
+        append_ref_list(&mut output, "nearby child refs", &child_refs, styler);
+        append_ref_list(&mut output, "nearby evidence refs", &evidence_refs, styler);
+    } else if let Some(child_ref) = child_refs.first() {
+        let _ = writeln!(
+            output,
+            "nearby child: {}",
+            styler.paint(Tone::Ref, child_ref)
+        );
+    } else if let Some(evidence_ref) = evidence_refs.first() {
+        let _ = writeln!(
+            output,
+            "nearby evidence: {}",
+            styler.paint(Tone::Ref, evidence_ref)
+        );
     }
     if options.verbose() {
         let trust = record.policy_decision.trust_tier.to_string();
@@ -647,8 +641,8 @@ pub fn render_run_status(
     let _ = write!(
         output,
         "{}  {}  {}  {}",
-        paint_status_word(&styler, status),
-        paint_status_word(&styler, proof),
+        paint_status_word(styler, status),
+        paint_status_word(styler, proof),
         styler.paint(Tone::Ref, short_execution_ref(record)),
         styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill))
     );
@@ -690,9 +684,9 @@ pub fn render_skills_list(
             output,
             "{}  {}  {}  {}",
             styler.paint(Tone::Ref, short_skill_ref(skill)),
-            paint_status_word(&styler, &verification),
-            paint_status_word(&styler, &trust),
-            paint_status_word(&styler, overall_support_word(&support))
+            paint_status_word(styler, &verification),
+            paint_status_word(styler, &trust),
+            paint_status_word(styler, overall_support_word(&support))
         );
     }
     output
@@ -714,7 +708,7 @@ pub fn render_runs_list(
         let _ = writeln!(
             output,
             "{}  {}  {}",
-            paint_status_word(&styler, execution_status_label(&record.status)),
+            paint_status_word(styler, execution_status_label(&record.status)),
             styler.paint(Tone::Ref, short_execution_ref(record)),
             styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill))
         );
@@ -921,7 +915,7 @@ fn append_execution_lineage(
     } else {
         let _ = writeln!(output, "ancestry:");
         for record in &lineage.ancestry {
-            append_lineage_record(output, record, 0, None, options, &styler);
+            append_lineage_record(output, record, 0, None, options, styler);
         }
     }
     let _ = writeln!(output, "descendants:");
@@ -932,7 +926,7 @@ fn append_execution_lineage(
             node.depth,
             node.alias_from_parent.as_deref(),
             options,
-            &styler,
+            styler,
         );
     }
     if lineage.warnings.is_empty() {
@@ -978,7 +972,7 @@ fn append_lineage_record(
     depth: usize,
     alias_from_parent: Option<&str>,
     options: PresentationOptions,
-    styler: &Styler,
+    styler: Styler,
 ) {
     let indent = "  ".repeat(depth);
     let mut line = format!("{indent}- ");
@@ -995,11 +989,12 @@ fn append_lineage_record(
     line.push_str(&styler.paint(Tone::Ref, short_execution_ref(record)));
     line.push_str("  ");
     line.push_str(&styler.paint(Tone::Ref, short_resolved_skill_ref(&record.resolved_skill)));
-    line.push_str(&format!(
+    let _ = write!(
+        line,
         "  child {}  evidence {}",
         record.child_executions.len(),
         record.emitted_evidence.len()
-    ));
+    );
     if options.verbose() {
         let reasons = reason_codes(record);
         if !reasons.is_empty() {
@@ -1160,7 +1155,7 @@ fn nearby_evidence_refs(record: &ExecutionRecord, limit: usize) -> Vec<String> {
         .collect()
 }
 
-fn append_ref_list(output: &mut String, label: &str, refs: &[String], styler: &Styler) {
+fn append_ref_list(output: &mut String, label: &str, refs: &[String], styler: Styler) {
     if refs.is_empty() {
         return;
     }
@@ -1247,8 +1242,7 @@ fn authority_observation_line(observation: &AuthorityObservation) -> String {
                     detail
                         .resource_kind
                         .as_ref()
-                        .map(resource_kind_label)
-                        .unwrap_or("resource")
+                        .map_or("resource", resource_kind_label)
                         .into(),
                 ],
                 detail.denial.as_ref().map(|failure| failure.code.as_str()),
@@ -1286,8 +1280,7 @@ fn authority_observation_line(observation: &AuthorityObservation) -> String {
                     detail
                         .evidence_uri
                         .as_deref()
-                        .map(display_resource_ref_or_uri)
-                        .unwrap_or_else(|| detail.mime_type.clone()),
+                        .map_or_else(|| detail.mime_type.clone(), display_resource_ref_or_uri),
                     format_bytes(detail.size_bytes),
                 ],
                 detail.denial.as_ref().map(|failure| failure.code.as_str()),
@@ -1449,8 +1442,7 @@ fn append_trusted_publisher_details(output: &mut String, publisher: &TrustedPubl
     }
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn render_support_summary(summary: &SupportSummary, styler: &Styler) -> String {
+fn render_support_summary(summary: &SupportSummary, styler: Styler) -> String {
     summary
         .buckets
         .iter()
@@ -1466,6 +1458,7 @@ fn render_support_summary(summary: &SupportSummary, styler: &Styler) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
     use serde_json::{Value, json};
@@ -1572,8 +1565,8 @@ mod tests {
                 "input": {},
                 "budget": {
                     "max_millis": 1000,
-                    "max_memory_bytes": 1048576,
-                    "max_output_bytes": 65536,
+                    "max_memory_bytes": 1_048_576,
+                    "max_output_bytes": 65_536,
                     "max_network_requests": 4,
                     "max_child_executions": 4
                 },
@@ -1651,9 +1644,10 @@ mod tests {
             "rejected" => json!("rejected"),
             _ => json!("allowed"),
         };
-        *value.pointer_mut("/policy_decision/reasons").unwrap() = reason_code
-            .map(|code| json!([{ "code": code, "message": code, "detail": null }]))
-            .unwrap_or_else(|| json!([]));
+        *value.pointer_mut("/policy_decision/reasons").unwrap() = reason_code.map_or_else(
+            || json!([]),
+            |code| json!([{ "code": code, "message": code, "detail": null }]),
+        );
         serde_json::from_value(value).unwrap()
     }
 
@@ -1892,8 +1886,7 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn paint_status_word(styler: &Styler, word: &str) -> String {
+fn paint_status_word(styler: Styler, word: &str) -> String {
     match word {
         PRESENTATION_STATUS_PROOF_BACKED
         | PRESENTATION_STATUS_LINKED
@@ -1914,7 +1907,7 @@ fn paint_status_word(styler: &Styler, word: &str) -> String {
     }
 }
 
-fn render_publisher_label(styler: Option<&Styler>, publisher: &str) -> String {
+fn render_publisher_label(styler: Option<Styler>, publisher: &str) -> String {
     match styler {
         Some(styler) if publisher == "local-source" => styler.paint(Tone::Dim, publisher),
         Some(styler) => styler.paint(Tone::Ref, publisher),
@@ -1922,7 +1915,7 @@ fn render_publisher_label(styler: Option<&Styler>, publisher: &str) -> String {
     }
 }
 
-fn render_trust_status_pair(styler: Option<&Styler>, verification: &str, trust: &str) -> String {
+fn render_trust_status_pair(styler: Option<Styler>, verification: &str, trust: &str) -> String {
     match styler {
         Some(styler) => format!(
             "{} / {}",

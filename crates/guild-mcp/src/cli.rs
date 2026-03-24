@@ -100,11 +100,11 @@ impl CliErrorCategory {
 #[derive(Debug)]
 pub struct CliError {
     category: CliErrorCategory,
-    summary: String,
-    reason_code: Option<String>,
-    detail: Option<String>,
-    location: Option<String>,
-    next_steps: Option<String>,
+    summary: Box<str>,
+    reason_code: Option<Box<str>>,
+    detail: Option<Box<str>>,
+    location: Option<Box<str>>,
+    next_steps: Option<Box<str>>,
 }
 
 impl CliError {
@@ -114,18 +114,18 @@ impl CliError {
         let next_steps = next_steps_for_cli_message(&message, category);
         Self {
             category,
-            summary: message,
+            summary: message.into_boxed_str(),
             reason_code: None,
             detail: None,
             location: None,
-            next_steps,
+            next_steps: next_steps.map(String::into_boxed_str),
         }
     }
 
     fn classified(category: CliErrorCategory, summary: impl Into<String>) -> Self {
         Self {
             category,
-            summary: summary.into(),
+            summary: summary.into().into_boxed_str(),
             reason_code: None,
             detail: None,
             location: None,
@@ -134,14 +134,14 @@ impl CliError {
     }
 
     fn with_reason_code(mut self, reason_code: impl Into<String>) -> Self {
-        self.reason_code = Some(reason_code.into());
+        self.reason_code = Some(reason_code.into().into_boxed_str());
         self
     }
 
     fn with_detail(mut self, detail: impl Into<String>) -> Self {
         let detail = detail.into();
         if !detail.trim().is_empty() {
-            self.detail = Some(detail);
+            self.detail = Some(detail.into_boxed_str());
         }
         self
     }
@@ -149,30 +149,30 @@ impl CliError {
     fn with_location(mut self, location: impl Into<String>) -> Self {
         let location = location.into();
         if !location.trim().is_empty() {
-            self.location = Some(location);
+            self.location = Some(location.into_boxed_str());
         }
         self
     }
 
     fn with_preferred_location(mut self, location: impl Into<String>) -> Self {
-        self.location = Some(location.into());
+        self.location = Some(location.into().into_boxed_str());
         self
     }
 
     fn with_next_steps(mut self, next_steps: impl Into<String>) -> Self {
         let next_steps = next_steps.into();
         if !next_steps.trim().is_empty() {
-            self.next_steps = Some(next_steps);
+            self.next_steps = Some(next_steps.into_boxed_str());
         }
         self
     }
 
     fn qualify_for_registry_root(mut self, registry_root: &Path) -> Self {
         if let Some(next_steps) = self.next_steps.take() {
-            self.next_steps = Some(qualify_next_steps_for_registry_root(
-                &next_steps,
-                registry_root,
-            ));
+            self.next_steps = Some(
+                qualify_next_steps_for_registry_root(next_steps.as_ref(), registry_root)
+                    .into_boxed_str(),
+            );
         }
         self
     }
@@ -201,7 +201,7 @@ impl std::error::Error for CliError {}
 
 impl From<RegistryError> for CliError {
     fn from(value: RegistryError) -> Self {
-        cli_error_from_registry(value)
+        cli_error_from_registry(&value)
     }
 }
 
@@ -313,8 +313,7 @@ fn next_steps_for_cli_message(message: &str, category: CliErrorCategory) -> Opti
     }
 
     match category {
-        CliErrorCategory::Usage => None,
-        CliErrorCategory::RootSetup => None,
+        CliErrorCategory::Usage | CliErrorCategory::RootSetup => None,
         CliErrorCategory::LookupAmbiguity => Some(
             "Next: use a more specific ref, or inspect installed state with `guild ls skills`"
                 .into(),
@@ -342,31 +341,29 @@ fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCatego
     if code == "registry-root-missing"
         || code.starts_with("policy-")
         || message.contains("local policy configuration")
+        || matches!(
+            code,
+            "trusted-publisher-read-failed"
+                | "trusted-publisher-parse-failed"
+                | "trusted-publisher-key-invalid"
+                | "trusted-publisher-tier-invalid"
+                | "trusted-publisher-scan-failed"
+                | "trusted-publisher-remove-failed"
+        )
     {
         CliErrorCategory::RootSetup
     } else if matches!(
         code,
-        "trusted-publisher-read-failed"
-            | "trusted-publisher-parse-failed"
-            | "trusted-publisher-key-invalid"
-            | "trusted-publisher-tier-invalid"
-            | "trusted-publisher-scan-failed"
-            | "trusted-publisher-remove-failed"
-    ) {
-        CliErrorCategory::RootSetup
-    } else if matches!(
-        code,
-        "bundle-signature-format-unsupported" | "execution-plan-signature-format-unsupported"
+        "bundle-signature-format-unsupported"
+            | "execution-plan-signature-format-unsupported"
+            | "bundle-format-unsupported"
     ) {
         CliErrorCategory::RuntimeCompatibility
-    } else if code == "bundle-format-unsupported" {
-        CliErrorCategory::RuntimeCompatibility
-    } else if is_bundle_integrity_error_code(code) {
-        CliErrorCategory::TrustVerification
     } else if code.starts_with("execution-plan-")
         || code.starts_with("trusted-publisher-")
         || code.starts_with("bundle-publisher-")
         || code.contains("signature")
+        || is_bundle_integrity_error_code(code)
     {
         CliErrorCategory::TrustVerification
     } else if code == "execution-not-found"
@@ -377,9 +374,10 @@ fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCatego
         || code.starts_with("execution-read-")
     {
         CliErrorCategory::ResourceRead
-    } else if code == "skill-not-found" || code == "resolved-skill-not-found" {
-        CliErrorCategory::LookupAmbiguity
-    } else if code.contains("ambiguous") {
+    } else if code == "skill-not-found"
+        || code == "resolved-skill-not-found"
+        || code.contains("ambiguous")
+    {
         CliErrorCategory::LookupAmbiguity
     } else {
         classify_cli_message(message)
@@ -507,7 +505,7 @@ fn location_from_registry_detail(detail: Option<&Value>) -> Option<String> {
     }
 }
 
-fn cli_error_from_registry(error: RegistryError) -> CliError {
+fn cli_error_from_registry(error: &RegistryError) -> CliError {
     let category = classify_registry_error_category(&error.code, &error.message);
     let mut cli_error =
         CliError::classified(category, error.message.clone()).with_reason_code(error.code.clone());
@@ -520,7 +518,7 @@ fn cli_error_from_registry(error: RegistryError) -> CliError {
     cli_error
 }
 
-fn cli_error_from_registry_with_root(error: RegistryError, registry_root: &Path) -> CliError {
+fn cli_error_from_registry_with_root(error: &RegistryError, registry_root: &Path) -> CliError {
     cli_error_from_registry(error).qualify_for_registry_root(registry_root)
 }
 
@@ -1692,63 +1690,81 @@ fn run_show(
     let target = resolve_show_target(&registry, &positional[0])
         .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     if render.json_output {
-        match target {
-            ShowTarget::Skill {
-                requested,
-                resolution_lines: _,
-                installed,
-            } => {
-                print_json(&ShowSkillCommandOutput {
-                    requested_ref: requested,
-                    resolved_skill: presenter_resolved_skill_ref(&installed.resolved_ref),
-                    display_name: installed.manifest.display_name.clone(),
-                    description: installed.manifest.description.clone(),
-                    runtime: presenter_runtime_label(&installed.manifest),
-                    support: support_summary_for_skill(&installed),
-                    trust: installed.trust.clone(),
-                    verification: installed.verification.clone(),
-                    manifest: installed.manifest.clone(),
-                })?;
-            }
-            ShowTarget::Execution(record) => {
-                print_json(&ShowExecutionCommandOutput {
-                    summary: record.output.as_ref().map_or_else(
-                        || record.policy_decision.summary.clone(),
-                        |output| output.summary.clone(),
-                    ),
-                    support: support_summary_for_execution(&record),
-                    record,
-                })?;
-            }
-            ShowTarget::Evidence(record) => print_json(&ShowEvidenceCommandOutput { record })?,
-            ShowTarget::Object(record) => print_json(&ShowObjectCommandOutput { record })?,
-        }
+        print_show_json_output(target)?;
         return Ok(());
     }
 
     if render.porcelain_output {
-        let line = match target {
-            ShowTarget::Skill { installed, .. } => render_skill_porcelain(&installed),
-            ShowTarget::Execution(record) => format!(
-                "show\texec\t{}\t{}\t{}",
-                record.receipt.execution_id,
-                status_label(&record.status),
-                short_execution_ref(&record)
-            ),
-            ShowTarget::Evidence(record) => format!(
-                "show\tevidence\t{}\t{}\t{}",
-                record.uri, record.mime_type, record.size_bytes
-            ),
-            ShowTarget::Object(record) => {
-                format!("show\tobject\t{}\t{}", record.sha256, record.size_bytes)
-            }
-        };
-        println!("{line}");
+        println!("{}", render_show_porcelain(target));
         return Ok(());
     }
 
     let presentation = presentation_options(&render);
-    let (text, next_steps) = match target {
+    let (text, next_steps) = render_show_output(target, presentation);
+    print!("{text}");
+    if let Some(next_steps) = next_steps {
+        println!(
+            "{}",
+            qualify_next_steps_for_registry_root(&next_steps, &registry_root)
+        );
+    }
+    Ok(())
+}
+
+fn print_show_json_output(target: ShowTarget) -> Result<(), CliError> {
+    match target {
+        ShowTarget::Skill {
+            requested,
+            resolution_lines: _,
+            installed,
+        } => print_json(&ShowSkillCommandOutput {
+            requested_ref: requested,
+            resolved_skill: presenter_resolved_skill_ref(&installed.resolved_ref),
+            display_name: installed.manifest.display_name.clone(),
+            description: installed.manifest.description.clone(),
+            runtime: presenter_runtime_label(&installed.manifest),
+            support: support_summary_for_skill(&installed),
+            trust: installed.trust.clone(),
+            verification: installed.verification.clone(),
+            manifest: installed.manifest.clone(),
+        }),
+        ShowTarget::Execution(record) => print_json(&ShowExecutionCommandOutput {
+            summary: record.output.as_ref().map_or_else(
+                || record.policy_decision.summary.clone(),
+                |output| output.summary.clone(),
+            ),
+            support: support_summary_for_execution(&record),
+            record,
+        }),
+        ShowTarget::Evidence(record) => print_json(&ShowEvidenceCommandOutput { record }),
+        ShowTarget::Object(record) => print_json(&ShowObjectCommandOutput { record }),
+    }
+}
+
+fn render_show_porcelain(target: ShowTarget) -> String {
+    match target {
+        ShowTarget::Skill { installed, .. } => render_skill_porcelain(&installed),
+        ShowTarget::Execution(record) => format!(
+            "show\texec\t{}\t{}\t{}",
+            record.receipt.execution_id,
+            status_label(&record.status),
+            short_execution_ref(&record)
+        ),
+        ShowTarget::Evidence(record) => format!(
+            "show\tevidence\t{}\t{}\t{}",
+            record.uri, record.mime_type, record.size_bytes
+        ),
+        ShowTarget::Object(record) => {
+            format!("show\tobject\t{}\t{}", record.sha256, record.size_bytes)
+        }
+    }
+}
+
+fn render_show_output(
+    target: ShowTarget,
+    presentation: PresentationOptions,
+) -> (String, Option<String>) {
+    match target {
         ShowTarget::Skill {
             requested,
             resolution_lines,
@@ -1775,15 +1791,7 @@ fn run_show(
             render_object_show(&record, presentation, StreamKind::Stdout),
             None,
         ),
-    };
-    print!("{text}");
-    if let Some(next_steps) = next_steps {
-        println!(
-            "{}",
-            qualify_next_steps_for_registry_root(&next_steps, &registry_root)
-        );
     }
-    Ok(())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1926,13 +1934,13 @@ fn run_run_command(
         )
     };
     eprintln!("{status}");
-    if !render.porcelain_output {
-        if let Some(next_steps) = render_run_next_steps(&response.structured_content) {
-            eprintln!(
-                "{}",
-                qualify_next_steps_for_registry_root(&next_steps, &registry_root)
-            );
-        }
+    if !render.porcelain_output
+        && let Some(next_steps) = render_run_next_steps(&response.structured_content)
+    {
+        eprintln!(
+            "{}",
+            qualify_next_steps_for_registry_root(&next_steps, &registry_root)
+        );
     }
     Ok(())
 }
@@ -2026,7 +2034,7 @@ fn run_get(
     let uri = resolve_resource_ref(&registry, &ref_input)
         .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     let resource = registry.read_resource(&uri).map_err(|error| {
-        cli_error_from_registry_with_root(error, &registry_root)
+        cli_error_from_registry_with_root(&error, &registry_root)
             .with_preferred_location(uri.clone())
     })?;
 
@@ -2099,7 +2107,7 @@ fn run_why(
     let record = registry
         .load_execution_record(&execution_id)
         .map_err(|error| {
-            cli_error_from_registry_with_root(error, &registry_root)
+            cli_error_from_registry_with_root(&error, &registry_root)
                 .with_preferred_location(uri.clone())
         })?;
 
@@ -2141,7 +2149,7 @@ fn load_why_lineage(registry: &LocalRegistry, record: &ExecutionRecord) -> WhyLi
     let mut current_parent_id = record.parent_execution_id.clone();
     let mut ancestry_depth = 0usize;
 
-    while let Some(parent_execution_id) = current_parent_id {
+    while let Some(parent_execution_id) = current_parent_id.clone() {
         let parent_uri = execution_uri_for_id(&parent_execution_id);
         if ancestry_depth >= limits.max_depth {
             warnings.push(lineage_warning(
@@ -2180,7 +2188,7 @@ fn load_why_lineage(registry: &LocalRegistry, record: &ExecutionRecord) -> WhyLi
         match registry.load_execution_record(&parent_execution_id) {
             Ok(parent_record) => {
                 seen_ancestor_ids.insert(parent_execution_id);
-                current_parent_id = parent_record.parent_execution_id.clone();
+                current_parent_id.clone_from(&parent_record.parent_execution_id);
                 ancestry.push(parent_record);
                 ancestry_depth += 1;
                 nodes_visited += 1;
@@ -2204,17 +2212,15 @@ fn load_why_lineage(registry: &LocalRegistry, record: &ExecutionRecord) -> WhyLi
     let mut descendants = Vec::new();
     let mut seen_descendant_ids = seen_ancestor_ids;
     seen_descendant_ids.remove(&record.receipt.execution_id);
-    visit_why_descendants(
+    let mut traversal = WhyDescendantTraversal {
         registry,
-        record.clone(),
-        0,
-        None,
         limits,
-        &mut nodes_visited,
-        &mut seen_descendant_ids,
-        &mut descendants,
-        &mut warnings,
-    );
+        nodes_visited: &mut nodes_visited,
+        seen_execution_ids: &mut seen_descendant_ids,
+        descendants: &mut descendants,
+        warnings: &mut warnings,
+    };
+    traversal.visit(record, 0, None);
 
     WhyLineage {
         ancestry,
@@ -2223,113 +2229,108 @@ fn load_why_lineage(registry: &LocalRegistry, record: &ExecutionRecord) -> WhyLi
     }
 }
 
-fn visit_why_descendants(
-    registry: &LocalRegistry,
-    record: ExecutionRecord,
-    depth: usize,
-    alias_from_parent: Option<String>,
+struct WhyDescendantTraversal<'a> {
+    registry: &'a LocalRegistry,
     limits: WhyLineageLimits,
-    nodes_visited: &mut usize,
-    seen_execution_ids: &mut HashSet<String>,
-    descendants: &mut Vec<WhyLineageNode>,
-    warnings: &mut Vec<WhyLineageWarning>,
-) {
-    if seen_execution_ids.contains(&record.receipt.execution_id) {
-        warnings.push(lineage_warning(
-            "descendants",
-            "execution-uri-revisited",
-            "descendant traversal referenced a previously visited execution; traversal stopped on that branch",
-            Some(record.receipt.uri.clone()),
-            depth,
-            alias_from_parent.map(|alias| format!("alias={alias}")),
-        ));
-        return;
-    }
+    nodes_visited: &'a mut usize,
+    seen_execution_ids: &'a mut HashSet<String>,
+    descendants: &'a mut Vec<WhyLineageNode>,
+    warnings: &'a mut Vec<WhyLineageWarning>,
+}
 
-    if depth > 0 {
-        if *nodes_visited >= limits.max_nodes {
-            warnings.push(lineage_warning(
-                "descendants",
-                "max-nodes-reached",
-                "lineage traversal stopped after reaching the configured node limit",
-                Some(record.receipt.uri.clone()),
-                depth,
-                Some(format!("max_nodes={}", limits.max_nodes)),
-            ));
-            return;
-        }
-        *nodes_visited += 1;
-    }
-
-    seen_execution_ids.insert(record.receipt.execution_id.clone());
-    descendants.push(WhyLineageNode {
-        depth,
-        alias_from_parent,
-        record: record.clone(),
-    });
-
-    if depth >= limits.max_depth {
-        if !record.child_executions.is_empty() {
-            warnings.push(lineage_warning(
-                "descendants",
-                "max-depth-reached",
-                "descendant traversal stopped after reaching the configured depth limit",
-                Some(record.receipt.uri.clone()),
-                depth,
-                Some(format!(
-                    "max_depth={} remaining_children={}",
-                    limits.max_depth,
-                    record.child_executions.len()
-                )),
-            ));
-        }
-        return;
-    }
-
-    for child in &record.child_executions {
-        if *nodes_visited >= limits.max_nodes {
-            warnings.push(lineage_warning(
-                "descendants",
-                "max-nodes-reached",
-                "lineage traversal stopped after reaching the configured node limit",
-                Some(child.uri.clone()),
-                depth + 1,
-                Some(format!("max_nodes={}", limits.max_nodes)),
-            ));
-            break;
-        }
-        if seen_execution_ids.contains(&child.execution_id) {
-            warnings.push(lineage_warning(
+impl WhyDescendantTraversal<'_> {
+    fn visit(&mut self, record: &ExecutionRecord, depth: usize, alias_from_parent: Option<String>) {
+        if self
+            .seen_execution_ids
+            .contains(&record.receipt.execution_id)
+        {
+            self.warnings.push(lineage_warning(
                 "descendants",
                 "execution-uri-revisited",
                 "descendant traversal referenced a previously visited execution; traversal stopped on that branch",
-                Some(child.uri.clone()),
-                depth + 1,
-                Some(format!("alias={}", child.alias)),
+                Some(record.receipt.uri.clone()),
+                depth,
+                alias_from_parent.map(|alias| format!("alias={alias}")),
             ));
-            continue;
+            return;
         }
 
-        match registry.load_execution_record(&child.execution_id) {
-            Ok(child_record) => visit_why_descendants(
-                registry,
-                child_record,
-                depth + 1,
-                Some(child.alias.clone()),
-                limits,
-                nodes_visited,
-                seen_execution_ids,
-                descendants,
-                warnings,
-            ),
-            Err(error) => warnings.push(lineage_warning(
-                "descendants",
-                "child-read-failed",
-                "failed to load a persisted child execution while walking descendants",
-                Some(child.uri.clone()),
-                depth + 1,
-                Some(error.to_string()),
-            )),
+        if depth > 0 {
+            if *self.nodes_visited >= self.limits.max_nodes {
+                self.warnings.push(lineage_warning(
+                    "descendants",
+                    "max-nodes-reached",
+                    "lineage traversal stopped after reaching the configured node limit",
+                    Some(record.receipt.uri.clone()),
+                    depth,
+                    Some(format!("max_nodes={}", self.limits.max_nodes)),
+                ));
+                return;
+            }
+            *self.nodes_visited += 1;
+        }
+
+        self.seen_execution_ids
+            .insert(record.receipt.execution_id.clone());
+        self.descendants.push(WhyLineageNode {
+            depth,
+            alias_from_parent,
+            record: record.clone(),
+        });
+
+        if depth >= self.limits.max_depth {
+            if !record.child_executions.is_empty() {
+                self.warnings.push(lineage_warning(
+                    "descendants",
+                    "max-depth-reached",
+                    "descendant traversal stopped after reaching the configured depth limit",
+                    Some(record.receipt.uri.clone()),
+                    depth,
+                    Some(format!(
+                        "max_depth={} remaining_children={}",
+                        self.limits.max_depth,
+                        record.child_executions.len()
+                    )),
+                ));
+            }
+            return;
+        }
+
+        for child in &record.child_executions {
+            if *self.nodes_visited >= self.limits.max_nodes {
+                self.warnings.push(lineage_warning(
+                    "descendants",
+                    "max-nodes-reached",
+                    "lineage traversal stopped after reaching the configured node limit",
+                    Some(child.uri.clone()),
+                    depth + 1,
+                    Some(format!("max_nodes={}", self.limits.max_nodes)),
+                ));
+                break;
+            }
+            if self.seen_execution_ids.contains(&child.execution_id) {
+                self.warnings.push(lineage_warning(
+                    "descendants",
+                    "execution-uri-revisited",
+                    "descendant traversal referenced a previously visited execution; traversal stopped on that branch",
+                    Some(child.uri.clone()),
+                    depth + 1,
+                    Some(format!("alias={}", child.alias)),
+                ));
+                continue;
+            }
+
+            match self.registry.load_execution_record(&child.execution_id) {
+                Ok(child_record) => self.visit(&child_record, depth + 1, Some(child.alias.clone())),
+                Err(error) => self.warnings.push(lineage_warning(
+                    "descendants",
+                    "child-read-failed",
+                    "failed to load a persisted child execution while walking descendants",
+                    Some(child.uri.clone()),
+                    depth + 1,
+                    Some(error.to_string()),
+                )),
+            }
         }
     }
 }
@@ -2380,7 +2381,7 @@ fn run_verify(
         .map_err(|error| error.qualify_for_registry_root(&registry_root))?;
     let installed = registry
         .resolve(&skill)
-        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
 
     if render.json_output {
         print_json(&VerifySkillCommandOutput {
@@ -2850,9 +2851,9 @@ fn run_install(
     }
 
     let installed = LocalSourceInstaller::new(&registry_root)
-        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?
+        .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?
         .install(&source_dir)
-        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
     let output = summarize_installed_skill(&installed, &registry_root);
 
     if json_output {
@@ -2934,7 +2935,7 @@ fn run_export_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
             &output_root,
             &signer,
         )
-        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
 
     let output = ExportCommandOutput {
         format: "bundle",
@@ -2997,7 +2998,7 @@ fn run_export_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
             &output_root,
             &signer,
         )
-        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
 
     let output = ExportCommandOutput {
         format: "oci-layout",
@@ -3062,7 +3063,7 @@ fn run_import_bundle(args: &[String], registry_root: &Path) -> Result<(), CliErr
     }
 
     let installed = LocalRegistry::import_bundle(registry_root, &source_root)
-        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
     let output = ImportCommandOutput {
         format: "bundle",
         registry_root: registry_root.display().to_string(),
@@ -3103,7 +3104,7 @@ fn run_import_oci_layout(args: &[String], registry_root: &Path) -> Result<(), Cl
     }
 
     let installed = LocalRegistry::import_oci_layout(registry_root, &source_root)
-        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
     let output = ImportCommandOutput {
         format: "oci-layout",
         registry_root: registry_root.display().to_string(),
@@ -3178,7 +3179,7 @@ fn run_push(
             &oci_transport_options(allow_http),
             &signer,
         )
-        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
 
     let output = PushCommandOutput {
         reference: published.reference.to_string(),
@@ -3232,7 +3233,7 @@ fn run_pull(
         &reference,
         &oci_transport_options(allow_http),
     )
-    .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
+    .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
     let output = ImportCommandOutput {
         format: "oci-registry",
         registry_root: registry_root.display().to_string(),
@@ -3417,7 +3418,7 @@ fn run_trust_add(
     };
 
     LocalRegistry::trust_publisher(&registry_root, &publisher)
-        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
 
     let output = TrustAddOutput {
         publisher_id: publisher.publisher.id.clone(),
@@ -3464,7 +3465,7 @@ fn run_trust_list(
     let output = TrustListOutput {
         registry_root: registry_root.display().to_string(),
         publishers: LocalRegistry::list_trusted_publishers(&registry_root)
-            .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?,
+            .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?,
     };
 
     if json_output {
@@ -3505,7 +3506,7 @@ fn run_trust_remove(
     }
 
     let removed = LocalRegistry::remove_trusted_publisher(&registry_root, &publisher_id)
-        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
     if !removed {
         return Err(CliError::classified(
             CliErrorCategory::LookupAmbiguity,
@@ -3635,7 +3636,7 @@ fn run_trust_verify_plan(
     let plan: Value =
         serde_json::from_str(&fs::read_to_string(&plan_path).map_err(CliError::from)?)?;
     let verification = verify_execution_plan(&registry_root, &plan)
-        .map_err(|error| cli_error_from_registry_with_root(error, &registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
     let output = trust_verify_output(&registry_root, verification);
 
     if json_output {
@@ -3786,7 +3787,7 @@ fn build_existing_registry(registry_root: &Path) -> Result<LocalRegistry, CliErr
         if error.code == "registry-root-missing" {
             missing_registry_root_error(registry_root)
         } else {
-            cli_error_from_registry_with_root(error, registry_root)
+            cli_error_from_registry_with_root(&error, registry_root)
         }
     })
 }
@@ -3795,7 +3796,7 @@ fn build_facade(
     registry_root: &Path,
 ) -> Result<GuildMcpFacade<LocalRegistry, WasmtimeRuntimeAdapter>, CliError> {
     let registry = LocalRegistry::load(registry_root)
-        .map_err(|error| cli_error_from_registry_with_root(error, registry_root))?;
+        .map_err(|error| cli_error_from_registry_with_root(&error, registry_root))?;
     let runtime = WasmtimeRuntimeAdapter::new()
         .map_err(McpError::from)
         .map_err(|error| {

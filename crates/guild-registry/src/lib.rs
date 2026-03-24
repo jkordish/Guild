@@ -1240,6 +1240,13 @@ fn resolve_installed_selection<'a>(
 }
 
 impl LocalRegistry {
+    /// Explain how a requested skill ref matched the currently installed local state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the requested skill ref cannot be resolved against the
+    /// installed state, including missing matches and ambiguous same-version
+    /// multi-digest matches.
     pub fn explain_resolution(
         &self,
         skill: &RequestedSkillRef,
