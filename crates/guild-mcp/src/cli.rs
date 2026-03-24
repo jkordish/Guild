@@ -341,7 +341,11 @@ fn next_steps_for_cli_message(message: &str, category: CliErrorCategory) -> Opti
     }
 }
 
-fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCategory {
+fn classify_registry_error_category(
+    code: &str,
+    message: &str,
+    detail: Option<&Value>,
+) -> CliErrorCategory {
     if code == "registry-root-missing"
         || code.starts_with("policy-")
         || message.contains("local policy configuration")
@@ -356,13 +360,14 @@ fn classify_registry_error_category(code: &str, message: &str) -> CliErrorCatego
         )
     {
         CliErrorCategory::RootSetup
-    } else if matches!(
-        code,
-        "invalid-manifest"
-            | "bundle-signature-format-unsupported"
-            | "execution-plan-signature-format-unsupported"
-            | "bundle-format-unsupported"
-    ) {
+    } else if (code == "invalid-manifest" && has_runtime_manifest_validation_error(detail))
+        || matches!(
+            code,
+            "bundle-signature-format-unsupported"
+                | "execution-plan-signature-format-unsupported"
+                | "bundle-format-unsupported"
+        )
+    {
         CliErrorCategory::RuntimeCompatibility
     } else if code.starts_with("execution-plan-")
         || code.starts_with("trusted-publisher-")
@@ -424,7 +429,7 @@ fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
                 .into(),
         ),
         "invalid-manifest" => Some(
-            "Next: inspect the installed runtime surface with `guild show -v <skill-ref>` or reinstall the skill from source before rerunning"
+            "Next: inspect the affected installed `manifest.json` under the selected Guild root, then rerun `guild install <source-dir>` to repair it from source before retrying"
                 .into(),
         ),
         "dependency-resolution-failed" => Some(
@@ -495,7 +500,10 @@ fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
             "Next: confirm the signed bundle or OCI artifact was not modified after export, or fetch a fresh copy from the publisher before rerunning the import or pull"
                 .into(),
         ),
-        _ => next_steps_for_cli_message(message, classify_registry_error_category(code, message)),
+        _ => next_steps_for_cli_message(
+            message,
+            classify_registry_error_category(code, message, None),
+        ),
     }
 }
 
@@ -514,7 +522,8 @@ fn location_from_registry_detail(detail: Option<&Value>) -> Option<String> {
 }
 
 fn cli_error_from_registry(error: &RegistryError) -> CliError {
-    let category = classify_registry_error_category(&error.code, &error.message);
+    let category =
+        classify_registry_error_category(&error.code, &error.message, error.detail.as_ref());
     let mut cli_error = CliError::classified(
         category,
         humanize_runtime_surface_summary(&error.code, &error.message, error.detail.as_ref()),
@@ -4332,7 +4341,11 @@ fn parse_capability_grants(value: Value) -> Result<CapabilityGrantSet, CliError>
     serde_json::from_value(value).map_err(CliError::from)
 }
 
-fn classify_mcp_error_category(code: &str, message: &str) -> CliErrorCategory {
+fn classify_mcp_error_category(
+    code: &str,
+    message: &str,
+    detail: Option<&Value>,
+) -> CliErrorCategory {
     if code == "policy-denied"
         || code.starts_with("policy-")
         || code.ends_with("-not-granted")
@@ -4346,7 +4359,7 @@ fn classify_mcp_error_category(code: &str, message: &str) -> CliErrorCategory {
         CliErrorCategory::AuthorityDenial
     } else if code == "unsupported-runtime"
         || code == "component-abi-mismatch"
-        || code == "invalid-manifest"
+        || (code == "invalid-manifest" && has_runtime_manifest_validation_error(detail))
         || code == "unsupported-runtime-surface"
         || code == "filesystem-runtime-not-supported"
         || message.contains("runtime")
@@ -4365,7 +4378,8 @@ fn next_steps_for_mcp_error(
     requested_skill_ref: &str,
     registry_root: &Path,
 ) -> Option<String> {
-    let category = classify_mcp_error_category(&error.code, &error.message);
+    let category =
+        classify_mcp_error_category(&error.code, &error.message, error.detail.as_deref());
     let mut lines = Vec::new();
 
     if let Some(receipt) = error.receipt.as_deref() {
@@ -4400,7 +4414,8 @@ fn cli_error_from_mcp(
     requested_skill_ref: &str,
     registry_root: &Path,
 ) -> CliError {
-    let category = classify_mcp_error_category(&error.code, &error.message);
+    let category =
+        classify_mcp_error_category(&error.code, &error.message, error.detail.as_deref());
     let next_steps = next_steps_for_mcp_error(&error, requested_skill_ref, registry_root);
     let mut cli_error = CliError::classified(
         category,
@@ -4418,6 +4433,26 @@ fn cli_error_from_mcp(
     cli_error
 }
 
+fn has_runtime_manifest_validation_error(detail: Option<&Value>) -> bool {
+    manifest_validation_entries(detail)
+        .iter()
+        .flat_map(|entries| entries.iter())
+        .any(is_runtime_manifest_validation_entry)
+}
+
+fn manifest_validation_entries(detail: Option<&Value>) -> Option<&[Value]> {
+    detail.and_then(Value::as_array).map(Vec::as_slice)
+}
+
+fn is_runtime_manifest_validation_entry(entry: &Value) -> bool {
+    let path = entry.get("path").and_then(Value::as_str);
+    let message = entry.get("message").and_then(Value::as_str);
+
+    path.is_some_and(|path| path.starts_with("runtime."))
+        || (path == Some("behavior.modes.supported")
+            && message.is_some_and(|message| message.contains("guild-skill-inspect-v1")))
+}
+
 fn humanize_runtime_surface_summary(code: &str, message: &str, detail: Option<&Value>) -> String {
     if code == "unsupported-runtime-surface"
         && let Some(detail) = detail
@@ -4428,14 +4463,10 @@ fn humanize_runtime_surface_summary(code: &str, message: &str, detail: Option<&V
     }
 
     if code == "invalid-manifest"
-        && let Some(detail) = detail
-        && let Some(errors) = detail.as_array()
-        && let Some(runtime_error) = errors.iter().find(|entry| {
-            entry
-                .get("path")
-                .and_then(Value::as_str)
-                .is_some_and(|path| path.starts_with("runtime.") || path == "modes")
-        })
+        && let Some(runtime_error) = manifest_validation_entries(detail)
+            .iter()
+            .flat_map(|entries| entries.iter())
+            .find(|entry| is_runtime_manifest_validation_entry(entry))
         && let Some(runtime_message) = runtime_error.get("message").and_then(Value::as_str)
     {
         return runtime_message.to_owned();

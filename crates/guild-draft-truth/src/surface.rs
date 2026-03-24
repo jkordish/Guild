@@ -91,16 +91,28 @@ pub fn ensure_exact_string_set(
     )
 }
 
+pub fn ensure_exact_string_list(actual: &[String], expected: &[&str], context: &str) -> Result<()> {
+    let expected = expected
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<Vec<_>>();
+    if actual == expected {
+        return Ok(());
+    }
+    bail!(
+        "{context} drifted from the canonical ordered list; expected {:?}, found {:?}",
+        expected,
+        actual
+    )
+}
+
 pub fn verify_active_runtime_example_alignment() -> Result<()> {
     for relative_path in BUNDLED_RUNTIME_EXAMPLES {
         let runtime = read_json(&draft_v1_dir().join(relative_path))?;
         let context =
             format!("docs/schemas/draft-v1/{relative_path} component_model_support.wit_worlds");
-        ensure_exact_string_set(
-            published_wit_worlds(&runtime, &context)?,
-            [ACTIVE_INSPECT_WORLD.to_owned()],
-            &context,
-        )?;
+        let published_worlds = published_wit_worlds(&runtime, &context)?;
+        ensure_exact_string_list(&published_worlds, &[ACTIVE_INSPECT_WORLD], &context)?;
     }
 
     let runtime = read_json(&draft_v1_dir().join("examples/wasmtime-strict.runtime.json"))?;
@@ -436,4 +448,24 @@ fn expected_identity_block() -> String {
         ),
     ]
     .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ACTIVE_INSPECT_WORLD, ensure_exact_string_list};
+
+    #[test]
+    fn exact_string_list_rejects_duplicate_entries() {
+        let error = ensure_exact_string_list(
+            &[
+                ACTIVE_INSPECT_WORLD.to_owned(),
+                ACTIVE_INSPECT_WORLD.to_owned(),
+            ],
+            &[ACTIVE_INSPECT_WORLD],
+            "test-context",
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("canonical ordered list"));
+    }
 }

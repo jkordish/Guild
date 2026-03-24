@@ -648,6 +648,28 @@ fn duplicate_installed_hello_with_entrypoint_mismatch(
     target_dir
 }
 
+fn duplicate_installed_hello_with_apply_approval_mismatch(
+    registry_root: &Path,
+    skill_name: &str,
+) -> PathBuf {
+    let source_dir = installed_skill_dir(registry_root, "example", "hello-inspect");
+    let target_dir = registry_root
+        .join("installed")
+        .join("example")
+        .join(skill_name)
+        .join("0.1.0")
+        .join(source_dir.file_name().unwrap());
+    copy_dir_recursive(&source_dir, &target_dir);
+    write_installed_manifest(&target_dir, |manifest| {
+        manifest.key.name = skill_name.into();
+        manifest.display_name = "Hello Inspect Mode Drift".into();
+        manifest.description =
+            "A fixture that introduces non-runtime installed-manifest drift.".into();
+        manifest.behavior.modes.apply_requires_approval = true;
+    });
+    target_dir
+}
+
 fn broad_world_fixture_source() -> &'static str {
     r#"use serde_json::{json, Value};
 use wit_bindgen::generate;
@@ -1288,7 +1310,52 @@ fn wrong_world_manifest_rejections_stay_in_runtime_compatibility_bucket() {
     assert!(!stderr.contains("where: guild://executions/"), "{stderr}");
     assert!(
         stderr.contains(&format!(
-            "Next: inspect the installed runtime surface with `guild --registry-root {} show -v <skill-ref>` or reinstall the skill from source before rerunning",
+            "Next: inspect the affected installed `manifest.json` under the selected Guild root, then rerun `guild --registry-root {} install <source-dir>` to repair it from source before retrying",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn non_runtime_invalid_manifest_errors_do_not_use_runtime_bucket() {
+    let temp = TempFixtureDir::new("guild-cli-run-non-runtime-manifest-drift");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let _ = duplicate_installed_hello_with_apply_approval_mismatch(
+        &registry_root,
+        "hello-inspect-mode-drift",
+    );
+
+    let output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect-mode-drift@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &emit_evidence_grants_json(),
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.trim().is_empty(), "{stdout}");
+    assert!(
+        stderr.contains("usage: manifest validation failed"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("reason: invalid-manifest"), "{stderr}");
+    assert!(!stderr.contains("runtime/compatibility"), "{stderr}");
+    assert!(!stderr.contains("where: guild://executions/"), "{stderr}");
+    assert!(!stderr.contains("guild show -v"), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "Next: inspect the affected installed `manifest.json` under the selected Guild root, then rerun `guild --registry-root {} install <source-dir>` to repair it from source before retrying",
             registry_root.display()
         )),
         "{stderr}"
