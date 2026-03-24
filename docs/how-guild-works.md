@@ -80,6 +80,10 @@ When you need a stable machine surface:
 - use `--json` for structured machine-readable output
 - use `--porcelain` for stable one-line machine-readable output
 
+When a command supports `--json`, failure output stays on that machine surface:
+stdout carries a JSON `error` envelope, stderr stays empty, and the process
+still exits nonzero.
+
 ## A Normal Daily Flow
 
 ```bash

@@ -180,7 +180,7 @@ What that flow shows:
 - `get` reads the same resource backend used by MCP and guest `read-resource`
 - `verify` reports installed trust and verification state for skill refs only
 
-Default human output is concise and meant for reading, not parsing. It may include low-noise follow-up hints such as `Next: ...` on clear success paths. Use `--json` for structured machine-readable output and `--porcelain` for stable one-line machine-readable output.
+Default human output is concise and meant for reading, not parsing. It may include low-noise follow-up hints such as `Next: ...` on clear success paths. Use `--json` for structured machine-readable output and `--porcelain` for stable one-line machine-readable output. When a command supports `--json`, failure output stays machine-readable too: stdout carries a JSON `error` envelope, stderr stays empty, and the process exits nonzero.
 
 `guild why` stays compact by default and may include one nearby short execution or evidence ref so you can keep navigating stored work without pasting full URIs first. It also reports a compact `requested vs granted:` summary for the stored execution. Use `guild why -v` when you need the expanded nearby-ref lists, the requested-versus-granted authority diff, and family-aware request hints for that stored execution. Use `guild why --lineage` when you want the native bounded ancestor and descendant view over persisted executions without dropping into an example skill yet.
 
