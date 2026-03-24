@@ -4479,6 +4479,46 @@ fn user_facing_docs_use_installed_guild_cli_after_install() {
 }
 
 #[test]
+fn follow_on_program_tracking_stays_rebased() {
+    let config = fs::read_to_string(repo_root().join(".github/ISSUE_TEMPLATE/config.yml")).unwrap();
+    assert!(config.contains("Guild Follow-On Program"));
+    assert!(config.contains("https://github.com/jkordish/Guild/issues/44"));
+    assert!(!config.contains("/issues/15"));
+
+    let epic_template =
+        fs::read_to_string(repo_root().join(".github/ISSUE_TEMPLATE/ux-epic.md")).unwrap();
+    let task_template =
+        fs::read_to_string(repo_root().join(".github/ISSUE_TEMPLATE/ux-task.md")).unwrap();
+
+    for phrase in [
+        "Track one UX-hardening epic in the Guild day-to-day usability program",
+        "No runtime-contract widening unless a separate contract issue says so",
+        "No aspirational command names that the CLI does not already support honestly",
+        "No repo-local planning file that duplicates the active GitHub issue tree",
+    ] {
+        assert!(
+            epic_template.contains(phrase),
+            "ux-epic.md is missing follow-on program guardrail wording: {phrase}"
+        );
+    }
+
+    for forbidden in [
+        "guild explain execution <id>",
+        "guild check",
+        "resources/list_changed",
+    ] {
+        assert!(
+            !epic_template.contains(forbidden),
+            "ux-epic.md reintroduced stale follow-on planning wording: {forbidden}"
+        );
+        assert!(
+            !task_template.contains(forbidden),
+            "ux-task.md reintroduced stale follow-on planning wording: {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn journey_docs_stay_centered_on_user_workflows() {
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
     assert!(readme.contains("## User Journeys"));

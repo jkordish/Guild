@@ -39,6 +39,7 @@ Describe the user-visible outcome we want when this epic is complete.
 
 - No runtime-contract widening unless a separate contract issue says so
 - No aspirational command names that the CLI does not already support honestly
+- No repo-local planning file that duplicates the active GitHub issue tree
 
 ## Likely Files Or Surfaces
 
@@ -55,4 +56,3 @@ Describe the user-visible outcome we want when this epic is complete.
 
 - Blocked by:
 - Blocks:
-
