@@ -68,7 +68,10 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
     ("docs/adr/README.md", &["../project-positioning.md"]),
     (
         "docs/roadmap.md",
-        &["roadmap/epics/portable-skill-receipts-and-reference-apps.md"],
+        &[
+            "project-positioning.md",
+            "roadmap/epics/portable-skill-receipts-and-reference-apps.md",
+        ],
     ),
     (
         POSITIONING_DOC,
