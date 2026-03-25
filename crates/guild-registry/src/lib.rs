@@ -808,6 +808,26 @@ impl LocalRegistry {
         Ok(publishers)
     }
 
+    /// Read one trusted publisher record stored under a local Guild root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the trust store cannot be prepared or the trusted
+    /// publisher record cannot be read or validated.
+    pub fn read_trusted_publisher(
+        root: impl AsRef<Path>,
+        publisher_id: &str,
+    ) -> Result<TrustedPublisherRecord, RegistryError> {
+        let root = ensure_registry_layout(root)?;
+        let path = trusted_publisher_path(&root, publisher_id);
+        read_trusted_publisher_record_with_not_found_detail(
+            &path,
+            "trusted-publisher-missing",
+            "trusted publisher record was not found",
+            publisher_id.to_owned(),
+        )
+    }
+
     /// Remove a trusted publisher record from a local Guild root.
     ///
     /// # Errors

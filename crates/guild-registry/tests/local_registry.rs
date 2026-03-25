@@ -968,6 +968,39 @@ fn execution_plan_verification_fails_with_wrong_trusted_key_for_same_publisher()
 }
 
 #[test]
+fn trusted_publisher_records_can_be_read_by_publisher_id() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry");
+    let signer = publisher_identity_for_ref(
+        PublisherRef {
+            id: "local.example".into(),
+            display_name: "Local Example".into(),
+            homepage: Some("https://example.invalid".into()),
+        },
+        &temp.path().join("trusted-publisher.json"),
+    );
+
+    let expected = signer.trusted_record();
+    LocalRegistry::trust_publisher(&registry_root, &expected).unwrap();
+
+    let stored = LocalRegistry::read_trusted_publisher(&registry_root, "local.example").unwrap();
+    assert_eq!(stored, expected);
+}
+
+#[test]
+fn reading_missing_trusted_publishers_fails_closed() {
+    let temp = TempFixtureDir::new();
+    let registry_root = temp.path().join("registry");
+
+    let error =
+        LocalRegistry::read_trusted_publisher(&registry_root, "missing.example").unwrap_err();
+
+    assert_eq!(error.code, "trusted-publisher-missing");
+    assert_eq!(error.message, "trusted publisher record was not found");
+    assert_eq!(error.detail, Some(serde_json::json!("missing.example")));
+}
+
+#[test]
 fn primitive_oci_import_resolves_digest_pinned_skill_in_fresh_registry() {
     let temp = TempFixtureDir::new();
     let registry_a = temp.path().join("registry-a");

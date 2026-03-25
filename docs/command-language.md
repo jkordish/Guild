@@ -355,6 +355,7 @@ Trust-store maintenance stays local and explicit:
 - `guild trust add --identity-file <identity.json>` trusts one local publisher identity directly
 - `guild trust add --record-file <record.json>` trusts one reviewed publisher record without secret key material
 - `guild trust list` reviews trusted publishers and their current tiers
+- `guild trust show <publisher-id>` inspects one reviewed publisher record under the selected local root
 - `guild trust remove <publisher-id>` removes one local trust record when a publisher should no longer be trusted
 
 ### Preview Direction

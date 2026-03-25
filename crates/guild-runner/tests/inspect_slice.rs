@@ -528,6 +528,7 @@ fn active_inspect_artifacts_only_import_the_inspect_host_interface() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn broader_guild_component_imports_are_rejected_before_guest_execution() {
     let temp = TempFixtureDir::new();
     let registry_root = temp.path().join("registry");
