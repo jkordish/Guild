@@ -602,11 +602,18 @@ pub fn render_trust_add_success(publisher: &TrustedPublisherRecord) -> String {
 }
 
 #[must_use]
+pub fn render_trusted_publisher(publisher: &TrustedPublisherRecord) -> String {
+    let mut output = String::new();
+    let _ = writeln!(output, "publisher: {}", publisher.publisher.id);
+    append_trusted_publisher_details(&mut output, publisher);
+    output
+}
+
+#[must_use]
 pub fn render_trusted_publishers_list(publishers: &[TrustedPublisherRecord]) -> String {
     let mut output = String::new();
     for (index, publisher) in publishers.iter().enumerate() {
-        let _ = writeln!(output, "publisher: {}", publisher.publisher.id);
-        append_trusted_publisher_details(&mut output, publisher);
+        output.push_str(&render_trusted_publisher(publisher));
         if index + 1 < publishers.len() {
             let _ = writeln!(output);
         }
@@ -1456,6 +1463,7 @@ fn render_grant_group(grants: &[GrantedCapability]) -> String {
         .join(" | ")
 }
 
+#[allow(clippy::too_many_lines)]
 fn render_grant_constraints(grant: &GrantedCapability) -> String {
     match &grant.constraints {
         CapabilityConstraints::None(_) => "any".into(),
@@ -1467,7 +1475,7 @@ fn render_grant_constraints(grant: &GrantedCapability) -> String {
                     "uri_prefixes",
                     constraints.uri_prefixes.as_deref(),
                     Some("any"),
-                    |value| value.to_owned(),
+                    std::borrow::ToOwned::to_owned,
                 ),
             );
             push_part(
@@ -1485,7 +1493,7 @@ fn render_grant_constraints(grant: &GrantedCapability) -> String {
             "aliases",
             constraints.aliases.as_deref(),
             Some("any-declared"),
-            |value| value.to_owned(),
+            std::borrow::ToOwned::to_owned,
         ),
         CapabilityConstraints::EmitEvidence(constraints) => {
             let mut parts = Vec::new();
@@ -1535,7 +1543,7 @@ fn render_grant_constraints(grant: &GrantedCapability) -> String {
                     "hosts",
                     constraints.allowed_hosts.as_deref(),
                     None,
-                    |value| value.to_owned(),
+                    std::borrow::ToOwned::to_owned,
                 ),
             );
             push_part(
@@ -1544,7 +1552,7 @@ fn render_grant_constraints(grant: &GrantedCapability) -> String {
                     "host_suffixes",
                     constraints.allowed_host_suffixes.as_deref(),
                     None,
-                    |value| value.to_owned(),
+                    std::borrow::ToOwned::to_owned,
                 ),
             );
             push_part(
@@ -1553,7 +1561,7 @@ fn render_grant_constraints(grant: &GrantedCapability) -> String {
                     "ports",
                     constraints.allowed_ports.as_deref(),
                     None,
-                    |value| value.to_string(),
+                    std::string::ToString::to_string,
                 ),
             );
             push_part(
@@ -1571,7 +1579,7 @@ fn render_grant_constraints(grant: &GrantedCapability) -> String {
                     "paths",
                     constraints.allowed_path_prefixes.as_deref(),
                     None,
-                    |value| value.to_owned(),
+                    std::borrow::ToOwned::to_owned,
                 ),
             );
             if let Some(max_timeout_ms) = constraints.max_timeout_ms {
@@ -1603,7 +1611,7 @@ fn render_grant_constraints(grant: &GrantedCapability) -> String {
                 parts.join(" ")
             }
         }
-        other => canonical_value(other),
+        CapabilityConstraints::Filesystem(constraints) => canonical_value(constraints),
     }
 }
 
@@ -1705,16 +1713,17 @@ fn blocked_authority_observation_failure(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn authority_request_hint_for_error(code: &str, detail: Option<&Value>) -> Option<String> {
     match code {
         "policy-denied" => detail
             .and_then(|detail| detail.get("reasons").and_then(Value::as_array))
             .and_then(|reasons| {
                 reasons.iter().find_map(|reason| {
-                    Some(authority_request_hint_for_error(
+                    authority_request_hint_for_error(
                         reason.get("code").and_then(Value::as_str)?,
                         reason.get("detail"),
-                    )?)
+                    )
                 })
             }),
         "policy-requested-capability-invalid" => Some(
@@ -2542,7 +2551,7 @@ mod tests {
         serde_json::from_value(value).unwrap()
     }
 
-    fn execution_record_with_blocked_observation(observation: Value) -> ExecutionRecord {
+    fn execution_record_with_blocked_observation(observation: &Value) -> ExecutionRecord {
         let mut value = serde_json::to_value(execution_record_with_related_refs(0, 0)).unwrap();
         *value.pointer_mut("/authority_observations").unwrap() = json!([observation]);
         serde_json::from_value(value).unwrap()
@@ -2749,7 +2758,7 @@ mod tests {
 
     #[test]
     fn blocked_observations_add_request_hints_even_without_termination_or_policy_reasons() {
-        let record = execution_record_with_blocked_observation(json!({
+        let observation = json!({
             "family": "http-request",
             "status": "blocked",
             "detail": {
@@ -2766,7 +2775,8 @@ mod tests {
                     }
                 }
             }
-        }));
+        });
+        let record = execution_record_with_blocked_observation(&observation);
 
         let verbose = render_execution_why(&record, test_options(1), StreamKind::Stdout);
 

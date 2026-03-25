@@ -41,10 +41,11 @@ use crate::cli_presenter::{
     render_skill_verify_next_step, render_skills_list, render_transport_export_next_step,
     render_transport_export_summary, render_transport_import_preview_summary,
     render_transport_import_summary, render_transport_push_next_step,
-    render_transport_push_summary, render_trust_add_success, render_trusted_publishers_list,
-    render_verify_porcelain, render_why_next_step, render_why_porcelain,
-    resolved_skill_ref as presenter_resolved_skill_ref, runtime_label as presenter_runtime_label,
-    short_execution_ref, support_summary_for_execution, support_summary_for_skill, why_summary,
+    render_transport_push_summary, render_trust_add_success, render_trusted_publisher,
+    render_trusted_publishers_list, render_verify_porcelain, render_why_next_step,
+    render_why_porcelain, resolved_skill_ref as presenter_resolved_skill_ref,
+    runtime_label as presenter_runtime_label, short_execution_ref, support_summary_for_execution,
+    support_summary_for_skill, why_summary,
 };
 use crate::codex::{
     CodexConfigWriteResult, CodexServerConfig, DEFAULT_CODEX_SERVER_NAME,
@@ -74,8 +75,10 @@ const IMPORT_AFTER_HELP: &str = "Preview direction:\n  use `--preview` for a rea
 const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  `--preview` stays read-only and uses the same signed bundle and trust checks as import.\n  see `guild help preview` for the first contract.";
 const PUSH_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for push in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const PULL_AFTER_HELP: &str = "Preview direction:\n  use `--preview` for a read-only preflight over import and pull.\n  see `guild help preview` for the shipped scope and non-goals.";
-const TRUST_AFTER_HELP: &str = "Review loop:\n  trust list -> import/pull -> verify -v\n\nMaintenance:\n  add/list/remove trusted publishers under the selected local root.\n  use `trust add --record-file` when you already have a reviewed trust record.\n\nSigning:\n  `sign-plan` writes a signed plan.\n  `verify-plan` checks it against the selected root's trust store.";
+const TRUST_AFTER_HELP: &str = "Review loop:\n  trust list -> import/pull -> verify -v\n\nMaintenance:\n  add/show/list/remove trusted publishers under the selected local root.\n  use `trust add --record-file` when you already have a reviewed trust record.\n\nSigning:\n  `sign-plan` writes a signed plan.\n  `verify-plan` checks it against the selected root's trust store.";
 const TRUST_ADD_AFTER_HELP: &str = "Identity sources:\n  use `--identity-file` for one local publisher identity.\n  use `--record-file` for one reviewed trust record without secret key material.";
+const TRUST_SHOW_AFTER_HELP: &str =
+    "Review:\n  shows one trusted publisher record and tier in the selected local trust store.";
 const TRUST_LIST_AFTER_HELP: &str =
     "Review:\n  lists the trusted publishers and tiers in the selected local trust store.";
 const TRUST_REMOVE_AFTER_HELP: &str =
@@ -644,6 +647,7 @@ fn classify_registry_error_category(
             code,
             "trusted-publisher-read-failed"
                 | "trusted-publisher-parse-failed"
+                | "trusted-publisher-id-mismatch"
                 | "trusted-publisher-key-invalid"
                 | "trusted-publisher-tier-invalid"
                 | "trusted-publisher-scan-failed"
@@ -762,6 +766,7 @@ fn next_steps_for_reason_code(code: &str, summary: &str) -> Option<String> {
         }
         "trusted-publisher-read-failed"
         | "trusted-publisher-parse-failed"
+        | "trusted-publisher-id-mismatch"
         | "trusted-publisher-key-invalid"
         | "trusted-publisher-tier-invalid" => Some(
             "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild trust list`"
@@ -1122,6 +1127,12 @@ struct TrustAddOutput {
 struct TrustListOutput {
     registry_root: String,
     publishers: Vec<TrustedPublisherRecord>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TrustShowOutput {
+    registry_root: String,
+    publisher: TrustedPublisherRecord,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1576,6 +1587,11 @@ enum TrustCliCommand {
     )]
     Add(TrustAddCliArgs),
     #[command(
+        about = "Show one trusted publisher record from the selected local root",
+        after_help = TRUST_SHOW_AFTER_HELP
+    )]
+    Show(TrustShowCliArgs),
+    #[command(
         about = "List trusted publisher records in the selected local root",
         after_help = TRUST_LIST_AFTER_HELP
     )]
@@ -1621,6 +1637,14 @@ struct TrustAddCliArgs {
     record_file: Option<PathBuf>,
     #[arg(long)]
     tier: Option<LocalTrustTier>,
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct TrustShowCliArgs {
+    #[arg(value_name = "publisher-id")]
+    publisher_id: String,
     #[arg(long)]
     json: bool,
 }
@@ -1963,6 +1987,13 @@ impl TrustCliArgs {
                 }
                 args
             }
+            TrustCliCommand::Show(command) => {
+                let mut args = vec!["show".into(), command.publisher_id.clone()];
+                if command.json {
+                    args.push("--json".into());
+                }
+                args
+            }
             TrustCliCommand::List(command) => {
                 let mut args = vec!["list".into()];
                 if command.json {
@@ -2176,21 +2207,20 @@ fn run_grants(command: &GrantsCliArgs) -> Result<(), CliError> {
 }
 
 fn grant_template_output(family: Option<&GrantTemplateFamily>) -> GrantTemplateOutput {
-    match family {
-        Some(family) => GrantTemplateOutput::Template(grant_template_set(family)),
-        None => {
-            let mut templates = BTreeMap::new();
-            for family in [
-                GrantTemplateFamily::ReadResource,
-                GrantTemplateFamily::InvokeSkill,
-                GrantTemplateFamily::EmitEvidence,
-                GrantTemplateFamily::LogWrite,
-                GrantTemplateFamily::HttpRequest,
-            ] {
-                templates.insert(family.as_str().into(), grant_template_set(&family));
-            }
-            GrantTemplateOutput::Catalog(GrantTemplateCatalog { templates })
+    if let Some(family) = family {
+        GrantTemplateOutput::Template(grant_template_set(family))
+    } else {
+        let mut templates = BTreeMap::new();
+        for family in [
+            GrantTemplateFamily::ReadResource,
+            GrantTemplateFamily::InvokeSkill,
+            GrantTemplateFamily::EmitEvidence,
+            GrantTemplateFamily::LogWrite,
+            GrantTemplateFamily::HttpRequest,
+        ] {
+            templates.insert(family.as_str().into(), grant_template_set(&family));
         }
+        GrantTemplateOutput::Catalog(GrantTemplateCatalog { templates })
     }
 }
 
@@ -3930,6 +3960,7 @@ fn run_trust(
     match command {
         "generate" => run_trust_generate(&args[1..]),
         "add" => run_trust_add(&args[1..], global, env_registry_root),
+        "show" => run_trust_show(&args[1..], global, env_registry_root),
         "list" => run_trust_list(&args[1..], global, env_registry_root),
         "remove" => run_trust_remove(&args[1..], global, env_registry_root),
         "sign-plan" => run_trust_sign_plan(&args[1..], global, env_registry_root),
@@ -4095,6 +4126,69 @@ fn run_trust_add(
             "{}",
             qualify_next_steps_for_registry_root("Next: guild trust list", &registry_root)
         );
+    }
+
+    Ok(())
+}
+
+fn run_trust_show(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if args.is_empty() {
+        print_trust_show_usage();
+        return Ok(());
+    }
+
+    let registry_root = resolve_registry_root(global, env_registry_root)?;
+    ensure_existing_registry_root(&registry_root)?;
+    let mut publisher_id = None;
+    let mut json_output = false;
+
+    for argument in args {
+        match argument.as_str() {
+            "--json" => json_output = true,
+            "--help" | "-h" => {
+                print_trust_show_usage();
+                return Ok(());
+            }
+            other if publisher_id.is_none() => publisher_id = Some(other.to_owned()),
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild trust show`: `{other}`"
+                )));
+            }
+        }
+    }
+
+    let publisher_id =
+        publisher_id.ok_or_else(|| CliError::new("`guild trust show` requires <publisher-id>"))?;
+    let publisher = match LocalRegistry::read_trusted_publisher(&registry_root, &publisher_id) {
+        Ok(publisher) => publisher,
+        Err(error) if error.code == "trusted-publisher-missing" => {
+            let cli_error = CliError::classified(
+                CliErrorCategory::LookupAmbiguity,
+                format!("trusted publisher `{publisher_id}` was not present"),
+            )
+            .with_reason_code(error.code);
+            return Err(apply_failure_remediation(
+                cli_error,
+                FailureRemediationContext::manual(&registry_root),
+            ));
+        }
+        Err(error) => return Err(cli_error_from_registry_with_root(&error, &registry_root)),
+    };
+
+    let output = TrustShowOutput {
+        registry_root: registry_root.display().to_string(),
+        publisher,
+    };
+
+    if json_output {
+        print_json(&output)?;
+    } else {
+        print!("{}", render_trusted_publisher(&output.publisher));
     }
 
     Ok(())
@@ -5402,6 +5496,8 @@ fn print_help_trust() {
     println!("    trust one reviewed publisher record without secret key material");
     println!("  guild trust list");
     println!("    inspect trusted publishers and their current tiers");
+    println!("  guild trust show <publisher-id>");
+    println!("    inspect one trusted publisher record under the selected local root");
     println!("  guild trust remove <publisher-id>");
     println!("    remove one local trust record when a publisher should no longer be trusted");
     println!();
@@ -5647,13 +5743,13 @@ fn print_pull_usage() {
 
 fn print_trust_usage() {
     println!(
-        "usage: guild [--registry-root <path>] trust <generate|add|list|remove|sign-plan|verify-plan> ..."
+        "usage: guild [--registry-root <path>] trust <generate|add|show|list|remove|sign-plan|verify-plan> ..."
     );
     println!(
         "note: `guild trust ...` manages the local trust store and signs or verifies execution plans against that same trust model."
     );
     println!("review loop: trust list -> import/pull -> verify -v");
-    println!("maintenance: add/list/remove trusted publishers under the selected local root");
+    println!("maintenance: add/show/list/remove trusted publishers under the selected local root");
     println!(
         "signing: sign-plan writes a signed plan; verify-plan checks it against the selected root"
     );
@@ -5672,6 +5768,11 @@ fn print_trust_add_usage() {
     println!(
         "note: use --identity-file for a local publisher identity or --record-file for a reviewed trust record."
     );
+}
+
+fn print_trust_show_usage() {
+    println!("usage: guild [--registry-root <path>] trust show <publisher-id> [--json]");
+    println!("note: shows one trusted publisher record from the selected local trust store.");
 }
 
 fn print_trust_list_usage() {

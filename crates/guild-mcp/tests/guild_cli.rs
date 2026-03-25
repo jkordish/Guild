@@ -1035,6 +1035,7 @@ fn trust_add_and_list_render_review_friendly_human_output() {
     let registry_root_display = registry_root.display().to_string();
     let identity_path = temp.path().join("publisher.json");
     let identity = identity_path.display().to_string();
+    fs::create_dir_all(&registry_root).unwrap();
 
     let empty_list = run_guild_success(
         &["--registry-root", &registry_root_display, "trust", "list"],
@@ -2777,6 +2778,22 @@ fn install_export_import_and_trust_commands_work_for_bundle_transport() {
     );
     let trust_list: Value = parse_json_stdout(&trust_list_output);
     assert_eq!(trust_list["publishers"].as_array().unwrap().len(), 1);
+    let trust_show_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "trust",
+            "show",
+            "local.example",
+            "--json",
+        ],
+        None,
+    );
+    let trust_show: Value = parse_json_stdout(&trust_show_output);
+    assert_eq!(
+        trust_show["publisher"]["publisher"]["id"],
+        json!("local.example")
+    );
 
     let import_output = run_guild_success(
         &[
@@ -2823,6 +2840,87 @@ fn install_export_import_and_trust_commands_work_for_bundle_transport() {
         None,
     );
     assert!(remove_output.contains("removed trusted publisher local.example"));
+}
+
+#[test]
+fn trust_show_renders_human_review_output() {
+    let temp = TempFixtureDir::new("guild-cli-trust-show-human");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "show",
+            "local.example",
+        ],
+        None,
+    );
+
+    assert_eq!(output, expected_trust_list_output());
+}
+
+#[test]
+fn trust_show_json_returns_one_trusted_publisher_record() {
+    let temp = TempFixtureDir::new("guild-cli-trust-show-json");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "show",
+            "--json",
+            "local.example",
+        ],
+        None,
+    );
+    let shown: Value = parse_json_stdout(&output);
+
+    assert_eq!(shown["registry_root"], json!(registry_root_display));
+    assert_eq!(
+        shown["publisher"]["publisher"]["id"],
+        json!("local.example")
+    );
+    assert_eq!(
+        shown["publisher"]["publisher"]["display_name"],
+        json!("Local Example")
+    );
+    assert_eq!(shown["publisher"]["trust_tier"], json!("trusted-imported"));
 }
 
 #[test]
@@ -3056,6 +3154,104 @@ fn trust_remove_missing_publishers_surface_lookup_guidance() {
 }
 
 #[test]
+fn trust_show_missing_publishers_surface_lookup_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-trust-show-missing");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "remove",
+            "local.example",
+        ],
+        None,
+    );
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "show",
+            "local.example",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("lookup/ambiguity: trusted publisher `local.example` was not present"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: run `guild --registry-root {} trust list` to inspect the current trusted publisher entries",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
+}
+
+#[test]
+fn trust_read_commands_do_not_initialize_existing_directories() {
+    let temp = TempFixtureDir::new("guild-cli-trust-read-no-init");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    fs::create_dir_all(&registry_root).unwrap();
+
+    let trust_list_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "list",
+            "--json",
+        ],
+        None,
+    );
+    let trust_list: Value = parse_json_stdout(&trust_list_output);
+    assert_eq!(trust_list["publishers"].as_array().unwrap().len(), 0);
+    assert!(!registry_root.join("trust").exists());
+    assert!(!registry_root.join("installed").exists());
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "show",
+            "local.example",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("lookup/ambiguity: trusted publisher `local.example` was not present"),
+        "{stderr}"
+    );
+    assert!(!registry_root.join("trust").exists());
+    assert!(!registry_root.join("installed").exists());
+}
+
+#[test]
 fn broken_local_trust_records_surface_root_setup_guidance() {
     let temp = TempFixtureDir::new("guild-cli-broken-trust-record");
     let registry_root = temp.path().join("registry");
@@ -3093,6 +3289,119 @@ fn broken_local_trust_records_surface_root_setup_guidance() {
     );
     assert!(
         stderr.contains("reason: trusted-publisher-parse-failed"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild --registry-root {} trust list`",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
+}
+
+#[test]
+fn broken_trust_show_records_surface_root_setup_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-broken-trust-show-record");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+    let trusted_record_path = registry_root
+        .join("trust")
+        .join("publishers")
+        .join("local.example.json");
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    fs::write(&trusted_record_path, b"{not valid json").unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "show",
+            "local.example",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("root/setup: failed to parse trusted publisher record"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: trusted-publisher-parse-failed"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn mismatched_trust_show_records_surface_root_setup_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-mismatched-trust-show-record");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+    let trusted_record_path = registry_root
+        .join("trust")
+        .join("publishers")
+        .join("local.example.json");
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let mut trusted_record: Value =
+        serde_json::from_str(&fs::read_to_string(&trusted_record_path).unwrap()).unwrap();
+    trusted_record["publisher"]["id"] = json!("other.example");
+    fs::write(
+        &trusted_record_path,
+        serde_json::to_vec_pretty(&trusted_record).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "show",
+            "local.example",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(
+            "root/setup: trusted publisher record did not match the requested publisher id"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: trusted-publisher-id-mismatch"),
         "{stderr}"
     );
     assert!(
@@ -4582,6 +4891,7 @@ fn shared_help_topics_are_available() {
     assert!(trust.contains("guild trust verify-plan"));
     assert!(trust.contains("Trust-store maintenance:"));
     assert!(trust.contains("guild trust add --record-file <record.json>"));
+    assert!(trust.contains("guild trust show <publisher-id>"));
     assert!(trust.contains("guild trust remove <publisher-id>"));
     assert!(trust.contains("Plan signing review:"));
     assert!(trust.contains("local-source"));
@@ -4594,13 +4904,17 @@ fn shared_help_topics_are_available() {
     assert!(trust_usage.contains("Review loop:"));
     assert!(trust_usage.contains("trust list -> import/pull -> verify -v"));
     assert!(trust_usage.contains("Maintenance:"));
-    assert!(trust_usage.contains("add/list/remove trusted publishers"));
+    assert!(trust_usage.contains("add/show/list/remove trusted publishers"));
     assert!(trust_usage.contains("Signing:"));
     assert!(trust_usage.contains("`sign-plan` writes a signed plan."));
 
     let trust_add_help = run_guild_success(&["trust", "add", "--help"], None);
     assert!(trust_add_help.contains("use `--identity-file`"));
     assert!(trust_add_help.contains("use `--record-file`"));
+
+    let trust_show_help = run_guild_success(&["trust", "show", "--help"], None);
+    assert!(trust_show_help.contains("Usage: guild trust show [OPTIONS] <publisher-id>"));
+    assert!(trust_show_help.contains("shows one trusted publisher record"));
 
     let trust_remove_help = run_guild_success(&["trust", "remove", "--help"], None);
     assert!(trust_remove_help.contains("removes one trusted publisher record"));
@@ -5621,6 +5935,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(how_it_works.contains("guild verify -v <skill-ref>"));
     assert!(how_it_works.contains("verified-import"));
     assert!(how_it_works.contains("guild trust add --record-file <record.json>"));
+    assert!(how_it_works.contains("guild trust show <publisher-id>"));
     assert!(how_it_works.contains("guild trust remove <publisher-id>"));
     assert!(how_it_works.contains("Default human output is for reading, not parsing."));
     assert!(how_it_works.contains("low-noise follow-up hints such as `Next: ...`"));
@@ -5871,6 +6186,7 @@ fn trust_review_terms_stay_canonical_across_help_and_docs() {
         "`trusted-imported`",
         "`restricted`",
         "`guild trust add --record-file <record.json>`",
+        "`guild trust show <publisher-id>`",
         "`guild trust remove <publisher-id>`",
         "Execution-plan signing stays on the same local trust model:",
     ] {
@@ -5894,6 +6210,7 @@ fn trust_review_terms_stay_canonical_across_help_and_docs() {
         "`trusted-imported`",
         "`restricted`",
         "`guild trust add --record-file <record.json>`",
+        "`guild trust show <publisher-id>`",
         "`guild trust remove <publisher-id>`",
     ] {
         assert!(

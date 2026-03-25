@@ -776,12 +776,12 @@ impl LocalRegistry {
     ///
     /// # Errors
     ///
-    /// Returns an error if the trust store cannot be scanned or any trusted
-    /// publisher record cannot be read or validated.
+    /// Returns an error if the trust store cannot be opened or scanned, or any
+    /// trusted publisher record cannot be read or validated.
     pub fn list_trusted_publishers(
         root: impl AsRef<Path>,
     ) -> Result<Vec<TrustedPublisherRecord>, RegistryError> {
-        let root = ensure_registry_layout(root)?;
+        let root = open_existing_registry_root(root)?;
         let publishers_root = trusted_publishers_root(&root);
         if !publishers_root.exists() {
             return Ok(Vec::new());
@@ -806,6 +806,38 @@ impl LocalRegistry {
 
         publishers.sort_by(|left, right| left.publisher.id.cmp(&right.publisher.id));
         Ok(publishers)
+    }
+
+    /// Read one trusted publisher record stored under a local Guild root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the trust store cannot be opened or the trusted
+    /// publisher record cannot be read or validated.
+    pub fn read_trusted_publisher(
+        root: impl AsRef<Path>,
+        publisher_id: &str,
+    ) -> Result<TrustedPublisherRecord, RegistryError> {
+        let root = open_existing_registry_root(root)?;
+        let path = trusted_publisher_path(&root, publisher_id);
+        let publisher = read_trusted_publisher_record_with_not_found_detail(
+            &path,
+            "trusted-publisher-missing",
+            "trusted publisher record was not found",
+            publisher_id.to_owned(),
+        )?;
+        if publisher.publisher.id != publisher_id {
+            return Err(RegistryError::new(
+                "trusted-publisher-id-mismatch",
+                "trusted publisher record did not match the requested publisher id",
+            )
+            .with_detail(serde_json::json!({
+                "path": path.display().to_string(),
+                "requested_publisher_id": publisher_id,
+                "record_publisher_id": publisher.publisher.id,
+            })));
+        }
+        Ok(publisher)
     }
 
     /// Remove a trusted publisher record from a local Guild root.
