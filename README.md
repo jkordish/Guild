@@ -315,10 +315,11 @@ guild --registry-root target/dev-local-registry/b pull \
 The current trust review loop is:
 
 - `guild trust list`
+- `guild import ... --preview` or `guild pull ... --preview`
 - `guild import ...` or `guild pull ...`
 - `guild verify -v <skill-ref>`
 
-Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path after import or pull. That view keeps the trust summary visible and adds signing-scheme and short bundle-digest detail when verification metadata exists.
+Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path after import or pull. That view keeps the publisher and combined trust status visible and adds signing-scheme and short bundle-digest detail when verification metadata exists.
 
 Current installed-state terms:
 
@@ -352,7 +353,7 @@ Preview direction for risky flows is now shipped for the first slice:
 
 - first preview flag: `--preview`
 - first scope: `guild import bundle`, `guild import oci-layout`, and `guild pull`
-- preview must report real signed installed-state metadata, verification outcome, local trust posture, and bundled closure scope before any state change
+- preview must report real signed installed-state metadata, publisher identity, combined verification result and trust tier, bundle digest context, and bundled closure scope before any state change
 - preview must stay read-only: no root creation, staging, installation, trust mutation, or fake detached summary
 - `export` and `push` stay out of the first preview slice
 

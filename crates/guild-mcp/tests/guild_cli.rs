@@ -552,8 +552,8 @@ fn expected_import_review_output(registry_root: &Path, transport: &str, source: 
             "installed: 1 skill\n",
             "\n",
             "installed skill://example/hello-inspect@0.1.0\n",
-            "status: verified-import / trusted-imported\n",
             "publisher: local.example\n",
+            "status: verified-import / trusted-imported\n",
             "Next: guild --registry-root {} verify -v skill://example/hello-inspect@0.1.0\n",
         ),
         transport,
@@ -584,9 +584,19 @@ fn assert_import_preview_output(
         "{output}"
     );
     assert!(output.contains("publisher: local.example"), "{output}");
-    assert!(output.contains(&format!("trust: {trust}")), "{output}");
+    assert!(
+        output.contains(&format!(
+            "status: {} / {trust}",
+            if decision == "would-import" {
+                "verified"
+            } else {
+                "refused"
+            }
+        )),
+        "{output}"
+    );
     assert!(output.contains("scheme: ed25519"), "{output}");
-    assert!(output.contains("bundle: sha256:"), "{output}");
+    assert!(output.contains("bundle digest: sha256:"), "{output}");
     assert!(output.contains("contents: root skill only"), "{output}");
     assert!(output.contains("skills: 1 skill"), "{output}");
 }
@@ -1019,8 +1029,8 @@ fn primary_show_and_verify_commands_render_compact_human_output() {
         format!(
             concat!(
                 "example/hello-inspect@0.1.0\n",
-                "status: local-source / local-dev\n",
                 "publisher: local-source\n",
+                "status: local-source / local-dev\n",
                 "Next: guild --registry-root {} show -v skill://example/hello-inspect@0.1.0\n",
             ),
             registry_root.display()
@@ -1208,8 +1218,8 @@ fn starter_pack_incident_brief_runs_with_markdown_stdout() {
         format!(
             concat!(
                 "example/incident-brief@0.1.0\n",
-                "status: local-source / local-dev\n",
                 "publisher: local-source\n",
+                "status: local-source / local-dev\n",
                 "Next: guild --registry-root {} show -v skill://example/incident-brief@0.1.0\n",
             ),
             registry_root.display()
@@ -4650,10 +4660,6 @@ fn pull_preview_renders_refusal_without_installing() {
         "untrusted",
     );
     assert!(
-        preview_output.contains("verification: refused (bundle-publisher-untrusted)"),
-        "{preview_output}"
-    );
-    assert!(
         preview_output.contains(
             "reason: bundle-publisher-untrusted: signed bundle publisher was not trusted by the target Guild root"
         ),
@@ -4885,6 +4891,7 @@ fn shared_help_topics_are_available() {
     let trust = run_guild_success(&["help", "trust"], None);
     assert!(trust.contains("Trust and verification"));
     assert!(trust.contains("Normal review loop:"));
+    assert!(trust.contains("guild import ... --preview or guild pull ... --preview"));
     assert!(trust.contains("guild import ... or guild pull ..."));
     assert!(trust.contains("guild verify -v <skill-ref>"));
     assert!(trust.contains("guild verify <skill-ref>"));
@@ -4950,7 +4957,9 @@ fn shared_help_topics_are_available() {
     assert!(preview.contains("guild import bundle"));
     assert!(preview.contains("guild import oci-layout"));
     assert!(preview.contains("guild pull"));
-    assert!(preview.contains("publisher identity, verification outcome, and local trust posture"));
+    assert!(preview.contains(
+        "publisher identity, combined verification result and trust tier, and bundle digest context"
+    ));
     assert!(preview.contains("preview is now shipped for that first import-and-pull slice"));
     assert!(preview.contains("no preview contract for export or push in the first slice"));
 
@@ -5932,6 +5941,8 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(how_it_works.contains("## Output Modes"));
     assert!(how_it_works.contains("## Trust Review"));
     assert!(how_it_works.contains("guild trust list"));
+    assert!(how_it_works.contains("guild import ... --preview"));
+    assert!(how_it_works.contains("guild import ...` or `guild pull ..."));
     assert!(how_it_works.contains("guild verify -v <skill-ref>"));
     assert!(how_it_works.contains("verified-import"));
     assert!(how_it_works.contains("guild trust add --record-file <record.json>"));
@@ -6177,6 +6188,7 @@ fn trust_review_terms_stay_canonical_across_help_and_docs() {
     for phrase in [
         "The current trust review loop is:",
         "`guild trust list`",
+        "`guild import ... --preview` or `guild pull ... --preview`",
         "`guild import ...` or `guild pull ...`",
         "`guild verify -v <skill-ref>`",
         "Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path",
@@ -6201,6 +6213,7 @@ fn trust_review_terms_stay_canonical_across_help_and_docs() {
     for phrase in [
         "The current trust review loop is:",
         "`guild trust list`",
+        "`guild import ... --preview` or `guild pull ... --preview`",
         "`guild import ...` or `guild pull ...`",
         "`guild verify -v <skill-ref>`",
         "Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path",

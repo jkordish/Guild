@@ -386,13 +386,13 @@ pub fn render_skill_verify(
     );
     let _ = writeln!(
         output,
-        "status: {}",
-        render_trust_status_pair(Some(styler), &verification, &trust)
+        "publisher: {}",
+        render_publisher_label(Some(styler), publisher)
     );
     let _ = writeln!(
         output,
-        "publisher: {}",
-        render_publisher_label(Some(styler), publisher)
+        "status: {}",
+        render_trust_status_pair(Some(styler), &verification, &trust)
     );
     if let Some(verification) = &installed.verification
         && options.verbose()
@@ -404,8 +404,11 @@ pub fn render_skill_verify(
         );
         let _ = writeln!(
             output,
-            "bundle: {}",
-            styler.paint(Tone::Ref, short_hash(&verification.bundle_sha256))
+            "bundle digest: {}",
+            styler.paint(
+                Tone::Ref,
+                format!("sha256:{}", short_hash(&verification.bundle_sha256)),
+            )
         );
     }
     output
@@ -462,14 +465,7 @@ pub fn render_transport_import_preview_summary(
         "root skill only"
     };
     let noun = if skill_count == 1 { "skill" } else { "skills" };
-    let verification = if verified {
-        "verified".to_owned()
-    } else {
-        verification_error.map_or_else(
-            || "refused".to_owned(),
-            |error| format!("refused ({})", error.code),
-        )
-    };
+    let verification = if verified { "verified" } else { "refused" };
     let trust = trust_tier.map_or_else(|| "untrusted".to_owned(), std::string::ToString::to_string);
 
     let _ = writeln!(output, "previewed installed state");
@@ -478,17 +474,16 @@ pub fn render_transport_import_preview_summary(
     let _ = writeln!(output, "decision: {decision}");
     let _ = writeln!(output, "skill: {root_skill}");
     let _ = writeln!(output, "publisher: {publisher_id}");
-    let _ = writeln!(output, "verification: {verification}");
-    let _ = writeln!(output, "trust: {trust}");
+    let _ = writeln!(output, "status: {verification} / {trust}");
     let _ = writeln!(
         output,
         "scheme: {}",
         signature_scheme_label(signature_scheme)
     );
-    let _ = writeln!(output, "bundle: {bundle_sha256}");
+    let _ = writeln!(output, "bundle digest: {bundle_sha256}");
     let _ = writeln!(output, "contents: {contents}");
     let _ = writeln!(output, "skills: {skill_count} {noun}");
-    if let Some(error) = refusal {
+    if let Some(error) = refusal.or(verification_error) {
         let _ = writeln!(output, "reason: {}: {}", error.code, error.message);
     }
     output
@@ -573,12 +568,12 @@ pub fn render_imported_skill_review(installed: &InstalledSkill) -> String {
         "installed {}",
         resolved_skill_ref(&installed.resolved_ref)
     );
+    let _ = writeln!(output, "publisher: {publisher}");
     let _ = writeln!(
         output,
         "status: {}",
         render_trust_status_pair(None, &verification, &trust)
     );
-    let _ = writeln!(output, "publisher: {publisher}");
     output
 }
 
@@ -3012,15 +3007,32 @@ mod tests {
 
         assert!(output.contains("previewed installed state"), "{output}");
         assert!(output.contains("decision: would-refuse"), "{output}");
-        assert!(
-            output.contains("verification: refused (bundle-publisher-untrusted)"),
-            "{output}"
-        );
-        assert!(output.contains("trust: untrusted"), "{output}");
+        assert!(output.contains("status: refused / untrusted"), "{output}");
+        assert!(output.contains("bundle digest: sha256:abcdef"), "{output}");
         assert!(
             output.contains(
                 "reason: bundle-publisher-untrusted: signed bundle publisher was not trusted by the target Guild root"
             ),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn skill_verify_verbose_keeps_trust_review_fields_in_order() {
+        let output = render_skill_verify(
+            &installed_skill_for_transport_tests(),
+            test_options(1),
+            StreamKind::Stdout,
+        );
+
+        assert!(output.contains("publisher: local.example"), "{output}");
+        assert!(
+            output.contains("status: verified-import / trusted-imported"),
+            "{output}"
+        );
+        assert!(output.contains("scheme: ed25519"), "{output}");
+        assert!(
+            output.contains("bundle digest: sha256:01234567"),
             "{output}"
         );
     }
