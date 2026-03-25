@@ -1,4 +1,4 @@
-.PHONY: check test fmt fmt-check clippy draft-truth draft-truth-write draft-support-matrix draft-compatibility draft-benchmark verify
+.PHONY: check test fmt fmt-check clippy draft-truth draft-truth-write draft-support-matrix draft-compatibility draft-benchmark patent-packet project-positioning verify
 
 check:
 	cargo check --workspace
@@ -30,4 +30,10 @@ draft-compatibility:
 draft-benchmark:
 	cargo run -q -p xtask -- draft-v1 benchmark check
 
-verify: fmt-check test clippy draft-truth
+patent-packet:
+	cargo run -q -p xtask -- patent-packet check
+
+project-positioning:
+	cargo run -q -p xtask -- project-positioning check
+
+verify: fmt-check test clippy draft-truth project-positioning

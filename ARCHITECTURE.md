@@ -6,18 +6,23 @@ Audience: implementers, maintainers, reviewers, security and platform engineers
 
 This document is explanatory architecture, not the primary runtime-contract source of truth. For normative runtime ownership, use `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
 For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
+For the current project framing and vocabulary freeze, see [`docs/project-positioning.md`](docs/project-positioning.md).
 
 ## 1. Overview
 
-Guild is a local-first skill execution fabric.
+Guild's architecture exists to support portable, capability-bounded skill artifacts and the host-owned trust layer around how they are admitted, executed, and evidenced.
+
+The current live path already makes execution and evidence durable. The bounded
+draft-v1 admission layer stays separate and explicit; this architecture doc
+does not turn it into a new live runtime contract by prose alone.
 
 Its architecture exists to preserve five properties end to end:
 
 - requested identity is separate from executable identity
 - guest execution is bounded by host authority
-- execution attempts become durable records
+- execution attempts become durable records and receipts
 - evidence becomes a durable reusable artifact
-- later inspection and explanation are grounded in those durable artifacts
+- later inspection, explanation, and reference applications are grounded in those durable artifacts
 
 The architecture is intentionally boring in the good way. You want predictable state transitions, explicit boundaries, and forensic visibility, not clever agent sludge.
 

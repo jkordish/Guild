@@ -4,6 +4,8 @@
 
 Guild now has a real local inspect-only skills fabric, not just a contract sketch.
 
+Current repo framing is now frozen in [`docs/project-positioning.md`](docs/project-positioning.md): Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced. Guild Ops Starter is the first reference application built on that layer, not the whole product thesis.
+
 What is materially real today:
 
 - a measured M9 patent packet now exists under `docs/patent/`, anchored to the checked support matrix, benchmark matrix, benchmark report, and frozen contract vocabulary rather than to aspirational architecture prose

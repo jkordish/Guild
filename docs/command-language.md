@@ -4,6 +4,7 @@ This document is the source of truth for Guild's public command and URI grammar 
 
 It is not the runtime-contract source of truth; see `SPECS.md` section "Source Of Truth".
 For the frozen runtime URI roots and support vocabulary in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
+For current project framing and terminology, see [`project-positioning.md`](project-positioning.md).
 
 ## Install And Run
 
@@ -210,9 +211,9 @@ What this flow teaches:
 Use the examples and docs in this order when you want the current practical path rather than the full maintainer proof surface:
 
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](../examples/skills/hello-inspect/README.md)
-- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](../examples/skills/explain-execution-tree/README.md), or the [`Guild Ops Starter Pack`](../examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution
+- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](../examples/skills/explain-execution-tree/README.md), or [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
-- Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use the [`Guild Ops Starter Pack`](../examples/skills/guild-ops-starter/README.md) and the surrounding examples index at [`examples/README.md`](../examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](../examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](../examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](../examples/skills/explain-http-authority/README.md)
+- Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) and the surrounding examples index at [`examples/README.md`](../examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](../examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](../examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](../examples/skills/explain-http-authority/README.md)
 
 `docs/testing.md` remains the place for deeper proof commands, smoke coverage, and maintainer-oriented verification.
 
@@ -255,14 +256,15 @@ reason: bundle-publisher-untrusted
 Next: run `guild trust list` to inspect the target root, then add the publisher with `guild trust add --identity-file <identity.json>` or `guild trust add --record-file <record.json>`
 ```
 
-### Ops Starter Pack
+### Guild Ops Starter
 
 The current user-facing example pack lives at
 [`examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md).
 The surrounding examples index lives at
 [`examples/README.md`](../examples/README.md).
 
-It is still just example skills under `examples/skills/`, not a new pack system.
+Guild Ops Starter is the first reference application in the repo. It is still
+just example skills under `examples/skills/`, not a new pack system.
 Use it when you want a compact real-path walkthrough over persisted Guild refs:
 
 - `incident-brief` for one stored execution ref
@@ -279,6 +281,7 @@ The honest story is narrow on purpose:
 - exact single-child zero-authority composition only where the runtime already supports it
 - no broad HTTP showcase
 - no `emit-evidence` proof claims
+- no claim that the starter is the whole product story
 
 ### Trust And Transport
 

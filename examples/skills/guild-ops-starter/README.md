@@ -1,8 +1,10 @@
-# Guild Ops Starter Pack
+# Guild Ops Starter
+
+Guild Ops Starter is the first reference application built on Guild's trust and receipt layer.
 
 This is a starter pack of ordinary example skills. There is no new pack type here.
 
-The point of the pack is narrow: show useful local operational analysis over real persisted Guild artifacts without widening runtime, proof, token, or witness semantics.
+The point of the pack is narrow: show useful local operational analysis over real persisted Guild execution receipts, bounded query resources, and evidence artifacts without widening runtime, proof, token, or witness semantics.
 
 If you want one current user-facing Guild workflow, start here.
 

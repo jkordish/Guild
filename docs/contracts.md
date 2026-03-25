@@ -8,6 +8,7 @@ If this file ever disagrees with those sources, those sources win.
 
 Read next:
 
+- [`project-positioning.md`](project-positioning.md)
 - [`../SPECS.md`](../SPECS.md)
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 - [`command-language.md`](command-language.md)

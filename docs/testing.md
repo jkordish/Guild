@@ -4,6 +4,8 @@ This document collects the verification commands and proof workflows that go bey
 
 Use this page when you need regression sweeps, example proofs, benchmark checks, or deterministic repo-local Codex helper flows.
 
+For the current project framing and first-reference-application thesis, see [`project-positioning.md`](project-positioning.md).
+
 The source-of-truth declaration lives in `SPECS.md` section "Source Of Truth".
 For the frozen runtime-contract surfaces in this milestone, use `SPECS.md` section "Contract Surface v1 (core)" rather than treating this testing guide as a parallel source.
 
@@ -15,9 +17,12 @@ Run the repository-wide verification sweep with:
 cargo fmt --all --check
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo run -q -p xtask -- draft-v1 truth check
+cargo run -q -p xtask -- project-positioning check
 ```
 
-`make verify` runs that same repo-wide check plus the Rust-native draft-v1 truth gate.
+`make verify` runs that same repo-wide check.
+It does not currently include the separate patent-packet validation step.
 
 If the format check reports drift and you want to rewrite files locally instead of only checking them, run `cargo fmt --all`.
 
@@ -59,6 +64,17 @@ The measured patent-packet consistency check is separate:
 ```bash
 cargo run -q -p xtask -- patent-packet check
 ```
+
+The project-positioning drift check is also separate:
+
+```bash
+cargo run -q -p xtask -- project-positioning check
+```
+
+It validates the current framing doc and next-phase epic, selected Markdown
+links, required thesis and vocabulary markers, and intro-level anti-drift
+wording in the selected top-level docs. It does not make the positioning doc a
+runtime-contract source.
 
 The artifact-regeneration commands are:
 

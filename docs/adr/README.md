@@ -4,10 +4,11 @@ ADRs record rationale and accepted decisions. They are not the current normative
 
 For how Guild behaves today, use `SPECS.md` and `ARCHITECTURE.md`.
 For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
+For the current project framing and wording freeze, use [`../project-positioning.md`](../project-positioning.md). ADR `0001-guild-thesis.md` is historical rationale, not the current framing source.
 
 ## Current ADRs
 
-- `0001-guild-thesis.md` - accepted foundation for local-first, Rust-core, Wasm-first, contract-first Guild execution
+- `0001-guild-thesis.md` - accepted historical foundation for local-first, Rust-core, Wasm-first, contract-first Guild execution; current framing now lives in `docs/project-positioning.md`
 - `0002-skill-output-and-execution-record.md` - accepted split between skill-authored output and host-owned execution records
 - `0003-guest-abi-vs-host-record-boundary.md` - accepted rule that WIT is the guest ABI, Rust types are the durable host model, and translation is explicit
 - `0004-installed-bundle-format.md` - accepted current local installed-state bundle format, signature envelope, import verification, and installed portability rules
@@ -29,7 +30,7 @@ For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` 
 
 ## Backlog
 
-The next ADRs should focus on platform shape that is still intentionally narrow or deferred:
+The next ADRs should focus on execution, trust, and receipt shape that is still intentionally narrow or deferred:
 
 1. Retention and evidence query surfaces
 2. Remote publication and trust

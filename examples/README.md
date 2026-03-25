@@ -4,6 +4,7 @@ Guild examples are ordinary repo-native examples and example skills.
 
 There is no separate pack system here. The examples exist to prove and teach
 specific honest slices of the current repo.
+For the current project framing, see [`../docs/project-positioning.md`](../docs/project-positioning.md).
 
 The canonical command examples assume `guild` is installed and on `PATH`.
 Lower-level `cargo run -p guild-mcp --example ...` commands are developer proof
@@ -11,13 +12,13 @@ helpers, not the normal operator workflow.
 
 ## Start Here
 
-If you want one compact first-five-minutes workflow, start with the Guild Ops
-Starter Pack:
+If you want one compact first-five-minutes workflow, start with Guild Ops
+Starter, the first reference application in the repo:
 
 - [`examples/skills/guild-ops-starter/README.md`](./skills/guild-ops-starter/README.md)
 
-That pack is the current user-facing path for trusted local operational
-analysis over durable Guild refs. It uses:
+That reference application is the current user-facing path for trusted local
+operational analysis over durable Guild refs. It uses:
 
 - `incident-brief` for one stored execution ref
 - `run-diff` for two stored execution refs
@@ -70,7 +71,7 @@ Keep starting with the native CLI:
 - `guild why` for the compact stored execution summary
 - `guild why -v` for the expanded requested-versus-granted diff and family-aware authority hints
 
-Use the Guild Ops Starter Pack for compact real-path troubleshooting:
+Use Guild Ops Starter for compact real-path troubleshooting:
 
 - [`examples/skills/guild-ops-starter/README.md`](./skills/guild-ops-starter/README.md)
 - [`examples/skills/recent-failures`](./skills/recent-failures)
