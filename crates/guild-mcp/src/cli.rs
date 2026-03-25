@@ -5475,6 +5475,7 @@ fn print_help_trust() {
     println!();
     println!("Normal review loop:");
     println!("  guild trust list");
+    println!("  guild import ... --preview or guild pull ... --preview");
     println!("  guild import ... or guild pull ...");
     println!("  guild verify -v <skill-ref>");
     println!();
@@ -5571,7 +5572,9 @@ fn print_help_preview() {
     println!();
     println!("Preview must stay grounded in the real installer and trust model:");
     println!("  inspect the signed installed-state metadata that import or pull would use");
-    println!("  report publisher identity, verification outcome, and local trust posture");
+    println!(
+        "  report publisher identity, combined verification result and trust tier, and bundle digest context"
+    );
     println!("  report the top-level skill ref plus bundled dependency closure scope");
     println!("  report whether Guild would import or refuse under the selected root");
     println!();
@@ -5748,7 +5751,7 @@ fn print_trust_usage() {
     println!(
         "note: `guild trust ...` manages the local trust store and signs or verifies execution plans against that same trust model."
     );
-    println!("review loop: trust list -> import/pull -> verify -v");
+    println!("review loop: trust list -> import/pull --preview -> import/pull -> verify -v");
     println!("maintenance: add/show/list/remove trusted publishers under the selected local root");
     println!(
         "signing: sign-plan writes a signed plan; verify-plan checks it against the selected root"

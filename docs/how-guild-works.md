@@ -116,10 +116,11 @@ What that flow tells you:
 Use the current trust review loop in this order:
 
 - `guild trust list`
+- `guild import ... --preview` or `guild pull ... --preview`
 - `guild import ...` or `guild pull ...`
 - `guild verify -v <skill-ref>`
 
-Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path after import or pull. That view keeps the trust summary visible and adds signing-scheme and short bundle-digest detail when verification metadata exists.
+Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path after import or pull. That view keeps the publisher and combined trust status visible and adds signing-scheme and short bundle-digest detail when verification metadata exists.
 
 Current installed-state terms:
 

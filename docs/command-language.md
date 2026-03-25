@@ -337,10 +337,11 @@ guild --registry-root target/dev-local-registry/b pull \
 The current trust review loop is:
 
 - `guild trust list`
+- `guild import ... --preview` or `guild pull ... --preview`
 - `guild import ...` or `guild pull ...`
 - `guild verify -v <skill-ref>`
 
-Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path after import or pull. That view keeps the trust summary visible and adds signing-scheme and short bundle-digest detail when verification metadata exists.
+Use `guild verify -v <skill-ref>` as the first installed-state verification explanation path after import or pull. That view keeps the publisher and combined trust status visible and adds signing-scheme and short bundle-digest detail when verification metadata exists.
 
 Current installed-state terms:
 
@@ -372,7 +373,7 @@ First scope:
 Preview output must stay grounded in the real installer and trust model:
 
 - inspect the signed installed-state metadata the import or pull path would use
-- report publisher identity, verification outcome, and local trust posture
+- report publisher identity, combined verification result and trust tier, and bundle digest context
 - report the top-level skill ref plus bundled dependency closure scope
 - report whether Guild would import or refuse under the selected root
 
