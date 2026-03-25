@@ -42,3 +42,9 @@ jobs:
 
       - name: Draft Truth
         run: cargo run -q -p xtask -- draft-v1 truth check
+
+      - name: Project Positioning
+        run: cargo run -q -p xtask -- project-positioning check
+
+      - name: Patent Packet
+        run: cargo run -q -p xtask -- patent-packet check

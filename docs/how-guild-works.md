@@ -3,10 +3,14 @@
 This page is the short daily-user model for Guild.
 
 It is not the normative contract source. Use `SPECS.md` when you need the exact platform contract, and use `ARCHITECTURE.md` when you need the fuller implementation view.
+For the current project framing and vocabulary freeze, see [`project-positioning.md`](project-positioning.md).
 
 ## The Short Version
 
-Guild lets you ask for a skill by a human-meaningful ref, resolve that request to installed executable state, run it with host-owned authority decisions, and read back durable execution and evidence records afterward.
+Guild creates portable, capability-bounded skill artifacts. In day-to-day use,
+that means you ask for a skill by a human-meaningful ref, Guild resolves that
+request to installed executable state, runs it with host-owned authority
+decisions, and leaves durable execution and evidence receipts behind.
 
 The important part is that Guild keeps those boundaries explicit instead of flattening them into "the tool ran somehow."
 

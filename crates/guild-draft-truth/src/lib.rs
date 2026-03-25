@@ -21,6 +21,7 @@
 pub mod benchmark;
 pub mod compatibility;
 pub mod patent_packet;
+pub mod project_positioning;
 pub mod schemas;
 pub mod support_matrix;
 pub mod surface;
@@ -54,4 +55,8 @@ pub fn run_truth_action(action: TruthAction, mode: ArtifactMode) -> Result<()> {
 
 pub fn run_patent_packet_check() -> Result<()> {
     patent_packet::check()
+}
+
+pub fn run_project_positioning_check() -> Result<()> {
+    project_positioning::check()
 }

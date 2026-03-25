@@ -1,10 +1,14 @@
 # Guild
 
-Guild is a contracts-first Rust/Wasm runtime and control plane for portable AI skills.
+Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced.
 
-It gives you a local CLI, a small MCP surface, and explicit host-owned execution, trust, and evidence records. The main path today is straightforward: install a skill, run it locally, read back what happened, and move installed state through signed bundles or OCI transport.
+Guild turns a skill run into a verifiable receipt chain tied to exact bundle identity, granted authority, observed effects, and durable artifacts.
+
+Guild Ops Starter is the first reference application built on that trust layer. It is not the whole product story.
 
 > Status: pre-alpha.
+>
+> For the current project framing and vocabulary freeze, start with [`docs/project-positioning.md`](docs/project-positioning.md).
 >
 > Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
 >
@@ -24,7 +28,7 @@ Guild is strict about a few things on purpose:
 - inspect, plan, and apply are distinct modes
 - the MCP surface stays small and boring
 
-The goal is not a loose agent wrapper. It is a portable skill system where execution, delegation, and witness claims stay tied to real runtime behavior.
+The goal is not a loose agent wrapper or an ops playbook engine. It is a portable skill system where artifact identity, capability bounds, admission, execution receipts, and evidence stay tied to real runtime behavior.
 
 ## What Works Today
 
@@ -36,7 +40,7 @@ Guild already has:
 - OCI image layout and OCI registry transport for installed signed bundles
 - a real stdio MCP server with one public tool, `guild.inspect`, plus Guild resources
 - bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, and `log-write` slices
-- a user-facing starter pack of example skills for compact ops analysis over stored executions, bounded query refs, and evidence refs
+- Guild Ops Starter, the first reference application in the repo, for compact ops analysis over stored executions, bounded query refs, and evidence refs
 
 The live-proof envelope is intentionally narrow. The exact current status lives in `SPECS.md`, `docs/testing.md`, and `docs/schemas/draft-v1/family_support_matrix.json`.
 
@@ -237,15 +241,15 @@ Next: run `guild trust list` to inspect the target root, then add the publisher 
 If you are deciding where to start, use the user-facing docs in this order:
 
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](examples/skills/hello-inspect/README.md)
-- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](examples/skills/explain-execution-tree/README.md), or the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution
+- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](examples/skills/explain-execution-tree/README.md), or [`Guild Ops Starter`](examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
-- Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use the [`Guild Ops Starter Pack`](examples/skills/guild-ops-starter/README.md) and the surrounding index at [`examples/README.md`](examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](examples/skills/explain-http-authority/README.md)
+- Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use [`Guild Ops Starter`](examples/skills/guild-ops-starter/README.md) and the surrounding index at [`examples/README.md`](examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](examples/skills/explain-http-authority/README.md)
 
 The deeper proof and benchmark commands still live in [`docs/testing.md`](docs/testing.md), but they are maintainers' helper paths rather than the main onboarding route.
 
-## Ops Starter Pack
+## Guild Ops Starter
 
-The current user-facing skill pack lives at [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
+Guild Ops Starter is the first reference application in the repo. The current user-facing pack lives at [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
 The surrounding examples index lives at [`examples/README.md`](examples/README.md).
 
 It is intentionally ordinary example-skill layout, not a new packaging system. The pack installs as five example skills and stays inside current honest repo truth:
@@ -256,7 +260,7 @@ It is intentionally ordinary example-skill layout, not a new packaging system. T
 - `evidence-summary` for one stored evidence ref
 - `render-report` as the zero-authority child formatter used by the parent report skills
 
-The pack is meant to show the current Guild story without broadening runtime or proof semantics: durable refs, compact terminal output, explicit capability requirements, and bounded single-child composition only where it is already real.
+It is the first reference application built on Guild's trust and receipt layer, not the whole product thesis. The pack is meant to show the current Guild story without broadening runtime or proof semantics: durable refs, compact terminal output, explicit capability requirements, and bounded single-child composition only where it is already real.
 
 ## Trust And Transport
 
@@ -442,6 +446,7 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 
 ## Canonical Docs
 
+- `docs/project-positioning.md` - current project thesis, vocabulary freeze, and first-reference-application framing
 - `docs/how-guild-works.md` - short daily-user mental model for identity, authority, and the main CLI surfaces
 - `docs/mcp-agent-recipes.md` - task-shaped MCP recipes for agent users and integrators
 - `docs/command-language.md` - public CLI verbs, grouped workflows, and ref grammar
@@ -452,5 +457,6 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 - `docs/adr/README.md` - decision log and ADR backlog
 - `AGENTS.md` - contributor guardrails for contract-first changes
 - `docs/roadmap.md` - ordered epics and build priorities
+- `docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md` - next-phase epic for building reference applications on the trust and receipt layer
 
 Compatibility wrappers remain at `docs/contracts.md` and `docs/architecture.md` so existing links keep working.

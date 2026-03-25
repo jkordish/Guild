@@ -8,6 +8,8 @@ Audience: runtime implementers, registry authors, skill authors, security review
 
 Guild defines a local-first execution and artifact model for AI skills.
 
+For current project framing and repository vocabulary, use [`docs/project-positioning.md`](docs/project-positioning.md). That document is explanatory and strategic; it does not override the normative contract in this specification.
+
 Its purpose is to make skills:
 
 - portable across Guild roots
@@ -66,6 +68,7 @@ For the bounded draft proof/control-plane harness, the normative sources are the
 The following repo surfaces are not primary runtime-contract definitions:
 
 - ADRs are rationale and history. They explain why decisions were made, but they do not replace current runtime-contract ownership in `SPECS.md`, WIT, or the core Rust runtime/types.
+- `docs/project-positioning.md`, `docs/roadmap.md`, and roadmap epic docs are explanatory framing and planning surfaces. They do not define runtime semantics or widen support by prose.
 - Generated support, compatibility, and benchmark artifacts are measured or derived outputs. They must reflect current repo-backed truth exactly, but they are not hidden sources of truth.
 - `README.md`, `ARCHITECTURE.md`, `docs/testing.md`, and other explanatory docs are derived documentation unless they explicitly point back to a normative source.
 

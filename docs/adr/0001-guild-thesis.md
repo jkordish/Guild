@@ -4,6 +4,10 @@
 - Date: 2026-03-15
 - Owners: Guild maintainers
 
+Historical note: this ADR records the accepted foundation behind Guild. For the
+current project thesis, wording freeze, and first-reference-application
+framing, use [`../project-positioning.md`](../project-positioning.md).
+
 ## Context
 
 Most current AI tool and agent systems are structurally weak in the same predictable ways:
