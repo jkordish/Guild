@@ -5129,6 +5129,10 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     assert!(why_help.contains("bounded read-only ancestor/descendant view"));
     assert!(why_help.contains("human-only"));
     assert!(why_help.contains("low-noise `Next:` hints"));
+    assert!(why_help.contains("start with `guild why` and `guild why -v`"));
+    assert!(
+        why_help.contains("example skills may produce richer reusable authority or policy reports")
+    );
     assert!(why_help.contains("persisted execution record"));
     assert!(why_help.contains("guild get --help"));
 
@@ -5894,6 +5898,10 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(readme.contains("guild why --lineage"));
     assert!(readme.contains("guild ls evidence --limit 5"));
     assert!(readme.contains("guild grants template"));
+    assert!(readme.contains("examples/skills/explain-execution-tree/README.md"));
+    assert!(readme.contains(
+        "move to narrower authority and policy example skills only when `guild why -v` is no longer enough"
+    ));
 
     let command_language =
         fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
@@ -5906,6 +5914,10 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(command_language.contains("guild why --lineage"));
     assert!(command_language.contains("guild ls evidence --limit 5"));
     assert!(command_language.contains("guild grants template"));
+    assert!(command_language.contains("../examples/skills/explain-execution-tree/README.md"));
+    assert!(command_language.contains(
+        "move to narrower authority and policy example skills only when `guild why -v` is no longer enough"
+    ));
 
     let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
     assert!(examples_index.contains("## User Journeys"));
@@ -5917,6 +5929,11 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(examples_index.contains("guild why --lineage"));
     assert!(examples_index.contains("guild ls evidence --limit 5"));
     assert!(examples_index.contains("guild grants template"));
+    assert!(examples_index.contains("Keep starting with the native CLI:"));
+    assert!(
+        examples_index
+            .contains("For narrower authority and policy debugging after that native CLI path")
+    );
 
     let hello_readme =
         fs::read_to_string(repo_root().join("examples/skills/hello-inspect/README.md")).unwrap();
@@ -5936,6 +5953,28 @@ fn journey_docs_stay_centered_on_user_workflows() {
         fs::read_to_string(repo_root().join("examples/skills/explain-execution-tree/README.md"))
             .unwrap();
     assert!(explain_tree_readme.contains("guild why --lineage"));
+
+    let explain_denial_readme =
+        fs::read_to_string(repo_root().join("examples/skills/explain-capability-denial/README.md"))
+            .unwrap();
+    assert!(explain_denial_readme.contains("Use `guild why` first"));
+    assert!(explain_denial_readme.contains("Use `guild why -v`"));
+    assert!(explain_denial_readme.contains("richer reusable authority and"));
+    assert!(explain_denial_readme.contains("policy report over that same stored execution"));
+
+    let diff_authority_readme =
+        fs::read_to_string(repo_root().join("examples/skills/diff-execution-authority/README.md"))
+            .unwrap();
+    assert!(diff_authority_readme.contains("Use `guild why` first"));
+    assert!(diff_authority_readme.contains("Use `guild why -v`"));
+    assert!(diff_authority_readme.contains("richer reusable authority comparison"));
+
+    let explain_http_readme =
+        fs::read_to_string(repo_root().join("examples/skills/explain-http-authority/README.md"))
+            .unwrap();
+    assert!(explain_http_readme.contains("Use `guild why` first"));
+    assert!(explain_http_readme.contains("Use `guild why -v`"));
+    assert!(explain_http_readme.contains("candidate HTTP request"));
 
     let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
     assert!(how_it_works.contains("## Output Modes"));
@@ -5959,6 +5998,9 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(how_it_works.contains("guild why -v"));
     assert!(how_it_works.contains("guild why --lineage"));
     assert!(how_it_works.contains("guild ls evidence --limit 5"));
+    assert!(how_it_works.contains(
+        "move to narrower authority and policy example skills only when that native CLI path is no longer enough"
+    ));
 
     let incident_brief =
         fs::read_to_string(repo_root().join("examples/skills/incident-brief/README.md")).unwrap();

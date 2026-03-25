@@ -4,6 +4,12 @@
 stored Guild execution record through `read-resource` and explains how
 requested capability intent turned into granted, reduced, or denied authority.
 
+Use `guild why` first for the normal compact persisted-execution explanation
+path. Use `guild why -v` when you need the stored requested-versus-granted
+diff, authority observations, and family-aware request hints. Use
+`explain-capability-denial` when you want a richer reusable authority and
+policy report over that same stored execution.
+
 It is meant for operator debugging, not demos:
 
 - it reads durable host-owned execution truth instead of inferring from guest output

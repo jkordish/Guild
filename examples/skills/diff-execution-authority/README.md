@@ -4,6 +4,13 @@
 stored Guild execution records and highlights the authority differences that
 changed the outcome.
 
+Use `guild why` first for the normal compact persisted-execution explanation
+path on each stored execution. Use `guild why -v` when you need the stored
+requested-versus-granted diff, authority observations, and family-aware request
+hints before comparing the two runs. Use `diff-execution-authority` when you
+want a richer reusable authority comparison across those same stored
+executions.
+
 It focuses on operator questions like:
 
 - did trust tier or verification state change?

@@ -4,6 +4,12 @@
 Guild execution record and dry-runs a candidate HTTP request against the stored
 granted `http-request` authority.
 
+Use `guild why` first for the normal compact persisted-execution explanation
+path. Use `guild why -v` when you need the stored requested-versus-granted HTTP
+authority diff, authority observations, and family-aware request hints. Use
+`explain-http-authority` when you want a richer reusable report that tests a
+candidate HTTP request against that same stored execution's grant.
+
 It does not perform the request. Instead it:
 
 - explains whether the candidate method, scheme, host, port, path, and timeout

@@ -65,6 +65,11 @@ same journey grounded in one concrete skill or closure:
 
 ### Debug failures and compare runs
 
+Keep starting with the native CLI:
+
+- `guild why` for the compact stored execution summary
+- `guild why -v` for the expanded requested-versus-granted diff and family-aware authority hints
+
 Use the Guild Ops Starter Pack for compact real-path troubleshooting:
 
 - [`examples/skills/guild-ops-starter/README.md`](./skills/guild-ops-starter/README.md)
@@ -72,7 +77,7 @@ Use the Guild Ops Starter Pack for compact real-path troubleshooting:
 - [`examples/skills/run-diff`](./skills/run-diff)
 - [`examples/skills/incident-brief`](./skills/incident-brief)
 
-For narrower authority and policy debugging, use:
+For narrower authority and policy debugging after that native CLI path, use:
 
 - [`examples/skills/explain-capability-denial`](./skills/explain-capability-denial)
 - [`examples/skills/explain-http-authority`](./skills/explain-http-authority)
