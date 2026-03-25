@@ -135,20 +135,128 @@ struct CliErrorJson<'a> {
     next_steps: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FailureRemediationOrigin {
+    Message,
+    Registry,
+    Mcp,
+    Manual,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FailureRemediationContext<'a> {
+    origin: FailureRemediationOrigin,
+    reason_code: Option<&'a str>,
+    detail: Option<&'a Value>,
+    requested_skill_ref: Option<&'a str>,
+    execution_uri: Option<&'a str>,
+    registry_root: Option<&'a Path>,
+}
+
+impl<'a> FailureRemediationContext<'a> {
+    const fn message() -> Self {
+        Self {
+            origin: FailureRemediationOrigin::Message,
+            reason_code: None,
+            detail: None,
+            requested_skill_ref: None,
+            execution_uri: None,
+            registry_root: None,
+        }
+    }
+
+    const fn registry(
+        reason_code: &'a str,
+        detail: Option<&'a Value>,
+        registry_root: Option<&'a Path>,
+    ) -> Self {
+        Self {
+            origin: FailureRemediationOrigin::Registry,
+            reason_code: Some(reason_code),
+            detail,
+            requested_skill_ref: None,
+            execution_uri: None,
+            registry_root,
+        }
+    }
+
+    const fn mcp(
+        reason_code: &'a str,
+        detail: Option<&'a Value>,
+        requested_skill_ref: &'a str,
+        execution_uri: Option<&'a str>,
+        registry_root: &'a Path,
+    ) -> Self {
+        Self {
+            origin: FailureRemediationOrigin::Mcp,
+            reason_code: Some(reason_code),
+            detail,
+            requested_skill_ref: Some(requested_skill_ref),
+            execution_uri,
+            registry_root: Some(registry_root),
+        }
+    }
+
+    const fn manual(registry_root: &'a Path) -> Self {
+        Self {
+            origin: FailureRemediationOrigin::Manual,
+            reason_code: None,
+            detail: None,
+            requested_skill_ref: None,
+            execution_uri: None,
+            registry_root: Some(registry_root),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct FailureRemediation {
+    hint: Option<String>,
+    next_steps: Vec<String>,
+}
+
+impl FailureRemediation {
+    fn push_next_step(&mut self, next_step: impl Into<String>) {
+        let next_step = next_step.into();
+        let trimmed = next_step.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if self.next_steps.iter().any(|existing| existing == trimmed) {
+            return;
+        }
+        self.next_steps.push(trimmed.to_owned());
+    }
+
+    fn extend_next_steps(&mut self, next_steps: &str) {
+        for next_step in next_steps
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
+            self.push_next_step(next_step.to_owned());
+        }
+    }
+
+    fn has_next_steps(&self) -> bool {
+        !self.next_steps.is_empty()
+    }
+}
+
 impl CliError {
     fn new(message: impl Into<String>) -> Self {
         let message = message.into();
         let category = classify_cli_message(&message);
-        let next_steps = next_steps_for_cli_message(&message, category);
-        Self {
+        let cli_error = Self {
             category,
             summary: message.into_boxed_str(),
             reason_code: None,
             detail: None,
             location: None,
             hint: None,
-            next_steps: next_steps.map(String::into_boxed_str),
-        }
+            next_steps: None,
+        };
+        apply_failure_remediation(cli_error, FailureRemediationContext::message())
     }
 
     fn classified(category: CliErrorCategory, summary: impl Into<String>) -> Self {
@@ -311,6 +419,78 @@ impl std::fmt::Display for CliError {
 
 impl std::error::Error for CliError {}
 
+fn apply_failure_remediation(
+    mut cli_error: CliError,
+    context: FailureRemediationContext<'_>,
+) -> CliError {
+    let remediation = remediation_for_failure(&cli_error, context);
+
+    if cli_error.hint.is_none()
+        && let Some(hint) = remediation.hint.as_deref()
+    {
+        cli_error = cli_error.with_hint(hint);
+    }
+
+    if cli_error.next_steps.is_none() && remediation.has_next_steps() {
+        let next_steps = remediation.next_steps.join("\n");
+        let next_steps = if let Some(registry_root) = context.registry_root {
+            qualify_next_steps_for_registry_root(&next_steps, registry_root)
+        } else {
+            next_steps
+        };
+        cli_error = cli_error.with_next_steps(next_steps);
+    }
+
+    cli_error
+}
+
+fn remediation_for_failure(
+    cli_error: &CliError,
+    context: FailureRemediationContext<'_>,
+) -> FailureRemediation {
+    let mut remediation = FailureRemediation::default();
+    let summary = cli_error.summary.as_ref();
+
+    if let Some(reason_code) = context.reason_code
+        && let Some(hint) = authority_request_hint_for_error(reason_code, context.detail)
+    {
+        remediation.hint = Some(hint);
+    }
+
+    if matches!(context.origin, FailureRemediationOrigin::Mcp)
+        && let Some(execution_uri) = context.execution_uri
+    {
+        remediation.push_next_step(format!("Next: guild why {execution_uri}"));
+    }
+
+    if let Some(reason_code) = context.reason_code
+        && let Some(next_steps) = next_steps_for_reason_code(reason_code, summary)
+    {
+        remediation.extend_next_steps(&next_steps);
+    }
+
+    if !remediation.has_next_steps()
+        && let Some(next_steps) = next_steps_for_summary(summary, cli_error.category)
+    {
+        remediation.extend_next_steps(&next_steps);
+    }
+
+    if matches!(context.origin, FailureRemediationOrigin::Mcp)
+        && let Some(next_steps) =
+            next_steps_for_mcp_follow_up(cli_error.category, context.requested_skill_ref)
+    {
+        remediation.extend_next_steps(&next_steps);
+    }
+
+    if !remediation.has_next_steps()
+        && let Some(next_steps) = next_steps_for_category(cli_error.category)
+    {
+        remediation.extend_next_steps(next_steps);
+    }
+
+    remediation
+}
+
 impl From<RegistryError> for CliError {
     fn from(value: RegistryError) -> Self {
         cli_error_from_registry(&value)
@@ -379,7 +559,12 @@ fn classify_cli_message(message: &str) -> CliErrorCategory {
     }
 }
 
-fn next_steps_for_cli_message(message: &str, category: CliErrorCategory) -> Option<String> {
+fn next_steps_for_summary(message: &str, _category: CliErrorCategory) -> Option<String> {
+    if message.starts_with("Guild registry root `") && message.contains("does not exist yet") {
+        return Some(format!(
+            "Next: run `{CLI_BINARY_NAME} install <source-dir>` to create it, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an existing root"
+        ));
+    }
     if message.starts_with("short skill ref `") && message.contains("was ambiguous") {
         return Some(
             "Next: use a fully qualified skill ref such as `skill://<namespace>/<name>@<version-or-range>`"
@@ -423,28 +608,26 @@ fn next_steps_for_cli_message(message: &str, category: CliErrorCategory) -> Opti
             "Next: run `guild trust list` to inspect the current trusted publisher entries".into(),
         );
     }
+    None
+}
 
+fn next_steps_for_category(category: CliErrorCategory) -> Option<&'static str> {
     match category {
         CliErrorCategory::Usage | CliErrorCategory::RootSetup => None,
-        CliErrorCategory::LookupAmbiguity => Some(
-            "Next: use a more specific ref, or inspect installed state with `guild ls skills`"
-                .into(),
-        ),
+        CliErrorCategory::LookupAmbiguity => {
+            Some("Next: use a more specific ref, or inspect installed state with `guild ls skills`")
+        }
         CliErrorCategory::AuthorityDenial => Some(
-            "Next: inspect the skill with `guild show -v <skill-ref>` and review the local policy before rerunning"
-                .into(),
+            "Next: inspect the skill with `guild show -v <skill-ref>` and review the local policy before rerunning",
         ),
         CliErrorCategory::TrustVerification => Some(
-            "Next: inspect the target root with `guild trust list`, then recheck the signed artifact and publisher trust record"
-                .into(),
+            "Next: inspect the target root with `guild trust list`, then recheck the signed artifact and publisher trust record",
         ),
         CliErrorCategory::RuntimeCompatibility => Some(
-            "Next: inspect the installed runtime surface with `guild show -v <skill-ref>` before rerunning"
-                .into(),
+            "Next: inspect the installed runtime surface with `guild show -v <skill-ref>` before rerunning",
         ),
         CliErrorCategory::ResourceRead => Some(
-            "Next: inspect recent persisted state with `guild ls runs`, `guild ls evidence`, or `guild ls objects`"
-                .into(),
+            "Next: inspect recent persisted state with `guild ls runs`, `guild ls evidence`, or `guild ls objects`",
         ),
     }
 }
@@ -518,7 +701,7 @@ fn is_bundle_integrity_error_code(code: &str) -> bool {
         || code.starts_with("oci-registry-blob-digest-")
 }
 
-fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
+fn next_steps_for_reason_code(code: &str, summary: &str) -> Option<String> {
     match code {
         "source-root-missing" => Some(
             "Next: confirm the source directory exists, then rerun `guild install <source-dir>`"
@@ -564,7 +747,7 @@ fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
             "Next: run `guild ls runs --limit 5` to find a recent execution, or use a full `guild://executions/<id>` URI"
                 .into(),
         ),
-        "object-not-found" if message.contains("record") => {
+        "object-not-found" if summary.contains("record") => {
             Some("Next: run `guild ls evidence --limit 5` to inspect stored evidence".into())
         }
         "object-not-found" => {
@@ -608,10 +791,25 @@ fn next_steps_for_registry_error(code: &str, message: &str) -> Option<String> {
             "Next: confirm the signed bundle or OCI artifact was not modified after export, or fetch a fresh copy from the publisher before rerunning the import or pull"
                 .into(),
         ),
-        _ => next_steps_for_cli_message(
-            message,
-            classify_registry_error_category(code, message, None),
-        ),
+        _ => None,
+    }
+}
+
+fn next_steps_for_mcp_follow_up(
+    category: CliErrorCategory,
+    requested_skill_ref: Option<&str>,
+) -> Option<String> {
+    match category {
+        CliErrorCategory::AuthorityDenial | CliErrorCategory::RuntimeCompatibility => {
+            requested_skill_ref.map(|requested_skill_ref| {
+                format!(
+                    "Next: guild show -v {}",
+                    shell_quote_arg(requested_skill_ref)
+                )
+            })
+        }
+        CliErrorCategory::TrustVerification => Some("Next: guild help trust".into()),
+        _ => None,
     }
 }
 
@@ -640,14 +838,31 @@ fn cli_error_from_registry(error: &RegistryError) -> CliError {
     if let Some(location) = location_from_registry_detail(error.detail.as_ref()) {
         cli_error = cli_error.with_location(location);
     }
-    if let Some(next_steps) = next_steps_for_registry_error(&error.code, &error.message) {
-        cli_error = cli_error.with_next_steps(next_steps);
-    }
-    cli_error
+    apply_failure_remediation(
+        cli_error,
+        FailureRemediationContext::registry(&error.code, error.detail.as_ref(), None),
+    )
 }
 
 fn cli_error_from_registry_with_root(error: &RegistryError, registry_root: &Path) -> CliError {
-    cli_error_from_registry(error).qualify_for_registry_root(registry_root)
+    let category =
+        classify_registry_error_category(&error.code, &error.message, error.detail.as_ref());
+    let mut cli_error = CliError::classified(
+        category,
+        humanize_runtime_surface_summary(&error.code, &error.message, error.detail.as_ref()),
+    )
+    .with_reason_code(error.code.clone());
+    if let Some(location) = location_from_registry_detail(error.detail.as_ref()) {
+        cli_error = cli_error.with_location(location);
+    }
+    apply_failure_remediation(
+        cli_error,
+        FailureRemediationContext::registry(
+            &error.code,
+            error.detail.as_ref(),
+            Some(registry_root),
+        ),
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -3954,14 +4169,14 @@ fn run_trust_remove(
     let removed = LocalRegistry::remove_trusted_publisher(&registry_root, &publisher_id)
         .map_err(|error| cli_error_from_registry_with_root(&error, &registry_root))?;
     if !removed {
-        return Err(CliError::classified(
+        let cli_error = CliError::classified(
             CliErrorCategory::LookupAmbiguity,
             format!("trusted publisher `{publisher_id}` was not present"),
-        )
-        .with_next_steps(
-            "Next: run `guild trust list` to inspect the current trusted publisher entries",
-        )
-        .qualify_for_registry_root(&registry_root));
+        );
+        return Err(apply_failure_remediation(
+            cli_error,
+            FailureRemediationContext::manual(&registry_root),
+        ));
     }
 
     println!("removed trusted publisher {publisher_id}");
@@ -4206,18 +4421,15 @@ fn is_shell_safe_char(ch: char) -> bool {
 }
 
 fn missing_registry_root_error(registry_root: &Path) -> CliError {
-    CliError::classified(
+    let cli_error = CliError::classified(
         CliErrorCategory::RootSetup,
         format!(
             "Guild registry root `{}` does not exist yet",
             registry_root.display()
         ),
     )
-    .with_detail("read-only commands do not initialize a new root")
-    .with_next_steps(format!(
-        "Next: run `{CLI_BINARY_NAME} install <source-dir>` to create it, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an existing root"
-    ))
-    .qualify_for_registry_root(registry_root)
+    .with_detail("read-only commands do not initialize a new root");
+    apply_failure_remediation(cli_error, FailureRemediationContext::manual(registry_root))
 }
 
 fn ensure_existing_registry_root(registry_root: &Path) -> Result<(), CliError> {
@@ -4690,42 +4902,6 @@ fn classify_mcp_error_category(
     }
 }
 
-fn next_steps_for_mcp_error(
-    error: &McpError,
-    requested_skill_ref: &str,
-    registry_root: &Path,
-) -> Option<String> {
-    let category =
-        classify_mcp_error_category(&error.code, &error.message, error.detail.as_deref());
-    let mut lines = Vec::new();
-
-    if let Some(receipt) = error.receipt.as_deref() {
-        lines.push(format!("Next: guild why {}", receipt.uri));
-    }
-
-    match category {
-        CliErrorCategory::AuthorityDenial | CliErrorCategory::RuntimeCompatibility => {
-            lines.push(format!(
-                "Next: guild show -v {}",
-                shell_quote_arg(requested_skill_ref)
-            ));
-        }
-        CliErrorCategory::TrustVerification => {
-            lines.push("Next: guild help trust".into());
-        }
-        _ => {}
-    }
-
-    if lines.is_empty() {
-        None
-    } else {
-        Some(qualify_next_steps_for_registry_root(
-            &lines.join("\n"),
-            registry_root,
-        ))
-    }
-}
-
 fn cli_error_from_mcp(
     error: McpError,
     requested_skill_ref: &str,
@@ -4733,7 +4909,7 @@ fn cli_error_from_mcp(
 ) -> CliError {
     let category =
         classify_mcp_error_category(&error.code, &error.message, error.detail.as_deref());
-    let next_steps = next_steps_for_mcp_error(&error, requested_skill_ref, registry_root);
+    let execution_uri = error.receipt.as_ref().map(|receipt| receipt.uri.clone());
     let mut cli_error = CliError::classified(
         category,
         humanize_runtime_surface_summary(&error.code, &error.message, error.detail.as_deref()),
@@ -4743,14 +4919,16 @@ fn cli_error_from_mcp(
     if let Some(receipt) = error.receipt {
         cli_error = cli_error.with_location(receipt.uri);
     }
-    if let Some(hint) = authority_request_hint_for_error(&error.code, error.detail.as_deref()) {
-        cli_error = cli_error.with_hint(hint);
-    }
-    if let Some(next_steps) = next_steps {
-        cli_error = cli_error.with_next_steps(next_steps);
-    }
-
-    cli_error
+    apply_failure_remediation(
+        cli_error,
+        FailureRemediationContext::mcp(
+            &error.code,
+            error.detail.as_deref(),
+            requested_skill_ref,
+            execution_uri.as_deref(),
+            registry_root,
+        ),
+    )
 }
 
 fn has_runtime_manifest_validation_error(detail: Option<&Value>) -> bool {
