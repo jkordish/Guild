@@ -5962,6 +5962,20 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(explain_denial_readme.contains("richer reusable authority and"));
     assert!(explain_denial_readme.contains("policy report over that same stored execution"));
 
+    let diff_authority_readme =
+        fs::read_to_string(repo_root().join("examples/skills/diff-execution-authority/README.md"))
+            .unwrap();
+    assert!(diff_authority_readme.contains("Use `guild why` first"));
+    assert!(diff_authority_readme.contains("Use `guild why -v`"));
+    assert!(diff_authority_readme.contains("richer reusable authority comparison"));
+
+    let explain_http_readme =
+        fs::read_to_string(repo_root().join("examples/skills/explain-http-authority/README.md"))
+            .unwrap();
+    assert!(explain_http_readme.contains("Use `guild why` first"));
+    assert!(explain_http_readme.contains("Use `guild why -v`"));
+    assert!(explain_http_readme.contains("candidate HTTP request"));
+
     let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
     assert!(how_it_works.contains("## Output Modes"));
     assert!(how_it_works.contains("## Trust Review"));
