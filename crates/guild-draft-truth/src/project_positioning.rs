@@ -254,10 +254,14 @@ fn extract_markdown_links(text: &str) -> Vec<String> {
 }
 
 fn resolve_local_markdown_link(document_path: &Path, link: &str) -> Option<PathBuf> {
-    if link.starts_with('#') || link.starts_with("mailto:") || link.contains("://") {
+    let destination = markdown_link_destination(link)?;
+    if destination.starts_with('#')
+        || destination.starts_with("mailto:")
+        || destination.contains("://")
+    {
         return None;
     }
-    let path_part = link.split('#').next().unwrap_or(link);
+    let path_part = destination.split('#').next().unwrap_or(destination);
     if path_part.is_empty() {
         return None;
     }
@@ -267,6 +271,18 @@ fn resolve_local_markdown_link(document_path: &Path, link: &str) -> Option<PathB
             .unwrap_or_else(|| Path::new("."))
             .join(path_part),
     )
+}
+
+fn markdown_link_destination(link: &str) -> Option<&str> {
+    let trimmed = link.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(rest) = trimmed.strip_prefix('<') {
+        let destination = rest.split('>').next().unwrap_or(rest).trim();
+        return (!destination.is_empty()).then_some(destination);
+    }
+    trimmed.split_whitespace().next()
 }
 
 fn normalize_whitespace(text: &str) -> String {
@@ -280,4 +296,42 @@ fn display_relative_path(document: &LoadedDocument) -> String {
         .unwrap_or(&document.path)
         .display()
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{markdown_link_destination, resolve_local_markdown_link};
+
+    #[test]
+    fn markdown_link_destination_strips_optional_titles() {
+        assert_eq!(
+            markdown_link_destination(r#"project-positioning.md "Project framing""#),
+            Some("project-positioning.md")
+        );
+        assert_eq!(
+            markdown_link_destination(r#"project-positioning.md#boundary "Project framing""#),
+            Some("project-positioning.md#boundary")
+        );
+    }
+
+    #[test]
+    fn markdown_link_destination_supports_angle_bracket_destinations() {
+        assert_eq!(
+            markdown_link_destination(r#"<project-positioning.md#boundary> "Project framing""#),
+            Some("project-positioning.md#boundary")
+        );
+    }
+
+    #[test]
+    fn resolve_local_markdown_link_uses_only_the_destination_path() {
+        let resolved = resolve_local_markdown_link(
+            Path::new("docs/roadmap.md"),
+            r#"project-positioning.md "Project framing""#,
+        )
+        .expect("titled local links should resolve");
+
+        assert_eq!(resolved, Path::new("docs").join("project-positioning.md"));
+    }
 }
