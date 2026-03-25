@@ -225,7 +225,7 @@ The human CLI path now uses a small stable set of failure labels:
 - `resource/read`: the requested durable execution, evidence, or object ref was not available under the selected root
 - `authority denial`: local policy denied the run before guest start
 - `runtime/compatibility`: the active runtime could not honor the declared runtime surface
-- `trust/verification`: a signed artifact or publisher check failed against the selected root
+- `trust/verification`: a signed artifact or signed plan check failed against the selected root
 
 The default follow-up guidance should stay local and honest:
 
@@ -350,6 +350,14 @@ Current installed-state terms:
 - `local-dev`: local source state in the current Guild root
 - `trusted-imported`: imported publisher trusted for normal imported use
 - `restricted`: imported publisher trusted only under restricted local policy posture
+
+Keep these terms distinct:
+
+- `guild verify` reviews installed trust and verification state for a skill.
+- `guild why` explains one persisted execution, including policy outcomes for that run.
+- `authority denial` means local policy denied required authority before guest start.
+- `runtime/compatibility` means the active runtime could not honor the declared runtime surface.
+- `trust/verification` means Guild could not verify a signed artifact or signed plan against the selected root.
 
 Trust-store maintenance stays local and explicit:
 

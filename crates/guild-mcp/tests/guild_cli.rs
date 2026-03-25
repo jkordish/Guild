@@ -4905,7 +4905,22 @@ fn shared_help_topics_are_available() {
     assert!(trust.contains("verified-import"));
     assert!(trust.contains("trusted-imported"));
     assert!(trust.contains("restricted"));
-    assert!(trust.contains("`trust/verification` means Guild could not verify"));
+    assert!(trust.contains("Keep these terms distinct:"));
+    assert!(
+        trust.contains(
+            "guild verify       reviews installed trust and verification state for a skill"
+        )
+    );
+    assert!(trust.contains("guild why          explains one persisted execution, including policy outcomes for that run"));
+    assert!(
+        trust.contains(
+            "authority denial   local policy denied required authority before guest start"
+        )
+    );
+    assert!(trust.contains(
+        "runtime/compatibility the active runtime could not honor the declared runtime surface"
+    ));
+    assert!(trust.contains("trust/verification Guild could not verify a signed artifact or signed plan against the selected root"));
 
     let trust_usage = run_guild_success(&["trust", "--help"], None);
     assert!(trust_usage.contains("Review loop:"));
@@ -5129,6 +5144,11 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     assert!(why_help.contains("bounded read-only ancestor/descendant view"));
     assert!(why_help.contains("human-only"));
     assert!(why_help.contains("low-noise `Next:` hints"));
+    assert!(why_help.contains("including policy outcomes for that run"));
+    assert!(
+        why_help
+            .contains("installed trust review stays under `guild verify` and `guild help trust`.")
+    );
     assert!(why_help.contains("start with `guild why` and `guild why -v`"));
     assert!(
         why_help.contains("example skills may produce richer reusable authority or policy reports")
@@ -5142,6 +5162,9 @@ fn ls_get_why_and_verify_help_call_out_scope() {
         verify_help
             .contains("default output is a short human trust summary for reading, not parsing.")
     );
+    assert!(verify_help.contains(
+        "use `guild why` for one persisted execution, including policy outcomes for that run."
+    ));
     assert!(verify_help.contains("low-noise `Next:` hints"));
     assert!(verify_help.contains("Verification details:"));
     assert!(verify_help.contains("use -v after import or pull"));
@@ -6271,6 +6294,48 @@ fn trust_review_terms_stay_canonical_across_help_and_docs() {
         assert!(
             command_language.contains(phrase),
             "docs/command-language.md is missing trust-review wording: {phrase}"
+        );
+    }
+}
+
+#[test]
+fn trust_policy_glossary_stays_canonical_across_help_and_docs() {
+    let glossary_phrases = [
+        "Keep these terms distinct:",
+        "`guild verify` reviews installed trust and verification state for a skill.",
+        "`guild why` explains one persisted execution, including policy outcomes for that run.",
+        "`authority denial` means local policy denied required authority before guest start.",
+        "`runtime/compatibility` means the active runtime could not honor the declared runtime surface.",
+        "`trust/verification` means Guild could not verify a signed artifact or signed plan against the selected root.",
+    ];
+
+    for path in [
+        repo_root().join("README.md"),
+        repo_root().join("docs/how-guild-works.md"),
+        repo_root().join("docs/command-language.md"),
+    ] {
+        let body = fs::read_to_string(&path).unwrap();
+        for phrase in glossary_phrases {
+            assert!(
+                body.contains(phrase),
+                "{} is missing trust/policy glossary wording: {phrase}",
+                path.display()
+            );
+        }
+    }
+
+    let trust_help = run_guild_success(&["help", "trust"], None);
+    for phrase in [
+        "Keep these terms distinct:",
+        "guild verify       reviews installed trust and verification state for a skill",
+        "guild why          explains one persisted execution, including policy outcomes for that run",
+        "authority denial   local policy denied required authority before guest start",
+        "runtime/compatibility the active runtime could not honor the declared runtime surface",
+        "trust/verification Guild could not verify a signed artifact or signed plan against the selected root",
+    ] {
+        assert!(
+            trust_help.contains(phrase),
+            "guild help trust is missing trust/policy glossary wording: {phrase}"
         );
     }
 }
