@@ -407,7 +407,7 @@ pub fn render_skill_verify(
             "bundle digest: {}",
             styler.paint(
                 Tone::Ref,
-                format!("sha256:{}", short_hash(&verification.bundle_sha256)),
+                short_structured_digest(&verification.bundle_sha256)
             )
         );
     }
@@ -2199,6 +2199,13 @@ fn short_hash(value: &str) -> String {
     value.chars().take(12).collect()
 }
 
+fn short_structured_digest(value: &str) -> String {
+    match value.split_once(':') {
+        Some((algorithm, digest)) => format!("{algorithm}:{}", short_hash(digest)),
+        None => format!("sha256:{}", short_hash(value)),
+    }
+}
+
 fn prefixed_id(prefix: &str, value: &str) -> String {
     format!("{prefix}:{value}")
 }
@@ -3035,6 +3042,23 @@ mod tests {
             output.contains("bundle digest: sha256:01234567"),
             "{output}"
         );
+    }
+
+    #[test]
+    fn skill_verify_verbose_keeps_single_prefix_for_structured_bundle_digests() {
+        let mut installed = installed_skill_for_transport_tests();
+        if let Some(verification) = installed.verification.as_mut() {
+            verification.bundle_sha256 =
+                "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into();
+        }
+
+        let output = render_skill_verify(&installed, test_options(1), StreamKind::Stdout);
+
+        assert!(
+            output.contains("bundle digest: sha256:01234567"),
+            "{output}"
+        );
+        assert!(!output.contains("sha256:sha256:"), "{output}");
     }
 }
 
