@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{self, IsTerminal, Write as _};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 use base64::Engine as _;
 use clap::error::ErrorKind;
@@ -60,14 +61,14 @@ const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
 const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
 const DEFAULT_WHY_LINEAGE_MAX_DEPTH: usize = 4;
 const DEFAULT_WHY_LINEAGE_MAX_NODES: usize = 32;
-const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nOutput:\n  default output is a short human summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild why --help";
-const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  granted authority is the final capability slice the host policy allows for that run.\n  effective at runtime is the authority the guest can actually exercise during execution.\n  Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.\n\nOutput:\n  in the default human mode, stdout carries the result payload.\n  in the default human mode, stderr carries the human status summary for reading, not parsing.\n  successful runs may point you to `guild why -v <exec-ref>` when requested authority differed from the final granted slice or a bounded authority check was blocked.\n  authority-denial failures may include one family-aware `hint:` line before the command follow-up steps.\n  with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.\n  that human status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain when you need a stable machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
-const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  use --json or --porcelain for machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
-const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
-const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations and requested-versus-granted authority for the execution.\n  use -v to expand nearby child and evidence ref lists, authority-observation detail, requested-versus-granted differences, and family-aware request hints.\n  use `--lineage` to append a bounded read-only ancestor/descendant view over persisted executions.\n  with `--lineage`, use -v for warning detail and -vv for full execution URIs in the lineage block.\n  `--lineage` is human-only and does not change `--json` or `--porcelain`.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
+const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n\nOutput:\n  default output is a short human summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  with --json, stdout carries the machine-readable result on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  use --porcelain for stable one-line machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild why --help";
+const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  granted authority is the final capability slice the host policy allows for that run.\n  effective at runtime is the authority the guest can actually exercise during execution.\n  Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.\n\nOutput:\n  in the default human mode, stdout carries the result payload.\n  in the default human mode, stderr carries the human status summary for reading, not parsing.\n  successful runs may point you to `guild why -v <exec-ref>` when requested authority differed from the final granted slice or a bounded authority check was blocked.\n  authority-denial failures may include one family-aware `hint:` line before the command follow-up steps.\n  with --json, stdout carries the machine-readable wrapper on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  that human status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --porcelain when you need a stable one-line machine surface.\n\nLegacy alias:\n  guild inspect ...\n\nSee also:\n  guild help refs\n  guild why --help";
+const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  It summarizes installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  with --json, stdout carries the machine-readable result on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  use --porcelain for stable one-line machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild show --help\n  guild why --help";
+const GET_AFTER_HELP: &str = "Accepted refs:\n  guild://...\n  exec:<execution-id-prefix>\n  evidence:<evidence-record-id-prefix>\n  obj:<sha256-prefix>\n\nScope:\n  `guild get` is the primary raw resource-read command.\n  It reads the same durable backend used by MCP and guest `read-resource`.\n\nOutput:\n  reads go to stdout by default.\n  use --output <path> when you want the payload written to a file.\n  with --json, stdout carries the machine-readable payload on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  use --porcelain for stable one-line machine reads.\n\nLegacy alias:\n  guild read ...\n\nSee also:\n  guild help refs\n  guild why --help";
+const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-execution explanation command.\n\nAccepted refs:\n  exec:<execution-id-prefix>\n  guild://executions/<execution-id>\n\nOutput:\n  default output is a short human explanation for reading, not parsing.\n  when stored child executions or evidence records are present, it may include nearby short refs.\n  it also summarizes stored authority observations and requested-versus-granted authority for the execution.\n  use -v to expand nearby child and evidence ref lists, authority-observation detail, requested-versus-granted differences, and family-aware request hints.\n  use `--lineage` to append a bounded read-only ancestor/descendant view over persisted executions.\n  with `--lineage`, use -v for warning detail and -vv for full execution URIs in the lineage block.\n  `--lineage` is human-only and does not change `--json` or `--porcelain`.\n  that explanation may include low-noise `Next:` hints when the follow-up is obvious.\n  with --json, stdout carries the machine-readable result on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  use --porcelain for stable one-line machine reads.\n\nThis command explains a persisted execution record; it does not rerun the skill.\n\nSee also:\n  guild get --help";
 const GRANTS_AFTER_HELP: &str = "Scope:\n  `guild grants` is a read-only grant-authoring helper.\n\nOutput:\n  `guild grants template <family>` prints concrete JSON you can narrow and pass back to `guild run` through `--grants-json` or `--grants-file`.\n  `guild grants template` without a family prints a read-only per-family catalog for discovery instead of one combined runnable request.\n  the templates cover only the currently active executable capability families.\n  this surface does not widen runtime support claims.\n\nSee also:\n  guild run --help\n  guild help grants";
 const GRANTS_TEMPLATE_AFTER_HELP: &str = "Usage:\n  `guild grants template <family>` prints one concrete `CapabilityGrantSet` template.\n  omit the family to print a read-only per-family catalog instead of one combined grant set.\n\nFamilies:\n  read-resource\n  invoke-skill\n  emit-evidence\n  log-write\n  http-request\n\nOutput:\n  family-specific template output is read-only JSON for editing and rerunning.\n  the no-family catalog is for browsing; pick one family before feeding JSON back to `guild run`.\n  replace placeholder values such as `<declared-alias>` before rerunning a skill.\n\nSee also:\n  guild help grants\n  guild run --help";
-const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --json or --porcelain for machine reads.\n\nVerification details:\n  use -v after import or pull when you want the installed verification explanation.\n  that view adds signing scheme and short bundle digest details when verification metadata exists.\n\nSee also:\n  guild help trust\n  guild show --help";
+const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  with --json, stdout carries the machine-readable result on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  use --porcelain for stable one-line machine reads.\n\nVerification details:\n  use -v after import or pull when you want the installed verification explanation.\n  that view adds signing scheme and short bundle digest details when verification metadata exists.\n\nSee also:\n  guild help trust\n  guild show --help";
 const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const IMPORT_AFTER_HELP: &str = "Preview direction:\n  use `--preview` for a read-only preflight over import and pull.\n  see `guild help preview` for the shipped scope and non-goals.";
 const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  `--preview` stays read-only and uses the same signed bundle and trust checks as import.\n  see `guild help preview` for the first contract.";
@@ -116,6 +117,22 @@ pub struct CliError {
     location: Option<Box<str>>,
     hint: Option<Box<str>>,
     next_steps: Option<Box<str>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct CliErrorEnvelope<'a> {
+    error: CliErrorJson<'a>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct CliErrorJson<'a> {
+    category: &'a str,
+    summary: &'a str,
+    reason_code: Option<&'a str>,
+    detail: Option<&'a str>,
+    location: Option<&'a str>,
+    hint: Option<&'a str>,
+    next_steps: Vec<String>,
 }
 
 impl CliError {
@@ -197,6 +214,77 @@ impl CliError {
         }
         self
     }
+
+    fn json_envelope(&self) -> CliErrorEnvelope<'_> {
+        CliErrorEnvelope {
+            error: CliErrorJson {
+                category: self.category.label(),
+                summary: &self.summary,
+                reason_code: self.reason_code.as_deref(),
+                detail: self.detail.as_deref(),
+                location: self.location.as_deref(),
+                hint: self.hint.as_deref(),
+                next_steps: self.json_next_steps(),
+            },
+        }
+    }
+
+    fn json_next_steps(&self) -> Vec<String> {
+        self.next_steps
+            .as_deref()
+            .into_iter()
+            .flat_map(str::lines)
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| {
+                line.strip_prefix("Next: ")
+                    .or_else(|| line.strip_prefix("Next:"))
+                    .unwrap_or(line)
+                    .trim()
+            })
+            .filter(|line| !line.is_empty())
+            .map(normalize_json_next_step)
+            .collect()
+    }
+}
+
+fn normalize_json_next_step(line: &str) -> String {
+    strip_registry_root_qualifiers(line).trim().to_owned()
+}
+
+fn strip_registry_root_qualifiers(line: &str) -> String {
+    const QUALIFIED_GUILD_PREFIX: &str = "guild --registry-root ";
+
+    let mut normalized = String::with_capacity(line.len());
+    let mut cursor = line;
+
+    while let Some(index) = cursor.find(QUALIFIED_GUILD_PREFIX) {
+        normalized.push_str(&cursor[..index]);
+        normalized.push_str("guild ");
+        let after_prefix = &cursor[index + QUALIFIED_GUILD_PREFIX.len()..];
+        cursor = skip_shell_arg(after_prefix)
+            .strip_prefix(' ')
+            .unwrap_or_else(|| skip_shell_arg(after_prefix));
+    }
+
+    normalized.push_str(cursor);
+    normalized
+}
+
+fn skip_shell_arg(input: &str) -> &str {
+    let mut in_single_quotes = false;
+    let mut in_double_quotes = false;
+
+    for (index, ch) in input.char_indices() {
+        match ch {
+            '\'' if !in_double_quotes => in_single_quotes = !in_single_quotes,
+            '"' if !in_single_quotes => in_double_quotes = !in_double_quotes,
+            ' ' if !in_single_quotes && !in_double_quotes => return &input[index..],
+            _ => {}
+        }
+    }
+
+    ""
 }
 
 impl std::fmt::Display for CliError {
@@ -1773,6 +1861,28 @@ pub fn run(
     }
 }
 
+pub fn run_entrypoint(
+    args: impl IntoIterator<Item = String>,
+    env_registry_root: Option<String>,
+) -> ExitCode {
+    let args: Vec<String> = args.into_iter().collect();
+    let json_error_output = command_requests_json_error_output(&args);
+
+    match run(args.clone(), env_registry_root) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            if json_error_output {
+                if let Err(render_error) = print_json(&error.json_envelope()) {
+                    eprintln!("{render_error}");
+                }
+            } else {
+                eprintln!("{error}");
+            }
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn is_top_level_help_request(args: &[String]) -> bool {
     let mut saw_help = false;
     let mut index = 1;
@@ -1790,6 +1900,41 @@ fn is_top_level_help_request(args: &[String]) -> bool {
         index += 1;
     }
     saw_help
+}
+
+fn command_requests_json_error_output(args: &[String]) -> bool {
+    let Some(command_index) = command_index(args) else {
+        return false;
+    };
+    let Some(command) = args.get(command_index).map(String::as_str) else {
+        return false;
+    };
+    let remaining = &args[command_index + 1..];
+
+    match command {
+        "show" | "run" | "inspect" | "ls" | "list" | "get" | "read" | "why" | "verify" | "init"
+        | "install" | "export" | "import" | "push" | "pull" => {
+            remaining.iter().any(|arg| arg == "--json")
+        }
+        "trust" => remaining.iter().any(|arg| arg == "--json"),
+        _ => false,
+    }
+}
+
+fn command_index(args: &[String]) -> Option<usize> {
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--registry-root" => {
+                index += 2;
+            }
+            token if token.starts_with('-') => {
+                index += 1;
+            }
+            _ => return Some(index),
+        }
+    }
+    None
 }
 
 fn run_help(command: &HelpCliArgs) -> Result<(), CliError> {

@@ -467,6 +467,27 @@ fn parse_json_stdout<T: DeserializeOwned>(stdout: &str) -> T {
     serde_json::from_str(stdout).unwrap()
 }
 
+fn parse_failure_json_output(output: &Output) -> Value {
+    let stderr = std::str::from_utf8(&output.stderr).unwrap();
+    assert!(
+        stderr.trim().is_empty(),
+        "expected empty stderr, got:\n{stderr}"
+    );
+
+    let stdout = std::str::from_utf8(&output.stdout).unwrap();
+    let value: Value = serde_json::from_str(stdout).unwrap();
+    let steps = value["error"]["next_steps"]
+        .as_array()
+        .expect("error.next_steps should be an array");
+    for step in steps {
+        let step = step
+            .as_str()
+            .expect("error.next_steps entries should be strings");
+        assert!(!step.starts_with("Next:"), "{stdout}");
+    }
+    value
+}
+
 fn install_with_cli(registry_root: &Path) {
     install_source_with_cli(registry_root, &hello_source_dir());
 }
@@ -1704,6 +1725,100 @@ fn child_capability_mismatch_errors_surface_authority_follow_up_guidance() {
 }
 
 #[test]
+fn json_failures_are_machine_readable_for_authority_and_runtime_failures() {
+    let policy_temp = TempFixtureDir::new("guild-cli-json-failure-authority");
+    let policy_root = policy_temp.path().join("registry");
+    install_with_cli(&policy_root);
+    write_required_emit_evidence_denial_policy(&policy_root);
+
+    let policy_output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &emit_evidence_grants_json(),
+            "--json",
+        ],
+        Some(&policy_root),
+    );
+    let policy_value = parse_failure_json_output(&policy_output);
+    assert_eq!(
+        policy_value["error"]["category"].as_str(),
+        Some("authority denial")
+    );
+    assert_eq!(
+        policy_value["error"]["reason_code"].as_str(),
+        Some("policy-denied")
+    );
+    assert_eq!(
+        policy_value["error"]["summary"].as_str(),
+        Some("local policy denied one or more required capabilities")
+    );
+    assert!(
+        policy_value["error"]["location"]
+            .as_str()
+            .is_some_and(|location| location.starts_with("guild://executions/")),
+        "{policy_value}"
+    );
+    assert!(
+        policy_value["error"]["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step.as_str().is_some_and(|step| step.contains("show -v"))),
+        "{policy_value}"
+    );
+
+    let runtime_temp = TempFixtureDir::new("guild-cli-json-failure-runtime");
+    let runtime_root = runtime_temp.path().join("registry");
+    let broad_source =
+        write_broad_import_fixture(runtime_temp.path(), "hello-inspect-json-runtime");
+    install_source_with_cli(&runtime_root, &broad_source);
+
+    let runtime_output = run_guild_failure_output(
+        &[
+            "run",
+            "skill://example/hello-inspect-json-runtime@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--grants-json",
+            &emit_evidence_grants_json(),
+            "--json",
+        ],
+        Some(&runtime_root),
+    );
+    let runtime_value = parse_failure_json_output(&runtime_output);
+    assert_eq!(
+        runtime_value["error"]["category"].as_str(),
+        Some("runtime/compatibility")
+    );
+    assert_eq!(
+        runtime_value["error"]["reason_code"].as_str(),
+        Some("unsupported-runtime-surface")
+    );
+    assert_eq!(
+        runtime_value["error"]["summary"].as_str(),
+        Some("inspect runtime rejected component import `guild:skill/host@1.0.0`")
+    );
+    assert!(
+        runtime_value["error"]["location"]
+            .as_str()
+            .is_some_and(|location| location.starts_with("guild://executions/")),
+        "{runtime_value}"
+    );
+    assert!(
+        runtime_value["error"]["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step.as_str().is_some_and(|step| step.contains("show -v"))),
+        "{runtime_value}"
+    );
+}
+
+#[test]
 fn primary_commands_support_short_refs_and_machine_output_flags() {
     let temp = TempFixtureDir::new("guild-cli-primary-machine");
     let registry_root = temp.path().join("registry");
@@ -2053,6 +2168,141 @@ fn missing_execution_refs_surface_resource_guidance() {
 }
 
 #[test]
+fn json_failures_are_machine_readable_for_lookup_and_resource_misses() {
+    let temp = TempFixtureDir::new("guild-cli-json-failure-lookup-resource");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let verify_output = run_guild_failure_output(
+        &["verify", "missing-skill@^0.1", "--json"],
+        Some(&registry_root),
+    );
+    let verify_value = parse_failure_json_output(&verify_output);
+    assert_eq!(
+        verify_value["error"]["category"].as_str(),
+        Some("lookup/ambiguity")
+    );
+    assert_eq!(
+        verify_value["error"]["summary"].as_str(),
+        Some("short skill ref `missing-skill@^0.1` did not match any installed skill")
+    );
+    assert!(
+        verify_value["error"]["reason_code"].is_null(),
+        "{verify_value}"
+    );
+    assert!(
+        verify_value["error"]["location"].is_null(),
+        "{verify_value}"
+    );
+    assert!(
+        verify_value["error"]["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step.as_str() == Some("run `guild ls skills` to inspect installed skills")),
+        "{verify_value}"
+    );
+
+    let why_output =
+        run_guild_failure_output(&["why", "exec:deadbeef", "--json"], Some(&registry_root));
+    let why_value = parse_failure_json_output(&why_output);
+    assert_eq!(
+        why_value["error"]["category"].as_str(),
+        Some("resource/read")
+    );
+    assert_eq!(
+        why_value["error"]["summary"].as_str(),
+        Some("execution ref `exec:deadbeef` did not match any persisted execution")
+    );
+    assert!(why_value["error"]["reason_code"].is_null(), "{why_value}");
+    assert!(why_value["error"]["location"].is_null(), "{why_value}");
+    assert!(
+        why_value["error"]["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step
+                .as_str()
+                .is_some_and(|step| step.contains("ls runs --limit 5"))),
+        "{why_value}"
+    );
+}
+
+#[test]
+fn json_next_steps_strip_registry_root_qualifiers_with_apostrophes() {
+    let temp = TempFixtureDir::new("guild-cli-json-failure-apostrophe-root");
+    let registry_root = temp.path().join("O'Reilly guild root");
+    install_with_cli(&registry_root);
+
+    let verify_output = run_guild_failure_output(
+        &["verify", "missing-skill@^0.1", "--json"],
+        Some(&registry_root),
+    );
+    let verify_value = parse_failure_json_output(&verify_output);
+    assert_eq!(
+        verify_value["error"]["next_steps"][0].as_str(),
+        Some("run `guild ls skills` to inspect installed skills")
+    );
+    let rendered = serde_json::to_string(&verify_value).unwrap();
+    assert!(!rendered.contains("O'Reilly guild root"), "{rendered}");
+}
+
+#[test]
+fn legacy_aliases_keep_the_json_failure_envelope() {
+    let temp = TempFixtureDir::new("guild-cli-json-failure-aliases");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let inspect_output = run_guild_failure_output(
+        &[
+            "inspect",
+            "missing-skill@^0.1",
+            "--input-json",
+            &command_json(json!({ "name": "Ada" })),
+            "--json",
+        ],
+        Some(&registry_root),
+    );
+    let inspect_value = parse_failure_json_output(&inspect_output);
+    assert_eq!(
+        inspect_value["error"]["category"].as_str(),
+        Some("lookup/ambiguity")
+    );
+    assert_eq!(
+        inspect_value["error"]["summary"].as_str(),
+        Some("short skill ref `missing-skill@^0.1` did not match any installed skill")
+    );
+
+    let read_output =
+        run_guild_failure_output(&["read", "exec:deadbeef", "--json"], Some(&registry_root));
+    let read_value = parse_failure_json_output(&read_output);
+    assert_eq!(
+        read_value["error"]["category"].as_str(),
+        Some("resource/read")
+    );
+    assert_eq!(
+        read_value["error"]["summary"].as_str(),
+        Some("execution ref `exec:deadbeef` did not match any persisted execution")
+    );
+
+    let missing_root = temp.path().join("missing-root");
+    let missing_root_display = missing_root.display().to_string();
+    let list_output = run_guild(
+        &["--registry-root", &missing_root_display, "list", "--json"],
+        None,
+    );
+    assert!(!list_output.status.success(), "{list_output:?}");
+    let list_value = parse_failure_json_output(&list_output);
+    assert_eq!(list_value["error"]["category"].as_str(), Some("root/setup"));
+    assert!(
+        list_value["error"]["summary"]
+            .as_str()
+            .is_some_and(|summary| summary.contains("does not exist yet")),
+        "{list_value}"
+    );
+}
+
+#[test]
 fn runtime_recovery_hints_shell_quote_copy_pasteable_skill_refs() {
     let temp = TempFixtureDir::new("guild-cli-runtime-hints-quoted-ref");
     let registry_root = temp.path().join("registry");
@@ -2158,22 +2408,33 @@ fn read_only_commands_do_not_create_the_default_registry_root() {
     let output = run_guild_with_home(&["list", "--json"], &home_dir);
     assert!(!output.status.success());
 
-    let stderr = String::from_utf8(output.stderr).unwrap();
+    let value = parse_failure_json_output(&output);
+    assert_eq!(value["error"]["category"].as_str(), Some("root/setup"));
     assert!(
-        stderr.contains("root/setup: Guild registry root `"),
-        "{stderr}"
+        value["error"]["summary"]
+            .as_str()
+            .is_some_and(|summary| summary.contains("Guild registry root `")),
+        "{value}"
+    );
+    assert_eq!(
+        value["error"]["detail"].as_str(),
+        Some("read-only commands do not initialize a new root")
     );
     assert!(
-        stderr.contains("detail: read-only commands do not initialize a new root"),
-        "{stderr}"
+        value["error"]["summary"]
+            .as_str()
+            .is_some_and(|summary| summary.contains(default_root.to_string_lossy().as_ref())),
+        "{value}"
     );
     assert!(
-        stderr.contains(default_root.to_string_lossy().as_ref()),
-        "{stderr}"
-    );
-    assert!(
-        stderr.contains("Next: run `guild install <source-dir>` to create it"),
-        "{stderr}"
+        value["error"]["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step
+                .as_str()
+                .is_some_and(|step| step.contains("guild install <source-dir>"))),
+        "{value}"
     );
     assert!(!default_root.exists());
 }
@@ -3212,6 +3473,104 @@ fn trust_verify_plan_rejects_tampered_signed_plan() {
 }
 
 #[test]
+fn json_failures_are_machine_readable_for_signed_plan_verification_failures() {
+    let temp = TempFixtureDir::new("guild-cli-json-plan-verify-fail");
+    let registry_root = temp.path().join("registry");
+    let identity_path = temp.path().join("publisher.json");
+    let signed_plan_path = temp.path().join("signed-plan.json");
+    let registry_root_display = registry_root.display().to_string();
+    let identity = identity_path.display().to_string();
+    let plan = draft_plan_path("zero-authority.admit.plan.json")
+        .display()
+        .to_string();
+    let signed_plan = signed_plan_path.display().to_string();
+
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "generate",
+            "--publisher-id",
+            "local.example",
+            "--display-name",
+            "Local Example",
+            "--output",
+            &identity,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+    let _ = run_guild_success(
+        &[
+            "trust",
+            "sign-plan",
+            "--plan",
+            &plan,
+            "--identity-file",
+            &identity,
+            "--output",
+            &signed_plan,
+        ],
+        None,
+    );
+
+    let mut signed_plan_json: Value =
+        serde_json::from_str(&fs::read_to_string(&signed_plan_path).unwrap()).unwrap();
+    signed_plan_json["decision"] = Value::String("downgrade".into());
+    fs::write(
+        &signed_plan_path,
+        serde_json::to_vec_pretty(&signed_plan_json).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "verify-plan",
+            "--plan",
+            &signed_plan,
+            "--json",
+        ],
+        None,
+    );
+    let value = parse_failure_json_output(&output);
+    assert_eq!(
+        value["error"]["category"].as_str(),
+        Some("trust/verification")
+    );
+    assert_eq!(
+        value["error"]["reason_code"].as_str(),
+        Some("execution-plan-signature-digest-mismatch")
+    );
+    assert_eq!(
+        value["error"]["summary"].as_str(),
+        Some("execution plan signature metadata did not match the execution plan bytes")
+    );
+    assert!(value["error"]["location"].is_null(), "{value}");
+    assert!(
+        value["error"]["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step
+                .as_str()
+                .is_some_and(|step| step.contains("trust sign-plan"))),
+        "{value}"
+    );
+}
+
+#[test]
 fn trust_verify_plan_unsupported_signature_format_surfaces_compatibility_guidance() {
     let temp = TempFixtureDir::new("guild-cli-plan-verify-format-skew");
     let registry_root = temp.path().join("registry");
@@ -3367,6 +3726,82 @@ fn import_bundle_untrusted_publishers_surface_trust_guidance() {
             registry_b.display()
         )),
         "{stderr}"
+    );
+}
+
+#[test]
+fn json_failures_are_machine_readable_for_untrusted_bundle_imports() {
+    let temp = TempFixtureDir::new("guild-cli-json-import-untrusted");
+    let registry_a = temp.path().join("registry-a");
+    let registry_b = temp.path().join("registry-b");
+    let identity_path = temp.path().join("publisher.json");
+    let bundle_root = temp.path().join("bundle");
+    let registry_a_root = registry_a.display().to_string();
+    let registry_b_root = registry_b.display().to_string();
+    let identity = identity_path.display().to_string();
+    let bundle = bundle_root.display().to_string();
+
+    install_with_cli(&registry_a);
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_a_root,
+            "export",
+            "bundle",
+            "skill://example/hello-inspect@^0.1",
+            "--signer",
+            &identity,
+            "--output",
+            &bundle,
+        ],
+        None,
+    );
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_b_root,
+            "import",
+            "bundle",
+            &bundle,
+            "--json",
+        ],
+        None,
+    );
+    let value = parse_failure_json_output(&output);
+    assert_eq!(
+        value["error"]["category"].as_str(),
+        Some("trust/verification")
+    );
+    assert_eq!(
+        value["error"]["reason_code"].as_str(),
+        Some("bundle-publisher-untrusted")
+    );
+    assert_eq!(
+        value["error"]["summary"].as_str(),
+        Some("signed bundle publisher was not trusted by the target Guild root")
+    );
+    assert_eq!(value["error"]["location"].as_str(), Some("local.example"));
+    assert!(
+        value["error"]["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step
+                .as_str()
+                .is_some_and(|step| step.contains("trust list"))),
+        "{value}"
+    );
+    assert!(
+        value["error"]["next_steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|step| step
+                .as_str()
+                .is_some_and(|step| step.contains("trust add --identity-file <identity.json>"))),
+        "{value}"
     );
 }
 
@@ -4254,7 +4689,9 @@ fn run_help_uses_input_file_flag_and_ref_topic() {
     assert!(stdout.contains("Guild does not hand the guest ambient authority."));
     assert!(stdout.contains("in the default human mode, stdout carries the result payload."));
     assert!(
-        stdout.contains("with --json, stdout carries the machine-readable wrapper and stderr stays empty on success.")
+        stdout.contains(
+            "with --json, stdout carries the machine-readable wrapper on success and a machine-readable `error` envelope on failure; stderr stays empty in either case."
+        )
     );
     assert!(stdout.contains("low-noise `Next:` hints"));
     assert!(stdout.contains("guild help refs"));
@@ -4348,6 +4785,12 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     assert!(get_help.contains("exec:<execution-id-prefix>"));
     assert!(get_help.contains("primary raw resource-read command"));
     assert!(get_help.contains("reads go to stdout by default."));
+    assert!(
+        get_help.contains(
+            "with --json, stdout carries the machine-readable payload on success and a machine-readable `error` envelope on failure; stderr stays empty in either case."
+        )
+    );
+    assert!(get_help.contains("use --porcelain for stable one-line machine reads."));
     assert!(get_help.contains("Legacy alias:"));
     assert!(get_help.contains("guild read ..."));
     assert!(get_help.contains("guild help refs"));
@@ -4924,10 +5367,20 @@ fn why_lineage_rejects_machine_output_modes() {
         &["why", &exec_prefix, "--lineage", "--json"],
         Some(&registry_root),
     );
-    let json_stderr = String::from_utf8(json_output.stderr).unwrap();
+    let json_value = parse_failure_json_output(&json_output);
     assert!(
-        json_stderr.contains("`guild why --lineage` does not support --json or --porcelain"),
-        "{json_stderr}"
+        json_value["error"]["summary"]
+            .as_str()
+            .is_some_and(|summary| summary
+                .contains("`guild why --lineage` does not support --json or --porcelain")),
+        "{json_value}"
+    );
+    assert_eq!(json_value["error"]["category"].as_str(), Some("usage"));
+    assert!(json_value["error"]["reason_code"].is_null(), "{json_value}");
+    assert_eq!(
+        json_value["error"]["next_steps"].as_array().map(Vec::len),
+        Some(0),
+        "{json_value}"
     );
 
     let porcelain_output = run_guild_failure_output(
@@ -5373,6 +5826,34 @@ fn readme_command_language_and_testing_guide_document_failure_paths() {
             "docs/testing.md is missing failure-oriented CLI smoke wording: {phrase}"
         );
     }
+}
+
+#[test]
+fn docs_describe_json_failure_machine_surface() {
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(
+        readme.contains(
+            "When a command supports `--json`, failure output stays machine-readable too: stdout carries a JSON `error` envelope, stderr stays empty, and the process exits nonzero."
+        ),
+        "README.md should describe the JSON failure surface",
+    );
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    assert!(
+        command_language.contains(
+            "stdout carries a JSON `error` envelope, stderr stays empty, and the process"
+        ),
+        "docs/command-language.md should describe the JSON failure surface",
+    );
+
+    let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
+    assert!(
+        how_it_works.contains(
+            "stdout carries a JSON `error` envelope, stderr stays empty, and the process"
+        ),
+        "docs/how-guild-works.md should describe the JSON failure surface",
+    );
 }
 
 #[test]

@@ -444,6 +444,10 @@ Shared output controls for the human-summary commands (`show`, `run`, `ls`, `why
 - `--color auto|always|never`
 - `NO_COLOR` disables ANSI color even when the terminal would otherwise allow it
 
+When a command supports `--json`, failure output stays machine-readable too:
+stdout carries a JSON `error` envelope, stderr stays empty, and the process
+still exits nonzero.
+
 Human-only hints and extra readability text do not belong to `--json` or `--porcelain`.
 
 `guild get` stays a raw resource-read path rather than a styled summary view. It supports `--json`, `--porcelain`, and `--output <path>`.

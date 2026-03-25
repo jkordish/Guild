@@ -7,11 +7,5 @@ use std::process::ExitCode;
 use guild_mcp::cli;
 
 fn main() -> ExitCode {
-    match cli::run(env::args(), env::var("GUILD_REGISTRY_ROOT").ok()) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::FAILURE
-        }
-    }
+    cli::run_entrypoint(env::args(), env::var("GUILD_REGISTRY_ROOT").ok())
 }
