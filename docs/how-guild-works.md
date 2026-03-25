@@ -108,7 +108,7 @@ What that flow tells you:
 - `guild show -vv` explains why the requested ref resolved to the selected digest
 - `guild grants template` is the read-only starting point when you need current active-family grant JSON before a run
 - `guild run` executes with caller-requested grants filtered through host policy
-- `guild why` is the first nearby-ref, requested-versus-granted authority, and authority-observation surface after the run completes; `guild why -v` expands that stored diff and any family-aware request hints, `guild why --lineage` adds the native bounded ancestor/descendant view, `guild ls evidence --limit 5` discovers recent evidence refs, and `guild get` is the raw durable read path
+- `guild why` is the first nearby-ref, requested-versus-granted authority, and authority-observation surface after the run completes; `guild why -v` expands that stored diff and any family-aware request hints, `guild why --lineage` adds the native bounded ancestor/descendant view, `guild ls evidence --limit 5` discovers recent evidence refs, and `guild get` is the raw durable read path; move to narrower authority and policy example skills only when that native CLI path is no longer enough
 - `guild verify` is about installed trust state, not execution replay
 
 ## Trust Review
