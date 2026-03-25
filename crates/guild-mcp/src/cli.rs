@@ -647,6 +647,7 @@ fn classify_registry_error_category(
             code,
             "trusted-publisher-read-failed"
                 | "trusted-publisher-parse-failed"
+                | "trusted-publisher-id-mismatch"
                 | "trusted-publisher-key-invalid"
                 | "trusted-publisher-tier-invalid"
                 | "trusted-publisher-scan-failed"
@@ -765,6 +766,7 @@ fn next_steps_for_reason_code(code: &str, summary: &str) -> Option<String> {
         }
         "trusted-publisher-read-failed"
         | "trusted-publisher-parse-failed"
+        | "trusted-publisher-id-mismatch"
         | "trusted-publisher-key-invalid"
         | "trusted-publisher-tier-invalid" => Some(
             "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild trust list`"

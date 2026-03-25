@@ -1035,6 +1035,7 @@ fn trust_add_and_list_render_review_friendly_human_output() {
     let registry_root_display = registry_root.display().to_string();
     let identity_path = temp.path().join("publisher.json");
     let identity = identity_path.display().to_string();
+    fs::create_dir_all(&registry_root).unwrap();
 
     let empty_list = run_guild_success(
         &["--registry-root", &registry_root_display, "trust", "list"],
@@ -3210,6 +3211,47 @@ fn trust_show_missing_publishers_surface_lookup_guidance() {
 }
 
 #[test]
+fn trust_read_commands_do_not_initialize_existing_directories() {
+    let temp = TempFixtureDir::new("guild-cli-trust-read-no-init");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    fs::create_dir_all(&registry_root).unwrap();
+
+    let trust_list_output = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "list",
+            "--json",
+        ],
+        None,
+    );
+    let trust_list: Value = parse_json_stdout(&trust_list_output);
+    assert_eq!(trust_list["publishers"].as_array().unwrap().len(), 0);
+    assert!(!registry_root.join("trust").exists());
+    assert!(!registry_root.join("installed").exists());
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "show",
+            "local.example",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("lookup/ambiguity: trusted publisher `local.example` was not present"),
+        "{stderr}"
+    );
+    assert!(!registry_root.join("trust").exists());
+    assert!(!registry_root.join("installed").exists());
+}
+
+#[test]
 fn broken_local_trust_records_surface_root_setup_guidance() {
     let temp = TempFixtureDir::new("guild-cli-broken-trust-record");
     let registry_root = temp.path().join("registry");
@@ -3305,6 +3347,71 @@ fn broken_trust_show_records_surface_root_setup_guidance() {
         stderr.contains("reason: trusted-publisher-parse-failed"),
         "{stderr}"
     );
+}
+
+#[test]
+fn mismatched_trust_show_records_surface_root_setup_guidance() {
+    let temp = TempFixtureDir::new("guild-cli-mismatched-trust-show-record");
+    let registry_root = temp.path().join("registry");
+    let registry_root_display = registry_root.display().to_string();
+    let identity_path = temp.path().join("publisher.json");
+    let identity = identity_path.display().to_string();
+    let trusted_record_path = registry_root
+        .join("trust")
+        .join("publishers")
+        .join("local.example.json");
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "add",
+            "--identity-file",
+            &identity,
+        ],
+        None,
+    );
+
+    let mut trusted_record: Value =
+        serde_json::from_str(&fs::read_to_string(&trusted_record_path).unwrap()).unwrap();
+    trusted_record["publisher"]["id"] = json!("other.example");
+    fs::write(
+        &trusted_record_path,
+        serde_json::to_vec_pretty(&trusted_record).unwrap(),
+    )
+    .unwrap();
+
+    let output = run_guild_failure_output(
+        &[
+            "--registry-root",
+            &registry_root_display,
+            "trust",
+            "show",
+            "local.example",
+        ],
+        None,
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(
+            "root/setup: trusted publisher record did not match the requested publisher id"
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("reason: trusted-publisher-id-mismatch"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild --registry-root {} trust list`",
+            registry_root.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("trust/verification:"), "{stderr}");
 }
 
 #[test]
