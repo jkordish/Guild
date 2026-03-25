@@ -6109,6 +6109,29 @@ fn testing_guide_tracks_preview_first_transport_proofs() {
 }
 
 #[test]
+fn testing_guide_tracks_discovery_first_mcp_stdio_proof() {
+    let testing = fs::read_to_string(repo_root().join("docs/testing.md")).unwrap();
+    for phrase in [
+        "That example now proves one real discovery-first paginated MCP interaction:",
+        "checks `initialize`, verifies `tools/list` exposes the one public tool",
+        "starts from `resources/list`, reads the canonical",
+        "recent-executions query through `resources/read`, then uses",
+        "`resources/templates/list` for the custom URI families before exercising",
+        "`guild.inspect` and reading back the discovered execution and evidence metadata",
+        "resources.",
+    ] {
+        assert!(
+            testing.contains(phrase),
+            "docs/testing.md is missing discovery-first MCP proof wording: {phrase}"
+        );
+    }
+    assert!(
+        !testing.contains("`resources/list_changed`"),
+        "docs/testing.md should not teach unshipped resources/list_changed expectations"
+    );
+}
+
+#[test]
 fn mcp_contract_docs_match_the_discovery_catalog_surface() {
     let specs = fs::read_to_string(repo_root().join("SPECS.md")).unwrap();
     for phrase in [

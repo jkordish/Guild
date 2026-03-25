@@ -584,6 +584,180 @@ fn resources_read_returns_execution_evidence_payload_and_evidence_metadata_conte
 
 #[test]
 #[allow(clippy::too_many_lines)]
+fn discovery_first_mcp_flow_matches_documented_operator_path() {
+    let temp = TempFixtureDir::new("guild-mcp-server-discovery-flow");
+    let registry_root = temp.path().join("registry");
+
+    LocalSourceInstaller::new(&registry_root)
+        .unwrap()
+        .install(inspect_source_dir())
+        .unwrap();
+
+    let mut harness = McpHarness::spawn_for_root(&registry_root);
+    let initialized = harness.initialize();
+    let tools_capabilities = initialized
+        .capabilities
+        .tools
+        .expect("initialize exposes tools capabilities");
+    assert_eq!(tools_capabilities.list_changed, Some(false));
+    let resources_capabilities = initialized
+        .capabilities
+        .resources
+        .expect("initialize exposes resources capabilities");
+    assert_eq!(resources_capabilities.subscribe, None);
+    assert_eq!(resources_capabilities.list_changed, None);
+
+    let tools_response = harness.request("tools/list", &json!({}));
+    let tools: ListToolsResult = parse_result(&tools_response);
+    assert_eq!(tools.tools.len(), 1);
+    assert_eq!(tools.tools[0].name, "guild.inspect");
+
+    let recent_query_uri = ExecutionQueryResource::Recent { limit: 10 }.canonical_uri();
+    let recent_failures_query_uri =
+        ExecutionQueryResource::FailuresRecent { limit: 10 }.canonical_uri();
+
+    let discovery_response = harness.request("resources/list", &json!({}));
+    let discovery_resources: ListResourcesResult = parse_result(&discovery_response);
+    let discovery_uris = discovery_resources
+        .resources
+        .iter()
+        .map(|resource| resource.uri.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        discovery_uris,
+        vec![
+            recent_query_uri.as_str(),
+            recent_failures_query_uri.as_str(),
+        ]
+    );
+    assert_eq!(discovery_resources.next_cursor, None);
+
+    let recent_query_response =
+        harness.request("resources/read", &json!({ "uri": recent_query_uri }));
+    let recent_query: ReadResourceResult = parse_result(&recent_query_response);
+    let recent_query_contents = match &recent_query.contents[0] {
+        ResourceContents::Text(text) => text,
+        other @ ResourceContents::Blob(_) => {
+            panic!("expected text query contents, got {other:?}")
+        }
+    };
+    let recent_query_result: ExecutionQueryResult =
+        serde_json::from_str(&recent_query_contents.text).unwrap();
+    assert_eq!(recent_query_result.returned_matches, 0);
+    assert!(recent_query_result.results.is_empty());
+
+    let templates_first: ListResourceTemplatesResult =
+        parse_result(&harness.request("resources/templates/list", &json!({})));
+    let templates_cursor = templates_first
+        .next_cursor
+        .clone()
+        .expect("documented resource-template discovery remains paginated");
+    let templates_second: ListResourceTemplatesResult = parse_result(&harness.request(
+        "resources/templates/list",
+        &json!({ "cursor": templates_cursor }),
+    ));
+    assert_eq!(templates_second.next_cursor, None);
+    let templates = templates_first
+        .resource_templates
+        .into_iter()
+        .chain(templates_second.resource_templates)
+        .map(|template| template.uri_template)
+        .collect::<Vec<_>>();
+    for expected_template in [
+        "guild://executions/{execution_id}",
+        "guild://objects/records/{evidence_record_id}",
+        "guild://objects/records/{evidence_record_id}/metadata",
+        "guild://objects/sha256/{digest}",
+        "guild://queries/executions/recent/{limit}",
+        "guild://queries/executions/failures/recent/{limit}",
+        "guild://queries/executions/by-status/{status}/{limit}",
+        "guild://queries/executions/by-skill/{namespace}/{name}/{limit}",
+    ] {
+        assert!(
+            templates
+                .iter()
+                .any(|template| template == expected_template),
+            "resources/templates/list is missing documented template: {expected_template}"
+        );
+    }
+
+    let inspect_response = harness.request(
+        "tools/call",
+        &inspect_request(
+            "hello-inspect",
+            &json!({ "name": "Ada" }),
+            &json!([emit_evidence_grant_json()]),
+        ),
+    );
+    let inspect_result: CallToolResult = parse_result(&inspect_response);
+    let record = guild_inspect_helpers::parse_execution_record(&inspect_result);
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    let evidence_metadata_uri = format!("{}/metadata", record.emitted_evidence[0].uri);
+
+    let post_inspect_response = harness.request("resources/list", &json!({}));
+    let post_inspect_resources: ListResourcesResult = parse_result(&post_inspect_response);
+    assert_eq!(post_inspect_resources.resources[0].uri, recent_query_uri);
+    assert_eq!(
+        post_inspect_resources.resources[1].uri,
+        recent_failures_query_uri
+    );
+    assert!(
+        post_inspect_resources
+            .resources
+            .iter()
+            .any(|resource| resource.uri == record.receipt.uri)
+    );
+    assert!(
+        post_inspect_resources
+            .resources
+            .iter()
+            .any(|resource| resource.uri == evidence_metadata_uri)
+    );
+    assert!(
+        !post_inspect_resources
+            .resources
+            .iter()
+            .any(|resource| resource.uri == record.emitted_evidence[0].uri),
+        "resources/list should surface evidence metadata URIs, not payload URIs"
+    );
+
+    let execution_response =
+        harness.request("resources/read", &json!({ "uri": record.receipt.uri }));
+    let execution: ReadResourceResult = parse_result(&execution_response);
+    let execution_contents = match &execution.contents[0] {
+        ResourceContents::Text(text) => text,
+        other @ ResourceContents::Blob(_) => {
+            panic!("expected text execution contents, got {other:?}")
+        }
+    };
+    let discovered_execution: guild_types::ExecutionRecord =
+        serde_json::from_str(&execution_contents.text).unwrap();
+    assert_eq!(discovered_execution.receipt.uri, record.receipt.uri);
+    assert_eq!(discovered_execution.status, ExecutionStatus::Succeeded);
+
+    let metadata_response =
+        harness.request("resources/read", &json!({ "uri": evidence_metadata_uri }));
+    let metadata: ReadResourceResult = parse_result(&metadata_response);
+    let metadata_contents = match &metadata.contents[0] {
+        ResourceContents::Text(text) => text,
+        other @ ResourceContents::Blob(_) => {
+            panic!("expected text metadata contents, got {other:?}")
+        }
+    };
+    let evidence_record: EvidenceRecord = serde_json::from_str(&metadata_contents.text).unwrap();
+    assert_eq!(evidence_record.uri, record.emitted_evidence[0].uri);
+    assert_eq!(
+        evidence_record.blob_uri,
+        record.emitted_evidence[0].blob_uri
+    );
+    assert_eq!(
+        evidence_record.produced_by_execution.as_deref(),
+        Some(record.receipt.execution_id.as_str())
+    );
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
 fn resources_templates_pagination_and_resources_list_match_active_resource_model() {
     let mut harness = McpHarness::spawn();
     harness.initialize();
