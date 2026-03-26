@@ -847,6 +847,179 @@ fn http_request_live_proof_is_bounded_with_replay_for_localhost_head_explicit_po
 }
 
 #[test]
+fn http_request_live_proof_is_bounded_with_replay_for_localhost_default_port_shape() {
+    let temp = TempRegistry::new();
+    temp.install(inspect_http_json_dir());
+    let registry = temp.load();
+    let replay_url = "http://localhost/response.json";
+    let runner = build_replay_runner(vec![localhost_http_replay_fixture(
+        replay_url,
+        80,
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let proof_result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "get",
+                    "json_pointers": ["/message", "/nested/count"],
+                }),
+                CapabilityGrantSet {
+                    grants: vec![http_grant("localhost", 80, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    assert_eq!(proof_result.proof.proof_status, "bounded_minimal");
+    assert!(proof_result.proof.residual_authority.grants.is_empty());
+    assert!(proof_result.proof.replay_input_digest.is_some());
+    let family = proof_result
+        .proof
+        .family_statuses
+        .iter()
+        .find(|status| status.family == CapabilityId::HttpRequest)
+        .unwrap();
+    assert_eq!(family.support, LiveProofSupport::BoundedLiveProof);
+    assert_eq!(family.proof_status.as_deref(), Some("bounded_minimal"));
+    assert!(
+        family
+            .reason_codes
+            .iter()
+            .any(|code| code == "HTTP_LIVE_PROOF_BOUNDED")
+    );
+    match &proof_result.proof.proven_authority.grants[0].constraints {
+        CapabilityConstraints::HttpRequest(value) => {
+            assert_eq!(
+                value.allowed_hosts.as_ref().unwrap(),
+                &vec!["localhost".to_owned()]
+            );
+            assert_eq!(value.allowed_ports.as_ref().unwrap(), &vec![80]);
+            assert_eq!(
+                value.allowed_methods.as_ref().unwrap(),
+                &vec![HttpMethod::Get]
+            );
+            assert_eq!(
+                value.allowed_path_prefixes.as_ref().unwrap(),
+                &vec!["/response.json".to_owned()]
+            );
+            assert_eq!(value.follow_redirects, Some(false));
+            assert_eq!(value.allow_loopback, Some(true));
+            assert_eq!(value.allow_ip_literals, Some(false));
+        }
+        other => panic!("expected http-request constraints, got {other:?}"),
+    }
+    let observation = match &proof_result
+        .baseline_execution_record
+        .authority_observations[0]
+    {
+        guild_types::AuthorityObservation::HttpRequest { detail, .. } => detail,
+        other => panic!("expected http-request observation, got {other:?}"),
+    };
+    let resolution = observation
+        .resolution
+        .as_ref()
+        .expect("localhost default-port live proof should persist the bound resolution");
+    assert_eq!(resolution.requested_host, "localhost");
+    assert_eq!(resolution.port, 80);
+    assert!(resolution.loopback_only);
+}
+
+#[test]
+fn http_request_live_proof_is_bounded_with_replay_for_localhost_head_default_port_shape() {
+    let temp = TempRegistry::new();
+    temp.install(inspect_http_json_dir());
+    let registry = temp.load();
+    let replay_url = "http://localhost/response.json";
+    let runner = build_replay_runner(vec![localhost_head_http_replay_fixture(replay_url, 80)]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+
+    let proof_result = runner
+        .prove_live_authority(
+            &registry,
+            &http_skill,
+            &envelope_for(
+                &http_skill,
+                json!({
+                    "url": replay_url,
+                    "method": "head",
+                }),
+                CapabilityGrantSet {
+                    grants: vec![head_http_grant("localhost", 80, "/response.json")],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectOutputV1,
+        )
+        .unwrap();
+
+    assert_eq!(proof_result.proof.proof_status, "bounded_minimal");
+    assert!(proof_result.proof.residual_authority.grants.is_empty());
+    assert!(proof_result.proof.replay_input_digest.is_some());
+    let family = proof_result
+        .proof
+        .family_statuses
+        .iter()
+        .find(|status| status.family == CapabilityId::HttpRequest)
+        .unwrap();
+    assert_eq!(family.support, LiveProofSupport::BoundedLiveProof);
+    assert_eq!(family.proof_status.as_deref(), Some("bounded_minimal"));
+    assert!(
+        family
+            .reason_codes
+            .iter()
+            .any(|code| code == "HTTP_LIVE_PROOF_BOUNDED")
+    );
+    match &proof_result.proof.proven_authority.grants[0].constraints {
+        CapabilityConstraints::HttpRequest(value) => {
+            assert_eq!(
+                value.allowed_hosts.as_ref().unwrap(),
+                &vec!["localhost".to_owned()]
+            );
+            assert_eq!(value.allowed_ports.as_ref().unwrap(), &vec![80]);
+            assert_eq!(
+                value.allowed_methods.as_ref().unwrap(),
+                &vec![HttpMethod::Head]
+            );
+            assert_eq!(
+                value.allowed_path_prefixes.as_ref().unwrap(),
+                &vec!["/response.json".to_owned()]
+            );
+            assert_eq!(value.follow_redirects, Some(false));
+            assert_eq!(value.allow_loopback, Some(true));
+            assert_eq!(value.allow_ip_literals, Some(false));
+        }
+        other => panic!("expected http-request constraints, got {other:?}"),
+    }
+    let observation = match &proof_result
+        .baseline_execution_record
+        .authority_observations[0]
+    {
+        guild_types::AuthorityObservation::HttpRequest { detail, .. } => detail,
+        other => panic!("expected http-request observation, got {other:?}"),
+    };
+    assert_eq!(observation.request.method, HttpMethod::Head);
+    assert_eq!(observation.response_bytes, Some(0));
+    let resolution = observation
+        .resolution
+        .as_ref()
+        .expect("localhost HEAD default-port live proof should persist the bound resolution");
+    assert_eq!(resolution.requested_host, "localhost");
+    assert_eq!(resolution.port, 80);
+    assert!(resolution.loopback_only);
+}
+
+#[test]
 fn http_request_live_proof_is_bounded_with_replay_for_head_shape() {
     let temp = TempRegistry::new();
     temp.install(inspect_http_json_dir());

@@ -43,7 +43,15 @@ const EXAMPLES: &[(&str, &str)] = &[
     ),
     (
         "skill_contract.schema.json",
+        "examples/runtime-http-localhost-default-port.contract.json",
+    ),
+    (
+        "skill_contract.schema.json",
         "examples/runtime-http-localhost-head.contract.json",
+    ),
+    (
+        "skill_contract.schema.json",
+        "examples/runtime-http-localhost-head-default-port.contract.json",
     ),
     (
         "skill_contract.schema.json",
@@ -207,7 +215,15 @@ const EXAMPLES: &[(&str, &str)] = &[
     ),
     (
         "admission_request.schema.json",
+        "examples/runtime-http-localhost-default-port.admit.request.json",
+    ),
+    (
+        "admission_request.schema.json",
         "examples/runtime-http-localhost-head.admit.request.json",
+    ),
+    (
+        "admission_request.schema.json",
+        "examples/runtime-http-localhost-head-default-port.admit.request.json",
     ),
     (
         "admission_request.schema.json",
