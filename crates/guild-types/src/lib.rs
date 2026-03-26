@@ -509,6 +509,23 @@ pub struct EvidenceSinkDescriptor {
     pub storage_class: EvidenceStorageClass,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(tag = "family", rename_all = "kebab-case")]
+pub enum HostExactBinding {
+    EmitEvidence(HostEmitEvidenceExactBinding),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct HostEmitEvidenceExactBinding {
+    pub emission_count: u32,
+    pub mime_type: String,
+    pub audience: EvidenceAudience,
+    pub redaction: RedactionClass,
+    pub size_bytes: u64,
+    pub payload_sha256: String,
+    pub sink: EvidenceSinkDescriptor,
+}
+
 #[must_use]
 pub fn local_object_store_evidence_sink_descriptor() -> EvidenceSinkDescriptor {
     EvidenceSinkDescriptor {

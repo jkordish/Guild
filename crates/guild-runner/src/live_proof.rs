@@ -4,10 +4,11 @@ use guild_registry::{InstalledSkill, SkillRegistry};
 use guild_types::{
     AbiVersion, AuthorityObservation, AuthorityObservationStatus, CapabilityAccess,
     CapabilityConstraints, CapabilityGrantSet, CapabilityId, EmitEvidenceConstraints,
-    EvidenceRecord, EvidenceSinkDescriptor, ExecutionRecord, ExecutionStatus, GrantedCapability,
-    GuildResourceScope, GuildResourceUri, HttpMethod, HttpRequestConstraints, HttpScheme,
-    InvokeDependencyConstraints, LogConstraints, ReadResourceConstraints,
-    ResolvedExecutionEnvelope, ResolvedSkillRef, ResourceKind,
+    EvidenceAudience, EvidenceRecord, EvidenceSinkDescriptor, ExecutionRecord, ExecutionStatus,
+    GrantedCapability, GuildResourceScope, GuildResourceUri, HostEmitEvidenceExactBinding,
+    HostExactBinding, HttpMethod, HttpRequestConstraints, HttpScheme, InvokeDependencyConstraints,
+    LogConstraints, ReadResourceConstraints, RedactionClass, ResolvedExecutionEnvelope,
+    ResolvedSkillRef, ResourceKind,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -111,6 +112,8 @@ pub struct LiveProofOutcome {
     pub baseline_output_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replay_input_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub host_exact_bindings: Vec<HostExactBinding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -141,6 +144,10 @@ struct ObservedInvokeSkillSlice {
 #[derive(Debug, Clone)]
 struct ObservedEmitEvidenceSlice {
     narrowed_capability: GrantedCapability,
+    mime_type: String,
+    audience: EvidenceAudience,
+    redaction: RedactionClass,
+    size_bytes: u64,
     payload_sha256: String,
     sink: EvidenceSinkDescriptor,
 }
@@ -167,6 +174,7 @@ where
     let mut family_statuses = Vec::new();
     let mut candidate_trials = Vec::new();
     let mut minimization_reason_codes = Vec::new();
+    let mut host_exact_bindings = Vec::new();
 
     for family in [
         CapabilityId::HttpRequest,
@@ -249,6 +257,30 @@ where
         candidate_trials.append(&mut family_trials);
         family_statuses.push(family_status);
         minimization_reason_codes.extend(family_reasons);
+
+        if family == CapabilityId::EmitEvidence
+            && family_statuses
+                .last()
+                .and_then(|status| status.proof_status.as_deref())
+                == Some("exact_minimal")
+            && matches!(
+                family_statuses.last().map(|status| &status.support),
+                Some(LiveProofSupport::BoundedLiveProof | LiveProofSupport::LiveProofSupported)
+            )
+            && let Ok(observed) = observed_emit_evidence_slice(&baseline_execution_record)
+        {
+            host_exact_bindings.push(HostExactBinding::EmitEvidence(
+                HostEmitEvidenceExactBinding {
+                    emission_count: 1,
+                    mime_type: observed.mime_type,
+                    audience: observed.audience,
+                    redaction: observed.redaction,
+                    size_bytes: observed.size_bytes,
+                    payload_sha256: observed.payload_sha256,
+                    sink: observed.sink,
+                },
+            ));
+        }
     }
 
     let proof_status = overall_proof_status(
@@ -287,6 +319,7 @@ where
             observed_families: baseline_observed_families,
             baseline_output_digest,
             replay_input_digest,
+            host_exact_bindings,
         },
     })
 }
@@ -744,7 +777,7 @@ where
             &envelope.granted_capabilities,
             &family,
             CapabilityGrantSet {
-                grants: reduced_family,
+                grants: reduced_family.clone(),
             },
         ),
         baseline_projection,
@@ -763,17 +796,36 @@ where
         );
     }
 
-    let reasons = vec!["EMIT_EVIDENCE_LINKAGE_MODEL_UNAVAILABLE".into()];
-    let notes = format!(
-        "Guild can re-execute and compare one exact single-emission local object-store sink slice conservatively, but the current live emit-evidence grant shape and draft-v1 control-plane do not model exact sink identity and payload digest as first-class authority. The family remains not_proven rather than issuing a broader proof envelope. The checked slice bound sink kind `{}`, record namespace `{}`, blob namespace `{}`, routing mode `{:?}`, storage class `{:?}`, and payload digest `{}`.",
-        serde_json::to_string(&observed.sink.kind).expect("sink kind serializes"),
-        observed.sink.record_uri_prefix,
-        observed.sink.blob_uri_prefix,
-        observed.sink.routing_mode,
-        observed.sink.storage_class,
-        observed.payload_sha256,
-    );
-    emit_evidence_not_proven(family_grants, reasons, &notes, trials)
+    if reduced_family != family_grants {
+        let reasons = vec!["EMIT_EVIDENCE_LINKAGE_MODEL_UNAVAILABLE".into()];
+        let notes = format!(
+            "Guild can re-execute and compare one exact single-emission local object-store sink slice conservatively, but proof-backed linkage stays fail-closed unless the granted emit-evidence scope already matches the exact exercised payload size, audience, and redaction envelope. This baseline stayed broader than the exact slice, so the family remains not_proven. The checked slice bound sink kind `{}`, record namespace `{}`, blob namespace `{}`, routing mode `{:?}`, storage class `{:?}`, and payload digest `{}`.",
+            serde_json::to_string(&observed.sink.kind).expect("sink kind serializes"),
+            observed.sink.record_uri_prefix,
+            observed.sink.blob_uri_prefix,
+            observed.sink.routing_mode,
+            observed.sink.storage_class,
+            observed.payload_sha256,
+        );
+        return emit_evidence_not_proven(family_grants, reasons, &notes, trials);
+    }
+
+    let reasons = vec!["LIVE_PROOF_BOUNDED".into(), "LIVE_PROOF_SUPPORTED".into()];
+    (
+        CapabilityGrantSet {
+            grants: reduced_family,
+        },
+        CapabilityGrantSet::default(),
+        trials,
+        LiveProofFamilyStatus {
+            family,
+            support: LiveProofSupport::BoundedLiveProof,
+            proof_status: Some("exact_minimal".into()),
+            reason_codes: stable_sorted_strings(reasons.clone()),
+            notes: "Bounded live proof for emit-evidence now covers one exact single-emission fixed local object-store slice, with host-owned exact sink and payload binding carried separately from the guest authority surface.".into(),
+        },
+        reasons,
+    )
 }
 
 #[allow(clippy::too_many_lines)]
@@ -2344,6 +2396,10 @@ fn observed_emit_evidence_slice(
                 redactions: Some(vec![emitted.redaction.clone()]),
             }),
         },
+        mime_type: emitted.mime_type.clone(),
+        audience: emitted.audience.clone(),
+        redaction: emitted.redaction.clone(),
+        size_bytes: emitted.size_bytes,
         payload_sha256: emitted.sha256.clone(),
         sink: observed_sink.clone(),
     })

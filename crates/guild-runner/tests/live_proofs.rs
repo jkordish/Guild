@@ -30,6 +30,10 @@ fn hello_skill_dir() -> PathBuf {
     repo_root().join("examples/skills/hello-inspect")
 }
 
+fn emit_evidence_exact_skill_dir() -> PathBuf {
+    repo_root().join("examples/skills/emit-evidence-exact")
+}
+
 fn explain_execution_dir() -> PathBuf {
     repo_root().join("examples/skills/explain-execution")
 }
@@ -69,11 +73,19 @@ fn unique_id(prefix: &str) -> String {
 }
 
 fn emit_evidence_grant() -> GrantedCapability {
+    emit_evidence_grant_with_max_bytes(65_536)
+}
+
+fn exact_emit_evidence_grant() -> GrantedCapability {
+    emit_evidence_grant_with_max_bytes(47)
+}
+
+fn emit_evidence_grant_with_max_bytes(max_bytes: u64) -> GrantedCapability {
     GrantedCapability {
         id: CapabilityId::EmitEvidence,
         access: CapabilityAccess::Write,
         constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
-            max_bytes: Some(65_536),
+            max_bytes: Some(max_bytes),
             audiences: Some(vec![EvidenceAudience::User]),
             redactions: Some(vec![RedactionClass::None]),
         }),
@@ -519,6 +531,83 @@ fn emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable(
             && !trial.accepted
             && trial.error_code.as_deref() == Some("capability-mismatch")
     }));
+}
+
+#[test]
+fn emit_evidence_live_proof_supports_one_exact_single_sink_slice() {
+    let temp = TempRegistry::new();
+    temp.install(emit_evidence_exact_skill_dir());
+    let registry = temp.load();
+    let runner = build_runner();
+    let exact_skill = registry
+        .resolve(&requested_skill("emit-evidence-exact"))
+        .unwrap();
+
+    let proof_result = runner
+        .prove_live_authority(
+            &registry,
+            &exact_skill,
+            &envelope_for(
+                &exact_skill,
+                json!({}),
+                CapabilityGrantSet {
+                    grants: vec![exact_emit_evidence_grant()],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1,
+        )
+        .unwrap();
+
+    assert_eq!(proof_result.proof.proven_authority.grants.len(), 1);
+    assert!(proof_result.proof.residual_authority.grants.is_empty());
+    assert!(proof_result.proof.replay_input_digest.is_some());
+    assert_eq!(proof_result.proof.host_exact_bindings.len(), 1);
+
+    let emit_family = proof_result
+        .proof
+        .family_statuses
+        .iter()
+        .find(|status| status.family == CapabilityId::EmitEvidence)
+        .unwrap();
+    assert_eq!(emit_family.support, LiveProofSupport::BoundedLiveProof);
+    assert_eq!(emit_family.proof_status.as_deref(), Some("exact_minimal"));
+
+    match &proof_result.proof.proven_authority.grants[0].constraints {
+        CapabilityConstraints::EmitEvidence(value) => {
+            assert_eq!(value.max_bytes, Some(47));
+            assert_eq!(
+                value.audiences.as_ref().unwrap(),
+                &vec![EvidenceAudience::User]
+            );
+            assert_eq!(
+                value.redactions.as_ref().unwrap(),
+                &vec![RedactionClass::None]
+            );
+        }
+        other => panic!("expected emit-evidence constraints, got {other:?}"),
+    }
+
+    match &proof_result.proof.host_exact_bindings[0] {
+        guild_types::HostExactBinding::EmitEvidence(binding) => {
+            assert_eq!(binding.emission_count, 1);
+            assert_eq!(binding.mime_type, "application/json");
+            assert_eq!(binding.audience, EvidenceAudience::User);
+            assert_eq!(binding.redaction, RedactionClass::None);
+            assert_eq!(binding.size_bytes, 47);
+            assert_eq!(
+                binding.payload_sha256,
+                "sha256:ea3577730f16b65aa3ed9fbf810fd77b0cb08e4add3e433203f9ca0a70de3916"
+            );
+            assert_eq!(
+                binding.sink.record_uri_prefix,
+                guild_types::GUILD_OBJECT_RECORD_URI_PREFIX
+            );
+            assert_eq!(
+                binding.sink.blob_uri_prefix,
+                guild_types::GUILD_OBJECT_BLOB_URI_PREFIX
+            );
+        }
+    }
 }
 
 #[test]

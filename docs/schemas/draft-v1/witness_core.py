@@ -34,10 +34,12 @@ from token_core import (
     TOKEN_CANONICALIZATION,
     TOKEN_PROTECTION_MODE,
     attach_protection,
+    host_exact_bindings_match_authority,
     load_issuer_secret,
     proof_source_kind,
     protection_for_payload,
     scope_kind_for_effect,
+    stable_unique_host_exact_bindings,
     stable_unique_resource_bindings,
     validate_plan_contract_alignment,
     validate_proof_alignment,
@@ -738,6 +740,17 @@ def derive_call_chain(token: dict[str, Any] | None) -> dict[str, Any] | None:
     return deepcopy(token["call_chain"])
 
 
+def derive_host_exact_bindings(
+    proof: dict[str, Any] | None,
+    token: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if token is not None and token.get("issuance_basis") == "m5_proven_subset":
+        return stable_unique_host_exact_bindings(token.get("host_exact_bindings", []))
+    if proof is not None:
+        return stable_unique_host_exact_bindings(proof.get("host_exact_bindings", []))
+    return []
+
+
 def proof_basis_from_proof(proof: dict[str, Any] | None) -> dict[str, Any] | None:
     if proof is None:
         return None
@@ -811,6 +824,21 @@ def verify_or_bind_token(
         reason_codes.append("TOKEN_LINKAGE_MISMATCH")
     if verification_result["decision"] != "allow" or not verification_result["verified"]:
         reason_codes.append("TOKEN_VERIFICATION_FAILED")
+
+    token_exact_bindings = stable_unique_host_exact_bindings(token.get("host_exact_bindings", []))
+    if token["issuance_basis"] == "m5_proven_subset":
+        proof_exact_bindings = stable_unique_host_exact_bindings(
+            proof.get("host_exact_bindings", []) if proof is not None else []
+        )
+        if token_exact_bindings != proof_exact_bindings:
+            reason_codes.append("TOKEN_LINKAGE_MISMATCH")
+    elif token_exact_bindings:
+        reason_codes.append("TOKEN_LINKAGE_MISMATCH")
+    if token_exact_bindings and not host_exact_bindings_match_authority(
+        token_exact_bindings,
+        token["granted_authority"],
+    ):
+        reason_codes.append("TOKEN_LINKAGE_MISMATCH")
 
     token_basis = {
         "token_id": token["token_id"],
@@ -1005,6 +1033,10 @@ def generate_witness(
         },
         "proof_basis": proof_basis,
         "token_basis": token_basis,
+        "host_exact_bindings": derive_host_exact_bindings(
+            proof if trusted_proof_authority is not None else None,
+            token if token_basis is not None else None,
+        ),
         "subject": {
             "skill_contract_id": contract["contract_id"],
             "contract_digest": digest_struct(contract),
@@ -1214,6 +1246,10 @@ def verify_witness(
             proof_basis_source_kind = witness["proof_basis"].get("proof_source_kind")
             if proof_basis_source_kind is not None and proof_basis_source_kind != proof_source_kind(proof):
                 reason_codes.append("PROOF_LINKAGE_MISMATCH")
+            if stable_unique_host_exact_bindings(witness.get("host_exact_bindings", [])) != stable_unique_host_exact_bindings(
+                proof.get("host_exact_bindings", [])
+            ):
+                reason_codes.append("PROOF_LINKAGE_MISMATCH")
 
     if witness["token_basis"] is not None:
         if token is None or plan is None or contract is None:
@@ -1248,6 +1284,15 @@ def verify_witness(
                 or token_basis["verification_decision"] != verification["decision"]
                 or token_basis["verification_verified"] != verification["verified"]
                 or token_basis["verification_reason_codes"] != verification["reason_codes"]
+            ):
+                reason_codes.append("TOKEN_LINKAGE_MISMATCH")
+            if stable_unique_host_exact_bindings(witness.get("host_exact_bindings", [])) != stable_unique_host_exact_bindings(
+                token.get("host_exact_bindings", [])
+            ):
+                reason_codes.append("TOKEN_LINKAGE_MISMATCH")
+            if stable_unique_host_exact_bindings(witness.get("host_exact_bindings", [])) and not host_exact_bindings_match_authority(
+                stable_unique_host_exact_bindings(witness.get("host_exact_bindings", [])),
+                token["granted_authority"],
             ):
                 reason_codes.append("TOKEN_LINKAGE_MISMATCH")
             if witness["audience_binding"] != token["audience_binding"]:

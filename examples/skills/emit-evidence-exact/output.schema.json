@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EmitEvidenceExactOutput",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "object"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "mime_type": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mime_type",
+        "size_bytes",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "message": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "mode",
+    "skill",
+    "payload",
+    "message"
+  ],
+  "additionalProperties": false
+}

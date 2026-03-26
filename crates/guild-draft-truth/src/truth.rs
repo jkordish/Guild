@@ -79,6 +79,10 @@ const EXAMPLES: &[(&str, &str)] = &[
     ),
     (
         "skill_contract.schema.json",
+        "examples/runtime-emit-evidence-exact.contract.json",
+    ),
+    (
+        "skill_contract.schema.json",
         "examples/runtime-log-write.contract.json",
     ),
     (
@@ -248,6 +252,10 @@ const EXAMPLES: &[(&str, &str)] = &[
     (
         "admission_request.schema.json",
         "examples/runtime-emit-evidence-zero.admit.request.json",
+    ),
+    (
+        "admission_request.schema.json",
+        "examples/runtime-emit-evidence-exact.admit.request.json",
     ),
     (
         "admission_request.schema.json",

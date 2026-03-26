@@ -26,6 +26,7 @@ const SKILLS: &[&str] = &[
     "examples/runtime-read-resource.contract.json",
     "examples/runtime-invoke-skill.contract.json",
     "examples/runtime-emit-evidence-zero.contract.json",
+    "examples/runtime-emit-evidence-exact.contract.json",
     "examples/runtime-log-write.contract.json",
 ];
 

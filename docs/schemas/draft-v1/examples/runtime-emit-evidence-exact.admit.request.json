@@ -1,0 +1,59 @@
+{
+  "kind": "guild.admission_request",
+  "version": "1.0.0",
+  "request_id": "urn:guild:request:runtime-emit-evidence-exact:admit:v1",
+  "contract": {
+    "contract_id": "urn:guild:contract:runtime-emit-evidence-exact:v1",
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "4b6100aa1893032f50871aa023e6b1e2419e3256ab412474f7ea832a431ae7f8"
+    }
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  },
+  "runtime_candidates": [
+    {
+      "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+    }
+  ],
+  "preferred_runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+  "requested_authority": {
+    "grants": [
+      {
+        "family": "emit-evidence",
+        "scope": {
+          "kind": "evidence",
+          "audiences": [
+            "user"
+          ],
+          "redactions": [
+            "none"
+          ]
+        },
+        "cardinality": {
+          "max_calls": 1,
+          "max_bytes": 47
+        }
+      }
+    ],
+    "ttl_seconds": 120
+  },
+  "requested_witness_level": "decision",
+  "audience_binding_inputs": [],
+  "resource_binding_inputs": [],
+  "delegation_chain_input": {
+    "caller_chain": [
+      "urn:guild:actor:runtime-alignment-test"
+    ],
+    "requested_max_hops": 0
+  },
+  "invocation_constraints": {
+    "valid_for_seconds": 120
+  }
+}

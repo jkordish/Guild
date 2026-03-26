@@ -1,0 +1,117 @@
+{
+  "kind": "guild.skill_contract",
+  "version": "1.0.0",
+  "contract_id": "urn:guild:contract:runtime-emit-evidence-exact:v1",
+  "component": {
+    "name": "emit-evidence-exact",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "4b6100aa1893032f50871aa023e6b1e2419e3256ab412474f7ea832a431ae7f8"
+    },
+    "component_model": "wasm-component",
+    "component_model_version": "0.2.0",
+    "wit_world": "guild-skill-inspect-v1"
+  },
+  "export": {
+    "name": "emit_evidence_exact",
+    "interface": "example/emit-evidence-exact",
+    "version": "1.0.0"
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  },
+  "required_effects": [
+    {
+      "family": "emit-evidence",
+      "scope": {
+        "kind": "evidence",
+        "audiences": [
+          "user"
+        ],
+        "redactions": [
+          "none"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 1,
+        "max_bytes": 47
+      },
+      "justification": "The exact proof-backed fixture emits one deterministic user-visible evidence payload."
+    }
+  ],
+  "forbidden_effects": [],
+  "authority_ceiling": [
+    {
+      "family": "emit-evidence",
+      "scope": {
+        "kind": "evidence",
+        "audiences": [
+          "user"
+        ],
+        "redactions": [
+          "none"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 1,
+        "max_bytes": 47
+      },
+      "justification": "Canonical control-plane scope stays coarse; exact sink and payload facts move through host-owned proof linkage."
+    }
+  ],
+  "required_runtime_guarantees": {
+    "execution_isolation_assurance": {
+      "minimum": "strong"
+    },
+    "filesystem_isolation_class": {
+      "minimum": "preopen_only"
+    },
+    "network_policy_granularity": {
+      "minimum": "binary"
+    },
+    "child_process_policy": {
+      "required_mode": "forbidden"
+    },
+    "token_passthrough_policy": {
+      "required_mode": "forbidden"
+    },
+    "revocation_behavior": {
+      "required_mode": "expiry_only"
+    },
+    "delegation_enforcement": {
+      "audience_binding_required": false,
+      "call_chain_binding_required": false,
+      "anti_replay_required": false,
+      "max_hops_enforced_required": false
+    },
+    "witness_support": {
+      "minimum_level": "decision",
+      "acceptable_tamper_evidence_modes": [
+        "hash_chain",
+        "merkle_chain"
+      ],
+      "acceptable_signature_modes": [
+        "runtime_key",
+        "external_signer"
+      ],
+      "trusted_time_source_required": false,
+      "redacted_io_hashes_required": false,
+      "authority_plan_digest_required": false
+    }
+  },
+  "delegation_policy": {
+    "mode": "forbidden",
+    "max_hops": 0,
+    "audience_binding_required": false,
+    "call_chain_binding_required": false,
+    "anti_replay_required": false,
+    "ttl_seconds_max": 300
+  },
+  "witness_level": "decision",
+  "notes": "Direct canonical emit-evidence example for the exact proof-backed single-emission slice. Host-owned exact sink and payload bindings stay outside the guest ABI and are attached only at proof, token, and witness linkage time."
+}
