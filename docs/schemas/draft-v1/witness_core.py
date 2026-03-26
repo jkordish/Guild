@@ -745,7 +745,7 @@ def derive_host_exact_bindings(
     proof: dict[str, Any] | None,
     token: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    if token is not None and token.get("issuance_basis") == "m5_proven_subset":
+    if token is not None:
         return stable_unique_host_exact_bindings(token.get("host_exact_bindings", []))
     if proof is not None:
         return stable_unique_host_exact_bindings(proof.get("host_exact_bindings", []))
@@ -1275,10 +1275,21 @@ def verify_witness(
             proof_basis_source_kind = witness["proof_basis"].get("proof_source_kind")
             if proof_basis_source_kind is not None and proof_basis_source_kind != proof_source_kind(proof):
                 reason_codes.append("PROOF_LINKAGE_MISMATCH")
-            expected_proof_exact_bindings = applicable_host_exact_bindings(
-                proof_exact_bindings,
-                token["granted_authority"] if token is not None and witness["token_basis"] is not None else proof["proven_authority_plan"],
-            )
+            if token is not None and witness["token_basis"] is not None:
+                if token["issuance_basis"] == "m5_proven_subset":
+                    expected_proof_exact_bindings = applicable_host_exact_bindings(
+                        proof_exact_bindings,
+                        token["granted_authority"],
+                    )
+                else:
+                    expected_proof_exact_bindings = stable_unique_host_exact_bindings(
+                        token.get("host_exact_bindings", [])
+                    )
+            else:
+                expected_proof_exact_bindings = applicable_host_exact_bindings(
+                    proof_exact_bindings,
+                    proof["proven_authority_plan"],
+                )
             if stable_unique_host_exact_bindings(witness.get("host_exact_bindings", [])) != expected_proof_exact_bindings:
                 reason_codes.append("PROOF_LINKAGE_MISMATCH")
 

@@ -135,7 +135,32 @@ def parse_emit_evidence_descriptor(value: str) -> tuple[str | None, str | None]:
     return audience, redaction
 
 
+def is_non_bool_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def emit_evidence_exact_binding_is_well_formed(binding: dict[str, Any]) -> bool:
+    if not isinstance(binding, dict) or binding.get("family") != "emit-evidence":
+        return False
+    if not is_non_bool_int(binding.get("emission_count")) or not is_non_bool_int(binding.get("size_bytes")):
+        return False
+    if any(
+        not isinstance(binding.get(field), str) or not binding.get(field)
+        for field in ("mime_type", "audience", "redaction", "payload_sha256")
+    ):
+        return False
+    sink = binding.get("sink")
+    if not isinstance(sink, dict):
+        return False
+    return all(
+        isinstance(sink.get(field), str) and bool(sink.get(field))
+        for field in ("kind", "record_uri_prefix", "blob_uri_prefix", "routing_mode", "storage_class")
+    )
+
+
 def emit_evidence_exact_binding_matches_grant(binding: dict[str, Any], grant: dict[str, Any]) -> bool:
+    if not emit_evidence_exact_binding_is_well_formed(binding):
+        return False
     if grant.get("family") != "emit-evidence":
         return False
     scope = grant.get("scope")
@@ -146,11 +171,11 @@ def emit_evidence_exact_binding_matches_grant(binding: dict[str, Any], grant: di
         return False
     audiences = stable_unique_strings(sorted(scope.get("audiences") or []))
     redactions = stable_unique_strings(sorted(scope.get("redactions") or []))
-    if audiences != [binding["audience"]] or redactions != [binding["redaction"]]:
+    if audiences != [binding.get("audience")] or redactions != [binding.get("redaction")]:
         return False
-    if cardinality.get("max_calls") != binding["emission_count"]:
+    if cardinality.get("max_calls") != binding.get("emission_count"):
         return False
-    if cardinality.get("max_bytes") != binding["size_bytes"]:
+    if cardinality.get("max_bytes") != binding.get("size_bytes"):
         return False
     return True
 
