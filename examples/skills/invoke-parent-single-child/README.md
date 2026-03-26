@@ -18,5 +18,7 @@ It is paired with `examples/skills/invoke-child-zero` and drives the checked
 
 The default fixture input exercises the bounded single-child slice once. The
 optional `invoke_twice: true` input exercises the bounded exact two-child
-same-alias slice. Broader fan-out, child authority, recursion, and non-inspect
-children remain outside this fixture's supported envelope.
+same-alias slice. Tests may also set `second_name` to keep the second child
+input deterministic while distinguishing the two ordered invocations. Broader
+fan-out, child authority, recursion, and non-inspect children remain outside
+this fixture's supported envelope.

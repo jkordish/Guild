@@ -401,7 +401,7 @@ fn invoke_skill_family() -> Value {
             not_proven_shape("multi-child-fan-out", &["INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"], "Multi-child fan-out beyond the exact two-child same-alias zero-authority inspect slice remains not_proven."),
             not_proven_shape("recursive-or-deeper-call-graph", &["INVOKE_SKILL_RECURSION_UNSUPPORTED"], "Recursive or deeper invoke graphs remain not_proven."),
             not_proven_shape("child-authority-use", &["INVOKE_SKILL_CHILD_AUTHORITY_UNSUPPORTED"], "Child-side authority use remains not_proven."),
-            not_proven_shape("non-inspect-child-world", &["INVOKE_SKILL_CHILD_WORLD_UNSUPPORTED"], "Non-inspect child targets remain not_proven.")
+            not_proven_shape("non-inspect-child-world", &["INVOKE_SKILL_EXPORT_WORLD_UNSUPPORTED"], "Non-inspect child targets remain not_proven.")
         ],
         "layers": {
             "admission_runtime_guarantee_matching": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical invoke-skill grants match the active runtime vocabulary."),

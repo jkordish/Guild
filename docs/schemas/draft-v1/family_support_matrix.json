@@ -603,7 +603,7 @@
         {
           "notes": "Non-inspect child targets remain not_proven.",
           "reason_codes": [
-            "INVOKE_SKILL_CHILD_WORLD_UNSUPPORTED"
+            "INVOKE_SKILL_EXPORT_WORLD_UNSUPPORTED"
           ],
           "shape_id": "non-inspect-child-world"
         }

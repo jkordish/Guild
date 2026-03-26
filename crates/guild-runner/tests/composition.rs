@@ -628,7 +628,11 @@ fn multi_child_invoke_fixture_persists_ordered_exact_child_digest_bindings() {
                     tenant_id: "tenant-1".into(),
                     actor_id: "actor-1".into(),
                     mode: ExecutionMode::Inspect,
-                    input: serde_json::json!({ "name": "Ada", "invoke_twice": true }),
+                    input: serde_json::json!({
+                        "name": "Ada",
+                        "second_name": "Bea",
+                        "invoke_twice": true
+                    }),
                     budget: Budget::default(),
                     requested_capabilities: CapabilityGrantSet {
                         grants: vec![invoke_hello_grant(&["child"])],
@@ -656,35 +660,72 @@ fn multi_child_invoke_fixture_persists_ordered_exact_child_digest_bindings() {
 
     assert_eq!(record.status, ExecutionStatus::Succeeded);
     assert_eq!(record.child_executions.len(), 2);
-    for child_summary in &record.child_executions {
-        assert_eq!(child_summary.alias, "child");
-        assert_eq!(
-            child_summary.parent_execution_id,
-            record.receipt.execution_id
-        );
-        assert_eq!(
-            child_summary.provenance.resolved_skill,
-            parent.manifest.dependencies[0].skill
-        );
+    let child_summary_0 = &record.child_executions[0];
+    let child_summary_1 = &record.child_executions[1];
+    assert_ne!(child_summary_0.execution_id, child_summary_1.execution_id);
+    assert_eq!(child_summary_0.alias, "child");
+    assert_eq!(child_summary_1.alias, "child");
+    assert_eq!(
+        child_summary_0.parent_execution_id,
+        record.receipt.execution_id
+    );
+    assert_eq!(
+        child_summary_1.parent_execution_id,
+        record.receipt.execution_id
+    );
+    assert_eq!(
+        child_summary_0.provenance.resolved_skill,
+        parent.manifest.dependencies[0].skill
+    );
+    assert_eq!(
+        child_summary_1.provenance.resolved_skill,
+        parent.manifest.dependencies[0].skill
+    );
 
-        let child = registry
-            .load_execution_record(&child_summary.execution_id)
-            .unwrap();
-        assert_eq!(
-            child.parent_execution_id.as_deref(),
-            Some(record.receipt.execution_id.as_str())
-        );
-        assert_eq!(child.resolved_skill, parent.manifest.dependencies[0].skill);
-        assert_eq!(
-            child.provenance.resolved_skill,
-            parent.manifest.dependencies[0].skill
-        );
-        assert_eq!(
-            child.provenance.abi,
-            guild_types::AbiVersion::GuildSkillInspectV1
-        );
-        assert!(child.granted_capabilities.grants.is_empty());
-        assert!(child.authority_observations.is_empty());
-        assert!(child.child_executions.is_empty());
-    }
+    let child_0 = registry
+        .load_execution_record(&child_summary_0.execution_id)
+        .unwrap();
+    let child_1 = registry
+        .load_execution_record(&child_summary_1.execution_id)
+        .unwrap();
+    assert_eq!(
+        child_0.parent_execution_id.as_deref(),
+        Some(record.receipt.execution_id.as_str())
+    );
+    assert_eq!(
+        child_1.parent_execution_id.as_deref(),
+        Some(record.receipt.execution_id.as_str())
+    );
+    assert_eq!(
+        child_0.resolved_skill,
+        parent.manifest.dependencies[0].skill
+    );
+    assert_eq!(
+        child_1.resolved_skill,
+        parent.manifest.dependencies[0].skill
+    );
+    assert_eq!(
+        child_0.provenance.resolved_skill,
+        parent.manifest.dependencies[0].skill
+    );
+    assert_eq!(
+        child_1.provenance.resolved_skill,
+        parent.manifest.dependencies[0].skill
+    );
+    assert_eq!(
+        child_0.provenance.abi,
+        guild_types::AbiVersion::GuildSkillInspectV1
+    );
+    assert_eq!(
+        child_1.provenance.abi,
+        guild_types::AbiVersion::GuildSkillInspectV1
+    );
+    assert_eq!(child_0.request.input, serde_json::json!({ "name": "Ada" }));
+    assert_eq!(child_1.request.input, serde_json::json!({ "name": "Bea" }));
+    assert!(child_0.granted_capabilities.grants.is_empty());
+    assert!(child_1.granted_capabilities.grants.is_empty());
+    assert!(child_0.authority_observations.is_empty());
+    assert!(child_1.authority_observations.is_empty());
+    assert!(child_0.child_executions.is_empty());
+    assert!(child_1.child_executions.is_empty());
 }

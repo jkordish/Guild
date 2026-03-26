@@ -2400,12 +2400,11 @@ impl SliceSpec {
                 "family": "http-request",
                 "resource": "HEAD:http://127.0.0.1/response.json",
             })),
-            "invoke-skill-single-child-zero-authority" | "invoke-skill-multi-child-fan-out" => {
-                Some(json!({
-                    "family": "invoke-skill",
-                    "resource": "child",
-                }))
-            }
+            "invoke-skill-single-child-zero-authority"
+            | "invoke-skill-two-child-same-alias-zero-authority" => Some(json!({
+                "family": "invoke-skill",
+                "resource": "child",
+            })),
             "http-request-redirect-driven-execution" => Some(json!({
                 "family": "http-request",
                 "resource": "GET:http://127.0.0.1:18080/redirect.json",

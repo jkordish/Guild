@@ -1947,28 +1947,8 @@ fn normalized_execution_projection(
                 .collect::<Vec<_>>(),
         }),
         LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1
-        | LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1 => json!({
-            "status": record.status,
-            "termination": record.termination,
-            "output": output,
-            "child_execution_count": record.child_executions.len(),
-            "child_execution_statuses": record
-                .child_executions
-                .iter()
-                .map(|child| json!({
-                    "alias": child.alias,
-                    "status": child.status,
-                    "termination": child.termination,
-                    "resolved_skill": child.provenance.resolved_skill,
-                    "abi": child.provenance.abi,
-                    "granted_capabilities": child.granted_capabilities,
-                    "request_input_binding": normalized_child_request_input_binding(
-                        registry,
-                        child.execution_id.as_str(),
-                    ),
-                }))
-                .collect::<Vec<_>>(),
-            "loaded_child_records": record
+        | LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1 => {
+            let loaded_child_records = record
                 .child_executions
                 .iter()
                 .map(|child| {
@@ -1978,8 +1958,33 @@ fn normalized_execution_projection(
                         profile,
                     )
                 })
-                .collect::<Vec<_>>(),
-        }),
+                .collect::<Vec<_>>();
+            let child_execution_statuses = record
+                .child_executions
+                .iter()
+                .zip(loaded_child_records.iter())
+                .map(|(child, loaded_child)| {
+                    json!({
+                        "alias": child.alias,
+                        "status": child.status,
+                        "termination": child.termination,
+                        "resolved_skill": child.provenance.resolved_skill,
+                        "abi": child.provenance.abi,
+                        "granted_capabilities": child.granted_capabilities,
+                        "request_input_binding": request_input_binding_from_loaded_child_projection(loaded_child),
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            json!({
+                "status": record.status,
+                "termination": record.termination,
+                "output": output,
+                "child_execution_count": record.child_executions.len(),
+                "child_execution_statuses": child_execution_statuses,
+                "loaded_child_records": loaded_child_records,
+            })
+        }
         LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 => json!({
             "status": record.status,
             "termination": record.termination,
@@ -2011,20 +2016,22 @@ fn normalized_execution_projection(
     }
 }
 
-fn normalized_child_request_input_binding(
-    registry: &impl SkillRegistry,
-    execution_id: &str,
-) -> Value {
-    match registry.load_execution_record(execution_id) {
-        Ok(record) => json!({
-            "request_input_digest": sha256_json(&record.request.input),
-        }),
-        Err(error) => json!({
+fn request_input_binding_from_loaded_child_projection(loaded_child: &Value) -> Value {
+    if let Some(digest) = loaded_child.get("request_input_digest") {
+        json!({
+            "request_input_digest": digest,
+        })
+    } else if let Some(load_error) = loaded_child.get("load_error") {
+        json!({
+            "load_error": load_error,
+        })
+    } else {
+        json!({
             "load_error": {
-                "code": error.code,
-                "message": error.message,
+                "code": "missing-request-input-binding",
+                "message": "loaded child projection did not expose a request input digest or load error",
             }
-        }),
+        })
     }
 }
 
