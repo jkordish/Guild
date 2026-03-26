@@ -1482,6 +1482,56 @@ fn invoke_skill_live_proof_is_bounded_for_exact_two_child_same_alias_fan_out() {
 }
 
 #[test]
+fn invoke_skill_live_proof_stays_not_proven_for_single_child_shape_under_multi_child_comparator() {
+    let temp = TempRegistry::new();
+    temp.install(invoke_child_zero_dir());
+    temp.install(invoke_parent_single_child_dir());
+    let registry = temp.load();
+    let runner = build_runner();
+    let parent = registry
+        .resolve(&requested_skill("invoke-parent-single-child"))
+        .unwrap();
+
+    let proof_result = runner
+        .prove_live_authority(
+            &registry,
+            &parent,
+            &envelope_for(
+                &parent,
+                json!({ "name": "Ada" }),
+                CapabilityGrantSet {
+                    grants: vec![invoke_skill_grant(&["child"])],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1,
+        )
+        .unwrap();
+
+    assert_eq!(proof_result.proof.proof_status, "not_proven");
+    assert!(proof_result.proof.proven_authority.grants.is_empty());
+    assert_eq!(proof_result.proof.residual_authority.grants.len(), 1);
+    let family = proof_result
+        .proof
+        .family_statuses
+        .iter()
+        .find(|status| status.family == CapabilityId::InvokeSkill)
+        .unwrap();
+    assert_eq!(family.support, LiveProofSupport::NotProven);
+    assert!(
+        family
+            .reason_codes
+            .iter()
+            .any(|code| code == "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED")
+    );
+    assert!(
+        family
+            .reason_codes
+            .iter()
+            .all(|code| code != "INVOKE_SKILL_REPLAY_UNAVAILABLE")
+    );
+}
+
+#[test]
 fn invoke_skill_live_proof_stays_not_proven_for_multi_child_shape_under_single_child_comparator() {
     let temp = TempRegistry::new();
     temp.install(invoke_child_zero_dir());

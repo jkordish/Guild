@@ -1002,10 +1002,13 @@ where
     if exercised.len() != expected_child_count
         || record.child_executions.len() != expected_child_count
     {
-        let reason_code = if exercised.len() > 1 || record.child_executions.len() > 1 {
+        let has_missing_child_data = exercised.is_empty() || record.child_executions.is_empty();
+        let reason_code = if has_missing_child_data {
+            "INVOKE_SKILL_REPLAY_UNAVAILABLE"
+        } else if exercised.len() > 1 || record.child_executions.len() > 1 {
             "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
         } else {
-            "INVOKE_SKILL_REPLAY_UNAVAILABLE"
+            "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
         };
         let notes = if reason_code == "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
             && expected_child_count == 1
