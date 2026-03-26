@@ -733,6 +733,47 @@ fn run_http_request_head_default_port_bounded() -> Value {
     )
 }
 
+fn prepare_http_request_localhost_default_port_bounded() -> PreparedScenario {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/inspect-http-json"));
+    let registry = temp.load();
+    let replay_url = "http://localhost/response.json";
+    let runner = build_replay_runner(vec![localhost_http_replay_fixture(
+        replay_url,
+        80,
+        r#"{"service":"guild-http","message":"deterministic","nested":{"count":2},"items":[{"name":"alpha"},{"name":"beta"}]}"#,
+    )]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+    PreparedScenario {
+        _temp: temp,
+        _server: None,
+        registry,
+        runner,
+        installed: http_skill.clone(),
+        envelope: envelope_for(
+            &http_skill,
+            json!({
+                "url": replay_url,
+                "method": "get",
+                "json_pointers": ["/message", "/nested/count"],
+            }),
+            CapabilityGrantSet {
+                grants: vec![http_grant("localhost", 80, "/response.json")],
+            },
+        ),
+        comparator: LiveProofComparatorProfile::NormalizedInspectOutputV1,
+    }
+}
+
+fn run_http_request_localhost_default_port_bounded() -> Value {
+    scenario_output(
+        "http-request-localhost-default-port-bounded",
+        prepare_http_request_localhost_default_port_bounded().prove(),
+    )
+}
+
 fn prepare_http_request_localhost_head_bounded() -> PreparedScenario {
     let temp = TempRegistry::new();
     temp.install(repo_root().join("examples/skills/inspect-http-json"));
@@ -766,6 +807,42 @@ fn run_http_request_localhost_head_bounded() -> Value {
     scenario_output(
         "http-request-localhost-head-bounded",
         prepare_http_request_localhost_head_bounded().prove(),
+    )
+}
+
+fn prepare_http_request_localhost_head_default_port_bounded() -> PreparedScenario {
+    let temp = TempRegistry::new();
+    temp.install(repo_root().join("examples/skills/inspect-http-json"));
+    let registry = temp.load();
+    let replay_url = "http://localhost/response.json";
+    let runner = build_replay_runner(vec![localhost_head_http_replay_fixture(replay_url, 80)]);
+    let http_skill = registry
+        .resolve(&requested_skill("inspect-http-json"))
+        .unwrap();
+    PreparedScenario {
+        _temp: temp,
+        _server: None,
+        registry,
+        runner,
+        installed: http_skill.clone(),
+        envelope: envelope_for(
+            &http_skill,
+            json!({
+                "url": replay_url,
+                "method": "head",
+            }),
+            CapabilityGrantSet {
+                grants: vec![head_http_grant("localhost", 80, "/response.json")],
+            },
+        ),
+        comparator: LiveProofComparatorProfile::NormalizedInspectOutputV1,
+    }
+}
+
+fn run_http_request_localhost_head_default_port_bounded() -> Value {
+    scenario_output(
+        "http-request-localhost-head-default-port-bounded",
+        prepare_http_request_localhost_head_default_port_bounded().prove(),
     )
 }
 
@@ -1024,7 +1101,13 @@ fn run_named_scenario(name: &str) -> Value {
         "http-request-bounded" => run_http_request_bounded(),
         "http-request-default-port-bounded" => run_http_request_default_port_bounded(),
         "http-request-localhost-bounded" => run_http_request_localhost_bounded(),
+        "http-request-localhost-default-port-bounded" => {
+            run_http_request_localhost_default_port_bounded()
+        }
         "http-request-localhost-head-bounded" => run_http_request_localhost_head_bounded(),
+        "http-request-localhost-head-default-port-bounded" => {
+            run_http_request_localhost_head_default_port_bounded()
+        }
         "http-request-head-bounded" => run_http_request_head_bounded(),
         "http-request-head-default-port-bounded" => run_http_request_head_default_port_bounded(),
         "http-request-redirect-unsupported" => run_http_request_redirect_unsupported(),
@@ -1077,11 +1160,23 @@ fn benchmark_named_scenario(name: &str, warmup_runs: usize, measured_runs: usize
             measured_runs,
             prepare_http_request_localhost_bounded,
         ),
+        "http-request-localhost-default-port-bounded" => benchmark_scenario(
+            "http-request-localhost-default-port-bounded",
+            warmup_runs,
+            measured_runs,
+            prepare_http_request_localhost_default_port_bounded,
+        ),
         "http-request-localhost-head-bounded" => benchmark_scenario(
             "http-request-localhost-head-bounded",
             warmup_runs,
             measured_runs,
             prepare_http_request_localhost_head_bounded,
+        ),
+        "http-request-localhost-head-default-port-bounded" => benchmark_scenario(
+            "http-request-localhost-head-default-port-bounded",
+            warmup_runs,
+            measured_runs,
+            prepare_http_request_localhost_head_default_port_bounded,
         ),
         "http-request-head-bounded" => benchmark_scenario(
             "http-request-head-bounded",

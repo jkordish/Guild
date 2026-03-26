@@ -8,7 +8,7 @@ This memo exists to prevent overclaiming. It is intentionally blunt.
 - No runtime-general proof claim across all families.
 - No broad `emit-evidence` live-proof claim.
 - No broad `invoke-skill` call-graph proof claim.
-- No broad outbound HTTP proof claim beyond the six measured replay-backed slices.
+- No broad outbound HTTP proof claim beyond the eight measured replay-backed slices.
 - No runtime-general delegated-token enforcement claim.
 - No general positive factual witness claim system.
 - No runtime-general absence proof from the current witness coverage.
@@ -23,7 +23,7 @@ This memo exists to prevent overclaiming. It is intentionally blunt.
 - `invoke-skill`
   Multi-child fan-out, recursion, child authority use, broader resolution, and non-inspect child targets remain outside the measured envelope.
 - `http-request`
-  Redirects, `https`, query and fragment components, multiple requests, other hostname forms, and `localhost` default-port forms remain outside the measured envelope.
+  Redirects, `https`, query and fragment components, multiple requests, and hostname forms beyond exact loopback IP literals plus exact `localhost` remain outside the measured envelope.
 - `read-resource`
   Query-resource shrink remains outside the measured bounded proof slice.
 - `log-write`

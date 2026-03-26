@@ -471,9 +471,9 @@ fn validate_http_replay_fixture(fixture: &HttpReplayFixture) -> Result<(), Execu
             None,
         ));
     }
-    if parsed_url.port().is_none() {
+    if parsed_url.port().is_none() && parsed_request.port != 80 {
         return Err(http_replay_fixture_error(
-            "proof-only HTTP hostname replay fixtures require an explicit port",
+            "proof-only HTTP hostname replay fixtures currently support only an explicit port or the implicit default HTTP port",
             fixture,
             None,
         ));
@@ -3601,11 +3601,11 @@ fn execute_http_request_via_replay(
     if !is_ip_literal_loopback
         && (parsed_request.host != "localhost"
             || !matches!(request.method, HttpMethod::Get | HttpMethod::Head)
-            || parsed_url.port().is_none())
+            || (parsed_url.port().is_none() && parsed_request.port != 80))
     {
         return Err(SkillError {
             code: "http-replay-request-unsupported".into(),
-            message: "proof-only HTTP replay hostname support is limited to explicit-port localhost GET and HEAD requests with deterministic resolution bindings".into(),
+            message: "proof-only HTTP replay hostname support is limited to localhost GET and HEAD requests with either an explicit port or the implicit default HTTP port, always with deterministic resolution bindings".into(),
             retryable: false,
             detail: Some(serde_json::json!({
                 "url": request.url,

@@ -1,0 +1,91 @@
+{
+  "receipt": {
+    "execution_id": "019d5a60-a202-745b-af5f-5b83e71d2002",
+    "uri": "guild://executions/019d5a60-a202-745b-af5f-5b83e71d2002",
+    "trace_id": "trace-localhost-head-default-port-1",
+    "status": "succeeded"
+  },
+  "request": {
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "inspect-http-json"
+      },
+      "version_req": "^0.1"
+    },
+    "input": {
+      "method": "head",
+      "url": "http://localhost/response.json"
+    }
+  },
+  "resolved_skill": {
+    "key": {
+      "namespace": "example",
+      "name": "inspect-http-json"
+    },
+    "version": "0.1.0",
+    "digest": "sha256:695a732b9caf3adca2dcb77d9467976541809255a2b050ec0d030533bf890a88"
+  },
+  "status": "succeeded",
+  "granted_capabilities": {
+    "grants": [
+      {
+        "id": "http-request",
+        "access": "read",
+        "constraints": {
+          "allowed_schemes": [
+            "http"
+          ],
+          "allowed_hosts": [
+            "localhost"
+          ],
+          "allowed_ports": [
+            80
+          ],
+          "allowed_methods": [
+            "head"
+          ],
+          "allowed_path_prefixes": [
+            "/response.json"
+          ],
+          "max_timeout_ms": 2000,
+          "max_response_bytes": 4096,
+          "allow_loopback": true,
+          "allow_ip_literals": true
+        }
+      }
+    ]
+  },
+  "authority_observations": [
+    {
+      "family": "http-request",
+      "status": "exercised",
+      "detail": {
+        "request": {
+          "method": "head",
+          "url": "http://localhost/response.json",
+          "timeout_ms": null
+        },
+        "response_status": 200,
+        "response_content_type": "application/json",
+        "response_bytes": 0,
+        "redirects_followed": 0,
+        "resolution": {
+          "requested_host": "localhost",
+          "port": 80,
+          "addresses": [
+            {
+              "address": "127.0.0.1",
+              "family": "ipv4"
+            }
+          ],
+          "loopback_only": true
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "started_at_utc": "2026-03-25T23:56:43.351077068Z",
+    "finished_at_utc": "2026-03-25T23:56:46.195967366Z"
+  }
+}

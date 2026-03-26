@@ -73,9 +73,9 @@ pub fn build_matrix() -> Result<Value> {
             "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
             "The slice-aware measured source for M8-proper is docs/schemas/draft-v1/benchmark_matrix.json with the paired human report at docs/benchmarking/m8-real-path-benchmark.md. That benchmark keeps supported slices, fallback or refusal paths, and fail-closed walls separate instead of averaging them together.",
             "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
-            "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for six deterministic slices, and one bounded invoke-skill slice for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions.",
+            "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for eight deterministic slices, and one bounded invoke-skill slice for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions.",
             "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-            "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured explicit-port localhost GET and HEAD slices with deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
+            "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured localhost GET and HEAD slices with either an explicit port or the implicit default HTTP port and deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
         ],
         "layers": [
             "admission_runtime_guarantee_matching",
@@ -265,17 +265,19 @@ fn http_request_family() -> Value {
             http_slice("loopback-ip-head-explicit-port", "HEAD", "loopback-ip-literal", "explicit", None),
             http_slice("loopback-ip-head-default-port", "HEAD", "loopback-ip-literal", "implicit_default_http_port", None),
             http_slice("localhost-get-explicit-port", "GET", "loopback-hostname-localhost", "explicit", Some("required")),
+            http_slice("localhost-get-default-port", "GET", "loopback-hostname-localhost", "implicit_default_http_port", Some("required")),
             http_slice("localhost-head-explicit-port", "HEAD", "loopback-hostname-localhost", "explicit", Some("required")),
+            http_slice("localhost-head-default-port", "HEAD", "loopback-hostname-localhost", "implicit_default_http_port", Some("required")),
         ],
         "not_proven_shapes": [
             {
-                "shape_id": "hostname-forms-beyond-explicit-port-localhost-get-or-head",
+                "shape_id": "hostname-forms-beyond-localhost-get-or-head",
                 "reason_codes": [
                     "HTTP_HOST_UNSUPPORTED_FOR_LIVE_PROOF",
                     "HTTP_HOST_RESOLUTION_BINDING_UNAVAILABLE",
                     "HTTP_HOST_RESOLUTION_BINDING_UNSAFE"
                 ],
-                "notes": "Only explicit-port localhost GET and HEAD with deterministic loopback-only resolution bindings are proven among hostname forms. Localhost default-port GET, localhost default-port HEAD, and all other hostname forms remain outside the honest replay-backed proof slice."
+                "notes": "Only exact localhost GET and HEAD with either an explicit port or the implicit default HTTP port are proven among hostname forms, always with deterministic loopback-only resolution bindings. All other hostname forms remain outside the honest replay-backed proof slice."
             },
             {
                 "shape_id": "query-or-fragment",
@@ -301,15 +303,15 @@ fn http_request_family() -> Value {
         "layers": {
             "admission_runtime_guarantee_matching": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical http-request grants match the live runtime vocabulary and URL-granularity runtime guarantee checks."),
             "execution_plan_representation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical http-request scopes directly."),
-            "live_minimization_proof": layer(STATUS_BOUNDED, &["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "M8c now has bounded live proof for exactly six deterministic replay-fixtured http-request slices: exercised GET and HEAD over http to a loopback IP-literal host, each with an explicit port form and an implicit default HTTP port form, plus explicit-port localhost GET and HEAD when the proof basis carries deterministic loopback-only resolution bindings. All six remain exact-path, query-free, redirect-free, single-request slices under the normalized inspect-output comparator only. Broader http-request shapes stay not_proven."),
-            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "M6 still issues direct canonical http-request scopes, and it can now consume the bounded live proof for the replay-fixtured loopback IP and explicit-port localhost slices. Unsupported http-request shapes still fall back to explicit upper-bound issuance or refusal."),
+            "live_minimization_proof": layer(STATUS_BOUNDED, &["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "M8c now has bounded live proof for exactly eight deterministic replay-fixtured http-request slices: exercised GET and HEAD over http to a loopback IP-literal host, each with an explicit port form and an implicit default HTTP port form, plus localhost GET and HEAD with either an explicit port or the implicit default HTTP port when the proof basis carries deterministic loopback-only resolution bindings. All eight remain exact-path, query-free, redirect-free, single-request slices under the normalized inspect-output comparator only. Broader http-request shapes stay not_proven."),
+            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "M6 still issues direct canonical http-request scopes, and it can now consume the bounded live proof for the replay-fixtured loopback IP and localhost slices. Unsupported http-request shapes still fall back to explicit upper-bound issuance or refusal."),
             "token_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical METHOD:scheme://host:port/path resource bindings verify directly against http-request scopes."),
             "witness_generation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Live exercised and blocked http-request observations still normalize directly into canonical witness effects."),
             "witness_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical http-request witnesses verify directly against plans and tokens."),
             "positive_claim_verification": layer(STATUS_UNSUPPORTED, &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Draft-v1 still does not carry a fixed positive observed-fact claim vocabulary for canonical http-request facts."),
             "negative_claim_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
-            "plan_proof_token_linkage": layer(STATUS_BOUNDED, &["HTTP_LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to the six replay-backed live proof slices only."),
-            "proof_witness_linkage": layer(STATUS_BOUNDED, &["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to the six replay-backed live proof slices only.")
+            "plan_proof_token_linkage": layer(STATUS_BOUNDED, &["HTTP_LIVE_PROOF_BOUNDED", "TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to the eight replay-backed live proof slices only."),
+            "proof_witness_linkage": layer(STATUS_BOUNDED, &["HTTP_LIVE_PROOF_BOUNDED", "LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to the eight replay-backed live proof slices only.")
         }
     })
 }
