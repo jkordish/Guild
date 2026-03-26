@@ -1406,7 +1406,83 @@ fn invoke_skill_live_proof_is_bounded_for_single_zero_authority_child() {
 }
 
 #[test]
-fn invoke_skill_live_proof_stays_not_proven_for_multi_child_shape() {
+fn invoke_skill_live_proof_is_bounded_for_exact_two_child_same_alias_fan_out() {
+    let temp = TempRegistry::new();
+    temp.install(invoke_child_zero_dir());
+    temp.install(invoke_parent_single_child_dir());
+    let registry = temp.load();
+    let runner = build_runner();
+    let parent = registry
+        .resolve(&requested_skill("invoke-parent-single-child"))
+        .unwrap();
+
+    let proof_result = runner
+        .prove_live_authority(
+            &registry,
+            &parent,
+            &envelope_for(
+                &parent,
+                json!({ "name": "Ada", "invoke_twice": true }),
+                CapabilityGrantSet {
+                    grants: vec![invoke_skill_grant(&["child"])],
+                },
+            ),
+            LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1,
+        )
+        .unwrap();
+
+    assert_eq!(proof_result.proof.proof_status, "bounded_minimal");
+    assert!(proof_result.proof.residual_authority.grants.is_empty());
+    assert_eq!(proof_result.proof.proven_authority.grants.len(), 1);
+    assert!(proof_result.proof.replay_input_digest.is_some());
+    match &proof_result.proof.proven_authority.grants[0].constraints {
+        CapabilityConstraints::InvokeDependency(value) => {
+            assert_eq!(value.aliases.as_ref().unwrap(), &vec!["child".to_owned()]);
+        }
+        other => panic!("expected invoke-skill constraints, got {other:?}"),
+    }
+
+    let family = proof_result
+        .proof
+        .family_statuses
+        .iter()
+        .find(|status| status.family == CapabilityId::InvokeSkill)
+        .unwrap();
+    assert_eq!(family.support, LiveProofSupport::BoundedLiveProof);
+    assert!(
+        family
+            .reason_codes
+            .iter()
+            .any(|code| code == "INVOKE_SKILL_LIVE_PROOF_BOUNDED")
+    );
+    assert!(
+        proof_result
+            .proof
+            .candidate_trials
+            .iter()
+            .any(|trial| trial.family == CapabilityId::InvokeSkill
+                && trial.change_kind == "shrink_scope"
+                && trial.accepted)
+    );
+
+    assert_eq!(
+        proof_result
+            .baseline_execution_record
+            .child_executions
+            .len(),
+        2
+    );
+    for child in &proof_result.baseline_execution_record.child_executions {
+        assert_eq!(child.alias, "child");
+        let child_record = registry.load_execution_record(&child.execution_id).unwrap();
+        assert!(child_record.granted_capabilities.grants.is_empty());
+        assert!(child_record.authority_observations.is_empty());
+        assert!(child_record.child_executions.is_empty());
+    }
+}
+
+#[test]
+fn invoke_skill_live_proof_stays_not_proven_for_multi_child_shape_under_single_child_comparator() {
     let temp = TempRegistry::new();
     temp.install(invoke_child_zero_dir());
     temp.install(invoke_parent_single_child_dir());

@@ -1,0 +1,55 @@
+{
+  "kind": "guild.admission_request",
+  "version": "1.0.0",
+  "request_id": "urn:guild:request:runtime-invoke-skill-multi-child:admit:v1",
+  "contract": {
+    "contract_id": "urn:guild:contract:runtime-invoke-skill-multi-child:v1",
+    "component_digest": {
+      "algorithm": "sha256",
+      "value": "a41daeeed2e0f92873c8766a300ab831e6462e0bfd32d7c4f2879fe8b5ea6ae2"
+    }
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "1d59539a50ef0d0fe1c862777c61dfc8401bdf162f0648074f4bba15036c1884"
+    }
+  },
+  "runtime_candidates": [
+    {
+      "runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1"
+    }
+  ],
+  "preferred_runtime_guarantee_id": "urn:guild:runtime:wasmtime-strict:v1",
+  "requested_authority": {
+    "grants": [
+      {
+        "family": "invoke-skill",
+        "scope": {
+          "kind": "skill",
+          "aliases": [
+            "child"
+          ]
+        },
+        "cardinality": {
+          "max_calls": 2
+        }
+      }
+    ],
+    "ttl_seconds": 120
+  },
+  "requested_witness_level": "hostcall",
+  "audience_binding_inputs": [],
+  "resource_binding_inputs": [],
+  "delegation_chain_input": {
+    "caller_chain": [
+      "urn:guild:actor:runtime-alignment-test"
+    ],
+    "requested_max_hops": 0
+  },
+  "invocation_constraints": {
+    "valid_for_seconds": 120
+  }
+}

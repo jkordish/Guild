@@ -600,3 +600,91 @@ fn single_child_invoke_fixture_persists_exact_child_digest_binding() {
     assert!(child.authority_observations.is_empty());
     assert!(child.child_executions.is_empty());
 }
+
+#[test]
+fn multi_child_invoke_fixture_persists_ordered_exact_child_digest_bindings() {
+    let temp = TempFixtureDir::new();
+    let source_installer = LocalSourceInstaller::new(temp.path()).unwrap();
+    source_installer
+        .install(invoke_child_zero_source_dir())
+        .unwrap();
+    source_installer
+        .install(invoke_parent_single_child_source_dir())
+        .unwrap();
+
+    let registry = LocalRegistry::load(temp.path()).unwrap();
+    let parent = registry
+        .resolve(&requested_skill("invoke-parent-single-child"))
+        .unwrap();
+    let runner = build_runner();
+    let record = runner
+        .execute(
+            &registry,
+            &parent,
+            &ResolvedExecutionEnvelope {
+                request: CallerRequest {
+                    request_id: "request-invoke-parent-2".into(),
+                    skill: requested_skill("invoke-parent-single-child"),
+                    tenant_id: "tenant-1".into(),
+                    actor_id: "actor-1".into(),
+                    mode: ExecutionMode::Inspect,
+                    input: serde_json::json!({ "name": "Ada", "invoke_twice": true }),
+                    budget: Budget::default(),
+                    requested_capabilities: CapabilityGrantSet {
+                        grants: vec![invoke_hello_grant(&["child"])],
+                    },
+                    idempotency_key: None,
+                    trace_id: "trace-invoke-parent-2".into(),
+                },
+                resolved_skill: parent.resolved_ref.clone(),
+                granted_capabilities: CapabilityGrantSet {
+                    grants: vec![invoke_hello_grant(&["child"])],
+                },
+                policy_decision: PolicyDecision {
+                    outcome: PolicyDecisionOutcome::Allowed,
+                    summary: "local policy granted requested capabilities".into(),
+                    profile_name: "default".into(),
+                    trust_tier: guild_types::LocalTrustTier::LocalDev,
+                    verification_state: guild_types::InstalledVerificationState::LocalSource,
+                    reasons: Vec::new(),
+                    detail: None,
+                },
+                parent_execution_id: None,
+            },
+        )
+        .unwrap();
+
+    assert_eq!(record.status, ExecutionStatus::Succeeded);
+    assert_eq!(record.child_executions.len(), 2);
+    for child_summary in &record.child_executions {
+        assert_eq!(child_summary.alias, "child");
+        assert_eq!(
+            child_summary.parent_execution_id,
+            record.receipt.execution_id
+        );
+        assert_eq!(
+            child_summary.provenance.resolved_skill,
+            parent.manifest.dependencies[0].skill
+        );
+
+        let child = registry
+            .load_execution_record(&child_summary.execution_id)
+            .unwrap();
+        assert_eq!(
+            child.parent_execution_id.as_deref(),
+            Some(record.receipt.execution_id.as_str())
+        );
+        assert_eq!(child.resolved_skill, parent.manifest.dependencies[0].skill);
+        assert_eq!(
+            child.provenance.resolved_skill,
+            parent.manifest.dependencies[0].skill
+        );
+        assert_eq!(
+            child.provenance.abi,
+            guild_types::AbiVersion::GuildSkillInspectV1
+        );
+        assert!(child.granted_capabilities.grants.is_empty());
+        assert!(child.authority_observations.is_empty());
+        assert!(child.child_executions.is_empty());
+    }
+}

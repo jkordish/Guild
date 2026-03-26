@@ -126,14 +126,14 @@
       "http-request-localhost-head-default-port",
       "http-request-loopback-ip-head-explicit-port",
       "http-request-loopback-ip-head-default-port",
-      "invoke-skill-single-child-zero-authority"
+      "invoke-skill-single-child-zero-authority",
+      "invoke-skill-two-child-same-alias-zero-authority"
     ],
     "supported_proof_only_slice_ids": [
       "log-write-observed-info-level"
     ],
     "unsupported_or_not_proven_slice_ids": [
       "http-request-redirect-driven-execution",
-      "invoke-skill-multi-child-fan-out",
       "emit-evidence-single-emission-replay-unavailable"
     ],
     "fail_closed_wall_ids": [
@@ -156,12 +156,12 @@
         "http-request-localhost-head-default-port",
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
-        "invoke-skill-single-child-zero-authority"
+        "invoke-skill-single-child-zero-authority",
+        "invoke-skill-two-child-same-alias-zero-authority"
       ],
       "proof_only_slice_ids": [],
       "unsupported_or_not_proven_slice_ids": [
         "http-request-redirect-driven-execution",
-        "invoke-skill-multi-child-fan-out",
         "emit-evidence-single-emission-replay-unavailable"
       ],
       "fail_closed_wall_ids": [
@@ -215,8 +215,8 @@
             "http_request_live_proof_is_bounded_with_replay_for_head_shape",
             "http_request_live_proof_is_bounded_with_replay_for_head_default_port_shape",
             "invoke_skill_live_proof_is_bounded_for_single_zero_authority_child",
+            "invoke_skill_live_proof_is_bounded_for_exact_two_child_same_alias_fan_out",
             "http_request_live_proof_stays_not_proven_for_redirect_shape",
-            "invoke_skill_live_proof_stays_not_proven_for_multi_child_shape",
             "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable"
           ]
         }
@@ -235,8 +235,8 @@
             "http-request-head-bounded",
             "http-request-head-default-port-bounded",
             "invoke-skill-single-child-bounded",
+            "invoke-skill-multi-child-bounded",
             "http-request-redirect-unsupported",
-            "invoke-skill-multi-child-unsupported",
             "emit-evidence-single-sink-replay-unavailable"
           ]
         }
@@ -264,7 +264,8 @@
         "http-request-localhost-head-default-port",
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
-        "invoke-skill-single-child-zero-authority"
+        "invoke-skill-single-child-zero-authority",
+        "invoke-skill-two-child-same-alias-zero-authority"
       ],
       "proof_only_slice_ids": [
         "log-write-observed-info-level"
@@ -333,6 +334,12 @@
           "expected_status": "bounded_minimal"
         },
         {
+          "family": "invoke-skill",
+          "kind": "proven_slice",
+          "name": "two-child-same-alias-zero-authority-inspect-fan-out",
+          "expected_status": "bounded_minimal"
+        },
+        {
           "family": "log-write",
           "kind": "proven_slice",
           "name": "observed-discrete-levels",
@@ -343,7 +350,8 @@
         {
           "path": "crates/guild-runner/tests/composition.rs",
           "names": [
-            "single_child_invoke_fixture_persists_exact_child_digest_binding"
+            "single_child_invoke_fixture_persists_exact_child_digest_binding",
+            "multi_child_invoke_fixture_persists_ordered_exact_child_digest_bindings"
           ]
         }
       ],
@@ -380,6 +388,12 @@
           "family": "invoke-skill",
           "kind": "proven_slice",
           "name": "single-child-zero-authority-inspect-child",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "invoke-skill",
+          "kind": "proven_slice",
+          "name": "two-child-same-alias-zero-authority-inspect-fan-out",
           "expected_status": "bounded_minimal"
         },
         {
@@ -432,12 +446,12 @@
         "http-request-localhost-head-default-port",
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
-        "invoke-skill-single-child-zero-authority"
+        "invoke-skill-single-child-zero-authority",
+        "invoke-skill-two-child-same-alias-zero-authority"
       ],
       "proof_only_slice_ids": [],
       "unsupported_or_not_proven_slice_ids": [
         "http-request-redirect-driven-execution",
-        "invoke-skill-multi-child-fan-out",
         "emit-evidence-single-emission-replay-unavailable"
       ],
       "fail_closed_wall_ids": [],
@@ -478,7 +492,6 @@
           "path": "crates/guild-runner/tests/live_proofs.rs",
           "names": [
             "http_request_live_proof_stays_not_proven_for_redirect_shape",
-            "invoke_skill_live_proof_stays_not_proven_for_multi_child_shape",
             "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable"
           ]
         }
@@ -505,12 +518,12 @@
         "http-request-localhost-head-default-port",
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
-        "invoke-skill-single-child-zero-authority"
+        "invoke-skill-single-child-zero-authority",
+        "invoke-skill-two-child-same-alias-zero-authority"
       ],
       "proof_only_slice_ids": [],
       "unsupported_or_not_proven_slice_ids": [
         "http-request-redirect-driven-execution",
-        "invoke-skill-multi-child-fan-out",
         "emit-evidence-single-emission-replay-unavailable"
       ],
       "fail_closed_wall_ids": [],
@@ -563,7 +576,8 @@
         {
           "path": "crates/guild-runner/tests/composition.rs",
           "names": [
-            "composite_skill_invokes_child_and_records_host_owned_metadata"
+            "composite_skill_invokes_child_and_records_host_owned_metadata",
+            "multi_child_invoke_fixture_persists_ordered_exact_child_digest_bindings"
           ]
         }
       ],
@@ -583,7 +597,6 @@
       "proof_only_slice_ids": [],
       "unsupported_or_not_proven_slice_ids": [
         "http-request-redirect-driven-execution",
-        "invoke-skill-multi-child-fan-out",
         "emit-evidence-single-emission-replay-unavailable"
       ],
       "fail_closed_wall_ids": [
@@ -782,7 +795,6 @@
       "proof_only_slice_ids": [],
       "unsupported_or_not_proven_slice_ids": [
         "http-request-redirect-driven-execution",
-        "invoke-skill-multi-child-fan-out",
         "emit-evidence-single-emission-replay-unavailable"
       ],
       "fail_closed_wall_ids": [
@@ -825,7 +837,7 @@
           "path": "crates/guild-runner/tests/live_proofs.rs",
           "names": [
             "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable",
-            "invoke_skill_live_proof_stays_not_proven_for_multi_child_shape",
+            "invoke_skill_live_proof_stays_not_proven_for_multi_child_shape_under_single_child_comparator",
             "invoke_skill_live_proof_stays_not_proven_for_child_authority",
             "http_request_live_proof_stays_not_proven_for_redirect_shape",
             "http_request_live_proof_stays_not_proven_without_replay"

@@ -1,0 +1,67 @@
+{
+  "receipt": {
+    "execution_id": "019d0cf7-52e5-71d0-ac5b-ad8b8949f00d",
+    "uri": "guild://executions/019d0cf7-52e5-71d0-ac5b-ad8b8949f00d",
+    "trace_id": "trace-invoke-skill-2",
+    "status": "succeeded"
+  },
+  "request": {
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "invoke-parent-single-child"
+      },
+      "version_req": "^0.1"
+    },
+    "input": {
+      "name": "Ada",
+      "invoke_twice": true
+    }
+  },
+  "resolved_skill": {
+    "key": {
+      "namespace": "example",
+      "name": "invoke-parent-single-child"
+    },
+    "version": "0.1.0",
+    "digest": "sha256:a41daeeed2e0f92873c8766a300ab831e6462e0bfd32d7c4f2879fe8b5ea6ae2"
+  },
+  "status": "succeeded",
+  "granted_capabilities": {
+    "grants": [
+      {
+        "id": "invoke-skill",
+        "access": "invoke",
+        "constraints": {
+          "aliases": [
+            "child"
+          ]
+        }
+      }
+    ]
+  },
+  "authority_observations": [
+    {
+      "family": "invoke-skill",
+      "status": "exercised",
+      "detail": {
+        "alias": "child",
+        "child_execution_id": "019d0cf7-6d12-7c21-81f7-7d1ff9d75a62",
+        "child_status": "succeeded"
+      }
+    },
+    {
+      "family": "invoke-skill",
+      "status": "exercised",
+      "detail": {
+        "alias": "child",
+        "child_execution_id": "019d0cf7-6d12-7c21-81f7-7d1ff9d75a63",
+        "child_status": "succeeded"
+      }
+    }
+  ],
+  "provenance": {
+    "started_at_utc": "2026-03-20T20:37:07.421193327Z",
+    "finished_at_utc": "2026-03-20T20:37:20.213147144Z"
+  }
+}

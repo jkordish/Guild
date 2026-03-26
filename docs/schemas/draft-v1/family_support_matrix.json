@@ -506,7 +506,7 @@
           "status": "supported"
         },
         "live_minimization_proof": {
-          "notes": "Invoke-skill live proof is bounded to one exact zero-authority child slice only.",
+          "notes": "Invoke-skill live proof is bounded to the exact zero-authority inspect slices only.",
           "reason_codes": [
             "LIVE_PROOF_BOUNDED",
             "LIVE_PROOF_SUPPORTED"
@@ -521,7 +521,7 @@
           "status": "supported"
         },
         "plan_proof_token_linkage": {
-          "notes": "Plan -> proof -> token linkage is bounded to the exact single-child slice only.",
+          "notes": "Plan -> proof -> token linkage is bounded to the exact single-child and exact two-child same-alias slices only.",
           "reason_codes": [
             "TOKEN_PROOF_BASIS_LIVE"
           ],
@@ -535,14 +535,14 @@
           "status": "unsupported"
         },
         "proof_witness_linkage": {
-          "notes": "Proof -> witness linkage is bounded to the exact single-child slice only.",
+          "notes": "Proof -> witness linkage is bounded to the exact single-child and exact two-child same-alias slices only.",
           "reason_codes": [
             "LIVE_PROOF_LINKED_WITNESS"
           ],
           "status": "bounded"
         },
         "token_issuance_basis": {
-          "notes": "Proof-backed M6 issuance can consume the bounded invoke-skill proof for the exact single-child slice.",
+          "notes": "Proof-backed M6 issuance can consume the bounded invoke-skill proof for the exact single-child and exact two-child same-alias slices.",
           "reason_codes": [
             "CANONICAL_FAMILY_SUPPORTED",
             "TOKEN_PROOF_BASIS_LIVE"
@@ -580,7 +580,7 @@
           "shape_id": "dynamic-or-broader-resolution"
         },
         {
-          "notes": "Multi-child fan-out remains not_proven.",
+          "notes": "Multi-child fan-out beyond the exact two-child same-alias zero-authority inspect slice remains not_proven.",
           "reason_codes": [
             "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
           ],
@@ -627,6 +627,25 @@
           ],
           "proof_status": "bounded_minimal",
           "slice_id": "single-child-zero-authority-inspect-child"
+        },
+        {
+          "invoke_shape": {
+            "alias_binding": "same_exact_declared_dependency_alias_in_order",
+            "child_authority": "forbidden",
+            "child_identity": "installed_dependency_snapshot_exact_digest",
+            "child_result_comparator": "guild.runner.live-proof.normalized-inspect-multi-child-invoke.v1",
+            "child_target_world": "guild-skill-inspect-v1",
+            "max_exercised_children": 2,
+            "nested_child_executions": "forbidden"
+          },
+          "notes": "Bounded live proof exists only for the exact two-child same-alias zero-authority inspect slice.",
+          "proof_backed_layers": [
+            "live_minimization_proof",
+            "plan_proof_token_linkage",
+            "proof_witness_linkage"
+          ],
+          "proof_status": "bounded_minimal",
+          "slice_id": "two-child-same-alias-zero-authority-inspect-fan-out"
         }
       ],
       "scope_shape": {
@@ -880,9 +899,9 @@
     "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
     "The slice-aware measured source for M8-proper is docs/schemas/draft-v1/benchmark_matrix.json with the paired human report at docs/benchmarking/m8-real-path-benchmark.md. That benchmark keeps supported slices, fallback or refusal paths, and fail-closed walls separate instead of averaging them together.",
     "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
-    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for eight deterministic slices, and one bounded invoke-skill slice for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions.",
+    "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for eight deterministic slices, and two bounded invoke-skill slices: one for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions, and one for that same declared alias exercised exactly twice in deterministic order under the same zero-authority inspect-only boundary.",
     "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured localhost GET and HEAD slices with either an explicit port or the implicit default HTTP port and deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
+    "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured localhost GET and HEAD slices with either an explicit port or the implicit default HTTP port and deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice and the exact two-child same-alias zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
   ],
   "version": "1.0.0"
 }

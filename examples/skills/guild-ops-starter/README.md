@@ -165,7 +165,7 @@ guild run \
 
 ## What This Pack Does Not Show
 
-- It does not broaden `invoke-skill`. Composition stays inside the current exact single-child zero-authority slice.
+- It does not broaden `invoke-skill`. Composition stays inside the current bounded zero-authority inspect slices, and this pack itself still uses the single-child formatter path.
 - It does not use broad `http-request` as the hero path.
 - It does not use `emit-evidence` as a proof claim. `emit-evidence` remains explicitly `not_proven`.
 - It does not add a workflow engine, a pack manifest, or a new installer abstraction.
