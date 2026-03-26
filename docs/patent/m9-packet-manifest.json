@@ -121,7 +121,9 @@
       "http-request-loopback-ip-get-explicit-port",
       "http-request-loopback-ip-get-default-port",
       "http-request-localhost-get-explicit-port",
+      "http-request-localhost-get-default-port",
       "http-request-localhost-head-explicit-port",
+      "http-request-localhost-head-default-port",
       "http-request-loopback-ip-head-explicit-port",
       "http-request-loopback-ip-head-default-port",
       "invoke-skill-single-child-zero-authority"
@@ -149,7 +151,9 @@
         "http-request-loopback-ip-get-explicit-port",
         "http-request-loopback-ip-get-default-port",
         "http-request-localhost-get-explicit-port",
+        "http-request-localhost-get-default-port",
         "http-request-localhost-head-explicit-port",
+        "http-request-localhost-head-default-port",
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
         "invoke-skill-single-child-zero-authority"
@@ -205,7 +209,9 @@
             "http_request_live_proof_is_bounded_with_replay",
             "http_request_live_proof_is_bounded_with_replay_for_default_port_shape",
             "http_request_live_proof_is_bounded_with_replay_for_localhost_explicit_port_shape",
+            "http_request_live_proof_is_bounded_with_replay_for_localhost_default_port_shape",
             "http_request_live_proof_is_bounded_with_replay_for_localhost_head_explicit_port_shape",
+            "http_request_live_proof_is_bounded_with_replay_for_localhost_head_default_port_shape",
             "http_request_live_proof_is_bounded_with_replay_for_head_shape",
             "http_request_live_proof_is_bounded_with_replay_for_head_default_port_shape",
             "invoke_skill_live_proof_is_bounded_for_single_zero_authority_child",
@@ -223,7 +229,9 @@
             "http-request-bounded",
             "http-request-default-port-bounded",
             "http-request-localhost-bounded",
+            "http-request-localhost-default-port-bounded",
             "http-request-localhost-head-bounded",
+            "http-request-localhost-head-default-port-bounded",
             "http-request-head-bounded",
             "http-request-head-default-port-bounded",
             "invoke-skill-single-child-bounded",
@@ -251,7 +259,9 @@
         "http-request-loopback-ip-get-explicit-port",
         "http-request-loopback-ip-get-default-port",
         "http-request-localhost-get-explicit-port",
+        "http-request-localhost-get-default-port",
         "http-request-localhost-head-explicit-port",
+        "http-request-localhost-head-default-port",
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
         "invoke-skill-single-child-zero-authority"
@@ -289,7 +299,19 @@
         {
           "family": "http-request",
           "kind": "proven_slice",
+          "name": "localhost-get-default-port",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "http-request",
+          "kind": "proven_slice",
           "name": "localhost-head-explicit-port",
+          "expected_status": "bounded_minimal"
+        },
+        {
+          "family": "http-request",
+          "kind": "proven_slice",
+          "name": "localhost-head-default-port",
           "expected_status": "bounded_minimal"
         },
         {
@@ -405,7 +427,9 @@
         "http-request-loopback-ip-get-explicit-port",
         "http-request-loopback-ip-get-default-port",
         "http-request-localhost-get-explicit-port",
+        "http-request-localhost-get-default-port",
         "http-request-localhost-head-explicit-port",
+        "http-request-localhost-head-default-port",
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
         "invoke-skill-single-child-zero-authority"
@@ -476,7 +500,9 @@
         "http-request-loopback-ip-get-explicit-port",
         "http-request-loopback-ip-get-default-port",
         "http-request-localhost-get-explicit-port",
+        "http-request-localhost-get-default-port",
         "http-request-localhost-head-explicit-port",
+        "http-request-localhost-head-default-port",
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
         "invoke-skill-single-child-zero-authority"

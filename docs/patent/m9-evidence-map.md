@@ -13,7 +13,9 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `benchmark_matrix.json.slices[http-request-loopback-ip-get-explicit-port]`
   - `benchmark_matrix.json.slices[http-request-loopback-ip-get-default-port]`
   - `benchmark_matrix.json.slices[http-request-localhost-get-explicit-port]`
+  - `benchmark_matrix.json.slices[http-request-localhost-get-default-port]`
   - `benchmark_matrix.json.slices[http-request-localhost-head-explicit-port]`
+  - `benchmark_matrix.json.slices[http-request-localhost-head-default-port]`
   - `benchmark_matrix.json.slices[http-request-loopback-ip-head-explicit-port]`
   - `benchmark_matrix.json.slices[http-request-loopback-ip-head-default-port]`
   - `benchmark_matrix.json.slices[invoke-skill-single-child-zero-authority]`
@@ -34,7 +36,9 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_is_bounded_with_replay`
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_is_bounded_with_replay_for_default_port_shape`
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_is_bounded_with_replay_for_localhost_explicit_port_shape`
+  - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_is_bounded_with_replay_for_localhost_default_port_shape`
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_is_bounded_with_replay_for_localhost_head_explicit_port_shape`
+  - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_is_bounded_with_replay_for_localhost_head_default_port_shape`
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_is_bounded_with_replay_for_head_shape`
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_is_bounded_with_replay_for_head_default_port_shape`
   - `crates/guild-runner/tests/live_proofs.rs::invoke_skill_live_proof_is_bounded_for_single_zero_authority_child`
@@ -42,7 +46,7 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `crates/guild-runner/tests/live_proofs.rs::invoke_skill_live_proof_stays_not_proven_for_multi_child_shape`
   - `crates/guild-runner/tests/live_proofs.rs::emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable`
 - Scenario and example anchors:
-  - `crates/guild-runner/examples/live_proof_scenarios.rs` scenarios `read-resource-bounded`, `http-request-bounded`, `http-request-default-port-bounded`, `http-request-localhost-bounded`, `http-request-localhost-head-bounded`, `http-request-head-bounded`, `http-request-head-default-port-bounded`, `invoke-skill-single-child-bounded`, `http-request-redirect-unsupported`, `invoke-skill-multi-child-unsupported`, `emit-evidence-single-sink-replay-unavailable`
+  - `crates/guild-runner/examples/live_proof_scenarios.rs` scenarios `read-resource-bounded`, `http-request-bounded`, `http-request-default-port-bounded`, `http-request-localhost-bounded`, `http-request-localhost-default-port-bounded`, `http-request-localhost-head-bounded`, `http-request-localhost-head-default-port-bounded`, `http-request-head-bounded`, `http-request-head-default-port-bounded`, `invoke-skill-single-child-bounded`, `http-request-redirect-unsupported`, `invoke-skill-multi-child-unsupported`, `emit-evidence-single-sink-replay-unavailable`
 - Codepaths:
   - `crates/guild-runner/src/live_proof.rs`
   - `crates/guild-draft-truth/src/benchmark.rs`
@@ -55,7 +59,9 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `benchmark_matrix.json.slices[http-request-loopback-ip-get-explicit-port]`
   - `benchmark_matrix.json.slices[http-request-loopback-ip-get-default-port]`
   - `benchmark_matrix.json.slices[http-request-localhost-get-explicit-port]`
+  - `benchmark_matrix.json.slices[http-request-localhost-get-default-port]`
   - `benchmark_matrix.json.slices[http-request-localhost-head-explicit-port]`
+  - `benchmark_matrix.json.slices[http-request-localhost-head-default-port]`
   - `benchmark_matrix.json.slices[http-request-loopback-ip-head-explicit-port]`
   - `benchmark_matrix.json.slices[http-request-loopback-ip-head-default-port]`
   - `benchmark_matrix.json.slices[invoke-skill-single-child-zero-authority]`
@@ -65,7 +71,9 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `family_support_matrix.json.families.http-request.proven_slices[loopback-ip-get-explicit-port]`
   - `family_support_matrix.json.families.http-request.proven_slices[loopback-ip-get-default-port]`
   - `family_support_matrix.json.families.http-request.proven_slices[localhost-get-explicit-port]`
+  - `family_support_matrix.json.families.http-request.proven_slices[localhost-get-default-port]`
   - `family_support_matrix.json.families.http-request.proven_slices[localhost-head-explicit-port]`
+  - `family_support_matrix.json.families.http-request.proven_slices[localhost-head-default-port]`
   - `family_support_matrix.json.families.http-request.proven_slices[loopback-ip-head-explicit-port]`
   - `family_support_matrix.json.families.http-request.proven_slices[loopback-ip-head-default-port]`
   - `family_support_matrix.json.families.invoke-skill.proven_slices[single-child-zero-authority-inspect-child]`

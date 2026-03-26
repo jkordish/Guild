@@ -76,7 +76,7 @@ sequenceDiagram
 flowchart TD
     A[Measured family frontier]
     A --> RR[read-resource<br/>bounded proof-linked<br/>immutable roots only]
-    A --> HTTP[http-request<br/>bounded proof-linked<br/>six replay-backed slices only]
+    A --> HTTP[http-request<br/>bounded proof-linked<br/>eight replay-backed slices only]
     A --> INV[invoke-skill<br/>bounded proof-linked<br/>single-child zero-authority only]
     A --> LOG[log-write<br/>exact proof-only<br/>info level only]
     A --> EMIT[emit-evidence<br/>not_proven for live proof linkage]
@@ -90,14 +90,14 @@ flowchart TD
 ```mermaid
 flowchart TD
     B[Measured proof search costs]
-    B --> RR[read-resource<br/>proof mean 6921.821 ms]
-    B --> H1[http-request supported slices<br/>proof mean 7382.886-7825.029 ms]
-    B --> INV[invoke-skill supported slice<br/>proof mean 10370.417 ms]
-    B --> LOG[log-write proof-only slice<br/>proof mean 9041.587 ms]
-    B --> U1[redirect http-request unsupported slice<br/>proof mean 3662.286 ms]
-    B --> U2[multi-child invoke unsupported slice<br/>proof mean 7667.103 ms]
-    B --> U3[emit-evidence unsupported slice<br/>proof mean 3007.173 ms]
-    B --> W1[fail-closed walls<br/>3821.467 ms, 4272.835 ms, 5877.952 ms]
+    B --> RR[read-resource<br/>proof mean 7000.947 ms]
+    B --> H1[http-request supported slices<br/>proof mean 7356.991-7617.252 ms]
+    B --> INV[invoke-skill supported slice<br/>proof mean 10353.470 ms]
+    B --> LOG[log-write proof-only slice<br/>proof mean 8996.703 ms]
+    B --> U1[redirect http-request unsupported slice<br/>proof mean 3724.381 ms]
+    B --> U2[multi-child invoke unsupported slice<br/>proof mean 7791.796 ms]
+    B --> U3[emit-evidence unsupported slice<br/>proof mean 2994.840 ms]
+    B --> W1[fail-closed walls<br/>3702.955 ms, 4236.320 ms, 6043.337 ms]
 ```
 
 ## Figure Use Notes

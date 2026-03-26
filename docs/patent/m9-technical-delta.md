@@ -23,7 +23,7 @@ Those stages are separate in the repo and should stay separate in any draft buil
 | Family | Live proof status now | Token basis now | Witness linkage now | Measured scope now | Explicit limits now |
 | --- | --- | --- | --- | --- | --- |
 | `read-resource` | `bounded` | `proof_backed` on one bounded slice | `proof_linked` on one bounded slice | Immutable `guild://executions/` and `guild://objects/records/` roots only | Query resources and broader shrink models remain outside the measured envelope |
-| `http-request` | `bounded` | `proof_backed` on six replay-backed slices | `proof_linked` on six replay-backed slices | Loopback IP `GET` and `HEAD`, explicit or default port; explicit-port `localhost` `GET` and `HEAD`; no query; no redirects; one exercised request; deterministic comparator | Redirects, `https`, multiple requests, other hostnames, query or fragment components, and `localhost` default-port forms stay outside the measured envelope |
+| `http-request` | `bounded` | `proof_backed` on eight replay-backed slices | `proof_linked` on eight replay-backed slices | Loopback IP `GET` and `HEAD`, explicit or default port; `localhost` `GET` and `HEAD`, explicit or default port with deterministic loopback-only resolution binding; no query; no redirects; one exercised request; deterministic comparator | Redirects, `https`, multiple requests, other hostname forms, and query or fragment components stay outside the measured envelope |
 | `invoke-skill` | `bounded` | `proof_backed` on one single-child slice | `proof_linked` on one single-child slice | One declared alias, one exact child digest, `guild-skill-inspect-v1`, deterministic child input, zero child authority, zero nested child executions | Multi-child, recursion, child authority, broader resolution, and non-inspect child targets remain outside the measured envelope |
 | `log-write` | `supported` for proof only | `not_measured_on_real_path` for linkage | `not_measured_on_real_path` for linkage | One exact observed `info`-level slice through M4 plus M5 only | The checked benchmark does not claim real-path M6 or M7 linkage here |
 | `emit-evidence` | `not_proven` | `upper_bound_fallback` only in the checked unsupported slice | `unlinked` only in the checked unsupported slice | The checked benchmark covers replay-unavailable single-emission behavior as an unsupported slice | No proof-backed `emit-evidence` linkage is claimable now |
@@ -51,7 +51,7 @@ The measured unsupported slices are:
 
 ## Witness Linkage Versus Unlinked Witnesses
 
-- `read-resource`, the six measured `http-request` slices, and the one measured `invoke-skill` slice produce proof-linked witnesses on the checked path.
+- `read-resource`, the eight measured `http-request` slices, and the one measured `invoke-skill` slice produce proof-linked witnesses on the checked path.
 - `log-write` is not currently measured as a proof-linked witness path on the real path.
 - The benchmarked unsupported slices still generate witnesses, but those witnesses are explicitly unlinked.
 - The checked negative-claim probes remain coverage-limited on every measured non-`log-write` slice, so the repo does not claim runtime-general absence checking.
@@ -75,26 +75,28 @@ The checked benchmark is slice-aware and keeps supported, unsupported, and fail-
 
 | Slice | Admission mean ms | Proof mean ms | Proof token mean ms | Token verify mean ms | Witness gen mean ms | Witness verify mean ms |
 | --- | --- | --- | --- | --- | --- | --- |
-| `read-resource-immutable-guild-roots` | `0.014` | `6921.821` | `0.027` | `0.357` | `0.302` | `0.253` |
-| `http-request-loopback-ip-get-explicit-port` | `0.015` | `7489.842` | `0.031` | `0.323` | `0.295` | `0.239` |
-| `http-request-loopback-ip-get-default-port` | `0.021` | `7825.029` | `0.028` | `0.354` | `0.354` | `0.225` |
-| `http-request-localhost-get-explicit-port` | `0.016` | `7382.886` | `0.033` | `0.324` | `0.292` | `0.274` |
-| `http-request-localhost-head-explicit-port` | `0.017` | `7489.827` | `0.031` | `0.337` | `0.309` | `0.239` |
-| `http-request-loopback-ip-head-explicit-port` | `0.018` | `7420.664` | `0.064` | `0.319` | `0.293` | `0.262` |
-| `http-request-loopback-ip-head-default-port` | `0.018` | `7387.621` | `0.051` | `0.333` | `0.312` | `0.260` |
-| `invoke-skill-single-child-zero-authority` | `0.012` | `10370.417` | `0.027` | `0.269` | `0.251` | `0.183` |
-| `log-write-observed-info-level` | `0.012` | `9041.587` | `n/a` | `n/a` | `n/a` | `n/a` |
+| `read-resource-immutable-guild-roots` | `0.022` | `7000.947` | `0.021` | `0.305` | `0.318` | `0.186` |
+| `http-request-loopback-ip-get-explicit-port` | `0.015` | `7459.956` | `0.032` | `0.354` | `0.377` | `0.239` |
+| `http-request-loopback-ip-get-default-port` | `0.015` | `7570.034` | `0.029` | `0.373` | `0.313` | `0.228` |
+| `http-request-localhost-get-explicit-port` | `0.016` | `7617.252` | `0.050` | `0.331` | `0.296` | `0.227` |
+| `http-request-localhost-get-default-port` | `0.018` | `7436.796` | `0.028` | `0.367` | `0.290` | `0.237` |
+| `http-request-localhost-head-explicit-port` | `0.022` | `7356.991` | `0.035` | `0.332` | `0.291` | `0.241` |
+| `http-request-localhost-head-default-port` | `0.019` | `7428.505` | `0.028` | `0.326` | `0.347` | `0.243` |
+| `http-request-loopback-ip-head-explicit-port` | `0.019` | `7412.078` | `0.039` | `0.372` | `0.296` | `0.219` |
+| `http-request-loopback-ip-head-default-port` | `0.019` | `7369.590` | `0.032` | `0.325` | `0.302` | `0.229` |
+| `invoke-skill-single-child-zero-authority` | `0.013` | `10353.470` | `0.020` | `0.273` | `0.286` | `0.189` |
+| `log-write-observed-info-level` | `0.013` | `8996.703` | `n/a` | `n/a` | `n/a` | `n/a` |
 
 ### Unsupported Slices And Fail-Closed Walls
 
 | Slice or wall | Admission mean ms | Proof mean ms | Fallback token mean ms | Refusal mean ms |
 | --- | --- | --- | --- | --- |
-| `http-request-redirect-driven-execution` | `0.020` | `3662.286` | `0.026` | `4204.651` |
-| `invoke-skill-multi-child-fan-out` | `0.011` | `7667.103` | `0.022` | `8313.553` |
-| `emit-evidence-single-emission-replay-unavailable` | `0.015` | `3007.173` | `0.026` | `3527.528` |
-| `http-request-no-replay-fixture` | `n/a` | `3821.467` | `n/a` | `n/a` |
-| `read-resource-query-root-shrink-unsupported` | `n/a` | `4272.835` | `n/a` | `n/a` |
-| `invoke-skill-child-authority-unsupported` | `n/a` | `5877.952` | `n/a` | `n/a` |
+| `http-request-redirect-driven-execution` | `0.021` | `3724.381` | `0.024` | `4184.741` |
+| `invoke-skill-multi-child-fan-out` | `0.012` | `7791.796` | `0.020` | `8302.056` |
+| `emit-evidence-single-emission-replay-unavailable` | `0.039` | `2994.840` | `0.022` | `3537.115` |
+| `http-request-no-replay-fixture` | `n/a` | `3702.955` | `n/a` | `n/a` |
+| `read-resource-query-root-shrink-unsupported` | `n/a` | `4236.320` | `n/a` | `n/a` |
+| `invoke-skill-child-authority-unsupported` | `n/a` | `6043.337` | `n/a` | `n/a` |
 
 The multi-second cost is in live proof search, not in admission or downstream token or witness processing. That cost is part of the technical story and should stay visible.
 

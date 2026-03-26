@@ -30,7 +30,7 @@ Guild does not claim runtime-general authority minimization. The measured novelt
 | Family or slice | Measured now | Explicitly not claimed |
 | --- | --- | --- |
 | `read-resource` | One bounded immutable-root slice with checked plan -> proof -> token -> witness linkage. | Query-resource shrink or broader resource shapes. |
-| `http-request` | Six bounded deterministic replay-backed `http` slices: loopback IP `GET` and `HEAD` with explicit and default ports, plus explicit-port `localhost` `GET` and `HEAD` with deterministic loopback-only resolution binding. | Redirects, `https`, other hostnames, query or fragment components, multiple requests, and `localhost` default-port forms. |
+| `http-request` | Eight bounded deterministic replay-backed `http` slices: loopback IP `GET` and `HEAD` with explicit and default ports, plus `localhost` `GET` and `HEAD` with explicit and default ports when deterministic loopback-only resolution binding is present. | Redirects, `https`, other hostname forms, query or fragment components, and multiple requests. |
 | `invoke-skill` | One bounded exact single-child zero-authority inspect slice with checked plan -> proof -> token -> witness linkage. | Multi-child fan-out, recursion, child authority use, broader resolution, and non-inspect child targets. |
 | `log-write` | One exact observed `info`-level proof-only slice on the real path. | A checked real-path M6 or M7 linkage claim for `log-write`. |
 | `emit-evidence` | Canonical family vocabulary exists in admission, tokens, and witnesses. | Any live proof-backed `emit-evidence` linkage. The measured repo still marks this family `not_proven` for live proof. |
@@ -40,7 +40,7 @@ Guild does not claim runtime-general authority minimization. The measured novelt
 - No runtime-general proof claim across all families.
 - No broad `emit-evidence` live-proof claim.
 - No broad `invoke-skill` call-graph proof claim.
-- No broad outbound HTTP proof claim beyond the six measured slices.
+- No broad outbound HTTP proof claim beyond the eight measured slices.
 - No runtime-general delegated-token enforcement claim.
 - No general positive factual witness claim system.
 - No attempt to turn the packet into a filing form, patentability conclusion, or pitch deck.
