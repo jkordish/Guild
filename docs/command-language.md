@@ -278,7 +278,7 @@ The honest story is narrow on purpose:
 - durable Guild refs and resources
 - compact markdown output on `guild run`
 - explicit capability grants
-- exact single-child zero-authority composition only where the runtime already supports it
+- exact zero-authority composition only where the runtime already supports it
 - no broad HTTP showcase
 - no `emit-evidence` proof claims
 - no claim that the starter is the whole product story

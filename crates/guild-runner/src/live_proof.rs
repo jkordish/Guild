@@ -29,6 +29,7 @@ pub enum LiveProofComparatorProfile {
     ExactOutput,
     NormalizedInspectOutputV1,
     NormalizedInspectSingleChildInvokeV1,
+    NormalizedInspectMultiChildInvokeV1,
     NormalizedInspectSingleSinkEmitEvidenceV1,
 }
 
@@ -125,10 +126,15 @@ struct TrialResult {
 }
 
 #[derive(Debug, Clone)]
-struct ObservedInvokeSkillSlice {
+struct ObservedInvokeSkillChild {
     alias: String,
     expected_child: ResolvedSkillRef,
     child_input_digest: String,
+}
+
+#[derive(Debug, Clone)]
+struct ObservedInvokeSkillSlice {
+    children: Vec<ObservedInvokeSkillChild>,
     narrowed_capability: GrantedCapability,
 }
 
@@ -318,6 +324,20 @@ fn comparator_descriptor(profile: LiveProofComparatorProfile) -> LiveProofCompar
                     "The comparator loads the persisted child execution record and compares the exact child digest binding, inspect ABI, canonical child input digest, normalized child output, and child execution count.".into(),
                 ],
                 notes: "Normalized inspect comparator for the bounded single-child invoke-skill slice. It compares the parent execution plus the persisted child execution record while ignoring host-minted execution and evidence record URIs.".into(),
+            }
+        }
+        LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1 => {
+            LiveProofComparatorDescriptor {
+                comparator_id:
+                    "guild.runner.live-proof.normalized-inspect-multi-child-invoke.v1".into(),
+                version: LIVE_PROOF_VERSION.into(),
+                assumptions: vec![
+                    "Execution status must remain identical.".into(),
+                    "The comparator strips host-owned granted_capabilities echoes from inspect structured output.".into(),
+                    "The comparator strips host-minted evidence URIs while preserving evidence metadata and digests.".into(),
+                    "The comparator compares the ordered child execution list for one exact two-child same-alias invoke slice, including persisted child execution records, exact child digest bindings, inspect ABI, canonical child input digests, normalized child outputs, and child execution counts.".into(),
+                ],
+                notes: "Normalized inspect comparator for the bounded exact two-child same-alias invoke-skill slice. It compares the parent execution plus the ordered persisted child execution records while ignoring host-minted execution and evidence record URIs.".into(),
             }
         }
         LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 => {
@@ -780,16 +800,33 @@ where
     let family_grants = family_grants(&envelope.granted_capabilities, &family);
     let mut trials = Vec::new();
 
-    if comparator != LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 {
-        return invoke_skill_not_proven(
-            family_grants,
-            vec!["INVOKE_SKILL_COMPARATOR_UNAVAILABLE".into()],
-            "Bounded invoke-skill live proof currently supports only the normalized inspect single-child comparator.",
-            trials,
-        );
-    }
+    let supported_slice_notes = match comparator {
+        LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 => {
+            "Bounded live proof for invoke-skill currently covers only one exercised declared dependency alias resolved through the installed dependency snapshot to one exact child digest, fixed guild-skill-inspect-v1 ABI, deterministic child input, zero child-side authority use, and zero nested child executions."
+        }
+        LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1 => {
+            "Bounded live proof for invoke-skill currently covers only one exercised declared dependency alias invoked twice in deterministic order, resolved through the installed dependency snapshot to two exact zero-authority guild-skill-inspect-v1 child executions with no blocked dispatch behavior and no nested child executions."
+        }
+        _ => {
+            return invoke_skill_not_proven(
+                family_grants,
+                vec!["INVOKE_SKILL_COMPARATOR_UNAVAILABLE".into()],
+                "Bounded invoke-skill live proof currently supports only the normalized inspect single-child and exact multi-child invoke comparators.",
+                trials,
+            );
+        }
+    };
 
-    let observed = match observed_invoke_skill_slice(registry, installed, baseline_record) {
+    let observed = match comparator {
+        LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 => {
+            observed_single_child_invoke_skill_slice(registry, installed, baseline_record)
+        }
+        LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1 => {
+            observed_multi_child_invoke_skill_slice(registry, installed, baseline_record)
+        }
+        _ => unreachable!("unsupported comparators returned above"),
+    };
+    let observed = match observed {
         Ok(observed) => observed,
         Err((reason_code, notes)) => {
             return invoke_skill_not_proven(
@@ -830,7 +867,7 @@ where
                 support: LiveProofSupport::BoundedLiveProof,
                 proof_status: Some("bounded_minimal".into()),
                 reason_codes: stable_sorted_strings(reasons.clone()),
-                notes: "The family was removable for this invocation under the bounded single-child invoke comparator, which compares the parent output together with the persisted child execution record.".into(),
+                notes: "The family was removable for this invocation under the active bounded invoke comparator, which compares the parent output together with the persisted child execution record set for the selected slice.".into(),
             },
             reasons,
         );
@@ -909,10 +946,33 @@ where
             support: LiveProofSupport::BoundedLiveProof,
             proof_status: Some(proof_status.into()),
             reason_codes: stable_sorted_strings(reasons.clone()),
-            notes: "Bounded live proof for invoke-skill currently covers only one exercised declared dependency alias resolved through the installed dependency snapshot to one exact child digest, fixed guild-skill-inspect-v1 ABI, deterministic child input, zero child-side authority use, and zero nested child executions.".into(),
+            notes: supported_slice_notes.into(),
         },
         reasons,
     )
+}
+
+#[allow(clippy::too_many_lines)]
+fn observed_single_child_invoke_skill_slice<R>(
+    registry: &R,
+    installed: &InstalledSkill,
+    record: &ExecutionRecord,
+) -> Result<ObservedInvokeSkillSlice, (&'static str, String)>
+where
+    R: SkillRegistry + ?Sized,
+{
+    observed_invoke_skill_slice(registry, installed, record, 1, false)
+}
+
+fn observed_multi_child_invoke_skill_slice<R>(
+    registry: &R,
+    installed: &InstalledSkill,
+    record: &ExecutionRecord,
+) -> Result<ObservedInvokeSkillSlice, (&'static str, String)>
+where
+    R: SkillRegistry + ?Sized,
+{
+    observed_invoke_skill_slice(registry, installed, record, 2, true)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -920,6 +980,8 @@ fn observed_invoke_skill_slice<R>(
     registry: &R,
     installed: &InstalledSkill,
     record: &ExecutionRecord,
+    expected_child_count: usize,
+    require_same_alias: bool,
 ) -> Result<ObservedInvokeSkillSlice, (&'static str, String)>
 where
     R: SkillRegistry + ?Sized,
@@ -937,30 +999,49 @@ where
         }
     }
 
-    if exercised.len() != 1 || record.child_executions.len() != 1 {
-        let reason_code = if exercised.len() > 1 || record.child_executions.len() > 1 {
+    if exercised.len() != expected_child_count
+        || record.child_executions.len() != expected_child_count
+    {
+        let has_missing_child_data = exercised.is_empty() || record.child_executions.is_empty();
+        let reason_code = if has_missing_child_data {
+            "INVOKE_SKILL_REPLAY_UNAVAILABLE"
+        } else if exercised.len() > 1 || record.child_executions.len() > 1 {
             "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
         } else {
-            "INVOKE_SKILL_REPLAY_UNAVAILABLE"
+            "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
         };
-        let notes = if reason_code == "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED" {
+        let notes = if reason_code == "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
+            && expected_child_count == 1
+        {
             "Bounded invoke-skill live proof currently requires exactly one exercised child invocation and exactly one persisted child execution record.".into()
+        } else if reason_code == "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED" {
+            format!(
+                "Bounded invoke-skill live proof for the exact multi-child slice currently requires exactly {expected_child_count} exercised child invocations and exactly {expected_child_count} persisted child execution records."
+            )
         } else {
-            "Bounded invoke-skill live proof requires exactly one exercised child invocation together with one persisted child execution record.".into()
+            format!(
+                "Bounded invoke-skill live proof requires exactly {expected_child_count} exercised child invocation(s) together with {expected_child_count} persisted child execution record(s)."
+            )
         };
         return Err((reason_code, notes));
     }
 
-    let exercised = exercised[0];
-    if exercised.result_error.is_some() {
+    if exercised.iter().any(|detail| detail.result_error.is_some()) {
         return Err((
             "INVOKE_SKILL_REPLAY_UNAVAILABLE",
-            "Bounded invoke-skill live proof currently requires a child invocation with a persisted child execution record and no host-side invoke result error.".into(),
+            "Bounded invoke-skill live proof currently requires child invocations with persisted child execution records and no host-side invoke result error.".into(),
         ));
     }
 
     if !blocked.is_empty() {
-        let reason_code = if blocked.iter().any(|detail| detail.alias != exercised.alias) {
+        let exercised_aliases = exercised
+            .iter()
+            .map(|detail| detail.alias.clone())
+            .collect::<BTreeSet<_>>();
+        let reason_code = if blocked
+            .iter()
+            .any(|detail| !exercised_aliases.contains(&detail.alias))
+        {
             "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED"
         } else {
             "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
@@ -973,109 +1054,152 @@ where
         return Err((reason_code, notes));
     }
 
-    let child_summary = &record.child_executions[0];
-    if child_summary.alias != exercised.alias
-        || exercised.child_execution_id.as_deref() != Some(&child_summary.execution_id)
-        || exercised.child_status.as_ref() != Some(&child_summary.status)
-    {
+    let observed_aliases = record
+        .child_executions
+        .iter()
+        .map(|child| child.alias.clone())
+        .collect::<BTreeSet<_>>();
+    if require_same_alias && observed_aliases.len() != 1 {
+        return Err((
+            "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED",
+            "Bounded invoke-skill live proof for the exact multi-child slice currently supports only repeated invocation of the same declared dependency alias.".into(),
+        ));
+    }
+
+    let mut matched_exercised = vec![false; exercised.len()];
+    let mut narrowed_aliases = Vec::new();
+    let mut children = Vec::new();
+    for child_summary in &record.child_executions {
+        let Some((exercised_index, exercised_detail)) =
+            exercised.iter().enumerate().find(|(index, detail)| {
+                !matched_exercised[*index]
+                    && detail.child_execution_id.as_deref()
+                        == Some(child_summary.execution_id.as_str())
+            })
+        else {
+            return Err((
+                "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+                "The baseline invoke-skill observation did not bind cleanly to one persisted child execution record.".into(),
+            ));
+        };
+        matched_exercised[exercised_index] = true;
+
+        if child_summary.alias != exercised_detail.alias
+            || exercised_detail.child_status.as_ref() != Some(&child_summary.status)
+        {
+            return Err((
+                "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+                "The baseline invoke-skill observation did not bind cleanly to one persisted child execution record.".into(),
+            ));
+        }
+
+        let Some(dependency) = installed
+            .manifest
+            .dependencies
+            .iter()
+            .find(|dependency| dependency.alias == exercised_detail.alias)
+        else {
+            return Err((
+                "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED",
+                "The exercised invoke-skill alias was not bound through the parent's declared installed dependency snapshot.".into(),
+            ));
+        };
+
+        let expected_child = dependency.skill.clone();
+        let child_record = registry
+            .load_execution_record(&child_summary.execution_id)
+            .map_err(|error| {
+                (
+                    "INVOKE_SKILL_REPLAY_UNAVAILABLE",
+                    format!(
+                        "The exercised invoke-skill child execution record could not be reloaded for comparison: {}",
+                        error.message
+                    ),
+                )
+            })?;
+
+        if child_record.parent_execution_id.as_deref() != Some(&record.receipt.execution_id)
+            || child_record.resolved_skill != expected_child
+            || child_record.provenance.resolved_skill != expected_child
+            || child_summary.provenance.resolved_skill != expected_child
+            || child_summary.parent_execution_id != record.receipt.execution_id
+            || child_summary.status != child_record.status
+            || child_summary.termination != child_record.termination
+        {
+            return Err((
+                "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+                "The exercised invoke-skill child did not stay bound to the exact dependency digest across the parent summary and the persisted child execution record.".into(),
+            ));
+        }
+
+        if child_record.request.skill != exact_requested_skill_ref(&expected_child) {
+            return Err((
+                "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+                "The persisted child execution request did not stay exact digest-pinned to the declared installed dependency snapshot.".into(),
+            ));
+        }
+
+        let child_installed = registry.resolve_exact(&expected_child).map_err(|error| {
+            (
+                "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
+                format!(
+                    "The declared installed dependency snapshot could not be reloaded as an exact child executable: {}",
+                    error.message
+                ),
+            )
+        })?;
+
+        if child_installed.manifest.runtime.entrypoint != INSPECT_WORLD_ENTRYPOINT
+            || child_installed.manifest.runtime.guest_abi_version != AbiVersion::GuildSkillInspectV1
+            || child_record.provenance.abi != AbiVersion::GuildSkillInspectV1
+        {
+            return Err((
+                "INVOKE_SKILL_EXPORT_WORLD_UNSUPPORTED",
+                "Bounded invoke-skill live proof currently supports only child executions that stay on the fixed guild-skill-inspect-v1 world and ABI.".into(),
+            ));
+        }
+
+        if !child_summary.granted_capabilities.grants.is_empty()
+            || !child_record.granted_capabilities.grants.is_empty()
+            || !child_record.authority_observations.is_empty()
+        {
+            return Err((
+                "INVOKE_SKILL_CHILD_AUTHORITY_UNSUPPORTED",
+                "Bounded invoke-skill live proof currently supports only zero-authority children with no exercised child-side capability families.".into(),
+            ));
+        }
+
+        if !child_record.child_executions.is_empty() || child_record.metrics.child_executions > 0 {
+            return Err((
+                "INVOKE_SKILL_RECURSION_UNSUPPORTED",
+                "Bounded invoke-skill live proof currently excludes nested child executions and deeper call graphs.".into(),
+            ));
+        }
+
+        if !narrowed_aliases.contains(&exercised_detail.alias) {
+            narrowed_aliases.push(exercised_detail.alias.clone());
+        }
+        children.push(ObservedInvokeSkillChild {
+            alias: exercised_detail.alias.clone(),
+            expected_child,
+            child_input_digest: sha256_json(&child_record.request.input),
+        });
+    }
+
+    if matched_exercised.iter().any(|matched| !*matched) {
         return Err((
             "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
             "The baseline invoke-skill observation did not bind cleanly to one persisted child execution record.".into(),
         ));
     }
 
-    let Some(dependency) = installed
-        .manifest
-        .dependencies
-        .iter()
-        .find(|dependency| dependency.alias == exercised.alias)
-    else {
-        return Err((
-            "INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED",
-            "The exercised invoke-skill alias was not bound through the parent's declared installed dependency snapshot.".into(),
-        ));
-    };
-
-    let expected_child = dependency.skill.clone();
-    let child_record = registry
-        .load_execution_record(&child_summary.execution_id)
-        .map_err(|error| {
-            (
-                "INVOKE_SKILL_REPLAY_UNAVAILABLE",
-                format!(
-                    "The exercised invoke-skill child execution record could not be reloaded for comparison: {}",
-                    error.message
-                ),
-            )
-        })?;
-
-    if child_record.parent_execution_id.as_deref() != Some(&record.receipt.execution_id)
-        || child_record.resolved_skill != expected_child
-        || child_record.provenance.resolved_skill != expected_child
-        || child_summary.provenance.resolved_skill != expected_child
-        || child_summary.parent_execution_id != record.receipt.execution_id
-        || child_summary.status != child_record.status
-        || child_summary.termination != child_record.termination
-    {
-        return Err((
-            "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
-            "The exercised invoke-skill child did not stay bound to the exact dependency digest across the parent summary and the persisted child execution record.".into(),
-        ));
-    }
-
-    if child_record.request.skill != exact_requested_skill_ref(&expected_child) {
-        return Err((
-            "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
-            "The persisted child execution request did not stay exact digest-pinned to the declared installed dependency snapshot.".into(),
-        ));
-    }
-
-    let child_installed = registry.resolve_exact(&expected_child).map_err(|error| {
-        (
-            "INVOKE_SKILL_CHILD_IDENTITY_UNBOUND",
-            format!(
-                "The declared installed dependency snapshot could not be reloaded as an exact child executable: {}",
-                error.message
-            ),
-        )
-    })?;
-
-    if child_installed.manifest.runtime.entrypoint != INSPECT_WORLD_ENTRYPOINT
-        || child_installed.manifest.runtime.guest_abi_version != AbiVersion::GuildSkillInspectV1
-        || child_record.provenance.abi != AbiVersion::GuildSkillInspectV1
-    {
-        return Err((
-            "INVOKE_SKILL_EXPORT_WORLD_UNSUPPORTED",
-            "Bounded invoke-skill live proof currently supports only child executions that stay on the fixed guild-skill-inspect-v1 world and ABI.".into(),
-        ));
-    }
-
-    if !child_summary.granted_capabilities.grants.is_empty()
-        || !child_record.granted_capabilities.grants.is_empty()
-        || !child_record.authority_observations.is_empty()
-    {
-        return Err((
-            "INVOKE_SKILL_CHILD_AUTHORITY_UNSUPPORTED",
-            "Bounded invoke-skill live proof currently supports only zero-authority children with no exercised child-side capability families.".into(),
-        ));
-    }
-
-    if !child_record.child_executions.is_empty() || child_record.metrics.child_executions > 0 {
-        return Err((
-            "INVOKE_SKILL_RECURSION_UNSUPPORTED",
-            "Bounded invoke-skill live proof currently excludes nested child executions and deeper call graphs.".into(),
-        ));
-    }
-
     Ok(ObservedInvokeSkillSlice {
-        alias: exercised.alias.clone(),
-        child_input_digest: sha256_json(&child_record.request.input),
-        expected_child,
+        children,
         narrowed_capability: GrantedCapability {
             id: CapabilityId::InvokeSkill,
             access: CapabilityAccess::Invoke,
             constraints: CapabilityConstraints::InvokeDependency(InvokeDependencyConstraints {
-                aliases: Some(vec![exercised.alias.clone()]),
+                aliases: Some(narrowed_aliases),
             }),
         },
     })
@@ -1825,29 +1949,45 @@ fn normalized_execution_projection(
                 }))
                 .collect::<Vec<_>>(),
         }),
-        LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 => json!({
-            "status": record.status,
-            "termination": record.termination,
-            "output": output,
-            "child_execution_count": record.child_executions.len(),
-            "child_execution_statuses": record
+        LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1
+        | LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1 => {
+            let loaded_child_records = record
                 .child_executions
                 .iter()
-                .map(|child| json!({
-                    "alias": child.alias,
-                    "status": child.status,
-                    "termination": child.termination,
-                    "resolved_skill": child.provenance.resolved_skill,
-                    "abi": child.provenance.abi,
-                    "granted_capabilities": child.granted_capabilities,
-                }))
-                .collect::<Vec<_>>(),
-            "loaded_child_records": record
+                .map(|child| {
+                    normalized_loaded_child_execution_projection(
+                        registry,
+                        child.execution_id.as_str(),
+                        profile,
+                    )
+                })
+                .collect::<Vec<_>>();
+            let child_execution_statuses = record
                 .child_executions
                 .iter()
-                .map(|child| normalized_loaded_child_execution_projection(registry, child.execution_id.as_str()))
-                .collect::<Vec<_>>(),
-        }),
+                .zip(loaded_child_records.iter())
+                .map(|(child, loaded_child)| {
+                    json!({
+                        "alias": child.alias,
+                        "status": child.status,
+                        "termination": child.termination,
+                        "resolved_skill": child.provenance.resolved_skill,
+                        "abi": child.provenance.abi,
+                        "granted_capabilities": child.granted_capabilities,
+                        "request_input_binding": request_input_binding_from_loaded_child_projection(loaded_child),
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            json!({
+                "status": record.status,
+                "termination": record.termination,
+                "output": output,
+                "child_execution_count": record.child_executions.len(),
+                "child_execution_statuses": child_execution_statuses,
+                "loaded_child_records": loaded_child_records,
+            })
+        }
         LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 => json!({
             "status": record.status,
             "termination": record.termination,
@@ -1879,6 +2019,25 @@ fn normalized_execution_projection(
     }
 }
 
+fn request_input_binding_from_loaded_child_projection(loaded_child: &Value) -> Value {
+    if let Some(digest) = loaded_child.get("request_input_digest") {
+        json!({
+            "request_input_digest": digest,
+        })
+    } else if let Some(load_error) = loaded_child.get("load_error") {
+        json!({
+            "load_error": load_error,
+        })
+    } else {
+        json!({
+            "load_error": {
+                "code": "missing-request-input-binding",
+                "message": "loaded child projection did not expose a request input digest or load error",
+            }
+        })
+    }
+}
+
 fn live_proof_trial_status(status: &ExecutionStatus) -> LiveProofTrialStatus {
     match status {
         ExecutionStatus::Succeeded => LiveProofTrialStatus::Succeeded,
@@ -1905,6 +2064,7 @@ fn normalized_skill_output(
             }
             LiveProofComparatorProfile::NormalizedInspectOutputV1
             | LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1
+            | LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1
             | LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1 => {
                 normalize_evidence_refs(&output.evidence)
             }
@@ -1914,6 +2074,7 @@ fn normalized_skill_output(
             profile,
             LiveProofComparatorProfile::NormalizedInspectOutputV1
                 | LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1
+                | LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1
                 | LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1
         ) {
             strip_host_owned_projection(&mut structured);
@@ -1932,6 +2093,7 @@ fn normalized_skill_output(
 fn normalized_loaded_child_execution_projection(
     registry: &impl SkillRegistry,
     execution_id: &str,
+    profile: LiveProofComparatorProfile,
 ) -> Value {
     match registry.load_execution_record(execution_id) {
         Ok(record) => json!({
@@ -1944,10 +2106,7 @@ fn normalized_loaded_child_execution_projection(
             "authority_observations": record.authority_observations,
             "child_execution_count": record.child_executions.len(),
             "abi": record.provenance.abi,
-            "output": normalized_skill_output(
-                &record,
-                LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1,
-            ),
+            "output": normalized_skill_output(&record, profile),
         }),
         Err(error) => json!({
             "load_error": {
@@ -2438,21 +2597,44 @@ fn invoke_replay_input_digest<R>(
 where
     R: SkillRegistry + ?Sized,
 {
-    let observed = observed_invoke_skill_slice(registry, installed, baseline_record).ok()?;
+    let observed = match comparator {
+        LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1 => {
+            observed_single_child_invoke_skill_slice(registry, installed, baseline_record).ok()?
+        }
+        LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1 => {
+            observed_multi_child_invoke_skill_slice(registry, installed, baseline_record).ok()?
+        }
+        _ => return None,
+    };
     let comparator_descriptor = comparator_descriptor(comparator);
     Some(sha256_json(&json!({
         "family": "invoke-skill",
         "parent_resolved_digest": installed.resolved_ref.digest,
-        "alias": observed.alias,
-        "expected_child_resolved_digest": observed.expected_child.digest,
+        "aliases": observed
+            .children
+            .iter()
+            .map(|child| child.alias.clone())
+            .collect::<Vec<_>>(),
+        "children": observed
+            .children
+            .iter()
+            .map(|child| json!({
+                "alias": child.alias,
+                "expected_child_resolved_digest": child.expected_child.digest,
+                "child_input_digest": child.child_input_digest,
+            }))
+            .collect::<Vec<_>>(),
         "fixed_world": INSPECT_WORLD_ENTRYPOINT,
-        "child_input_digest": observed.child_input_digest,
         "comparator_id": comparator_descriptor.comparator_id,
         "comparator_version": comparator_descriptor.version,
         "slice": {
-            "single_child": true,
+            "child_count": observed.children.len(),
             "child_authority": "none",
             "nested_child_executions": 0,
+            "same_alias_only": observed
+                .children
+                .first()
+                .is_none_or(|first| observed.children.iter().all(|child| child.alias == first.alias)),
         },
     })))
 }
@@ -2483,13 +2665,16 @@ fn emit_evidence_replay_input_digest(
 mod tests {
     use super::*;
 
+    use std::collections::HashMap;
+
     use guild_registry::RegistryError;
     use guild_types::{
-        Budget, CallerRequest, CapabilityGrantSet, EvidenceAudience, EvidenceEmissionRequest,
-        ExecutionMetrics, ExecutionMode, ExecutionReceipt, InstalledVerificationState,
-        LocalPolicyConfig, LocalTrustTier, PolicyDecision, PolicyDecisionOutcome, Provenance,
-        RedactionClass, RequestedSkillRef, ResolvedSkillRef, SkillKey, SkillOutput, SkillVersion,
-        VersionRequirement, local_object_store_evidence_sink_descriptor,
+        Budget, CallerRequest, CapabilityGrantSet, ChildExecutionRecord, EvidenceAudience,
+        EvidenceEmissionRequest, ExecutionMetrics, ExecutionMode, ExecutionReceipt,
+        InstalledVerificationState, LocalPolicyConfig, LocalTrustTier, PolicyDecision,
+        PolicyDecisionOutcome, Provenance, RedactionClass, RequestedSkillRef, ResolvedSkillRef,
+        SkillKey, SkillOutput, SkillVersion, VersionRequirement,
+        local_object_store_evidence_sink_descriptor,
     };
 
     #[derive(Clone)]
@@ -2523,6 +2708,68 @@ mod tests {
             _execution_id: &str,
         ) -> Result<ExecutionRecord, RegistryError> {
             unreachable!("load_execution_record should not be called in comparator unit tests")
+        }
+
+        fn store_evidence(
+            &self,
+            _produced_by_execution: &str,
+            _request: &EvidenceEmissionRequest,
+        ) -> Result<guild_types::EvidenceRef, RegistryError> {
+            unreachable!("store_evidence should not be called in comparator unit tests")
+        }
+
+        fn load_evidence_record(&self, _uri: &str) -> Result<EvidenceRecord, RegistryError> {
+            unreachable!("load_evidence_record should not be called in comparator unit tests")
+        }
+
+        fn read_resource(
+            &self,
+            _uri: &str,
+        ) -> Result<guild_types::ResourceReadResult, RegistryError> {
+            unreachable!("read_resource should not be called in comparator unit tests")
+        }
+
+        fn load_policy_config(&self) -> Result<LocalPolicyConfig, RegistryError> {
+            unreachable!("load_policy_config should not be called in comparator unit tests")
+        }
+    }
+
+    #[derive(Clone)]
+    struct ComparatorRegistry {
+        records: HashMap<String, ExecutionRecord>,
+    }
+
+    impl SkillRegistry for ComparatorRegistry {
+        fn resolve(&self, _skill: &RequestedSkillRef) -> Result<InstalledSkill, RegistryError> {
+            unreachable!("resolve should not be called in comparator unit tests")
+        }
+
+        fn resolve_exact(
+            &self,
+            _skill: &ResolvedSkillRef,
+        ) -> Result<InstalledSkill, RegistryError> {
+            unreachable!("resolve_exact should not be called in comparator unit tests")
+        }
+
+        fn search(
+            &self,
+            _query: &guild_registry::SearchQuery,
+        ) -> Vec<guild_registry::SearchResult> {
+            unreachable!("search should not be called in comparator unit tests")
+        }
+
+        fn persist_execution_record(&self, _record: &ExecutionRecord) -> Result<(), RegistryError> {
+            unreachable!("persist_execution_record should not be called in comparator unit tests")
+        }
+
+        fn load_execution_record(
+            &self,
+            execution_id: &str,
+        ) -> Result<ExecutionRecord, RegistryError> {
+            self.records
+                .get(execution_id)
+                .cloned()
+                .ok_or_else(|| RegistryError::new("missing-record", "record not found"))
         }
 
         fn store_evidence(
@@ -2727,6 +2974,280 @@ mod tests {
         );
 
         assert_eq!(baseline.output, changed.output);
+        assert_ne!(baseline_projection, changed_projection);
+    }
+
+    fn sample_invoke_child_record(
+        execution_id: &str,
+        request_name: &str,
+        child_message: &str,
+    ) -> ExecutionRecord {
+        ExecutionRecord {
+            receipt: ExecutionReceipt {
+                execution_id: execution_id.into(),
+                uri: format!("guild://executions/{execution_id}"),
+                trace_id: format!("trace-{execution_id}"),
+                status: ExecutionStatus::Succeeded,
+            },
+            request: CallerRequest {
+                request_id: format!("request-{execution_id}"),
+                skill: RequestedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "invoke-child-zero".into(),
+                    },
+                    version_req: VersionRequirement::parse("^0.1").unwrap(),
+                },
+                tenant_id: "tenant-1".into(),
+                actor_id: "actor-1".into(),
+                mode: ExecutionMode::Inspect,
+                input: json!({ "name": request_name }),
+                budget: Budget::default(),
+                requested_capabilities: CapabilityGrantSet::default(),
+                idempotency_key: None,
+                trace_id: format!("trace-{execution_id}"),
+            },
+            policy_decision: PolicyDecision {
+                outcome: PolicyDecisionOutcome::Allowed,
+                summary: "allowed".into(),
+                profile_name: "default".into(),
+                trust_tier: LocalTrustTier::LocalDev,
+                verification_state: InstalledVerificationState::LocalSource,
+                reasons: Vec::new(),
+                detail: None,
+            },
+            resolved_skill: ResolvedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "invoke-child-zero".into(),
+                },
+                version: SkillVersion::parse("0.1.0").unwrap(),
+                digest: "sha256:child-digest".into(),
+            },
+            parent_execution_id: Some("parent-exec".into()),
+            status: ExecutionStatus::Succeeded,
+            output: Some(SkillOutput {
+                summary: "child succeeded".into(),
+                structured: json!({
+                    "message": child_message,
+                }),
+                diagnostics: Vec::new(),
+                effects: Vec::new(),
+                evidence: Vec::new(),
+            }),
+            termination: None,
+            granted_capabilities: CapabilityGrantSet::default(),
+            emitted_evidence: Vec::new(),
+            authority_observations: Vec::new(),
+            authority_observations_recorded: true,
+            metrics: ExecutionMetrics::default(),
+            provenance: Provenance {
+                resolved_skill: ResolvedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "invoke-child-zero".into(),
+                    },
+                    version: SkillVersion::parse("0.1.0").unwrap(),
+                    digest: "sha256:child-digest".into(),
+                },
+                abi: AbiVersion::GuildSkillInspectV1,
+                dependency_digests: Vec::new(),
+                started_at_utc: Some("2026-03-21T00:00:00Z".into()),
+                finished_at_utc: Some("2026-03-21T00:00:01Z".into()),
+            },
+            child_executions: Vec::new(),
+        }
+    }
+
+    fn sample_multi_child_parent_record() -> ExecutionRecord {
+        ExecutionRecord {
+            receipt: ExecutionReceipt {
+                execution_id: "parent-exec".into(),
+                uri: "guild://executions/parent-exec".into(),
+                trace_id: "trace-parent".into(),
+                status: ExecutionStatus::Succeeded,
+            },
+            request: CallerRequest {
+                request_id: "request-parent".into(),
+                skill: RequestedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "invoke-parent-single-child".into(),
+                    },
+                    version_req: VersionRequirement::parse("^0.1").unwrap(),
+                },
+                tenant_id: "tenant-1".into(),
+                actor_id: "actor-1".into(),
+                mode: ExecutionMode::Inspect,
+                input: json!({ "name": "Ada", "invoke_twice": true }),
+                budget: Budget::default(),
+                requested_capabilities: CapabilityGrantSet::default(),
+                idempotency_key: None,
+                trace_id: "trace-parent".into(),
+            },
+            policy_decision: PolicyDecision {
+                outcome: PolicyDecisionOutcome::Allowed,
+                summary: "allowed".into(),
+                profile_name: "default".into(),
+                trust_tier: LocalTrustTier::LocalDev,
+                verification_state: InstalledVerificationState::LocalSource,
+                reasons: Vec::new(),
+                detail: None,
+            },
+            resolved_skill: ResolvedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "invoke-parent-single-child".into(),
+                },
+                version: SkillVersion::parse("0.1.0").unwrap(),
+                digest: "sha256:parent-digest".into(),
+            },
+            parent_execution_id: None,
+            status: ExecutionStatus::Succeeded,
+            output: Some(SkillOutput {
+                summary: "parent succeeded".into(),
+                structured: json!({
+                    "message": "parent invoked child twice",
+                }),
+                diagnostics: Vec::new(),
+                effects: Vec::new(),
+                evidence: Vec::new(),
+            }),
+            termination: None,
+            granted_capabilities: CapabilityGrantSet::default(),
+            emitted_evidence: Vec::new(),
+            authority_observations: Vec::new(),
+            authority_observations_recorded: true,
+            metrics: ExecutionMetrics {
+                child_executions: 2,
+                ..ExecutionMetrics::default()
+            },
+            provenance: Provenance {
+                resolved_skill: ResolvedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "invoke-parent-single-child".into(),
+                    },
+                    version: SkillVersion::parse("0.1.0").unwrap(),
+                    digest: "sha256:parent-digest".into(),
+                },
+                abi: AbiVersion::GuildSkillInspectV1,
+                dependency_digests: vec!["sha256:child-digest".into()],
+                started_at_utc: Some("2026-03-21T00:00:00Z".into()),
+                finished_at_utc: Some("2026-03-21T00:00:02Z".into()),
+            },
+            child_executions: vec![
+                ChildExecutionRecord {
+                    alias: "child".into(),
+                    execution_id: "child-1".into(),
+                    uri: "guild://executions/child-1".into(),
+                    parent_execution_id: "parent-exec".into(),
+                    trace_id: "trace-child-1".into(),
+                    status: ExecutionStatus::Succeeded,
+                    policy_decision: PolicyDecision {
+                        outcome: PolicyDecisionOutcome::Allowed,
+                        summary: "allowed".into(),
+                        profile_name: "default".into(),
+                        trust_tier: LocalTrustTier::LocalDev,
+                        verification_state: InstalledVerificationState::LocalSource,
+                        reasons: Vec::new(),
+                        detail: None,
+                    },
+                    termination: None,
+                    provenance: Provenance {
+                        resolved_skill: ResolvedSkillRef {
+                            key: SkillKey {
+                                namespace: "example".into(),
+                                name: "invoke-child-zero".into(),
+                            },
+                            version: SkillVersion::parse("0.1.0").unwrap(),
+                            digest: "sha256:child-digest".into(),
+                        },
+                        abi: AbiVersion::GuildSkillInspectV1,
+                        dependency_digests: Vec::new(),
+                        started_at_utc: Some("2026-03-21T00:00:00Z".into()),
+                        finished_at_utc: Some("2026-03-21T00:00:01Z".into()),
+                    },
+                    granted_capabilities: CapabilityGrantSet::default(),
+                    metrics: ExecutionMetrics::default(),
+                },
+                ChildExecutionRecord {
+                    alias: "child".into(),
+                    execution_id: "child-2".into(),
+                    uri: "guild://executions/child-2".into(),
+                    parent_execution_id: "parent-exec".into(),
+                    trace_id: "trace-child-2".into(),
+                    status: ExecutionStatus::Succeeded,
+                    policy_decision: PolicyDecision {
+                        outcome: PolicyDecisionOutcome::Allowed,
+                        summary: "allowed".into(),
+                        profile_name: "default".into(),
+                        trust_tier: LocalTrustTier::LocalDev,
+                        verification_state: InstalledVerificationState::LocalSource,
+                        reasons: Vec::new(),
+                        detail: None,
+                    },
+                    termination: None,
+                    provenance: Provenance {
+                        resolved_skill: ResolvedSkillRef {
+                            key: SkillKey {
+                                namespace: "example".into(),
+                                name: "invoke-child-zero".into(),
+                            },
+                            version: SkillVersion::parse("0.1.0").unwrap(),
+                            digest: "sha256:child-digest".into(),
+                        },
+                        abi: AbiVersion::GuildSkillInspectV1,
+                        dependency_digests: Vec::new(),
+                        started_at_utc: Some("2026-03-21T00:00:01Z".into()),
+                        finished_at_utc: Some("2026-03-21T00:00:02Z".into()),
+                    },
+                    granted_capabilities: CapabilityGrantSet::default(),
+                    metrics: ExecutionMetrics::default(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn multi_child_invoke_projection_rejects_changed_child_input_with_same_output() {
+        let parent = sample_multi_child_parent_record();
+        let baseline_registry = ComparatorRegistry {
+            records: HashMap::from([
+                (
+                    "child-1".into(),
+                    sample_invoke_child_record("child-1", "Ada", "same-output"),
+                ),
+                (
+                    "child-2".into(),
+                    sample_invoke_child_record("child-2", "Bea", "same-output"),
+                ),
+            ]),
+        };
+        let changed_registry = ComparatorRegistry {
+            records: HashMap::from([
+                (
+                    "child-1".into(),
+                    sample_invoke_child_record("child-1", "Ada", "same-output"),
+                ),
+                (
+                    "child-2".into(),
+                    sample_invoke_child_record("child-2", "Cy", "same-output"),
+                ),
+            ]),
+        };
+
+        let baseline_projection = normalized_execution_projection(
+            &baseline_registry,
+            &parent,
+            LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1,
+        );
+        let changed_projection = normalized_execution_projection(
+            &changed_registry,
+            &parent,
+            LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1,
+        );
+
         assert_ne!(baseline_projection, changed_projection);
     }
 }

@@ -73,9 +73,9 @@ pub fn build_matrix() -> Result<Value> {
             "The live Rust runtime family vocabulary remains canonical. Draft-v1 statuses here describe only the bounded control-plane and witness bundle under docs/schemas/draft-v1/.",
             "The slice-aware measured source for M8-proper is docs/schemas/draft-v1/benchmark_matrix.json with the paired human report at docs/benchmarking/m8-real-path-benchmark.md. That benchmark keeps supported slices, fallback or refusal paths, and fail-closed walls separate instead of averaging them together.",
             "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
-            "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for eight deterministic slices, and one bounded invoke-skill slice for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions.",
+            "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for eight deterministic slices, and two bounded invoke-skill slices: one for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions, and one for that same declared alias exercised exactly twice in deterministic order under the same zero-authority inspect-only boundary.",
             "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-            "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured localhost GET and HEAD slices with either an explicit port or the implicit default HTTP port and deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
+            "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured localhost GET and HEAD slices with either an explicit port or the implicit default HTTP port and deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice and the exact two-child same-alias zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
         ],
         "layers": [
             "admission_runtime_guarantee_matching",
@@ -379,27 +379,42 @@ fn invoke_skill_family() -> Value {
                     "nested_child_executions": "forbidden"
                 },
                 "notes": "Bounded live proof exists only for the exact single-child zero-authority inspect slice."
+            },
+            {
+                "slice_id": "two-child-same-alias-zero-authority-inspect-fan-out",
+                "proof_status": "bounded_minimal",
+                "proof_backed_layers": ["live_minimization_proof", "plan_proof_token_linkage", "proof_witness_linkage"],
+                "invoke_shape": {
+                    "max_exercised_children": 2,
+                    "alias_binding": "same_exact_declared_dependency_alias_in_order",
+                    "child_identity": "installed_dependency_snapshot_exact_digest",
+                    "child_target_world": "guild-skill-inspect-v1",
+                    "child_result_comparator": "guild.runner.live-proof.normalized-inspect-multi-child-invoke.v1",
+                    "child_authority": "forbidden",
+                    "nested_child_executions": "forbidden"
+                },
+                "notes": "Bounded live proof exists only for the exact two-child same-alias zero-authority inspect slice."
             }
         ],
         "not_proven_shapes": [
             not_proven_shape("dynamic-or-broader-resolution", &["INVOKE_SKILL_DYNAMIC_RESOLUTION_UNSUPPORTED"], "Dynamic or broader invoke resolution remains not_proven."),
-            not_proven_shape("multi-child-fan-out", &["INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"], "Multi-child fan-out remains not_proven."),
+            not_proven_shape("multi-child-fan-out", &["INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"], "Multi-child fan-out beyond the exact two-child same-alias zero-authority inspect slice remains not_proven."),
             not_proven_shape("recursive-or-deeper-call-graph", &["INVOKE_SKILL_RECURSION_UNSUPPORTED"], "Recursive or deeper invoke graphs remain not_proven."),
             not_proven_shape("child-authority-use", &["INVOKE_SKILL_CHILD_AUTHORITY_UNSUPPORTED"], "Child-side authority use remains not_proven."),
-            not_proven_shape("non-inspect-child-world", &["INVOKE_SKILL_CHILD_WORLD_UNSUPPORTED"], "Non-inspect child targets remain not_proven.")
+            not_proven_shape("non-inspect-child-world", &["INVOKE_SKILL_EXPORT_WORLD_UNSUPPORTED"], "Non-inspect child targets remain not_proven.")
         ],
         "layers": {
             "admission_runtime_guarantee_matching": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical invoke-skill grants match the active runtime vocabulary."),
             "execution_plan_representation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical invoke-skill scopes directly."),
-            "live_minimization_proof": layer(STATUS_BOUNDED, &["LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "Invoke-skill live proof is bounded to one exact zero-authority child slice only."),
-            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "Proof-backed M6 issuance can consume the bounded invoke-skill proof for the exact single-child slice."),
+            "live_minimization_proof": layer(STATUS_BOUNDED, &["LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "Invoke-skill live proof is bounded to the exact zero-authority inspect slices only."),
+            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "Proof-backed M6 issuance can consume the bounded invoke-skill proof for the exact single-child and exact two-child same-alias slices."),
             "token_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical alias bindings verify directly against invoke-skill scopes."),
             "witness_generation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Live invoke observations normalize directly into canonical witness effects."),
             "witness_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical invoke-skill witnesses verify directly."),
             "positive_claim_verification": layer(STATUS_UNSUPPORTED, &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
             "negative_claim_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
-            "plan_proof_token_linkage": layer(STATUS_BOUNDED, &["TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to the exact single-child slice only."),
-            "proof_witness_linkage": layer(STATUS_BOUNDED, &["LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to the exact single-child slice only.")
+            "plan_proof_token_linkage": layer(STATUS_BOUNDED, &["TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to the exact single-child and exact two-child same-alias slices only."),
+            "proof_witness_linkage": layer(STATUS_BOUNDED, &["LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to the exact single-child and exact two-child same-alias slices only.")
         }
     })
 }

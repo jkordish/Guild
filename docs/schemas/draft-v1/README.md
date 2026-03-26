@@ -60,17 +60,17 @@ Current live-alignment status is explicit:
   - `read-resource`: bounded live proof over immutable `guild://executions/` and `guild://objects/records/` roots only
   - `log-write`: live proof over the observed discrete log-level slice
   - `http-request`: bounded live proof only for eight deterministic replay-fixtured slices over `http`: loopback IP `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, plus exact `localhost` `GET` and `HEAD`, each with an explicit-port form and an implicit-default-port form, always with deterministic loopback-only resolution bindings for the hostname slices and all with no query and no redirects, under the normalized inspect-output comparator
-  - `invoke-skill`: bounded live proof only for one exact single-child slice where one declared alias resolves through the installed dependency snapshot to one exact zero-authority child on `guild-skill-inspect-v1`, with deterministic child input, the child-aware normalized inspect comparator, and zero nested child executions
+  - `invoke-skill`: bounded live proof only for two exact zero-authority inspect slices, one where one declared alias resolves through the installed dependency snapshot to one exact child on `guild-skill-inspect-v1`, and one where that same declared alias is exercised exactly twice in deterministic order under the same boundary
   - `emit-evidence`: still `not_proven`. The live runtime now binds a host-owned sink descriptor and uses a dedicated single-sink comparator profile for the fixed local object-store sink, but the tested exact single-emission shrink still does not re-execute equivalently under that comparator. Draft-v1 therefore keeps plan -> proof -> token and proof -> witness linkage unavailable and does not smuggle sink or payload specifics through the current coarser `emit-evidence` fields.
 - M6 now issues and verifies direct canonical family scopes, and it can consume live proofs where they exist, but it remains a draft-local HMAC token layer and does not justify runtime-general enforcement claims
-- M8c now proves honest live end-to-end chains for `read-resource`, for the bounded `http-request` replay slices, and for the exact bounded single-child `invoke-skill` slice: plan -> bounded live proof -> proof-backed token -> proof-linked witness
-- broader `http-request` shapes, including other hostname forms, query or fragment components, redirects, multiple exercised requests, and `https`, broader `invoke-skill` shapes including dynamic or broader resolution, multi-child fan-out, recursion, child-side authority use, and non-inspect child targets, plus all current `emit-evidence` flows, still stay on explicit upper-bound-only token behavior and unlinked witness behavior because live proof is not yet honest for them
+- M8c now proves honest live end-to-end chains for `read-resource`, for the bounded `http-request` replay slices, and for the exact bounded single-child and exact bounded two-child same-alias `invoke-skill` slices: plan -> bounded live proof -> proof-backed token -> proof-linked witness
+- broader `http-request` shapes, including other hostname forms, query or fragment components, redirects, multiple exercised requests outside the checked replay-backed slice set, and `https`, broader `invoke-skill` shapes including dynamic or broader resolution, broader multi-child fan-out, recursion, child-side authority use, and non-inspect child targets, plus all current `emit-evidence` flows, still stay on explicit upper-bound-only token behavior and unlinked witness behavior because live proof is not yet honest for them
 
 Current M8-proper benchmark truth is explicit and slice-aware:
 
-- supported proof-linked slices: one bounded `read-resource` immutable-root slice, eight bounded `http-request` replay-fixtured `http` slices, and one bounded `invoke-skill` single-child zero-authority slice
+- supported proof-linked slices: one bounded `read-resource` immutable-root slice, eight bounded `http-request` replay-fixtured `http` slices, and two bounded `invoke-skill` zero-authority inspect slices
 - supported proof-only slice: one exact `log-write` observed `info`-level slice through M4 plus M5 only
-- benchmarked unsupported slices: redirect `http-request`, multi-child `invoke-skill`, and replay-unavailable `emit-evidence`, each with `10/10` default refusal, `10/10` explicit upper-bound fallback issuance, and `10/10` unlinked witness generation
+- benchmarked unsupported slices: redirect `http-request` and replay-unavailable `emit-evidence`, each with `10/10` default refusal, `10/10` explicit upper-bound fallback issuance, and `10/10` unlinked witness generation
 - benchmarked extra fail-closed walls: `http-request` no-replay, `read-resource` execution-query shrink, and `invoke-skill` child-authority use, each triggering `10/10` in the checked scenarios
 - measured overhead distributions now live in the checked `benchmark_matrix.json` and paired Markdown report; the Rust-native benchmark generator owns those values directly
 - negative-claim checks are still coverage-limited in the checked scenarios: every measured non-`log-write` slice recorded `0` success, `0` fail, and `3` coverage-limited outcomes
@@ -381,6 +381,10 @@ Its current limits are also explicit:
 - `examples/runtime-invoke-skill.admit.request.json`
 - `examples/runtime-invoke-skill.invocation.json`
 - `examples/runtime-invoke-skill.execution-record.json`
+- `examples/runtime-invoke-skill-multi-child.contract.json`
+- `examples/runtime-invoke-skill-multi-child.admit.request.json`
+- `examples/runtime-invoke-skill-multi-child.invocation.json`
+- `examples/runtime-invoke-skill-multi-child.execution-record.json`
 - `examples/runtime-emit-evidence-zero.contract.json`
 - `examples/runtime-emit-evidence-zero.admit.request.json`
 - `examples/runtime-emit-evidence.invocation.json`

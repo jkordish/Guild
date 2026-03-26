@@ -11,7 +11,7 @@ This is a technical claim ladder for counsel. It is not a set of formal patent c
 - Claim id: `c1-primary-method-fail-closed-admission-bounded-proof-linkage`
 - Status: `measured_supported_now`
 - Technical concept: receive a requested portable component invocation, compute a fail-closed upper-bound admission result, attempt bounded live proof only for measured family-specific slices, and carry proof state into downstream token and witness linkage only where that proof exists.
-- Measured scope now: `read-resource-immutable-guild-roots`, the eight measured `http-request` replay-backed slices, and `invoke-skill-single-child-zero-authority`, plus explicit fallback or refusal behavior for the measured unsupported slices and walls.
+- Measured scope now: `read-resource-immutable-guild-roots`, the eight measured `http-request` replay-backed slices, and the two measured `invoke-skill` zero-authority slices (`invoke-skill-single-child-zero-authority` plus `invoke-skill-two-child-same-alias-zero-authority`), plus explicit fallback or refusal behavior for the measured unsupported slices and walls.
 - Not included: runtime-general authority minimization, broad `emit-evidence` proof, broad outbound HTTP proof, or broad child-call-graph proof.
 
 ## C2 Family-Specific Bounded Proof Slices
@@ -22,7 +22,7 @@ This is a technical claim ladder for counsel. It is not a set of formal patent c
 - Measured scope now:
   - `read-resource` over immutable execution and object-record roots
   - eight bounded `http-request` replay-backed slices
-  - one bounded `invoke-skill` single-child zero-authority slice
+  - two bounded `invoke-skill` zero-authority slices: one exact single-child slice and one exact two-child same-alias slice
   - one exact `log-write` proof-only slice
 - Not included: any claim that one proof basis covers all families or all shapes inside a family.
 
@@ -33,7 +33,7 @@ This is a technical claim ladder for counsel. It is not a set of formal patent c
 - Technical concept: bound proof to deterministic replay or comparator configurations that are explicit enough to justify the measured slice and fail closed when those preconditions are absent.
 - Measured scope now:
   - normalized inspect comparator for `read-resource` and the measured `http-request` slices
-  - child-aware normalized inspect comparator for the measured `invoke-skill` slice
+  - child-aware normalized inspect comparators for the measured `invoke-skill` slices
   - single-sink comparator exists for `emit-evidence`, but the measured replay still fails closed
 - Not included: generic replay sufficiency or replay without the measured comparator and fixture conditions.
 
@@ -64,7 +64,6 @@ This is a technical claim ladder for counsel. It is not a set of formal patent c
 - Technical concept: unsupported shapes and missing proof prerequisites are part of the measured surface and are recorded with stable reason codes instead of being silently widened away.
 - Measured scope now:
   - redirect-driven `http-request`
-  - multi-child `invoke-skill`
   - replay-unavailable `emit-evidence`
   - no-replay HTTP proof search
   - read-resource query-root shrink
@@ -105,7 +104,7 @@ This is a technical claim ladder for counsel. It is not a set of formal patent c
 - Technical concept: preserve the next frontier explicitly instead of overclaiming it.
 - Not-claimable-yet items now:
   - proof-backed `emit-evidence` linkage
-  - broader `invoke-skill` call graphs
+  - broader `invoke-skill` call graphs beyond the exact single-child and exact two-child same-alias zero-authority slices
   - broader outbound HTTP proof beyond the eight measured slices
   - runtime-general proof across all families
   - runtime-general delegated-token enforcement

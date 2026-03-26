@@ -1027,7 +1027,7 @@ fn run_invoke_skill_single_child_bounded() -> Value {
     )
 }
 
-fn prepare_invoke_skill_multi_child_unsupported() -> PreparedScenario {
+fn prepare_invoke_skill_multi_child_bounded() -> PreparedScenario {
     let temp = TempRegistry::new();
     temp.install(repo_root().join("examples/skills/invoke-child-zero"));
     temp.install(repo_root().join("examples/skills/invoke-parent-single-child"));
@@ -1050,14 +1050,14 @@ fn prepare_invoke_skill_multi_child_unsupported() -> PreparedScenario {
                 grants: vec![invoke_skill_grant(&["child"])],
             },
         ),
-        comparator: LiveProofComparatorProfile::NormalizedInspectSingleChildInvokeV1,
+        comparator: LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1,
     }
 }
 
-fn run_invoke_skill_multi_child_unsupported() -> Value {
+fn run_invoke_skill_multi_child_bounded() -> Value {
     scenario_output(
-        "invoke-skill-multi-child-unsupported",
-        prepare_invoke_skill_multi_child_unsupported().prove(),
+        "invoke-skill-multi-child-bounded",
+        prepare_invoke_skill_multi_child_bounded().prove(),
     )
 }
 
@@ -1117,7 +1117,7 @@ fn run_named_scenario(name: &str) -> Value {
             run_emit_evidence_single_sink_replay_unavailable()
         }
         "invoke-skill-single-child-bounded" => run_invoke_skill_single_child_bounded(),
-        "invoke-skill-multi-child-unsupported" => run_invoke_skill_multi_child_unsupported(),
+        "invoke-skill-multi-child-bounded" => run_invoke_skill_multi_child_bounded(),
         "invoke-skill-child-authority-unsupported" => {
             run_invoke_skill_child_authority_unsupported()
         }
@@ -1220,11 +1220,11 @@ fn benchmark_named_scenario(name: &str, warmup_runs: usize, measured_runs: usize
             measured_runs,
             prepare_invoke_skill_single_child_bounded,
         ),
-        "invoke-skill-multi-child-unsupported" => benchmark_scenario(
-            "invoke-skill-multi-child-unsupported",
+        "invoke-skill-multi-child-bounded" => benchmark_scenario(
+            "invoke-skill-multi-child-bounded",
             warmup_runs,
             measured_runs,
-            prepare_invoke_skill_multi_child_unsupported,
+            prepare_invoke_skill_multi_child_bounded,
         ),
         "invoke-skill-child-authority-unsupported" => benchmark_scenario(
             "invoke-skill-child-authority-unsupported",

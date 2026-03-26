@@ -1,0 +1,117 @@
+{
+  "kind": "guild.skill_contract",
+  "version": "1.0.0",
+  "contract_id": "urn:guild:contract:runtime-invoke-skill-multi-child:v1",
+  "component": {
+    "name": "invoke-parent-single-child",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "a41daeeed2e0f92873c8766a300ab831e6462e0bfd32d7c4f2879fe8b5ea6ae2"
+    },
+    "component_model": "wasm-component",
+    "component_model_version": "0.2.0",
+    "wit_world": "guild-skill-inspect-v1"
+  },
+  "export": {
+    "name": "run",
+    "interface": "example/invoke-parent-single-child",
+    "version": "1.0.0"
+  },
+  "input_class_fingerprint": {
+    "kind": "json-schema-hash",
+    "canonicalization": "rfc8785-jcs",
+    "digest": {
+      "algorithm": "sha256",
+      "value": "1d59539a50ef0d0fe1c862777c61dfc8401bdf162f0648074f4bba15036c1884"
+    }
+  },
+  "required_effects": [
+    {
+      "family": "invoke-skill",
+      "scope": {
+        "kind": "skill",
+        "aliases": [
+          "child"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 2
+      },
+      "justification": "Invoke the same declared dependency alias twice in deterministic order through the live canonical invoke-skill host surface."
+    }
+  ],
+  "forbidden_effects": [
+    {
+      "effect_class": "capability.delegate",
+      "scope": {
+        "kind": "delegation"
+      },
+      "justification": "No downstream delegation."
+    }
+  ],
+  "authority_ceiling": [
+    {
+      "family": "invoke-skill",
+      "scope": {
+        "kind": "skill",
+        "aliases": [
+          "child"
+        ]
+      },
+      "cardinality": {
+        "max_calls": 2
+      },
+      "justification": "Canonical control-plane ceiling matches the bounded two-child same-alias invoke-skill slice directly."
+    }
+  ],
+  "required_runtime_guarantees": {
+    "execution_isolation_assurance": {
+      "minimum": "strong"
+    },
+    "filesystem_isolation_class": {
+      "minimum": "preopen_only"
+    },
+    "network_policy_granularity": {
+      "minimum": "binary"
+    },
+    "child_process_policy": {
+      "required_mode": "forbidden"
+    },
+    "token_passthrough_policy": {
+      "required_mode": "forbidden"
+    },
+    "revocation_behavior": {
+      "required_mode": "lease"
+    },
+    "delegation_enforcement": {
+      "audience_binding_required": true,
+      "call_chain_binding_required": true,
+      "anti_replay_required": true,
+      "max_hops_enforced_required": true
+    },
+    "witness_support": {
+      "minimum_level": "hostcall",
+      "acceptable_tamper_evidence_modes": [
+        "hash_chain",
+        "merkle_chain"
+      ],
+      "acceptable_signature_modes": [
+        "runtime_key",
+        "external_signer"
+      ],
+      "trusted_time_source_required": true,
+      "redacted_io_hashes_required": true,
+      "authority_plan_digest_required": true
+    }
+  },
+  "delegation_policy": {
+    "mode": "forbidden",
+    "max_hops": 0,
+    "audience_binding_required": true,
+    "call_chain_binding_required": true,
+    "anti_replay_required": true,
+    "ttl_seconds_max": 300
+  },
+  "witness_level": "hostcall",
+  "notes": "Direct canonical invoke-skill example for the bounded two-child same-alias live-proof-backed slice only: one declared dependency alias resolved through the installed dependency snapshot to two exact zero-authority children on guild-skill-inspect-v1 in deterministic order."
+}

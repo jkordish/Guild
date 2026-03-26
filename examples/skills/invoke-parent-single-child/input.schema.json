@@ -6,6 +6,9 @@
     "name": {
       "type": "string"
     },
+    "second_name": {
+      "type": "string"
+    },
     "invoke_twice": {
       "type": "boolean"
     }

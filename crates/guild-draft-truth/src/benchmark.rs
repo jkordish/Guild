@@ -1912,7 +1912,7 @@ pub fn render_report(matrix: &Value) -> Result<String> {
         String::new(),
         "## Notes".to_owned(),
         String::new(),
-        "- The current checked real-path linked chain is `read-resource`, eight bounded `http-request` slices, one bounded `invoke-skill` slice, and explicit upper-bound fallback or unlinked witness behavior for the benchmarked unsupported slices.".to_owned(),
+        "- The current checked real-path linked chain is `read-resource`, eight bounded `http-request` slices, two bounded `invoke-skill` slices, and explicit upper-bound fallback or unlinked witness behavior for the benchmarked unsupported slices.".to_owned(),
         "- `log-write` is still measured here through M4 plus M5 only. The repo has a real live proof slice for observed levels, but this benchmark does not claim a checked real-path M6 or M7 linkage slice for `log-write`.".to_owned(),
         "- The measured reduction split is still mixed by slice: `read-resource` really narrows from the admitted upper bound, the checked `http-request` and `invoke-skill` fixtures are already narrow enough that the proven authority does not shrink them further, and `log-write` is exact over an already narrow admitted level slice.".to_owned(),
         "- The checked negative-claim probes remain coverage-limited on the checked path. They stay `not_provable` rather than being rewritten into synthetic success or failure.".to_owned(),
@@ -2242,6 +2242,27 @@ fn slice_specs() -> Vec<SliceSpec> {
             notes: "Bounded proof-backed single-child invoke slice only.",
         },
         SliceSpec {
+            slice_id: "invoke-skill-two-child-same-alias-zero-authority",
+            family: "invoke-skill",
+            slice_name: "two-child same-alias zero-authority inspect fan-out",
+            exact_scope: "same declared alias exercised twice in deterministic order from one parent execution",
+            support_status: "supported",
+            scenario_name: "invoke-skill-multi-child-bounded",
+            contract: "examples/runtime-invoke-skill-multi-child.contract.json",
+            request: "examples/runtime-invoke-skill-multi-child.admit.request.json",
+            invocation: "examples/runtime-invoke-skill-multi-child.invocation.json",
+            execution_record_path: Some(
+                "examples/runtime-invoke-skill-multi-child.execution-record.json",
+            ),
+            linked_path: LinkedPath::ProofLinked,
+            default_path: "proof_backed",
+            token_linkage_status: "proof_backed",
+            witness_linkage_status: "proof_linked",
+            negative_claim_support_status: "supported",
+            negative_claim_type: Some("no_invoke_skill_outside_scope"),
+            notes: "Bounded proof-backed exact two-child same-alias invoke slice only.",
+        },
+        SliceSpec {
             slice_id: "http-request-redirect-driven-execution",
             family: "http-request",
             slice_name: "redirect-driven execution",
@@ -2259,25 +2280,6 @@ fn slice_specs() -> Vec<SliceSpec> {
             negative_claim_support_status: "supported",
             negative_claim_type: Some("no_http_request_outside_scope"),
             notes: "Redirects stay not_proven. Default issuance refuses; explicit upper-bound fallback issues and witness generation stays unlinked.",
-        },
-        SliceSpec {
-            slice_id: "invoke-skill-multi-child-fan-out",
-            family: "invoke-skill",
-            slice_name: "multi-child fan-out",
-            exact_scope: "same alias exercised twice from one parent execution",
-            support_status: "not_proven",
-            scenario_name: "invoke-skill-multi-child-unsupported",
-            contract: "examples/runtime-invoke-skill.contract.json",
-            request: "examples/runtime-invoke-skill.admit.request.json",
-            invocation: "examples/runtime-invoke-skill.invocation.json",
-            execution_record_path: None,
-            linked_path: LinkedPath::FallbackUnlinked,
-            default_path: "refusal_then_upper_bound_fallback",
-            token_linkage_status: "upper_bound_fallback",
-            witness_linkage_status: "unlinked",
-            negative_claim_support_status: "supported",
-            negative_claim_type: Some("no_invoke_skill_outside_scope"),
-            notes: "Multi-child invoke remains not_proven. Default issuance refuses; explicit upper-bound fallback issues and witness generation stays unlinked.",
         },
         SliceSpec {
             slice_id: "emit-evidence-single-emission-replay-unavailable",
@@ -2398,12 +2400,11 @@ impl SliceSpec {
                 "family": "http-request",
                 "resource": "HEAD:http://127.0.0.1/response.json",
             })),
-            "invoke-skill-single-child-zero-authority" | "invoke-skill-multi-child-fan-out" => {
-                Some(json!({
-                    "family": "invoke-skill",
-                    "resource": "child",
-                }))
-            }
+            "invoke-skill-single-child-zero-authority"
+            | "invoke-skill-two-child-same-alias-zero-authority" => Some(json!({
+                "family": "invoke-skill",
+                "resource": "child",
+            })),
             "http-request-redirect-driven-execution" => Some(json!({
                 "family": "http-request",
                 "resource": "GET:http://127.0.0.1:18080/redirect.json",

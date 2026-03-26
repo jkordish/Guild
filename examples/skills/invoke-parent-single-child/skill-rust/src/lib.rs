@@ -39,12 +39,18 @@ impl Guest for InvokeParentSingleChild {
             .get("invoke_twice")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let second_greeted = parsed_input
+            .get("second_name")
+            .and_then(Value::as_str)
+            .filter(|name| !name.is_empty())
+            .unwrap_or(greeted);
 
         let child_input = json!({ "name": greeted }).to_string();
         let first = invoke_child(&child_input)?;
         let mut children = vec![first];
         if invoke_twice {
-            children.push(invoke_child(&child_input)?);
+            let second_child_input = json!({ "name": second_greeted }).to_string();
+            children.push(invoke_child(&second_child_input)?);
         }
 
         let invoked_aliases = vec![CHILD_ALIAS.to_owned(); children.len()];
