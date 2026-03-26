@@ -155,23 +155,34 @@ def emit_evidence_exact_binding_matches_grant(binding: dict[str, Any], grant: di
     return True
 
 
+def applicable_host_exact_bindings(
+    bindings: list[dict[str, Any]],
+    authority_plan: dict[str, Any],
+) -> list[dict[str, Any]]:
+    normalized = stable_unique_host_exact_bindings(bindings)
+    grants = authority_plan.get("grants", [])
+    if not isinstance(grants, list):
+        return []
+
+    applicable: list[dict[str, Any]] = []
+    for binding in normalized:
+        family = binding.get("family")
+        if family != "emit-evidence":
+            continue
+        if any(
+            isinstance(grant, dict) and emit_evidence_exact_binding_matches_grant(binding, grant)
+            for grant in grants
+        ):
+            applicable.append(deepcopy(binding))
+    return stable_unique_host_exact_bindings(applicable)
+
+
 def host_exact_bindings_match_authority(
     bindings: list[dict[str, Any]],
     authority_plan: dict[str, Any],
 ) -> bool:
-    grants = authority_plan.get("grants", [])
-    if not isinstance(grants, list):
-        return False
-    for binding in bindings:
-        family = binding.get("family")
-        if family != "emit-evidence":
-            return False
-        if not any(
-            isinstance(grant, dict) and emit_evidence_exact_binding_matches_grant(binding, grant)
-            for grant in grants
-        ):
-            return False
-    return True
+    normalized = stable_unique_host_exact_bindings(bindings)
+    return normalized == applicable_host_exact_bindings(normalized, authority_plan)
 
 
 def issuance_result(
@@ -858,7 +869,7 @@ def create_root_token(
         "execution_plan_digest": digest_struct(plan),
         "proof_id": proof_id,
         "proof_status": proof_status,
-        "host_exact_bindings": host_exact_bindings,
+        "host_exact_bindings": applicable_host_exact_bindings(host_exact_bindings, authority_plan),
         "issuance_basis": issuance_basis,
         "skill_contract_id": contract["contract_id"],
         "contract_digest": digest_struct(contract),
@@ -975,17 +986,10 @@ def create_child_token(
         ):
             child_refusal_reason_codes.append("PARENT_CHILD_DELEGATION_BROADENING")
 
-    if host_exact_bindings and not host_exact_bindings_match_authority(
+    child_host_exact_bindings = applicable_host_exact_bindings(
         host_exact_bindings,
         child_authority_plan,
-    ):
-        child_refusal_reason_codes.append("TOKEN_SCOPE_EXCEEDS_PROOF")
-
-    parent_exact_bindings = stable_unique_host_exact_bindings(
-        parent_token.get("host_exact_bindings", [])
     )
-    if host_exact_bindings != parent_exact_bindings:
-        child_refusal_reason_codes.append("PARENT_CHILD_SCOPE_BROADENING")
 
     child_audiences = stable_unique_strings(
         sorted(audiences if audiences is not None else parent_token["audience_binding"]["audiences"])
@@ -1070,7 +1074,7 @@ def create_child_token(
         "execution_plan_digest": digest_struct(plan),
         "proof_id": proof_id,
         "proof_status": proof_status,
-        "host_exact_bindings": host_exact_bindings,
+        "host_exact_bindings": child_host_exact_bindings,
         "issuance_basis": issuance_basis,
         "skill_contract_id": contract["contract_id"],
         "contract_digest": digest_struct(contract),
@@ -1152,10 +1156,6 @@ def token_parent_subset_ok(token: dict[str, Any], parent_token: dict[str, Any]) 
         reason_codes.append("PARENT_CHILD_TTL_BROADENING")
     if token["chosen_runtime"] != parent_token["chosen_runtime"]:
         reason_codes.append("PARENT_CHILD_RUNTIME_BROADENING")
-    if stable_unique_host_exact_bindings(token.get("host_exact_bindings", [])) != stable_unique_host_exact_bindings(
-        parent_token.get("host_exact_bindings", [])
-    ):
-        reason_codes.append("PARENT_CHILD_SCOPE_BROADENING")
     if token["call_chain"]["chain_id"] != parent_token["call_chain"]["chain_id"] or not token["call_chain"]["links"][: len(parent_token["call_chain"]["links"])] == parent_token["call_chain"]["links"]:
         reason_codes.append("CALL_CHAIN_MISMATCH")
     if token["delegation"]["remaining_hops"] > max(parent_token["delegation"]["remaining_hops"] - 1, 0):
@@ -1269,10 +1269,19 @@ def verify_token(
             proof_exact_bindings = stable_unique_host_exact_bindings(
                 proof.get("host_exact_bindings", [])
             )
+            if proof_exact_bindings and not host_exact_bindings_match_authority(
+                proof_exact_bindings,
+                proof["proven_authority_plan"],
+            ):
+                reason_codes.append("PROOF_NOT_ACCEPTABLE")
             token_exact_bindings = stable_unique_host_exact_bindings(
                 token.get("host_exact_bindings", [])
             )
-            if token_exact_bindings != proof_exact_bindings:
+            expected_token_exact_bindings = applicable_host_exact_bindings(
+                proof_exact_bindings,
+                token["granted_authority"],
+            )
+            if token_exact_bindings != expected_token_exact_bindings:
                 reason_codes.append("PROOF_NOT_ACCEPTABLE")
             if token_exact_bindings and not host_exact_bindings_match_authority(
                 token_exact_bindings,

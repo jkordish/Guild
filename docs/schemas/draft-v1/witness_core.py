@@ -33,6 +33,7 @@ from token_core import (
     PROOF_SOURCE_LIVE_RUNTIME,
     TOKEN_CANONICALIZATION,
     TOKEN_PROTECTION_MODE,
+    applicable_host_exact_bindings,
     attach_protection,
     host_exact_bindings_match_authority,
     load_issuer_secret,
@@ -830,7 +831,19 @@ def verify_or_bind_token(
         proof_exact_bindings = stable_unique_host_exact_bindings(
             proof.get("host_exact_bindings", []) if proof is not None else []
         )
-        if token_exact_bindings != proof_exact_bindings:
+        if proof_exact_bindings and (
+            proof is None
+            or not host_exact_bindings_match_authority(
+                proof_exact_bindings,
+                proof["proven_authority_plan"],
+            )
+        ):
+            reason_codes.append("TOKEN_LINKAGE_MISMATCH")
+        expected_token_exact_bindings = applicable_host_exact_bindings(
+            proof_exact_bindings,
+            token["granted_authority"],
+        )
+        if token_exact_bindings != expected_token_exact_bindings:
             reason_codes.append("TOKEN_LINKAGE_MISMATCH")
     elif token_exact_bindings:
         reason_codes.append("TOKEN_LINKAGE_MISMATCH")
@@ -945,6 +958,14 @@ def generate_witness(
     trusted_proof_authority: dict[str, Any] | None = None
     if proof is not None:
         proof_errors = validate_proof_alignment(plan, contract, proof, issued_at)
+        proof_exact_bindings = stable_unique_host_exact_bindings(
+            proof.get("host_exact_bindings", [])
+        )
+        if proof_exact_bindings and not host_exact_bindings_match_authority(
+            proof_exact_bindings,
+            proof["proven_authority_plan"],
+        ):
+            proof_errors.append("PROOF_NOT_ACCEPTABLE")
         if required_proof_source_kind is not None and proof_source_kind(proof) != required_proof_source_kind:
             proof_errors.append("PROOF_LINKAGE_UNAVAILABLE")
         if proof_errors:
@@ -1237,6 +1258,14 @@ def verify_witness(
         else:
             if validate_proof_alignment(plan, contract, proof, verification_time):
                 reason_codes.append("PROOF_LINKAGE_MISMATCH")
+            proof_exact_bindings = stable_unique_host_exact_bindings(
+                proof.get("host_exact_bindings", [])
+            )
+            if proof_exact_bindings and not host_exact_bindings_match_authority(
+                proof_exact_bindings,
+                proof["proven_authority_plan"],
+            ):
+                reason_codes.append("PROOF_LINKAGE_MISMATCH")
             if (
                 witness["proof_basis"]["proof_id"] != proof["proof_id"]
                 or witness["proof_basis"]["proof_digest"] != digest_struct(proof)
@@ -1246,9 +1275,11 @@ def verify_witness(
             proof_basis_source_kind = witness["proof_basis"].get("proof_source_kind")
             if proof_basis_source_kind is not None and proof_basis_source_kind != proof_source_kind(proof):
                 reason_codes.append("PROOF_LINKAGE_MISMATCH")
-            if stable_unique_host_exact_bindings(witness.get("host_exact_bindings", [])) != stable_unique_host_exact_bindings(
-                proof.get("host_exact_bindings", [])
-            ):
+            expected_proof_exact_bindings = applicable_host_exact_bindings(
+                proof_exact_bindings,
+                token["granted_authority"] if token is not None and witness["token_basis"] is not None else proof["proven_authority_plan"],
+            )
+            if stable_unique_host_exact_bindings(witness.get("host_exact_bindings", [])) != expected_proof_exact_bindings:
                 reason_codes.append("PROOF_LINKAGE_MISMATCH")
 
     if witness["token_basis"] is not None:
