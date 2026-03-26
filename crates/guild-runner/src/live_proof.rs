@@ -1962,6 +1962,10 @@ fn normalized_execution_projection(
                     "resolved_skill": child.provenance.resolved_skill,
                     "abi": child.provenance.abi,
                     "granted_capabilities": child.granted_capabilities,
+                    "request_input_binding": normalized_child_request_input_binding(
+                        registry,
+                        child.execution_id.as_str(),
+                    ),
                 }))
                 .collect::<Vec<_>>(),
             "loaded_child_records": record
@@ -2003,6 +2007,23 @@ fn normalized_execution_projection(
                     _ => None,
                 })
                 .collect::<Vec<_>>(),
+        }),
+    }
+}
+
+fn normalized_child_request_input_binding(
+    registry: &impl SkillRegistry,
+    execution_id: &str,
+) -> Value {
+    match registry.load_execution_record(execution_id) {
+        Ok(record) => json!({
+            "request_input_digest": sha256_json(&record.request.input),
+        }),
+        Err(error) => json!({
+            "load_error": {
+                "code": error.code,
+                "message": error.message,
+            }
         }),
     }
 }
@@ -2634,13 +2655,16 @@ fn emit_evidence_replay_input_digest(
 mod tests {
     use super::*;
 
+    use std::collections::HashMap;
+
     use guild_registry::RegistryError;
     use guild_types::{
-        Budget, CallerRequest, CapabilityGrantSet, EvidenceAudience, EvidenceEmissionRequest,
-        ExecutionMetrics, ExecutionMode, ExecutionReceipt, InstalledVerificationState,
-        LocalPolicyConfig, LocalTrustTier, PolicyDecision, PolicyDecisionOutcome, Provenance,
-        RedactionClass, RequestedSkillRef, ResolvedSkillRef, SkillKey, SkillOutput, SkillVersion,
-        VersionRequirement, local_object_store_evidence_sink_descriptor,
+        Budget, CallerRequest, CapabilityGrantSet, ChildExecutionRecord, EvidenceAudience,
+        EvidenceEmissionRequest, ExecutionMetrics, ExecutionMode, ExecutionReceipt,
+        InstalledVerificationState, LocalPolicyConfig, LocalTrustTier, PolicyDecision,
+        PolicyDecisionOutcome, Provenance, RedactionClass, RequestedSkillRef, ResolvedSkillRef,
+        SkillKey, SkillOutput, SkillVersion, VersionRequirement,
+        local_object_store_evidence_sink_descriptor,
     };
 
     #[derive(Clone)]
@@ -2674,6 +2698,68 @@ mod tests {
             _execution_id: &str,
         ) -> Result<ExecutionRecord, RegistryError> {
             unreachable!("load_execution_record should not be called in comparator unit tests")
+        }
+
+        fn store_evidence(
+            &self,
+            _produced_by_execution: &str,
+            _request: &EvidenceEmissionRequest,
+        ) -> Result<guild_types::EvidenceRef, RegistryError> {
+            unreachable!("store_evidence should not be called in comparator unit tests")
+        }
+
+        fn load_evidence_record(&self, _uri: &str) -> Result<EvidenceRecord, RegistryError> {
+            unreachable!("load_evidence_record should not be called in comparator unit tests")
+        }
+
+        fn read_resource(
+            &self,
+            _uri: &str,
+        ) -> Result<guild_types::ResourceReadResult, RegistryError> {
+            unreachable!("read_resource should not be called in comparator unit tests")
+        }
+
+        fn load_policy_config(&self) -> Result<LocalPolicyConfig, RegistryError> {
+            unreachable!("load_policy_config should not be called in comparator unit tests")
+        }
+    }
+
+    #[derive(Clone)]
+    struct ComparatorRegistry {
+        records: HashMap<String, ExecutionRecord>,
+    }
+
+    impl SkillRegistry for ComparatorRegistry {
+        fn resolve(&self, _skill: &RequestedSkillRef) -> Result<InstalledSkill, RegistryError> {
+            unreachable!("resolve should not be called in comparator unit tests")
+        }
+
+        fn resolve_exact(
+            &self,
+            _skill: &ResolvedSkillRef,
+        ) -> Result<InstalledSkill, RegistryError> {
+            unreachable!("resolve_exact should not be called in comparator unit tests")
+        }
+
+        fn search(
+            &self,
+            _query: &guild_registry::SearchQuery,
+        ) -> Vec<guild_registry::SearchResult> {
+            unreachable!("search should not be called in comparator unit tests")
+        }
+
+        fn persist_execution_record(&self, _record: &ExecutionRecord) -> Result<(), RegistryError> {
+            unreachable!("persist_execution_record should not be called in comparator unit tests")
+        }
+
+        fn load_execution_record(
+            &self,
+            execution_id: &str,
+        ) -> Result<ExecutionRecord, RegistryError> {
+            self.records
+                .get(execution_id)
+                .cloned()
+                .ok_or_else(|| RegistryError::new("missing-record", "record not found"))
         }
 
         fn store_evidence(
@@ -2878,6 +2964,280 @@ mod tests {
         );
 
         assert_eq!(baseline.output, changed.output);
+        assert_ne!(baseline_projection, changed_projection);
+    }
+
+    fn sample_invoke_child_record(
+        execution_id: &str,
+        request_name: &str,
+        child_message: &str,
+    ) -> ExecutionRecord {
+        ExecutionRecord {
+            receipt: ExecutionReceipt {
+                execution_id: execution_id.into(),
+                uri: format!("guild://executions/{execution_id}"),
+                trace_id: format!("trace-{execution_id}"),
+                status: ExecutionStatus::Succeeded,
+            },
+            request: CallerRequest {
+                request_id: format!("request-{execution_id}"),
+                skill: RequestedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "invoke-child-zero".into(),
+                    },
+                    version_req: VersionRequirement::parse("^0.1").unwrap(),
+                },
+                tenant_id: "tenant-1".into(),
+                actor_id: "actor-1".into(),
+                mode: ExecutionMode::Inspect,
+                input: json!({ "name": request_name }),
+                budget: Budget::default(),
+                requested_capabilities: CapabilityGrantSet::default(),
+                idempotency_key: None,
+                trace_id: format!("trace-{execution_id}"),
+            },
+            policy_decision: PolicyDecision {
+                outcome: PolicyDecisionOutcome::Allowed,
+                summary: "allowed".into(),
+                profile_name: "default".into(),
+                trust_tier: LocalTrustTier::LocalDev,
+                verification_state: InstalledVerificationState::LocalSource,
+                reasons: Vec::new(),
+                detail: None,
+            },
+            resolved_skill: ResolvedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "invoke-child-zero".into(),
+                },
+                version: SkillVersion::parse("0.1.0").unwrap(),
+                digest: "sha256:child-digest".into(),
+            },
+            parent_execution_id: Some("parent-exec".into()),
+            status: ExecutionStatus::Succeeded,
+            output: Some(SkillOutput {
+                summary: "child succeeded".into(),
+                structured: json!({
+                    "message": child_message,
+                }),
+                diagnostics: Vec::new(),
+                effects: Vec::new(),
+                evidence: Vec::new(),
+            }),
+            termination: None,
+            granted_capabilities: CapabilityGrantSet::default(),
+            emitted_evidence: Vec::new(),
+            authority_observations: Vec::new(),
+            authority_observations_recorded: true,
+            metrics: ExecutionMetrics::default(),
+            provenance: Provenance {
+                resolved_skill: ResolvedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "invoke-child-zero".into(),
+                    },
+                    version: SkillVersion::parse("0.1.0").unwrap(),
+                    digest: "sha256:child-digest".into(),
+                },
+                abi: AbiVersion::GuildSkillInspectV1,
+                dependency_digests: Vec::new(),
+                started_at_utc: Some("2026-03-21T00:00:00Z".into()),
+                finished_at_utc: Some("2026-03-21T00:00:01Z".into()),
+            },
+            child_executions: Vec::new(),
+        }
+    }
+
+    fn sample_multi_child_parent_record() -> ExecutionRecord {
+        ExecutionRecord {
+            receipt: ExecutionReceipt {
+                execution_id: "parent-exec".into(),
+                uri: "guild://executions/parent-exec".into(),
+                trace_id: "trace-parent".into(),
+                status: ExecutionStatus::Succeeded,
+            },
+            request: CallerRequest {
+                request_id: "request-parent".into(),
+                skill: RequestedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "invoke-parent-single-child".into(),
+                    },
+                    version_req: VersionRequirement::parse("^0.1").unwrap(),
+                },
+                tenant_id: "tenant-1".into(),
+                actor_id: "actor-1".into(),
+                mode: ExecutionMode::Inspect,
+                input: json!({ "name": "Ada", "invoke_twice": true }),
+                budget: Budget::default(),
+                requested_capabilities: CapabilityGrantSet::default(),
+                idempotency_key: None,
+                trace_id: "trace-parent".into(),
+            },
+            policy_decision: PolicyDecision {
+                outcome: PolicyDecisionOutcome::Allowed,
+                summary: "allowed".into(),
+                profile_name: "default".into(),
+                trust_tier: LocalTrustTier::LocalDev,
+                verification_state: InstalledVerificationState::LocalSource,
+                reasons: Vec::new(),
+                detail: None,
+            },
+            resolved_skill: ResolvedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "invoke-parent-single-child".into(),
+                },
+                version: SkillVersion::parse("0.1.0").unwrap(),
+                digest: "sha256:parent-digest".into(),
+            },
+            parent_execution_id: None,
+            status: ExecutionStatus::Succeeded,
+            output: Some(SkillOutput {
+                summary: "parent succeeded".into(),
+                structured: json!({
+                    "message": "parent invoked child twice",
+                }),
+                diagnostics: Vec::new(),
+                effects: Vec::new(),
+                evidence: Vec::new(),
+            }),
+            termination: None,
+            granted_capabilities: CapabilityGrantSet::default(),
+            emitted_evidence: Vec::new(),
+            authority_observations: Vec::new(),
+            authority_observations_recorded: true,
+            metrics: ExecutionMetrics {
+                child_executions: 2,
+                ..ExecutionMetrics::default()
+            },
+            provenance: Provenance {
+                resolved_skill: ResolvedSkillRef {
+                    key: SkillKey {
+                        namespace: "example".into(),
+                        name: "invoke-parent-single-child".into(),
+                    },
+                    version: SkillVersion::parse("0.1.0").unwrap(),
+                    digest: "sha256:parent-digest".into(),
+                },
+                abi: AbiVersion::GuildSkillInspectV1,
+                dependency_digests: vec!["sha256:child-digest".into()],
+                started_at_utc: Some("2026-03-21T00:00:00Z".into()),
+                finished_at_utc: Some("2026-03-21T00:00:02Z".into()),
+            },
+            child_executions: vec![
+                ChildExecutionRecord {
+                    alias: "child".into(),
+                    execution_id: "child-1".into(),
+                    uri: "guild://executions/child-1".into(),
+                    parent_execution_id: "parent-exec".into(),
+                    trace_id: "trace-child-1".into(),
+                    status: ExecutionStatus::Succeeded,
+                    policy_decision: PolicyDecision {
+                        outcome: PolicyDecisionOutcome::Allowed,
+                        summary: "allowed".into(),
+                        profile_name: "default".into(),
+                        trust_tier: LocalTrustTier::LocalDev,
+                        verification_state: InstalledVerificationState::LocalSource,
+                        reasons: Vec::new(),
+                        detail: None,
+                    },
+                    termination: None,
+                    provenance: Provenance {
+                        resolved_skill: ResolvedSkillRef {
+                            key: SkillKey {
+                                namespace: "example".into(),
+                                name: "invoke-child-zero".into(),
+                            },
+                            version: SkillVersion::parse("0.1.0").unwrap(),
+                            digest: "sha256:child-digest".into(),
+                        },
+                        abi: AbiVersion::GuildSkillInspectV1,
+                        dependency_digests: Vec::new(),
+                        started_at_utc: Some("2026-03-21T00:00:00Z".into()),
+                        finished_at_utc: Some("2026-03-21T00:00:01Z".into()),
+                    },
+                    granted_capabilities: CapabilityGrantSet::default(),
+                    metrics: ExecutionMetrics::default(),
+                },
+                ChildExecutionRecord {
+                    alias: "child".into(),
+                    execution_id: "child-2".into(),
+                    uri: "guild://executions/child-2".into(),
+                    parent_execution_id: "parent-exec".into(),
+                    trace_id: "trace-child-2".into(),
+                    status: ExecutionStatus::Succeeded,
+                    policy_decision: PolicyDecision {
+                        outcome: PolicyDecisionOutcome::Allowed,
+                        summary: "allowed".into(),
+                        profile_name: "default".into(),
+                        trust_tier: LocalTrustTier::LocalDev,
+                        verification_state: InstalledVerificationState::LocalSource,
+                        reasons: Vec::new(),
+                        detail: None,
+                    },
+                    termination: None,
+                    provenance: Provenance {
+                        resolved_skill: ResolvedSkillRef {
+                            key: SkillKey {
+                                namespace: "example".into(),
+                                name: "invoke-child-zero".into(),
+                            },
+                            version: SkillVersion::parse("0.1.0").unwrap(),
+                            digest: "sha256:child-digest".into(),
+                        },
+                        abi: AbiVersion::GuildSkillInspectV1,
+                        dependency_digests: Vec::new(),
+                        started_at_utc: Some("2026-03-21T00:00:01Z".into()),
+                        finished_at_utc: Some("2026-03-21T00:00:02Z".into()),
+                    },
+                    granted_capabilities: CapabilityGrantSet::default(),
+                    metrics: ExecutionMetrics::default(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn multi_child_invoke_projection_rejects_changed_child_input_with_same_output() {
+        let parent = sample_multi_child_parent_record();
+        let baseline_registry = ComparatorRegistry {
+            records: HashMap::from([
+                (
+                    "child-1".into(),
+                    sample_invoke_child_record("child-1", "Ada", "same-output"),
+                ),
+                (
+                    "child-2".into(),
+                    sample_invoke_child_record("child-2", "Bea", "same-output"),
+                ),
+            ]),
+        };
+        let changed_registry = ComparatorRegistry {
+            records: HashMap::from([
+                (
+                    "child-1".into(),
+                    sample_invoke_child_record("child-1", "Ada", "same-output"),
+                ),
+                (
+                    "child-2".into(),
+                    sample_invoke_child_record("child-2", "Cy", "same-output"),
+                ),
+            ]),
+        };
+
+        let baseline_projection = normalized_execution_projection(
+            &baseline_registry,
+            &parent,
+            LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1,
+        );
+        let changed_projection = normalized_execution_projection(
+            &changed_registry,
+            &parent,
+            LiveProofComparatorProfile::NormalizedInspectMultiChildInvokeV1,
+        );
+
         assert_ne!(baseline_projection, changed_projection);
     }
 }
