@@ -1,0 +1,70 @@
+{
+  "receipt": {
+    "execution_id": "019d0cda-53b0-7210-8656-99f1673be18c",
+    "uri": "guild://executions/019d0cda-53b0-7210-8656-99f1673be18c",
+    "trace_id": "trace-emit-evidence-exact-1",
+    "status": "succeeded"
+  },
+  "request": {
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "emit-evidence-exact"
+      },
+      "version_req": "^0.1"
+    },
+    "input": {}
+  },
+  "resolved_skill": {
+    "key": {
+      "namespace": "example",
+      "name": "emit-evidence-exact"
+    },
+    "version": "0.1.0",
+    "digest": "sha256:4b6100aa1893032f50871aa023e6b1e2419e3256ab412474f7ea832a431ae7f8"
+  },
+  "status": "succeeded",
+  "granted_capabilities": {
+    "grants": [
+      {
+        "id": "emit-evidence",
+        "access": "write",
+        "constraints": {
+          "max_bytes": 47,
+          "audiences": [
+            "user"
+          ],
+          "redactions": [
+            "none"
+          ]
+        }
+      }
+    ]
+  },
+  "authority_observations": [
+    {
+      "family": "emit-evidence",
+      "status": "exercised",
+      "detail": {
+        "mime_type": "application/json",
+        "audience": "user",
+        "redaction": "none",
+        "size_bytes": 47,
+        "sink": {
+          "kind": "local-object-store",
+          "record_uri_prefix": "guild://objects/records/",
+          "blob_uri_prefix": "guild://objects/sha256/",
+          "routing_mode": "direct",
+          "storage_class": "local-persistent-content-addressed"
+        },
+        "title": "emit-evidence exact payload",
+        "evidence_uri": "guild://objects/records/019d0cda-5fba-76c2-beec-f8a6faee0fb9",
+        "sha256": "sha256:ea3577730f16b65aa3ed9fbf810fd77b0cb08e4add3e433203f9ca0a70de3916"
+      }
+    }
+  ],
+  "provenance": {
+    "started_at_utc": "2026-03-26T00:00:00Z",
+    "finished_at_utc": "2026-03-26T00:00:02Z"
+  }
+}

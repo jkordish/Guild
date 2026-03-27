@@ -39,6 +39,10 @@ fn requested_skill(name: &str) -> RequestedSkillRef {
     }
 }
 
+fn emit_evidence_exact_skill_dir() -> PathBuf {
+    repo_root().join("examples/skills/emit-evidence-exact")
+}
+
 fn unique_id(prefix: &str) -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -58,11 +62,19 @@ fn build_replay_runner(fixtures: Vec<HttpReplayFixture>) -> Runner<WasmtimeRunti
 }
 
 fn emit_evidence_grant() -> GrantedCapability {
+    emit_evidence_grant_with_max_bytes(65_536)
+}
+
+fn exact_emit_evidence_grant() -> GrantedCapability {
+    emit_evidence_grant_with_max_bytes(47)
+}
+
+fn emit_evidence_grant_with_max_bytes(max_bytes: u64) -> GrantedCapability {
     GrantedCapability {
         id: CapabilityId::EmitEvidence,
         access: CapabilityAccess::Write,
         constraints: CapabilityConstraints::EmitEvidence(EmitEvidenceConstraints {
-            max_bytes: Some(65_536),
+            max_bytes: Some(max_bytes),
             audiences: Some(vec![EvidenceAudience::User]),
             redactions: Some(vec![RedactionClass::None]),
         }),
@@ -964,6 +976,38 @@ fn run_log_write_reduced() -> Value {
     scenario_output("log-write-reduced", prepare_log_write_reduced().prove())
 }
 
+fn prepare_emit_evidence_exact_single_sink() -> PreparedScenario {
+    let temp = TempRegistry::new();
+    temp.install(emit_evidence_exact_skill_dir());
+    let registry = temp.load();
+    let runner = build_runner();
+    let exact = registry
+        .resolve(&requested_skill("emit-evidence-exact"))
+        .unwrap();
+    PreparedScenario {
+        _temp: temp,
+        _server: None,
+        registry,
+        runner,
+        installed: exact.clone(),
+        envelope: envelope_for(
+            &exact,
+            json!({}),
+            CapabilityGrantSet {
+                grants: vec![exact_emit_evidence_grant()],
+            },
+        ),
+        comparator: LiveProofComparatorProfile::NormalizedInspectSingleSinkEmitEvidenceV1,
+    }
+}
+
+fn run_emit_evidence_exact_single_sink() -> Value {
+    scenario_output(
+        "emit-evidence-exact-single-sink",
+        prepare_emit_evidence_exact_single_sink().prove(),
+    )
+}
+
 fn prepare_emit_evidence_single_sink_replay_unavailable() -> PreparedScenario {
     let temp = TempRegistry::new();
     temp.install(repo_root().join("examples/skills/hello-inspect"));
@@ -1113,6 +1157,7 @@ fn run_named_scenario(name: &str) -> Value {
         "http-request-redirect-unsupported" => run_http_request_redirect_unsupported(),
         "http-request-no-replay" | "http-request-not-proven" => run_http_request_no_replay(),
         "log-write-reduced" => run_log_write_reduced(),
+        "emit-evidence-exact-single-sink" => run_emit_evidence_exact_single_sink(),
         "emit-evidence-single-sink-replay-unavailable" => {
             run_emit_evidence_single_sink_replay_unavailable()
         }
@@ -1207,6 +1252,12 @@ fn benchmark_named_scenario(name: &str, warmup_runs: usize, measured_runs: usize
             warmup_runs,
             measured_runs,
             prepare_log_write_reduced,
+        ),
+        "emit-evidence-exact-single-sink" => benchmark_scenario(
+            "emit-evidence-exact-single-sink",
+            warmup_runs,
+            measured_runs,
+            prepare_emit_evidence_exact_single_sink,
         ),
         "emit-evidence-single-sink-replay-unavailable" => benchmark_scenario(
             "emit-evidence-single-sink-replay-unavailable",

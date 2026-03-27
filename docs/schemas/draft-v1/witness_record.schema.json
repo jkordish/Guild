@@ -695,6 +695,12 @@
     "token_basis": {
       "$ref": "#/$defs/token_basis"
     },
+    "host_exact_bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/host_exact_binding"
+      }
+    },
     "subject": {
       "$ref": "#/$defs/subject"
     },

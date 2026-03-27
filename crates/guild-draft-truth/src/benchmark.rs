@@ -1912,11 +1912,11 @@ pub fn render_report(matrix: &Value) -> Result<String> {
         String::new(),
         "## Notes".to_owned(),
         String::new(),
-        "- The current checked real-path linked chain is `read-resource`, eight bounded `http-request` slices, two bounded `invoke-skill` slices, and explicit upper-bound fallback or unlinked witness behavior for the benchmarked unsupported slices.".to_owned(),
+        "- The current checked real-path linked chain is `read-resource`, eight bounded `http-request` slices, two bounded `invoke-skill` slices, one exact single-emission `emit-evidence` slice with a carried host exact binding, and explicit upper-bound fallback or unlinked witness behavior for the benchmarked unsupported slices.".to_owned(),
         "- `log-write` is still measured here through M4 plus M5 only. The repo has a real live proof slice for observed levels, but this benchmark does not claim a checked real-path M6 or M7 linkage slice for `log-write`.".to_owned(),
         "- The measured reduction split is still mixed by slice: `read-resource` really narrows from the admitted upper bound, the checked `http-request` and `invoke-skill` fixtures are already narrow enough that the proven authority does not shrink them further, and `log-write` is exact over an already narrow admitted level slice.".to_owned(),
         "- The checked negative-claim probes remain coverage-limited on the checked path. They stay `not_provable` rather than being rewritten into synthetic success or failure.".to_owned(),
-        "- The remaining frontier is still whichever unsupported rows you want to convert into bounded linked rows without broadening claims: `emit-evidence` exact sink or payload authority, broader `invoke-skill` shapes, and broader `http-request` hostname or replay coverage.".to_owned(),
+        "- The remaining frontier is still whichever unsupported rows you want to convert into bounded linked rows without broadening claims: broader `emit-evidence` shapes beyond the exact single-emission fixed-sink slice, broader `invoke-skill` shapes, and broader `http-request` hostname or replay coverage.".to_owned(),
         String::new(),
     ];
     Ok(lines.join("\n"))
@@ -2282,6 +2282,27 @@ fn slice_specs() -> Vec<SliceSpec> {
             notes: "Redirects stay not_proven. Default issuance refuses; explicit upper-bound fallback issues and witness generation stays unlinked.",
         },
         SliceSpec {
+            slice_id: "emit-evidence-single-emission-exact-local-object-store",
+            family: "emit-evidence",
+            slice_name: "single emission exact local object-store binding",
+            exact_scope: "one emit-evidence call to the fixed local object-store sink with one exact 47-byte JSON payload",
+            support_status: "supported",
+            scenario_name: "emit-evidence-exact-single-sink",
+            contract: "examples/runtime-emit-evidence-exact.contract.json",
+            request: "examples/runtime-emit-evidence-exact.admit.request.json",
+            invocation: "examples/runtime-emit-evidence-exact.invocation.json",
+            execution_record_path: Some(
+                "examples/runtime-emit-evidence-exact.execution-record.json",
+            ),
+            linked_path: LinkedPath::ProofLinked,
+            default_path: "proof_backed",
+            token_linkage_status: "proof_backed",
+            witness_linkage_status: "proof_linked",
+            negative_claim_support_status: "supported",
+            negative_claim_type: Some("no_emit_evidence_outside_scope"),
+            notes: "Emit-evidence is proof-backed only for this exact single-emission fixed local-object-store slice, with the exact sink and payload facts carried as a host-owned binding through proof, token, and witness linkage.",
+        },
+        SliceSpec {
             slice_id: "emit-evidence-single-emission-replay-unavailable",
             family: "emit-evidence",
             slice_name: "single emission local object-store replay unavailable",
@@ -2298,7 +2319,7 @@ fn slice_specs() -> Vec<SliceSpec> {
             witness_linkage_status: "unlinked",
             negative_claim_support_status: "supported",
             negative_claim_type: Some("no_emit_evidence_outside_scope"),
-            notes: "Emit-evidence stays not_proven. Default issuance refuses; explicit upper-bound fallback issues and witness generation stays unlinked.",
+            notes: "Broader or legacy emit-evidence flows still stay not_proven. Default issuance refuses; explicit upper-bound fallback issues and witness generation stays unlinked.",
         },
         SliceSpec {
             slice_id: "log-write-observed-info-level",
@@ -2409,7 +2430,8 @@ impl SliceSpec {
                 "family": "http-request",
                 "resource": "GET:http://127.0.0.1:18080/redirect.json",
             })),
-            "emit-evidence-single-emission-replay-unavailable" => Some(json!({
+            "emit-evidence-single-emission-exact-local-object-store"
+            | "emit-evidence-single-emission-replay-unavailable" => Some(json!({
                 "family": "emit-evidence",
                 "resource": "audience=user;redaction=none",
             })),

@@ -896,6 +896,105 @@
         "tenant-sensitive"
       ]
     },
+    "sha256_prefixed_digest": {
+      "type": "string",
+      "pattern": "^sha256:[A-Fa-f0-9]{64}$"
+    },
+    "evidence_sink_kind": {
+      "type": "string",
+      "enum": [
+        "local-object-store"
+      ]
+    },
+    "evidence_routing_mode": {
+      "type": "string",
+      "enum": [
+        "direct"
+      ]
+    },
+    "evidence_storage_class": {
+      "type": "string",
+      "enum": [
+        "local-persistent-content-addressed"
+      ]
+    },
+    "evidence_sink_descriptor": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/evidence_sink_kind"
+        },
+        "record_uri_prefix": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "blob_uri_prefix": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "routing_mode": {
+          "$ref": "#/$defs/evidence_routing_mode"
+        },
+        "storage_class": {
+          "$ref": "#/$defs/evidence_storage_class"
+        }
+      },
+      "required": [
+        "kind",
+        "record_uri_prefix",
+        "blob_uri_prefix",
+        "routing_mode",
+        "storage_class"
+      ],
+      "additionalProperties": false
+    },
+    "host_emit_evidence_exact_binding": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "const": "emit-evidence"
+        },
+        "emission_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mime_type": {
+          "$ref": "#/$defs/nonempty_string"
+        },
+        "audience": {
+          "$ref": "#/$defs/evidence_audience"
+        },
+        "redaction": {
+          "$ref": "#/$defs/redaction_class"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "payload_sha256": {
+          "$ref": "#/$defs/sha256_prefixed_digest"
+        },
+        "sink": {
+          "$ref": "#/$defs/evidence_sink_descriptor"
+        }
+      },
+      "required": [
+        "family",
+        "emission_count",
+        "mime_type",
+        "audience",
+        "redaction",
+        "size_bytes",
+        "payload_sha256",
+        "sink"
+      ],
+      "additionalProperties": false
+    },
+    "host_exact_binding": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/host_emit_evidence_exact_binding"
+        }
+      ]
+    },
     "family_support_status": {
       "type": "string",
       "enum": [

@@ -1,0 +1,33 @@
+{
+  "summary": "Exact emit-evidence fixture completed.",
+  "structured": {
+    "mode": "inspect",
+    "skill": {
+      "key": {
+        "namespace": "example",
+        "name": "emit-evidence-exact"
+      },
+      "version": "0.1.0",
+      "digest": "__INSTALLED_DIGEST__"
+    },
+    "payload": {
+      "mime_type": "application/json",
+      "size_bytes": 47,
+      "sha256": "sha256:ea3577730f16b65aa3ed9fbf810fd77b0cb08e4add3e433203f9ca0a70de3916"
+    },
+    "message": "emitted one exact proof fixture payload"
+  },
+  "diagnostics": [],
+  "effects": [],
+  "evidence": [
+    {
+      "uri": "__EVIDENCE_URI__",
+      "title": "emit-evidence exact payload",
+      "mime_type": "application/json",
+      "sha256": "__EVIDENCE_DIGEST__",
+      "audience": "user",
+      "redaction": "none",
+      "freshness": "deterministic"
+    }
+  ]
+}

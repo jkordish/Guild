@@ -104,6 +104,12 @@
         }
       ]
     },
+    "host_exact_bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/host_exact_binding"
+      }
+    },
     "minimization_algorithm": {
       "type": "object",
       "properties": {

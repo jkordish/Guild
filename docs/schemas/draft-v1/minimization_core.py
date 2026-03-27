@@ -190,6 +190,7 @@ def build_minimization_proof(
         "proof_method": "counterfactual_shadow_execution",
         "comparator": extract_comparator_spec(comparator_profile),
         "comparator_digest": digest_struct(comparator_profile),
+        "host_exact_bindings": [],
         "minimization_algorithm": {
             "id": ALGORITHM_ID,
             "version": ALGORITHM_VERSION,
@@ -294,6 +295,7 @@ def build_failure_proof(
         "proof_method": "counterfactual_shadow_execution",
         "comparator": extract_comparator_spec(comparator_profile),
         "comparator_digest": digest_struct(comparator_profile),
+        "host_exact_bindings": [],
         "minimization_algorithm": {
             "id": ALGORITHM_ID,
             "version": ALGORITHM_VERSION,

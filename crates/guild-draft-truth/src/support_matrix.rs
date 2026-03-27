@@ -75,7 +75,7 @@ pub fn build_matrix() -> Result<Value> {
             "A family is marked live-proof-supported only where the repository now has a real Rust live proof path with counterfactual execution, a deterministic comparator, conservative search semantics, and proof output that matches the explored search.",
             "A status of bounded means the live proof search is intentionally narrower than general minimality. M8c proves bounded live read-resource shrinking across immutable Guild execution/object-record roots, bounded fixture-backed http-request shrinking only for eight deterministic slices, and two bounded invoke-skill slices: one for exactly one declared alias resolved through the installed dependency snapshot to one exact zero-authority child on guild-skill-inspect-v1 with zero nested child executions, and one for that same declared alias exercised exactly twice in deterministic order under the same zero-authority inspect-only boundary.",
             "M6 token issuance and verification remain a draft-local token layer even when the issuance basis comes from a live-runtime proof. That is not runtime-general enforcement.",
-            "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured localhost GET and HEAD slices with either an explicit port or the implicit default HTTP port and deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice and the exact two-child same-alias zero-authority inspect slice, emit-evidence stays unlinked because the tested exact single-emission local-object-store replay still fails closed and the current authority model is too coarse to smuggle sink or payload specifics, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
+            "M7 witness linkage to proofs is honest and fail-closed: read-resource live linkage is bounded, http-request live linkage is bounded only for the replay-fixtured loopback IP GET and HEAD slices with either an explicit port or the implicit default HTTP port plus the replay-fixtured localhost GET and HEAD slices with either an explicit port or the implicit default HTTP port and deterministic loopback-only resolution bindings, invoke-skill live linkage is bounded only for the exact single-child zero-authority inspect slice and the exact two-child same-alias zero-authority inspect slice, emit-evidence is now proof-linked only for one exact single-emission fixed local-object-store slice with a host-owned sink and payload binding while broader or legacy emit shapes remain fail-closed, and log-write linkage remains a generic draft-layer capability rather than a checked M8-proper real-path benchmarked slice."
         ],
         "layers": [
             "admission_runtime_guarantee_matching",
@@ -425,26 +425,58 @@ fn emit_evidence_family() -> Value {
             "kind": "evidence",
             "fields": ["max_bytes", "audiences", "redactions"]
         },
-        "proven_slices": [],
+        "proven_slices": [
+            {
+                "slice_id": "exact-single-emission-fixed-local-object-store",
+                "proof_status": "exact_minimal",
+                "proof_backed_layers": [
+                    "live_minimization_proof",
+                    "plan_proof_token_linkage",
+                    "proof_witness_linkage"
+                ],
+                "emit_shape": {
+                    "max_bytes": 47,
+                    "audiences": ["user"],
+                    "redactions": ["none"]
+                },
+                "host_exact_binding": {
+                    "family": "emit-evidence",
+                    "emission_count": 1,
+                    "mime_type": "application/json",
+                    "audience": "user",
+                    "redaction": "none",
+                    "size_bytes": 47,
+                    "payload_sha256": "sha256:ea3577730f16b65aa3ed9fbf810fd77b0cb08e4add3e433203f9ca0a70de3916",
+                    "sink": {
+                        "kind": "local-object-store",
+                        "record_uri_prefix": "guild://objects/records/",
+                        "blob_uri_prefix": "guild://objects/sha256/",
+                        "routing_mode": "direct",
+                        "storage_class": "local-persistent-content-addressed"
+                    }
+                },
+                "notes": "Bounded live proof exists only for one exact single-emission fixed local object-store slice, and the exact sink plus payload facts stay host-owned through proof, token, and witness linkage."
+            }
+        ],
         "not_proven_shapes": [
-            not_proven_shape("single-emission-local-object-store-replay-mismatch", &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "The tested exact single-emission local-object-store replay still fails closed."),
+            not_proven_shape("broader-or-legacy-single-emission-local-object-store", &["EMIT_EVIDENCE_LINKAGE_MODEL_UNAVAILABLE"], "Broader or legacy single-emission local-object-store flows remain not_proven unless the granted scope already matches the exact observed slice."),
             not_proven_shape("dynamic-or-unstable-sink-semantics", &["EMIT_EVIDENCE_LINKAGE_MODEL_UNAVAILABLE"], "Dynamic or unstable sink semantics remain not_proven."),
-            not_proven_shape("multiple-emissions-or-fan-out", &["EMIT_EVIDENCE_MULTI_EMISSION_UNSUPPORTED"], "Multiple emissions or fan-out remain not_proven."),
-            not_proven_shape("nondeterministic-or-unreadable-payload", &["EMIT_EVIDENCE_PAYLOAD_UNSUPPORTED"], "Nondeterministic or unreadable payloads remain not_proven."),
-            not_proven_shape("host-result-error-on-emission", &["EMIT_EVIDENCE_HOST_ERROR_UNSUPPORTED"], "Host-side emission failures remain not_proven.")
+            not_proven_shape("multiple-emissions-or-fan-out", &["EMIT_EVIDENCE_MULTI_EMIT_UNSUPPORTED"], "Multiple emissions or fan-out remain not_proven."),
+            not_proven_shape("nondeterministic-or-unreadable-payload", &["EMIT_EVIDENCE_PAYLOAD_NONDETERMINISTIC"], "Nondeterministic or unreadable payloads remain not_proven."),
+            not_proven_shape("host-result-error-on-emission", &["EMIT_EVIDENCE_RESULT_ERROR_UNSUPPORTED"], "Host-side emission failures remain not_proven.")
         ],
         "layers": {
             "admission_runtime_guarantee_matching": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Direct canonical emit-evidence grants match the active runtime vocabulary."),
             "execution_plan_representation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M4 plans carry canonical emit-evidence scopes directly."),
-            "live_minimization_proof": layer(STATUS_NOT_PROVEN, &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "Emit-evidence remains not_proven because the tested exact single-emission replay still fails closed."),
-            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "M6 can still issue upper-bound emit-evidence scopes as a draft-local token layer."),
-            "token_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical emit-evidence bindings verify directly against emit-evidence scopes."),
+            "live_minimization_proof": layer(STATUS_BOUNDED, &["LIVE_PROOF_BOUNDED", "LIVE_PROOF_SUPPORTED"], "Emit-evidence live proof is bounded to one exact single-emission fixed local object-store slice only."),
+            "token_issuance_basis": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED", "TOKEN_PROOF_BASIS_LIVE"], "M6 can issue proof-backed emit-evidence tokens only for the exact host-bound single-emission slice, while broader plans stay on explicit upper-bound fallback only."),
+            "token_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical emit-evidence bindings still verify directly against coarse scopes, and proof-backed verification additionally compares the carried host exact binding."),
             "witness_generation": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Live emit-evidence observations normalize directly into canonical witness effects."),
-            "witness_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical emit-evidence witnesses verify directly."),
+            "witness_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Canonical emit-evidence witnesses verify directly, and the exact host-owned binding stays linked where the exact slice is proof-backed."),
             "positive_claim_verification": layer(STATUS_UNSUPPORTED, &["POSITIVE_CLAIM_VOCABULARY_UNAVAILABLE"], "Positive observed-fact claim vocabulary is still unavailable."),
             "negative_claim_verification": layer(STATUS_SUPPORTED, &["CANONICAL_FAMILY_SUPPORTED"], "Scope-only negative claims stay supported when coverage is complete."),
-            "plan_proof_token_linkage": layer(STATUS_NOT_PROVEN, &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "Plan -> proof -> token linkage remains fail-closed while emit-evidence is not_proven."),
-            "proof_witness_linkage": layer(STATUS_NOT_PROVEN, &["EMIT_EVIDENCE_REPLAY_UNAVAILABLE"], "Proof -> witness linkage remains fail-closed while emit-evidence is not_proven.")
+            "plan_proof_token_linkage": layer(STATUS_BOUNDED, &["TOKEN_PROOF_BASIS_LIVE"], "Plan -> proof -> token linkage is bounded to one exact single-emission fixed local object-store slice with a carried host exact binding."),
+            "proof_witness_linkage": layer(STATUS_BOUNDED, &["LIVE_PROOF_LINKED_WITNESS"], "Proof -> witness linkage is bounded to that same exact single-emission fixed local object-store slice only.")
         }
     })
 }
