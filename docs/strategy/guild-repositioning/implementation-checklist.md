@@ -54,8 +54,8 @@ Phase 2 exit criteria:
 
 ## Phase 3: Examples, Trust Proof, And Relaunch Surfaces
 
-- [ ] [TASK-21](./tasks/TASK-21-publish-reference-playbook-set.md) Publish the reference playbook set and sequence.
-- [ ] [TASK-22](./tasks/TASK-22-examples-index-operator-reframe.md) Reframe the examples index around operator workflows.
+- [x] [TASK-21](./tasks/TASK-21-publish-reference-playbook-set.md) Publish the reference playbook set and sequence.
+- [x] [TASK-22](./tasks/TASK-22-examples-index-operator-reframe.md) Reframe the examples index around operator workflows.
 - [ ] [TASK-23](./tasks/TASK-23-guild-ops-starter-playbook-reframe.md) Reframe Guild Ops Starter as a playbook-oriented starter.
 - [ ] [TASK-24](./tasks/TASK-24-build-one-hero-reference-example-plan.md) Define the hero reference example plan on current surfaces.
 - [ ] [TASK-25](./tasks/TASK-25-add-trust-chain-explainer.md) Add the trust-chain explainer.
