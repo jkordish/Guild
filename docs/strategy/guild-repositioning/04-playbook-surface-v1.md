@@ -1,5 +1,10 @@
 # Playbook Surface V1
 
+This is the bounded v1 public playbook surface for Guild. It defines the
+operator-facing concept, the minimum schema shape, and the current repo
+boundary. Unless implementation catches up, treat it as a planning and UX
+target rather than a shipped runtime contract.
+
 ## Definition
 
 A playbook is the operator-facing automation unit in Guild.
@@ -151,3 +156,9 @@ current trust and evidence backbone rather than inventing a parallel one.
 - Does v1 support multi-step branching, or only linear step lists plus simple guards?
 - Is replay a full rerun, a step-by-step re-check, or a receipt-driven simulation in the first implementation wave?
 - How much playbook state should become first-class in stored receipts versus remaining derived from step receipts?
+
+## Related Docs
+
+- [`../../how-guild-works.md`](../../how-guild-works.md) is the thin main-docs entrypoint for readers coming from the README and CLI docs.
+- [`07-reference-playbooks.md`](07-reference-playbooks.md) captures the candidate operator stories this surface is meant to support.
+- [`08-manifest-to-playbook-translation-note.md`](08-manifest-to-playbook-translation-note.md) shows how a real current repo example maps into this framing without changing runtime truth.
