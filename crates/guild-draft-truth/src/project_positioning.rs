@@ -39,9 +39,9 @@ const POSITIONING_MARKERS: &[&str] = &[
 ];
 
 const POSITIONING_PHRASES: &[&str] = &[
-    "Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced.",
-    "Guild turns a skill run into a verifiable receipt chain tied to exact bundle identity, granted authority, observed effects, and durable artifacts.",
-    "Guild Ops Starter is the first reference application built on that trust layer. It uses receipts to summarize incidents, compare runs, explain evidence, and generate bounded operational reports.",
+    "Guild is trusted operational automation for engineering teams.",
+    "The playbook is the application. The trust chain is the product.",
+    "Guild Ops Starter is the first operator starter set in the repo and the first reference application built on that trust chain. It uses receipts and evidence to summarize incidents, compare runs, explain evidence, and generate bounded operational reports without pretending it is the whole product.",
 ];
 
 const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
@@ -90,23 +90,24 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
     (
         "README.md",
         &[
-            "Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced.",
-            "Guild Ops Starter is the first reference application built on that trust layer. It is not the whole product story.",
+            "Guild is trusted operational automation for engineering teams.",
+            "Today, the repo exposes that model through portable skills, bounded capabilities, durable execution and evidence records, and stable Guild refs.",
+            "Guild Ops Starter is the first operator starter set in the repo and the first reference application built on that trust chain. It is not the whole product story.",
             "bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, `emit-evidence`, and `log-write` slices",
         ],
     ),
     (
         EPIC_DOC,
         &[
-            "Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced.",
-            "Guild turns a skill run into a verifiable receipt chain tied to exact bundle identity, granted authority, observed effects, and durable artifacts.",
+            "Guild is trusted operational automation for engineering teams.",
+            "The playbook is the application. The trust chain is the product.",
             "eight `http-request`, two `invoke-skill`, and one exact `emit-evidence` checked slices, plus proof-only `log-write`",
         ],
     ),
     (
         "examples/skills/guild-ops-starter/README.md",
         &[
-            "Guild Ops Starter is the first reference application built on Guild's trust and receipt layer.",
+            "Guild Ops Starter is the first operator starter set in the repo and the first reference application built on that trust chain. It is not the whole product story.",
         ],
     ),
 ];

@@ -1,9 +1,12 @@
 # Examples
 
-Guild examples are ordinary repo-native examples and example skills.
+Guild examples are operator workflows and supporting example skills grounded in
+current repo truth.
 
 There is no separate pack system here. The examples exist to prove and teach
-specific honest slices of the current repo.
+specific honest slices of the current repo. Today Guild runs skills directly,
+and these examples show how the trust chain, receipts, and evidence support
+real operational tasks on those current surfaces.
 For the current project framing, see [`../docs/project-positioning.md`](../docs/project-positioning.md).
 
 The canonical command examples assume `guild` is installed and on `PATH`.
@@ -13,12 +16,13 @@ helpers, not the normal operator workflow.
 ## Start Here
 
 If you want one compact first-five-minutes workflow, start with Guild Ops
-Starter, the first reference application in the repo:
+Starter, the first operator starter set in the repo and the first reference
+application for trusted local operational analysis:
 
 - [`examples/skills/guild-ops-starter/README.md`](./skills/guild-ops-starter/README.md)
 
-That reference application is the current user-facing path for trusted local
-operational analysis over durable Guild refs. It uses:
+That starter set is the current user-facing path for trusted local operational
+analysis over durable Guild refs. It uses:
 
 - `incident-brief` for one stored execution ref
 - `run-diff` for two stored execution refs

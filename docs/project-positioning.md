@@ -10,13 +10,19 @@ harness, use [`schemas/draft-v1/README.md`](schemas/draft-v1/README.md).
 
 ## Project Thesis
 
-Guild creates portable, capability-bounded skill artifacts and a trust layer
-for how they are admitted, executed, and evidenced.
+Guild is trusted operational automation for engineering teams.
 
 ## Product Thesis
 
-Guild turns a skill run into a verifiable receipt chain tied to exact bundle
-identity, granted authority, observed effects, and durable artifacts.
+The playbook is the application. The trust chain is the product.
+
+Guild should read as the system that lets operators review and admit an ops
+playbook under explicit capability policy, run it in isolation, and keep
+receipts and evidence they can inspect and replay later.
+
+Today, the repo still exposes that model through skills, durable Guild refs,
+local policy decisions, and bounded runtime surfaces. The playbook surface is a
+product direction, not a claim that a broad playbook engine already ships.
 
 That does not imply every slice is proof-backed today. `bounded`,
 `proof-backed`, `upper-bound`, `linked`, `unlinked`, and `not_proven` remain
@@ -24,30 +30,34 @@ explicit where the live runtime and checked draft-v1 surfaces require them.
 
 ## First Reference Application Thesis
 
-Guild Ops Starter is the first reference application built on that trust
-layer. It uses receipts to summarize incidents, compare runs, explain
-evidence, and generate bounded operational reports.
+Guild Ops Starter is the first operator starter set in the repo and the first
+reference application built on that trust chain. It uses receipts and evidence
+to summarize incidents, compare runs, explain evidence, and generate bounded
+operational reports without pretending it is the whole product.
 
 ## Anti-Thesis
 
 Guild is not primarily:
 
 - a generic agent orchestration platform
-- a workflow engine
+- a generic workflow engine
 - a broad MCP wrapper
-- a broad ops playbook runtime
 - a marketplace story
+- a product that hides its trust and runtime boundaries behind softer language
 
 ## Preferred Core Terms
 
-- portable skill artifact
-- capability-bounded
-- capability envelope
-- admission receipt
+- trusted operational automation
+- ops playbook
+- capability
+- capability policy
+- admission
+- isolation
 - execution receipt
-- evidence artifact
-- evidence chain
-- reference application
+- evidence
+- replay
+- inspectability
+- reference application, only as a secondary repo-organization or release-slice term after operator-facing framing
 - fail-closed
 - bounded proof
 - proof-backed
@@ -61,10 +71,11 @@ Guild is not primarily:
 These terms can be accurate in narrow context, but they are not the lead story
 for Guild:
 
+- artifact
+- trust layer
 - platform
 - substrate
 - multi-step runtime
-- ops playbook engine
 - generic orchestration
 - secure by design
 - agentic framework
@@ -79,9 +90,10 @@ for Guild:
 
 ## Sane Assumptions
 
+- playbooks are the target operator surface, but the repo still runs skills directly today
 - bounded proof is bounded, not general
 - unsupported slices stay unsupported
-- portable does not mean magical universal runtime compatibility
+- mechanism-layer terms remain where the contract needs them
 - reference applications should be built on proven surfaces
 
 ## Sane Expectations
@@ -95,7 +107,7 @@ for Guild:
 - do not invent new abstractions without pressure
 - do not create multiple truth surfaces
 - do not layer large workflow engines on top of narrow proven slices
-- prefer explicit receipts and artifacts over chat-only state
+- prefer explicit receipts and evidence over chat-only state
 
 ## Boundary
 

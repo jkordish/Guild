@@ -8,37 +8,37 @@ core Rust runtime/types.
 
 ## Summary
 
-The next phase should build on Guild's existing trust and receipt layer rather
-than widening the repo back into a generic runtime or playbook story.
+The next phase should turn Guild's existing trust and receipt layer into an
+operator-facing playbook and starter-set story without widening the repo back
+into a generic runtime or workflow-engine story.
 
 ## Problem Statement
 
 Guild already has real runtime, trust, storage, and observation machinery, but
 the repo is still easy to misread as a multi-step runtime story or an ops
 playbook engine. That misframing pulls build priorities toward runtime plumbing
-instead of toward portable artifacts, receipts, evidence, and the first
-reference applications that consume them.
+instead of toward operator workflows, capability review, receipts, evidence,
+and the first starter sets that consume them.
 
 ## Project Thesis
 
-Guild creates portable, capability-bounded skill artifacts and a trust layer
-for how they are admitted, executed, and evidenced.
+Guild is trusted operational automation for engineering teams.
 
 ## Product Thesis
 
-Guild turns a skill run into a verifiable receipt chain tied to exact bundle
-identity, granted authority, observed effects, and durable artifacts.
+The playbook is the application. The trust chain is the product.
 
 ## First Reference Application Thesis
 
-Guild Ops Starter is the first reference application built on that trust
-layer. It uses receipts to summarize incidents, compare runs, explain
-evidence, and generate bounded operational reports.
+Guild Ops Starter is the first operator starter set in the repo and the first
+reference application built on that trust chain. It uses receipts to summarize
+incidents, compare runs, explain evidence, and generate bounded operational
+reports.
 
 ## In Scope
 
-- make portable skill artifacts and receipts the default build and onboarding story
-- build reference-application views on the current installed-state, execution, evidence, and bounded-query surfaces
+- make operator-facing playbooks and starter sets the default story while keeping the current skill and receipt model explicit
+- build starter-set and reference-application views on the current installed-state, execution, evidence, and bounded-query surfaces
 - keep trust review, execution explanation, and evidence explanation tied to exact refs and explicit status labels
 - improve reference-application ergonomics only on already proven or already shipped surfaces
 - keep wording and planning aligned with the project-positioning doc
@@ -59,7 +59,7 @@ evidence, and generate bounded operational reports.
 - admission receipt: the bounded draft-v1 admission result for one requested invocation when that draft control-plane slice is used; not a new live runtime object in this epic
 - execution receipt: the host-owned `guild://executions/...` reference for one persisted run
 - evidence artifact / chain: evidence record, metadata resource, blob linkage, and producing-execution linkage
-- casefile / report / reference-application view: a bounded read-only summary built from those durable refs and bounded query resources
+- playbook / casefile / report / reference-application view: a bounded read-only summary built from those durable refs and bounded query resources
 
 ## Current Proven Frontier
 
@@ -87,17 +87,17 @@ evidence, and generate bounded operational reports.
 
 ## Expected Next Deliverables
 
-- artifact-first onboarding and verification paths that start from installed skill refs and trust review
+- operator-first onboarding and verification paths that still start from installed skill refs and trust review
 - receipt-first navigation and explanation across execution, evidence, and bounded query resources
-- bounded casefile and report views built only on current durable refs and proven read paths
+- bounded playbook, casefile, and report views built only on current durable refs and proven read paths
 - tighter reference-application docs and examples that stay inside the current support frontier
 - drift guards that keep project framing, anti-thesis wording, and first-reference-application positioning stable
 
 ## Success Criteria
 
-- top-level docs and examples lead with artifacts, receipts, evidence, and reference applications instead of runtime or substrate-first language
-- Guild Ops Starter clearly reads as the first reference application, not the whole product thesis
-- new follow-on work is framed in terms of portable artifacts, receipt chains, and durable refs
+- top-level docs and examples lead with operator workflows, capability review, receipts, evidence, and starter sets instead of runtime or substrate-first language
+- Guild Ops Starter clearly reads as the first operator starter set and the first reference application, not the whole product thesis
+- new follow-on work is framed in terms of playbooks on top of portable skills, receipt chains, and durable refs
 - no runtime or draft-v1 support claim is broadened by wording alone
 - repo-native validation catches framing drift in the selected top-level docs
 

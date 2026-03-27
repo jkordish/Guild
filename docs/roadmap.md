@@ -3,6 +3,11 @@
 Guild is sequenced as a small set of ordered epics. The labels below keep the existing phase order, but the outcome comes first.
 Current framing and vocabulary freeze live in [`project-positioning.md`](project-positioning.md).
 
+The first five epics built the contract, execution, trust, and evidence
+surfaces. The next narrative wave turns that existing trust chain into
+operator-facing playbooks, capability review, receipts, and evidence rather
+than describing Guild primarily as runtime plumbing.
+
 ## Epic 1: Define The Contract Surface
 
 Current mapping: Phase 0
@@ -70,10 +75,12 @@ Outcome: support mutation without pretending retries, approval, or audit are opt
 The next planning anchor after `P2-project-refocus-and-message-freeze` is
 [`portable-skill-receipts-and-reference-apps.md`](roadmap/epics/portable-skill-receipts-and-reference-apps.md).
 
-Outcome: build reference applications on top of the existing trust and receipt
-layer instead of widening Guild back into a generic runtime story.
+Outcome: turn the existing trust and receipt layer into operator-facing
+playbooks, starter sets, and capability review instead of widening Guild back
+into a generic runtime story.
 
-- artifact-first onboarding and verification
+- operator-first onboarding and trust review
+- playbook-first docs and examples on top of the current skill surfaces
 - receipt-first execution, evidence, and bounded-query views
-- bounded reference-application reports on current proven surfaces
+- bounded starter-set and reference-application reports on current proven surfaces
 - drift guards that keep the project thesis and anti-thesis stable
