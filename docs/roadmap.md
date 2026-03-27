@@ -1,7 +1,7 @@
 # Roadmap
 
 Guild is sequenced as a small set of ordered epics. The labels below keep the existing phase order, but the outcome comes first.
-Current framing and vocabulary freeze live in [`project-positioning.md`](project-positioning.md).
+Current framing and guardrails live in [`project-positioning.md`](project-positioning.md).
 Canonical operator-facing vocabulary lives in
 [`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
 

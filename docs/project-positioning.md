@@ -1,7 +1,7 @@
 # Project Positioning
 
 This document is the current explanatory framing for Guild. It freezes project
-thesis, product wording, and anti-thesis language for repo docs and planning.
+thesis, framing, and anti-thesis guardrails for repo docs and planning.
 
 For the canonical operator-facing vocabulary and discouraged-term list used by
 this repositioning work, see
