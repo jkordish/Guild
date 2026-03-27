@@ -35,6 +35,7 @@ from token_core import (
     TOKEN_PROTECTION_MODE,
     applicable_host_exact_bindings,
     attach_protection,
+    host_exact_bindings_acceptable_for_authority,
     host_exact_bindings_match_authority,
     load_issuer_secret,
     proof_source_kind,
@@ -961,7 +962,7 @@ def generate_witness(
         proof_exact_bindings = stable_unique_host_exact_bindings(
             proof.get("host_exact_bindings", [])
         )
-        if proof_exact_bindings and not host_exact_bindings_match_authority(
+        if not host_exact_bindings_acceptable_for_authority(
             proof_exact_bindings,
             proof["proven_authority_plan"],
         ):
@@ -1261,7 +1262,7 @@ def verify_witness(
             proof_exact_bindings = stable_unique_host_exact_bindings(
                 proof.get("host_exact_bindings", [])
             )
-            if proof_exact_bindings and not host_exact_bindings_match_authority(
+            if not host_exact_bindings_acceptable_for_authority(
                 proof_exact_bindings,
                 proof["proven_authority_plan"],
             ):
