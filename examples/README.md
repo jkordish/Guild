@@ -43,6 +43,29 @@ The concrete runtime path still uses bounded `read-resource` grants and, for
 the report-formatting parent skills, a bounded `invoke-skill` alias for the
 zero-authority formatter child.
 
+## Reference Playbook Anchors
+
+The approved operator-facing reference playbook set lives in
+[`../docs/strategy/guild-repositioning/07-reference-playbooks.md`](../docs/strategy/guild-repositioning/07-reference-playbooks.md).
+
+Use that doc when you want to see which operational workflows Guild should lead
+with over time: restart and notify, rollback and verify, cache purge, cert
+renewal, node remediation, and secret rotation.
+
+Today's examples are the current runnable bridge into that story, not a claim
+that every reference playbook already ships as a first-class workflow:
+
+- Guild Ops Starter is the current strongest bridge because it already teaches
+  trusted local operational review over stored receipts, bounded queries, and
+  evidence records.
+- The current first hero example plan lives in
+  [`../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md`](../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md)
+  and keeps that future action-heavy story tied to today's support frontier.
+- The example inventory is strongest today at read-only review workflows such
+  as `runs:inspect`, `runs:compare`, `failures:query`, and `evidence:inspect`.
+- The action-heavy playbooks in the reference set stay docs-first until they
+  fit the current runtime and capability frontier honestly.
+
 ## User Journeys
 
 ### Install and run a skill
