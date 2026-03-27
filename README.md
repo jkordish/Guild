@@ -39,8 +39,8 @@ Guild already has:
 - signed bundle export and import with local trust verification
 - OCI image layout and OCI registry transport for installed signed bundles
 - a real stdio MCP server with one public tool, `guild.inspect`, plus Guild resources
-- bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, and `log-write` slices
-- Guild Ops Starter, the first reference application in the repo, for compact ops analysis over stored executions, bounded query refs, and evidence refs
+- bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, `emit-evidence`, and `log-write` slices
+- Guild Ops Starter, the first reference application in the repo, for compact operational analysis over stored executions, bounded query refs, and evidence refs
 
 The live-proof envelope is intentionally narrow. The exact current status lives in `SPECS.md`, `docs/testing.md`, and `docs/schemas/draft-v1/family_support_matrix.json`.
 
@@ -249,10 +249,10 @@ The deeper proof and benchmark commands still live in [`docs/testing.md`](docs/t
 
 ## Guild Ops Starter
 
-Guild Ops Starter is the first reference application in the repo. The current user-facing pack lives at [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
+Guild Ops Starter is the first reference application in the repo. The current user-facing example set lives at [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
 The surrounding examples index lives at [`examples/README.md`](examples/README.md).
 
-It is intentionally ordinary example-skill layout, not a new packaging system. The pack installs as five example skills and stays inside current honest repo truth:
+It is intentionally ordinary example-skill layout, not a new packaging system. The example set installs as five example skills and stays inside current honest repo truth:
 
 - `incident-brief` for one stored execution ref
 - `run-diff` for two stored execution refs
@@ -260,7 +260,7 @@ It is intentionally ordinary example-skill layout, not a new packaging system. T
 - `evidence-summary` for one stored evidence ref
 - `render-report` as the zero-authority child formatter used by the parent report skills
 
-It is the first reference application built on Guild's trust and receipt layer, not the whole product thesis. The pack is meant to show the current Guild story without broadening runtime or proof semantics: durable refs, compact terminal output, explicit capability requirements, and bounded single-child composition only where it is already real.
+It is the first reference application built on Guild's trust and receipt layer, not the whole product thesis. The example set is meant to show the current Guild story without broadening runtime or proof semantics: durable refs, compact terminal output, explicit capability requirements, and bounded single-child composition only where it is already real.
 
 ## Trust And Transport
 

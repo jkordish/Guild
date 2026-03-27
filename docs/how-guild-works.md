@@ -2,7 +2,7 @@
 
 This page is the short daily-user model for Guild.
 
-It is not the normative contract source. Use `SPECS.md` when you need the exact platform contract, and use `ARCHITECTURE.md` when you need the fuller implementation view.
+It is not the normative contract source. Use `SPECS.md` when you need the exact runtime contract, and use `ARCHITECTURE.md` when you need the fuller implementation view.
 For the current project framing and vocabulary freeze, see [`project-positioning.md`](project-positioning.md).
 
 ## The Short Version

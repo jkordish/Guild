@@ -1057,8 +1057,6 @@ where
         let has_missing_child_data = exercised.is_empty() || record.child_executions.is_empty();
         let reason_code = if has_missing_child_data {
             "INVOKE_SKILL_REPLAY_UNAVAILABLE"
-        } else if exercised.len() > 1 || record.child_executions.len() > 1 {
-            "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
         } else {
             "INVOKE_SKILL_MULTI_CHILD_UNSUPPORTED"
         };
@@ -2286,6 +2284,7 @@ fn observed_log_caps(record: &ExecutionRecord) -> Vec<GrantedCapability> {
         .collect()
 }
 
+#[allow(clippy::too_many_lines)]
 fn observed_emit_evidence_slice(
     record: &ExecutionRecord,
 ) -> Result<ObservedEmitEvidenceSlice, (&'static str, String)> {
@@ -3115,6 +3114,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn sample_multi_child_parent_record() -> ExecutionRecord {
         ExecutionRecord {
             receipt: ExecutionReceipt {
