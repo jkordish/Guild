@@ -15,7 +15,7 @@ than widening the repo back into a generic runtime or playbook story.
 
 Guild already has real runtime, trust, storage, and observation machinery, but
 the repo is still easy to misread as a multi-step runtime story or an ops
-playbook engine. That misframing pulls build priorities toward substrate work
+playbook engine. That misframing pulls build priorities toward runtime plumbing
 instead of toward portable artifacts, receipts, evidence, and the first
 reference applications that consume them.
 
@@ -73,7 +73,7 @@ evidence, and generate bounded operational reports.
 
 ### Bounded Now
 
-- live proof is bounded to the current `read-resource`, six `http-request`, and one `invoke-skill` checked slices, plus proof-only `log-write`
+- live proof is bounded to the current `read-resource`, eight `http-request`, two `invoke-skill`, and one exact `emit-evidence` checked slices, plus proof-only `log-write`
 - draft-v1 admission, token, and witness semantics remain bounded and separate from the live runtime contract
 - reference-application composition remains inside exact single-child zero-authority formatter paths where already proven
 
@@ -81,7 +81,7 @@ evidence, and generate bounded operational reports.
 
 - broader `http-request` shapes
 - broader `invoke-skill` shapes
-- proof-backed `emit-evidence` linkage
+- broader `emit-evidence` flows beyond the exact single-emission fixed local-object-store slice
 - runtime-general proof-backed minimization
 - any claim that reference applications are a generic workflow engine
 

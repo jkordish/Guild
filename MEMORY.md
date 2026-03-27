@@ -2,9 +2,11 @@
 
 ## Summary
 
-Guild now has a real local inspect-only skills fabric, not just a contract sketch.
+Guild now has a real local inspect-only trust and receipt layer for portable skills, not just a contract sketch.
 
 Current repo framing is now frozen in [`docs/project-positioning.md`](docs/project-positioning.md): Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced. Guild Ops Starter is the first reference application built on that layer, not the whole product thesis.
+
+The 2026-03-27 `P2-project-refocus-and-message-freeze` follow-up tightened that frozen story without widening semantics: it corrected the next-phase epic's live-proof frontier to the current checked runtime truth, removed the remaining `skills fabric` / `execution substrate` / `starter pack` framing leaks from the selected public docs, and extended the Rust-native `project-positioning` drift check with a few additional exact phrase and anti-drift assertions. Draft-v1 support artifacts, benchmark artifacts, and runtime/control-plane surfaces remained unchanged.
 
 What is materially real today:
 
@@ -73,7 +75,7 @@ Where the repository is now:
 
 What this means in practice:
 
-- Guild is already a credible local-first execution fabric for inspect-mode skills.
+- Guild is already a credible local-first trust and receipt layer for inspect-mode skills.
 - The current public surface is intentionally narrow, but it is real, test-backed, and contract-shaped rather than demo glue.
 - The remaining work is mostly about broadening capability carefully and filling in deferred modes and distribution concerns, not proving the core architecture exists.
 

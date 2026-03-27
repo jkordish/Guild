@@ -258,13 +258,13 @@ Next: run `guild trust list` to inspect the target root, then add the publisher 
 
 ### Guild Ops Starter
 
-The current user-facing example pack lives at
+The current user-facing example set lives at
 [`examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md).
 The surrounding examples index lives at
 [`examples/README.md`](../examples/README.md).
 
 Guild Ops Starter is the first reference application in the repo. It is still
-just example skills under `examples/skills/`, not a new pack system.
+just example skills under `examples/skills/`, not a new packaging system.
 Use it when you want a compact real-path walkthrough over persisted Guild refs:
 
 - `incident-brief` for one stored execution ref

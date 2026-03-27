@@ -92,6 +92,7 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
         &[
             "Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced.",
             "Guild Ops Starter is the first reference application built on that trust layer. It is not the whole product story.",
+            "bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, `emit-evidence`, and `log-write` slices",
         ],
     ),
     (
@@ -99,6 +100,13 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
         &[
             "Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced.",
             "Guild turns a skill run into a verifiable receipt chain tied to exact bundle identity, granted authority, observed effects, and durable artifacts.",
+            "eight `http-request`, two `invoke-skill`, and one exact `emit-evidence` checked slices, plus proof-only `log-write`",
+        ],
+    ),
+    (
+        "examples/skills/guild-ops-starter/README.md",
+        &[
+            "Guild Ops Starter is the first reference application built on Guild's trust and receipt layer.",
         ],
     ),
 ];
@@ -106,6 +114,12 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
 const INTRO_FORBIDDEN_PHRASES: &[(&str, usize, &[&str])] = &[
     ("README.md", 12, &["runtime and control plane"]),
     ("ARCHITECTURE.md", 20, &["skill execution fabric"]),
+    ("docs/how-guild-works.md", 8, &["platform contract"]),
+    (
+        "examples/skills/guild-ops-starter/README.md",
+        10,
+        &["starter pack"],
+    ),
 ];
 
 pub fn check() -> Result<()> {

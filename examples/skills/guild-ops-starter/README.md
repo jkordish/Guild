@@ -2,15 +2,15 @@
 
 Guild Ops Starter is the first reference application built on Guild's trust and receipt layer.
 
-This is a starter pack of ordinary example skills. There is no new pack type here.
+This is a small set of ordinary example skills. There is no new pack type here.
 
-The point of the pack is narrow: show useful local operational analysis over real persisted Guild execution receipts, bounded query resources, and evidence artifacts without widening runtime, proof, token, or witness semantics.
+The point of this example set is narrow: show useful local operational analysis over real persisted Guild execution receipts, bounded query resources, and evidence artifacts without widening runtime, proof, token, or witness semantics.
 
 If you want one current user-facing Guild workflow, start here.
 
 ## Journey Map
 
-This pack is organized around four practical questions:
+This example set is organized around four practical questions:
 
 - explain one stored execution
 - compare two stored executions
@@ -34,9 +34,9 @@ Keep using the normal CLI around those richer summaries:
 | `evidence-summary` | What is this stored evidence record and why does it exist? | one `guild://objects/records/<id>` ref | `read-resource` on `guild://objects/records/` |
 | `render-report` | Format a normalized report as compact markdown | normalized JSON report input | none |
 
-`render-report` is the only composition demo in the pack. It is used as an exact single zero-authority child by `incident-brief` and `run-diff`. There is no fan-out, no recursion, and no hidden orchestration.
+`render-report` is the only composition demo in this example set. It is used as an exact single zero-authority child by `incident-brief` and `run-diff`. There is no fan-out, no recursion, and no hidden orchestration.
 
-## Install The Pack
+## Install The Example Set
 
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/ops-pack
@@ -65,7 +65,7 @@ That JSON includes:
 - `comparison_execution_uris`
 - `query_uris`
 
-Use those real refs directly with the pack skills.
+Use those real refs directly with these skills.
 
 The repo-local scenario prep is only there to hand you real stored refs quickly.
 The workflows below still use the normal installed `guild` CLI and the same
@@ -163,7 +163,7 @@ guild run \
   --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://objects/records/"],"resource_kinds":["object"]}}]}'
 ```
 
-## What This Pack Does Not Show
+## What This Example Set Does Not Show
 
 - It does not broaden `invoke-skill`. Composition stays inside the current bounded zero-authority inspect slices, and this pack itself still uses the single-child formatter path.
 - It does not use broad `http-request` as the hero path.

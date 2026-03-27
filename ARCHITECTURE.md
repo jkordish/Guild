@@ -249,9 +249,9 @@ That line matters. Once the guest can self-assert authority, the whole model sta
 
 ## 6. Runtime Design
 
-### 6.1 Wasm/WASI as reference runtime
+### 6.1 Wasm/WASI as reference execution format
 
-Wasm/WASI is the preferred execution substrate because it gives Guild:
+Wasm/WASI is the preferred execution format because it gives Guild:
 
 - sandboxing
 - portable artifacts
@@ -360,7 +360,7 @@ The same draft bundle now also contains one bounded M5 layer for its own vocabul
 - exact discrete elimination is only exact over the finite grant subsets the engine actually explores
 - scope shrinkers are bounded observed-effect projections and therefore report `bounded_minimal`, not exact minimality
 
-That M5 layer is intentionally split in M8c: the older Python harness remains draft-example-only, while the real live Rust proof path is now consumed only for the families it can honestly support today. The repository still does not have a runtime-general proof substrate across every canonical family.
+That M5 layer is intentionally split in M8c: the older Python harness remains draft-example-only, while the real live Rust proof path is now consumed only for the families it can honestly support today. The repository still does not have a runtime-general proof layer across every canonical family.
 
 That draft bundle now also contains one draft-local M6 token layer for its own vocabulary:
 
