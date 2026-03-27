@@ -44,7 +44,7 @@ Outcome: make durable execution state useful after the run completes.
 
 - child skill invocation
 - dependency snapshots
-- explain and debug skills over persisted artifacts
+- explain and debug skills over persisted execution state
 - bounded local query resources over stored executions
 - better diagnostics and provenance
 

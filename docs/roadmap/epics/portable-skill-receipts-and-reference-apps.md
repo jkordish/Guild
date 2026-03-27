@@ -28,19 +28,19 @@ Guild is trusted operational automation for engineering teams.
 
 The playbook is the application. The trust chain is the product.
 
-## First Reference Application Thesis
+## First Operator Starter Set Thesis
 
-Guild Ops Starter is the first operator starter set in the repo and the first
-reference application built on that trust chain. It uses receipts to summarize
-incidents, compare runs, explain evidence, and generate bounded operational
-reports.
+Guild Ops Starter is the first operator starter set in the repo. It is a
+repo-local release slice built on that trust chain. It uses receipts to
+summarize incidents, compare runs, explain evidence, and generate bounded
+operational reports.
 
 ## In Scope
 
 - make operator-facing playbooks and starter sets the default story while keeping the current skill and receipt model explicit
-- build starter-set and reference-application views on the current installed-state, execution, evidence, and bounded-query surfaces
+- build starter-set and repo-local release-slice views on the current installed-state, execution, evidence, and bounded-query surfaces
 - keep trust review, execution explanation, and evidence explanation tied to exact refs and explicit status labels
-- improve reference-application ergonomics only on already proven or already shipped surfaces
+- improve starter-set ergonomics only on already proven or already shipped surfaces
 - keep wording and planning aligned with the project-positioning doc
 
 ## Out Of Scope
@@ -59,7 +59,7 @@ reports.
 - admission receipt: the bounded draft-v1 admission result for one requested invocation when that draft control-plane slice is used; not a new live runtime object in this epic
 - execution receipt: the host-owned `guild://executions/...` reference for one persisted run
 - evidence artifact / chain: evidence record, metadata resource, blob linkage, and producing-execution linkage
-- playbook / casefile / report / reference-application view: a bounded read-only summary built from those durable refs and bounded query resources
+- playbook / casefile / report / repo-local release-slice view: a bounded read-only summary built from those durable refs and bounded query resources
 
 ## Current Proven Frontier
 
@@ -75,7 +75,7 @@ reports.
 
 - live proof is bounded to the current `read-resource`, eight `http-request`, two `invoke-skill`, and one exact `emit-evidence` checked slices, plus proof-only `log-write`
 - draft-v1 admission, token, and witness semantics remain bounded and separate from the live runtime contract
-- reference-application composition remains inside exact single-child zero-authority formatter paths where already proven
+- starter-set composition remains inside exact single-child zero-authority formatter paths where already proven
 
 ### Not Proven
 
@@ -83,20 +83,20 @@ reports.
 - broader `invoke-skill` shapes
 - broader `emit-evidence` flows beyond the exact single-emission fixed local-object-store slice
 - runtime-general proof-backed minimization
-- any claim that reference applications are a generic workflow engine
+- any claim that repo-local release slices are a generic workflow engine
 
 ## Expected Next Deliverables
 
 - operator-first onboarding and verification paths that still start from installed skill refs and trust review
 - receipt-first navigation and explanation across execution, evidence, and bounded query resources
 - bounded playbook, casefile, and report views built only on current durable refs and proven read paths
-- tighter reference-application docs and examples that stay inside the current support frontier
-- drift guards that keep project framing, anti-thesis wording, and first-reference-application positioning stable
+- tighter starter-set docs and examples that stay inside the current support frontier
+- drift guards that keep project framing, anti-thesis wording, and starter-set positioning stable
 
 ## Success Criteria
 
 - top-level docs and examples lead with operator workflows, capability review, receipts, evidence, and starter sets instead of runtime or substrate-first language
-- Guild Ops Starter clearly reads as the first operator starter set and the first reference application, not the whole product thesis
+- Guild Ops Starter clearly reads as the first operator starter set and a repo-local release slice, not the whole product thesis
 - new follow-on work is framed in terms of playbooks on top of portable skills, receipt chains, and durable refs
 - no runtime or draft-v1 support claim is broadened by wording alone
 - repo-native validation catches framing drift in the selected top-level docs

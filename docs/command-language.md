@@ -265,8 +265,9 @@ The current user-facing example set lives at
 The surrounding examples index lives at
 [`examples/README.md`](../examples/README.md).
 
-Guild Ops Starter is the first reference application in the repo. It is still
-just example skills under `examples/skills/`, not a new packaging system.
+Guild Ops Starter is the current operator starter set in the repo. It remains
+a repo-local release slice and still uses ordinary example skills under
+`examples/skills/`, not a new packaging system.
 Use it when you want a compact real-path walkthrough over persisted Guild refs:
 
 - `incident-brief` for one stored execution ref
@@ -404,8 +405,8 @@ guild --registry-root target/dev-local-registry/b import oci-layout target/dev-l
 guild --registry-root target/dev-local-registry/b pull 127.0.0.1:5000/guild-example-hello-inspect:0.1.0 --allow-http --preview
 ```
 
-For the current operator workflow that mirrors reviewed artifacts or promotes
-them between roots and OCI locations, read
+For the current operator workflow that mirrors reviewed installed state or
+promotes it between roots and OCI locations, read
 [`docs/mirroring-and-promotion.md`](mirroring-and-promotion.md). That guide
 keeps the current boundary explicit: `guild export ...` and `guild push ...`
 are publication steps over installed state, not silent registry-copy or retag

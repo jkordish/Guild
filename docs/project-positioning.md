@@ -34,12 +34,12 @@ That does not imply every slice is proof-backed today. `bounded`,
 `proof-backed`, `upper-bound`, `linked`, `unlinked`, and `not_proven` remain
 explicit where the live runtime and checked draft-v1 surfaces require them.
 
-## First Reference Application Thesis
+## First Operator Starter Set Thesis
 
-Guild Ops Starter is the first operator starter set in the repo and the first
-reference application built on that trust chain. It uses receipts and evidence
-to summarize incidents, compare runs, explain evidence, and generate bounded
-operational reports without pretending it is the whole product.
+Guild Ops Starter is the first operator starter set in the repo. It is a
+repo-local release slice built on that trust chain. It uses receipts and
+evidence to summarize incidents, compare runs, explain evidence, and generate
+bounded operational reports without pretending it is the whole product.
 
 ## Anti-Thesis
 
@@ -100,7 +100,7 @@ for Guild:
 - bounded proof is bounded, not general
 - unsupported slices stay unsupported
 - mechanism-layer terms remain where the contract needs them
-- reference applications should be built on proven surfaces
+- repo-local release slices should be built on proven surfaces
 
 ## Sane Expectations
 

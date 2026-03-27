@@ -28,7 +28,7 @@ const CHECKED_DOCS: &[&str] = &[
 const POSITIONING_MARKERS: &[&str] = &[
     "## Project Thesis",
     "## Product Thesis",
-    "## First Reference Application Thesis",
+    "## First Operator Starter Set Thesis",
     "## Preferred Core Terms",
     "## Terms To Avoid As Primary Framing",
     "## Sane Defaults",
@@ -41,7 +41,7 @@ const POSITIONING_MARKERS: &[&str] = &[
 const POSITIONING_PHRASES: &[&str] = &[
     "Guild is trusted operational automation for engineering teams.",
     "The playbook is the application. The trust chain is the product.",
-    "Guild Ops Starter is the first operator starter set in the repo and the first reference application built on that trust chain. It uses receipts and evidence to summarize incidents, compare runs, explain evidence, and generate bounded operational reports without pretending it is the whole product.",
+    "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain. It uses receipts and evidence to summarize incidents, compare runs, explain evidence, and generate bounded operational reports without pretending it is the whole product.",
 ];
 
 const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
@@ -81,7 +81,7 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
     ("examples/README.md", &["../docs/project-positioning.md"]),
     (
         "examples/skills/guild-ops-starter/README.md",
-        &["first reference application"],
+        &["repo-local release slice"],
     ),
 ];
 
@@ -92,7 +92,7 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
         &[
             "Guild is trusted operational automation for engineering teams.",
             "Today, the repo exposes that model through portable skills, bounded capabilities, durable execution and evidence records, and stable Guild refs.",
-            "Guild Ops Starter is the first operator starter set in the repo and the first reference application built on that trust chain. It is not the whole product story.",
+            "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain, not the whole product story.",
             "bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, `emit-evidence`, and `log-write` slices",
         ],
     ),
@@ -102,12 +102,13 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
             "Guild is trusted operational automation for engineering teams.",
             "The playbook is the application. The trust chain is the product.",
             "eight `http-request`, two `invoke-skill`, and one exact `emit-evidence` checked slices, plus proof-only `log-write`",
+            "Guild Ops Starter clearly reads as the first operator starter set and a repo-local release slice, not the whole product thesis",
         ],
     ),
     (
         "examples/skills/guild-ops-starter/README.md",
         &[
-            "Guild Ops Starter is the first operator starter set in the repo and the first reference application built on that trust chain. It is not the whole product story.",
+            "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain, not the whole product story.",
         ],
     ),
 ];

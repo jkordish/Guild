@@ -16,8 +16,8 @@ helpers, not the normal operator workflow.
 ## Start Here
 
 If you want one compact first-five-minutes workflow, start with Guild Ops
-Starter, the first operator starter set in the repo and the first reference
-application for trusted local operational analysis:
+Starter, the first operator starter set in the repo and the current repo-local
+release slice for trusted local operational analysis:
 
 - [`examples/skills/guild-ops-starter/README.md`](./skills/guild-ops-starter/README.md)
 
