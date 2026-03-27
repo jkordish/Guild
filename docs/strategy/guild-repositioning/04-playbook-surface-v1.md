@@ -20,6 +20,21 @@ A playbook expresses an operational procedure in a reviewable form:
 - Skills remain the runtime-resolved executable identity.
 - Playbooks add operator structure, reviewability, and capability intent on top of existing skill execution.
 
+## Playbook-To-Skill Composition
+
+Today, Guild still runs skills directly rather than a first-class playbook
+runtime. The current composition story is therefore:
+
+- a playbook step points at a reusable skill through `uses`
+- the referenced skill still resolves to immutable executable identity before it
+  runs
+- the host still evaluates caller-requested authority and computes the final
+  granted capability slice for the execution
+- receipts and evidence still come from the underlying skill executions that
+  actually ran
+- a future playbook layer should add operator structure on top of that trust
+  chain rather than replacing it
+
 ## Minimum Viable Schema Shape
 
 This is a planning target for v1, not a shipped manifest contract.
@@ -91,7 +106,26 @@ success:
     - ${steps.notify.status == "succeeded"}
 ```
 
+## Current Repo Boundary
+
+This document is a product and UX surface, not a shipped runtime contract.
+
+Today the repository still:
+
+- installs and executes skills directly
+- narrows requested authority through host-owned policy before guest start
+- persists durable execution and evidence records at the skill execution layer
+- keeps `inspect`, `plan`, and `apply` as distinct execution-mode boundaries
+
+The example YAML above is illustrative. Its playbook shape and operator-facing
+capability names are meant to guide docs and later UX work, not to claim that
+Guild already ships a broad playbook engine or that every example capability is
+executable today.
+
 ## Execution And Evidence Model
+
+If Guild grows a first-class playbook execution path later, it should reuse the
+current trust and evidence backbone rather than inventing a parallel one.
 
 - Playbook admission should show the requested operator-readable capabilities before execution starts.
 - Execution should still resolve each underlying skill to immutable executable identity.

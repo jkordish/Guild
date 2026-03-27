@@ -9,6 +9,7 @@ Audience: runtime implementers, registry authors, skill authors, security review
 Guild defines a local-first execution and artifact model for AI skills.
 
 For current project framing and repository vocabulary, use [`docs/project-positioning.md`](docs/project-positioning.md). That document is explanatory and strategic; it does not override the normative contract in this specification.
+For the current operator-facing playbook surface, use [`docs/strategy/guild-repositioning/04-playbook-surface-v1.md`](docs/strategy/guild-repositioning/04-playbook-surface-v1.md). That document is explanatory only: playbooks are the target operator-facing application unit there, while skills remain the normative execution unit in this specification.
 
 Its purpose is to make skills:
 
