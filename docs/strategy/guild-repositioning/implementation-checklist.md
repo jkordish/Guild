@@ -41,7 +41,7 @@ Phase 1 exit criteria:
 - [ ] [TASK-14](./tasks/TASK-14-document-playbook-to-skill-composition.md) Document playbook-to-skill composition.
 - [ ] [TASK-15](./tasks/TASK-15-add-playbook-concept-entrypoint.md) Add a playbook concept entrypoint to the docs tree.
 - [ ] [TASK-16](./tasks/TASK-16-draft-manifest-to-playbook-translation-note.md) Draft a manifest-to-playbook translation note.
-- [ ] [TASK-17](./tasks/TASK-17-command-language-target-flow-update.md) Update `docs/command-language.md` with the target operator flow.
+- [x] [TASK-17](./tasks/TASK-17-command-language-target-flow-update.md) Update `docs/command-language.md` with the target operator flow.
 - [ ] [TASK-18](./tasks/TASK-18-command-mapping-table.md) Add the command mapping table.
 - [ ] [TASK-19](./tasks/TASK-19-inspect-first-cli-alias-preview.md) Stage an inspect-first alias or help-preview path.
 - [ ] [TASK-20](./tasks/TASK-20-cli-example-journey-rewrite.md) Rewrite CLI examples around admit/exec/inspect/replay intent.
