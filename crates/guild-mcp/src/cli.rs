@@ -5614,6 +5614,19 @@ fn print_help_grants() {
     println!("  guild grants template invoke-skill");
     println!("  guild grants template http-request");
     println!();
+    println!("Prototype operator-facing rendering:");
+    println!("  runs:inspect    today: read-resource on guild://executions/");
+    println!(
+        "  runs:compare    today: read-resource on guild://executions/ plus bounded invoke-skill for a zero-authority formatter child"
+    );
+    println!(
+        "  failures:query  today: read-resource on guild://queries/executions/... plus guild://executions/"
+    );
+    println!(
+        "  evidence:inspect  today: read-resource on guild://objects/records/"
+    );
+    println!("  this is a presentation-layer prototype only, not a command or manifest rename.");
+    println!();
     println!("Copy-edit direction:");
     println!("  narrow `uri_prefixes` and `resource_kinds` for `read-resource`");
     println!("  replace `<declared-alias>` with the real declared child name for `invoke-skill`");

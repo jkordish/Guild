@@ -7,6 +7,11 @@ For the frozen runtime URI roots and support vocabulary in this milestone, see `
 For current project framing, see [`project-positioning.md`](project-positioning.md).
 For canonical operator-facing vocabulary, use
 [`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+For the canonical operator-facing capability vocabulary, use
+[`strategy/guild-repositioning/03-capability-taxonomy-v1.md`](strategy/guild-repositioning/03-capability-taxonomy-v1.md).
+The current command surface still uses the live internal family names in help
+and `guild grants template`; the taxonomy doc is the docs and approval
+vocabulary in this phase, not a command rename.
 
 ## Install And Run
 
@@ -214,6 +219,7 @@ Use the examples and docs in this order when you want the current practical path
 
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](../examples/skills/hello-inspect/README.md)
 - Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](../examples/skills/explain-execution-tree/README.md), or [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution
+- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](../examples/skills/explain-execution-tree/README.md), or [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution. In operator-facing capability language, those current read-only examples are `runs:inspect`, `runs:compare`, `failures:query`, and `evidence:inspect`, while the concrete grant JSON still uses bounded `read-resource` and, where present, bounded `invoke-skill`.
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
 - Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) and the surrounding examples index at [`examples/README.md`](../examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](../examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](../examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](../examples/skills/explain-http-authority/README.md)
 

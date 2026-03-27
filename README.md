@@ -16,6 +16,11 @@ story.
 > [`docs/project-positioning.md`](docs/project-positioning.md). For canonical
 > operator-facing vocabulary, use
 > [`docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md`](docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+> For the canonical operator-facing capability vocabulary, use
+> [`docs/strategy/guild-repositioning/03-capability-taxonomy-v1.md`](docs/strategy/guild-repositioning/03-capability-taxonomy-v1.md).
+> Current CLI help, manifests, and `guild grants template` still use the live
+> internal family names; the taxonomy doc is the operator-facing approval
+> vocabulary in this phase.
 >
 > Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
 >
