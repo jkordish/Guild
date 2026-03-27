@@ -181,6 +181,7 @@ Do not use this document to imply:
 
 - In docs and examples, lead with external capability names and add current internal-family notes only where they improve honesty or reviewability.
 - In current CLI help, manifests, and `guild grants template`, keep using the live internal family names until a later CLI/runtime phase changes that explicitly.
+- The first shipped rendering prototype now lives in `guild help grants`, where operator-facing names are shown first and the current internal-family expression is shown second as an explicitly labeled presentation-layer preview.
 - If future CLI output starts rendering external names, show the current internal-family expression alongside them during the transition rather than hiding the mapping.
 - Do not rename Rust, WIT, manifest, or policy identifiers in the first wave.
 

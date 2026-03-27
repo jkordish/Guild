@@ -4984,6 +4984,11 @@ fn shared_help_topics_are_available() {
     assert!(grants.contains("read-resource"));
     assert!(grants.contains("invoke-skill"));
     assert!(grants.contains("http-request"));
+    assert!(grants.contains("Prototype operator-facing rendering:"));
+    assert!(grants.contains("runs:inspect"));
+    assert!(grants.contains("failures:query"));
+    assert!(grants.contains("evidence:inspect"));
+    assert!(grants.contains("presentation-layer prototype only"));
     assert!(grants.contains("This helper is read-only."));
 }
 
