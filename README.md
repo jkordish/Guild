@@ -251,7 +251,10 @@ The deeper proof and benchmark commands still live in [`docs/testing.md`](docs/t
 
 ## Guild Ops Starter
 
-Guild Ops Starter is the first reference application in the repo. The current user-facing example set lives at [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
+Guild Ops Starter is the first operator starter set in the repo and the first
+reference application built on that trust chain. It is not the whole product
+story. The current user-facing example set lives at
+[`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
 The surrounding examples index lives at [`examples/README.md`](examples/README.md).
 
 It is intentionally ordinary example-skill layout, not a new packaging system. The example set installs as five example skills and stays inside current honest repo truth:
@@ -262,7 +265,10 @@ It is intentionally ordinary example-skill layout, not a new packaging system. T
 - `evidence-summary` for one stored evidence ref
 - `render-report` as the zero-authority child formatter used by the parent report skills
 
-It is the first reference application built on Guild's trust and receipt layer, not the whole product thesis. The example set is meant to show the current Guild story without broadening runtime or proof semantics: durable refs, compact terminal output, explicit capability requirements, and bounded single-child composition only where it is already real.
+The example set is meant to show the current Guild story without broadening
+runtime or proof semantics: durable refs, compact terminal output, explicit
+capability requirements, and bounded single-child composition only where it is
+already real.
 
 ## Trust And Transport
 

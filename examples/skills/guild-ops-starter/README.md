@@ -1,6 +1,6 @@
 # Guild Ops Starter
 
-Guild Ops Starter is the first reference application built on Guild's trust and receipt layer.
+Guild Ops Starter is the first operator starter set in the repo and the first reference application built on that trust chain. It is not the whole product story.
 
 This is a small set of ordinary example skills. There is no new pack type here.
 
