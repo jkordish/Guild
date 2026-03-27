@@ -73,6 +73,13 @@ already a typed host-side contract family with explicit guardrails in
 [`../../adr/0018-filesystem-policy-contract-not-yet-implemented.md`](../../adr/0018-filesystem-policy-contract-not-yet-implemented.md),
 while the active inspect slice still rejects it before guest start.
 
+The current `http-request` runtime path is also read-only in practice: the
+active inspect slice supports `GET` and `HEAD`, not general write-side HTTP
+effects. That means write-oriented external actions such as `chat:post` and
+`incident:create` remain docs-first target vocabulary in v1 even if a future
+implementation could eventually map them onto a bounded host-mediated HTTP
+family.
+
 ## Capability Families
 
 | External Capability | Meaning | Current Status | Current Internal-Family Expression |
@@ -83,8 +90,8 @@ while the active inspect slice still rejects it before guest start.
 | `k8s:drain` | Evict work from a node | docs-first target only | no direct first-class runtime family today |
 | `metrics:query` | Query health or performance metrics | expressible today in bounded cases | usually a narrow `http-request` grant in the current runtime; not a dedicated metrics family |
 | `logs:query` | Read logs or structured operational events | partially expressible today | `read-resource` for Guild-owned refs or a narrow `http-request` grant for backend-specific log APIs; not a generic live logs family |
-| `chat:post` | Post to an operator chat destination | expressible today in bounded cases | usually a narrow `http-request` grant; not a dedicated chat family |
-| `incident:create` | Create or annotate an incident record | expressible today in bounded cases | usually a narrow `http-request` grant; not a dedicated incident family |
+| `chat:post` | Post to an operator chat destination | docs-first target only | no write-capable first-class runtime family today; a future bounded implementation may map through host-mediated `http-request` |
+| `incident:create` | Create or annotate an incident record | docs-first target only | no write-capable first-class runtime family today; a future bounded implementation may map through host-mediated `http-request` |
 | `deploy:rollback` | Roll back a deployment | docs-first target only | no direct first-class runtime family today |
 | `secrets:rotate` | Rotate a secret and record evidence | docs-first target only | no direct first-class runtime family today |
 | `cache:purge` | Purge or invalidate cache content | docs-first target only | no direct first-class runtime family today |
