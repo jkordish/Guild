@@ -7,6 +7,11 @@ For the frozen runtime URI roots and support vocabulary in this milestone, see `
 For current project framing, see [`project-positioning.md`](project-positioning.md).
 For canonical operator-facing vocabulary, use
 [`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+For the canonical operator-facing capability vocabulary, use
+[`strategy/guild-repositioning/03-capability-taxonomy-v1.md`](strategy/guild-repositioning/03-capability-taxonomy-v1.md).
+The current command surface still uses the live internal family names in help
+and `guild grants template`; the taxonomy doc is the docs and approval
+vocabulary in this phase, not a command rename.
 
 ## Install And Run
 

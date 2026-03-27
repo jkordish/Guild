@@ -8,6 +8,9 @@ this repositioning work, see
 [`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
 That glossary is the user-facing language source for wording work; this
 document remains the framing and guardrail source.
+For the canonical operator-facing capability vocabulary used by that wording,
+see
+[`strategy/guild-repositioning/03-capability-taxonomy-v1.md`](strategy/guild-repositioning/03-capability-taxonomy-v1.md).
 
 It is not a runtime-contract source. For normative runtime ownership, use
 [`../SPECS.md`](../SPECS.md), [`../wit/guild-skill-v1.wit`](../wit/guild-skill-v1.wit),
@@ -29,6 +32,11 @@ receipts and evidence they can inspect and replay later.
 Today, the repo still exposes that model through skills, durable Guild refs,
 local policy decisions, and bounded runtime surfaces. The playbook surface is a
 product direction, not a claim that a broad playbook engine already ships.
+
+The external capability taxonomy is also docs-first in this phase. It is the
+operator-facing approval vocabulary, while the current internal family
+identifiers and typed constraints remain the implementation truth until a later
+phase changes that explicitly.
 
 That does not imply every slice is proof-backed today. `bounded`,
 `proof-backed`, `upper-bound`, `linked`, `unlinked`, and `not_proven` remain

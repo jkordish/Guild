@@ -6,6 +6,8 @@ It is not the normative contract source. Use `SPECS.md` when you need the exact 
 For the current project framing, see [`project-positioning.md`](project-positioning.md).
 For canonical operator-facing vocabulary, use
 [`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+For the canonical operator-facing capability vocabulary, use
+[`strategy/guild-repositioning/03-capability-taxonomy-v1.md`](strategy/guild-repositioning/03-capability-taxonomy-v1.md).
 
 ## The Short Version
 
@@ -70,6 +72,10 @@ Guild also keeps authority staged instead of ambient:
 Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.
 
 Use `guild grants template <family>` when you want a read-only concrete JSON starting point for the active families before narrowing that request and passing it to `guild run`.
+
+Operator-facing docs may describe that same review in external terms such as
+`metrics:query` or `chat:post`, but current grant authoring still uses the live
+internal family names such as `http-request` and `read-resource`.
 
 ## Command Roles
 
