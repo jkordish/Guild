@@ -30,5 +30,15 @@
 ## Filing Checklist
 
 - Convert each epic file into a tracked issue before broad rewrites begin.
-- Break the epic into the one-PR tasks listed in `../tasks.md`.
+- Break the epic into the one-PR task files listed in `../tasks/INDEX.md`.
 - Tag any item that changes current guardrails or CLI wording as needing test and migration review.
+
+## Task Links
+
+- [EPIC-01 task files](../tasks/TASK-01-readme-hero-reset.md), [TASK-02](../tasks/TASK-02-readme-overview-language-reset.md), [TASK-03](../tasks/TASK-03-project-positioning-decision-and-update.md), [TASK-04](../tasks/TASK-04-how-guild-works-operator-reframe.md)
+- [EPIC-02 task files](../tasks/TASK-05-publish-glossary-entrypoint.md), [TASK-06](../tasks/TASK-06-top-level-discouraged-terms-sweep.md), [TASK-07](../tasks/TASK-07-issue-template-language-update.md), [TASK-08](../tasks/TASK-08-cli-help-terminology-review.md)
+- [EPIC-03 task files](../tasks/TASK-09-publish-capability-taxonomy-v1.md), [TASK-10](../tasks/TASK-10-map-external-capabilities-to-current-families.md), [TASK-11](../tasks/TASK-11-update-capability-examples-in-docs.md), [TASK-12](../tasks/TASK-12-prototype-human-readable-capability-rendering.md)
+- [EPIC-04 task files](../tasks/TASK-13-publish-playbook-v1-surface.md), [TASK-14](../tasks/TASK-14-document-playbook-to-skill-composition.md), [TASK-15](../tasks/TASK-15-add-playbook-concept-entrypoint.md), [TASK-16](../tasks/TASK-16-draft-manifest-to-playbook-translation-note.md)
+- [EPIC-05 task files](../tasks/TASK-17-command-language-target-flow-update.md), [TASK-18](../tasks/TASK-18-command-mapping-table.md), [TASK-19](../tasks/TASK-19-inspect-first-cli-alias-preview.md), [TASK-20](../tasks/TASK-20-cli-example-journey-rewrite.md)
+- [EPIC-06 task files](../tasks/TASK-21-publish-reference-playbook-set.md), [TASK-22](../tasks/TASK-22-examples-index-operator-reframe.md), [TASK-23](../tasks/TASK-23-guild-ops-starter-playbook-reframe.md), [TASK-24](../tasks/TASK-24-build-one-hero-reference-example-plan.md)
+- [EPIC-07 task files](../tasks/TASK-25-add-trust-chain-explainer.md), [TASK-26](../tasks/TASK-26-trust-heavy-docs-realignment.md), [TASK-27](../tasks/TASK-27-repo-local-launch-copy-pack.md), [TASK-28](../tasks/TASK-28-trust-proof-walkthrough.md)

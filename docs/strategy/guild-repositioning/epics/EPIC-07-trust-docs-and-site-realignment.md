@@ -59,10 +59,9 @@ P2
 ## Sequencing Notes
 This epic should start after the narrative, glossary, capability, and playbook direction are set. It is the bridge into relaunch work and external marketing copy.
 
-## Starter Tasks
-1. Rewrite trust explanations so they lead with operator value instead of implementation layers.
-2. Add one concise trust-chain explainer for README and launch surfaces.
-3. Align `SPECS.md` and `ARCHITECTURE.md` references so user-facing guarantees are easy to trace.
-4. Define how receipts, evidence, and replay are explained without overselling current functionality.
-5. Update issue and roadmap templates so future work describes trust features in operator language.
-6. Separate in-repo launch work from any external website follow-up that must happen elsewhere.
+## Child Task Files
+
+1. [TASK-25: Add trust-chain explainer](../tasks/TASK-25-add-trust-chain-explainer.md)
+2. [TASK-26: Trust-heavy docs realignment](../tasks/TASK-26-trust-heavy-docs-realignment.md)
+3. [TASK-27: Repo-local launch copy pack](../tasks/TASK-27-repo-local-launch-copy-pack.md)
+4. [TASK-28: Trust-proof walkthrough](../tasks/TASK-28-trust-proof-walkthrough.md)

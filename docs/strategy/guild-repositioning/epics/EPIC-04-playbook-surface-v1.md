@@ -61,10 +61,9 @@ P1
 ## Sequencing Notes
 This epic should follow capability-model agreement. It provides the conceptual bridge between the new narrative and later example/CLI work.
 
-## Starter Tasks
-1. Define what a playbook is and is not in Guild.
-2. Document how playbooks compose portable skills rather than replacing them.
-3. Draft a minimum schema shape for playbook metadata, inputs, capabilities, steps, admission, and evidence.
-4. Author one concrete YAML example for diagnose, restart, and notify.
-5. Document how execution results, receipts, and evidence should be surfaced for a playbook run.
-6. Capture unresolved questions around storage format, CLI invocation, and replay semantics.
+## Child Task Files
+
+1. [TASK-13: Publish playbook v1 surface](../tasks/TASK-13-publish-playbook-v1-surface.md)
+2. [TASK-14: Document playbook-to-skill composition](../tasks/TASK-14-document-playbook-to-skill-composition.md)
+3. [TASK-15: Add playbook concept entrypoint](../tasks/TASK-15-add-playbook-concept-entrypoint.md)
+4. [TASK-16: Draft manifest-to-playbook translation note](../tasks/TASK-16-draft-manifest-to-playbook-translation-note.md)

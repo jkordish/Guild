@@ -60,10 +60,9 @@ P0
 ## Sequencing Notes
 This epic should land first. The glossary can start in parallel, but broad doc or site edits should not proceed until the narrative center is approved.
 
-## Starter Tasks
-1. Rewrite the `README.md` hero and opening sections around trusted operational automation.
-2. Replace "reference application" lead-ins with "ops playbook" framing where the repo already means operator workflow.
-3. Update `docs/project-positioning.md` to align with the new north-star or explicitly mark it as historical framing.
-4. Tighten `docs/how-guild-works.md` so trust-chain concepts are expressed as operator value before architecture detail.
-5. Update `examples/README.md` intros so examples read like operator workflows, not substrate demos.
-6. Add one short positioning checklist for future doc authors so the language does not drift back.
+## Child Task Files
+
+1. [TASK-01: README hero reset](../tasks/TASK-01-readme-hero-reset.md)
+2. [TASK-02: README overview language reset](../tasks/TASK-02-readme-overview-language-reset.md)
+3. [TASK-03: Project positioning decision and update](../tasks/TASK-03-project-positioning-decision-and-update.md)
+4. [TASK-04: How Guild Works operator reframe](../tasks/TASK-04-how-guild-works-operator-reframe.md)

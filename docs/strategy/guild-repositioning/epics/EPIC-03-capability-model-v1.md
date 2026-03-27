@@ -59,10 +59,9 @@ P1
 ## Sequencing Notes
 This should follow narrative and glossary approval, then feed playbook and CLI work. Implementation should start with docs/examples and only later consider runtime output changes.
 
-## Starter Tasks
-1. Define the external naming rule as `domain:action` with operator-readable verbs.
-2. Draft capability families for Kubernetes, deploy, logs, metrics, chat, incident, secrets, and cache actions.
-3. Document scoping guidance so names stay simple and parameters carry resource detail.
-4. Map the external names to today's internal capability families and host-mediated boundaries.
-5. Review example playbooks against the taxonomy and tighten names that are too broad.
-6. Identify which future CLI surfaces should show external names first and internal details second.
+## Child Task Files
+
+1. [TASK-09: Publish capability taxonomy v1](../tasks/TASK-09-publish-capability-taxonomy-v1.md)
+2. [TASK-10: Map external capabilities to current families](../tasks/TASK-10-map-external-capabilities-to-current-families.md)
+3. [TASK-11: Update capability examples in docs](../tasks/TASK-11-update-capability-examples-in-docs.md)
+4. [TASK-12: Prototype human-readable capability rendering](../tasks/TASK-12-prototype-human-readable-capability-rendering.md)

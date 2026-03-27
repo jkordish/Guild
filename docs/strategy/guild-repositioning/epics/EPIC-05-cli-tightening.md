@@ -59,10 +59,9 @@ P1
 ## Sequencing Notes
 CLI wording should follow the glossary and narrative reset. Any code changes should be staged behind aliases and doc updates before hard deprecations are considered.
 
-## Starter Tasks
-1. Publish the target command set and the compatibility-first migration plan.
-2. Map current commands to target verbs in `docs/command-language.md`.
-3. Identify help text that sounds prototype-ish or substrate-heavy.
-4. Draft target examples for `guild admit`, `guild exec`, `guild inspect`, and `guild replay`.
-5. Document which current commands remain canonical during the first migration phase.
-6. Define the cutoff criteria for when aliases can become primary verbs.
+## Child Task Files
+
+1. [TASK-17: Command-language target-flow update](../tasks/TASK-17-command-language-target-flow-update.md)
+2. [TASK-18: Command mapping table](../tasks/TASK-18-command-mapping-table.md)
+3. [TASK-19: Inspect-first CLI alias preview](../tasks/TASK-19-inspect-first-cli-alias-preview.md)
+4. [TASK-20: CLI example journey rewrite](../tasks/TASK-20-cli-example-journey-rewrite.md)

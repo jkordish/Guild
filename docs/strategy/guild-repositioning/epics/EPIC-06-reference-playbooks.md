@@ -57,10 +57,9 @@ P1
 ## Sequencing Notes
 This epic should start once capability names and playbook shape are stable enough to avoid churn in every example.
 
-## Starter Tasks
-1. Lock the initial reference playbook set and their order of delivery.
-2. Define the minimal success criteria for each playbook example.
-3. Map each playbook to capabilities, evidence expectations, and trust boundaries.
-4. Decide which playbooks should be docs-only first versus executable examples.
-5. Rewrite example intros so operator intent is visible before implementation detail.
-6. Prepare one hero playbook for the README and launch narrative.
+## Child Task Files
+
+1. [TASK-21: Publish reference playbook set](../tasks/TASK-21-publish-reference-playbook-set.md)
+2. [TASK-22: Examples index operator reframe](../tasks/TASK-22-examples-index-operator-reframe.md)
+3. [TASK-23: Guild Ops Starter playbook reframe](../tasks/TASK-23-guild-ops-starter-playbook-reframe.md)
+4. [TASK-24: Build one hero reference example plan](../tasks/TASK-24-build-one-hero-reference-example-plan.md)

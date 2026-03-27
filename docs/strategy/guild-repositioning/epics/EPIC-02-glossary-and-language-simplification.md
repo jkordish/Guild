@@ -58,10 +58,9 @@ P0
 ## Sequencing Notes
 Start immediately after the north-star is approved. This epic should complete before broad doc rewrites and before finalizing CLI simplification copy.
 
-## Starter Tasks
-1. Publish the canonical glossary and discouraged-term list in repo docs.
-2. Add preferred usage examples for capabilities, admission, receipts, evidence, and replay.
-3. Inventory top-level docs for banned or discouraged lead terms.
-4. Update issue templates so new work items use operator-facing language by default.
-5. Review `guild --help` and key subcommand help for substrate-heavy wording.
-6. Add a lightweight editorial rule to doc contributor guidance.
+## Child Task Files
+
+1. [TASK-05: Publish glossary entrypoint](../tasks/TASK-05-publish-glossary-entrypoint.md)
+2. [TASK-06: Top-level discouraged-terms sweep](../tasks/TASK-06-top-level-discouraged-terms-sweep.md)
+3. [TASK-07: Issue-template language update](../tasks/TASK-07-issue-template-language-update.md)
+4. [TASK-08: CLI help terminology review](../tasks/TASK-08-cli-help-terminology-review.md)
