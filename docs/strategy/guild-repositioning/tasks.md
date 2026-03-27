@@ -3,6 +3,9 @@
 This backlog is ordered by dependency and grouped by epic. Each task is sized to fit in a single PR.
 
 The source-of-truth task files live under [`tasks/`](./tasks/). Use [`tasks/INDEX.md`](./tasks/INDEX.md) for execution order and dependency links.
+Use [`02-glossary-and-banned-terms.md`](./02-glossary-and-banned-terms.md)
+as the canonical operator-facing vocabulary and user-facing language source for
+all task wording in this backlog.
 
 ## EPIC-01: Narrative Reset
 

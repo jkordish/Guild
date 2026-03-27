@@ -4,7 +4,10 @@ ADRs record rationale and accepted decisions. They are not the current normative
 
 For how Guild behaves today, use `SPECS.md` and `ARCHITECTURE.md`.
 For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
-For the current project framing and wording freeze, use [`../project-positioning.md`](../project-positioning.md). ADR `0001-guild-thesis.md` is historical rationale, not the current framing source.
+For the current project framing, use [`../project-positioning.md`](../project-positioning.md).
+For canonical operator-facing vocabulary, use
+[`../strategy/guild-repositioning/02-glossary-and-banned-terms.md`](../strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+ADR `0001-guild-thesis.md` is historical rationale, not the current framing source.
 
 ## Current ADRs
 

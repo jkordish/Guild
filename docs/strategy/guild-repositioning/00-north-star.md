@@ -1,5 +1,10 @@
 # Guild Repositioning North Star
 
+Use [`02-glossary-and-banned-terms.md`](./02-glossary-and-banned-terms.md)
+as the canonical operator-facing vocabulary and user-facing language source for
+this repositioning pack. It guides wording and review, but it does not rename
+runtime contracts, Rust types, or WIT surfaces.
+
 ## Target Audience
 
 - Ops engineers running recurring operational procedures

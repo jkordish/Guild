@@ -10,7 +10,10 @@ Guild Ops Starter is the first operator starter set in the repo and the first re
 
 > Status: pre-alpha.
 >
-> For the current project framing and vocabulary freeze, start with [`docs/project-positioning.md`](docs/project-positioning.md).
+> For the current project framing, start with
+> [`docs/project-positioning.md`](docs/project-positioning.md). For canonical
+> operator-facing vocabulary, use
+> [`docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md`](docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md).
 >
 > Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
 >

@@ -1,6 +1,9 @@
 # Guild Repositioning Implementation Checklist
 
 This checklist turns the strategy pack into an execution sequence. It is planning-only and should stay aligned with the current runtime and trust frontier.
+Use [`02-glossary-and-banned-terms.md`](./02-glossary-and-banned-terms.md)
+as the canonical operator-facing vocabulary and user-facing language source for
+wording decisions across this checklist.
 
 ## Preflight Decisions
 

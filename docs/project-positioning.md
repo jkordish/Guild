@@ -3,6 +3,12 @@
 This document is the current explanatory framing for Guild. It freezes project
 thesis, product wording, and anti-thesis language for repo docs and planning.
 
+For the canonical operator-facing vocabulary and discouraged-term list used by
+this repositioning work, see
+[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+That glossary is the user-facing language source for wording work; this
+document remains the framing and guardrail source.
+
 It is not a runtime-contract source. For normative runtime ownership, use
 [`../SPECS.md`](../SPECS.md), [`../wit/guild-skill-v1.wit`](../wit/guild-skill-v1.wit),
 and the core Rust runtime/types. For the bounded draft proof/control-plane

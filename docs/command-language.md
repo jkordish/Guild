@@ -4,7 +4,9 @@ This document is the source of truth for Guild's public command and URI grammar 
 
 It is not the runtime-contract source of truth; see `SPECS.md` section "Source Of Truth".
 For the frozen runtime URI roots and support vocabulary in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
-For current project framing and terminology, see [`project-positioning.md`](project-positioning.md).
+For current project framing, see [`project-positioning.md`](project-positioning.md).
+For canonical operator-facing vocabulary, use
+[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
 
 ## Install And Run
 

@@ -1,6 +1,10 @@
 # Repositioning Task Index
 
 This directory contains the issue-ready, PR-sized execution tasks for the Guild repositioning work.
+Use
+[`../02-glossary-and-banned-terms.md`](../02-glossary-and-banned-terms.md)
+as the canonical operator-facing vocabulary and user-facing language source for
+these task files.
 
 ## Phase 1: Narrative, Docs, And Glossary
 
