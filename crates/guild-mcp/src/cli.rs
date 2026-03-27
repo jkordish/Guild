@@ -1242,7 +1242,7 @@ struct HelpCliArgs {
 #[derive(Debug, Parser)]
 #[command(
     name = CLI_BINARY_NAME,
-    about = "Run, inspect, and manage Guild skills locally.",
+    about = "Run, inspect, and review Guild skills, receipts, and evidence locally.",
     disable_help_subcommand = true
 )]
 struct Cli {
@@ -1257,13 +1257,13 @@ enum CliCommand {
     #[command(about = "Create a Guild root and print setup steps")]
     Init(InitCliArgs),
     #[command(
-        about = "Show a skill, run, object, or evidence summary",
+        about = "Show a skill, receipt, object, or evidence summary",
         after_help = SHOW_AFTER_HELP
     )]
     Show(ShowCliArgs),
     #[command(
         alias = "inspect",
-        about = "Run a skill locally",
+        about = "Run an installed skill under explicit capability policy",
         after_help = RUN_AFTER_HELP
     )]
     Run(RunCliArgs),
@@ -1287,7 +1287,7 @@ enum CliCommand {
     )]
     Grants(GrantsCliArgs),
     #[command(
-        about = "Show installed trust and verification status",
+        about = "Review installed trust and verification status",
         after_help = VERIFY_AFTER_HELP
     )]
     Verify(VerifyCliArgs),
@@ -5374,19 +5374,19 @@ fn import_preview_decision_label(decision: &ImportPreviewDecision) -> &'static s
 fn print_usage() {
     println!("Guild CLI");
     println!();
-    println!("Run, inspect, and manage Guild skills locally.");
+    println!("Run, inspect, and review Guild skills, receipts, and evidence locally.");
     println!();
     println!("Usage:");
     println!("  guild [OPTIONS] <COMMAND>");
     println!();
     println!("Daily use:");
-    println!("  show      Show a skill, run, object, or evidence summary");
+    println!("  show      Show a skill, receipt, object, or evidence summary");
     println!("  grants    Print read-only grant templates");
-    println!("  run       Run a skill locally");
+    println!("  run       Run an installed skill under explicit capability policy");
     println!("  ls        List skills, runs, objects, or evidence");
     println!("  get       Read a Guild resource");
     println!("  why       Explain a persisted execution");
-    println!("  verify    Show installed trust and verification status");
+    println!("  verify    Review installed trust and verification status");
     println!();
     println!("Install and publish:");
     println!("  install   Install a source skill into a Guild root");

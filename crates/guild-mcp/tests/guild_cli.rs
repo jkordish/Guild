@@ -4855,7 +4855,7 @@ fn codex_subcommand_help_is_available_through_guild_cli() {
 fn top_level_help_is_grouped_and_points_to_topic_help() {
     let stdout = run_guild_success(&["--help"], None);
     assert!(stdout.contains("Guild CLI"));
-    assert!(stdout.contains("Run, inspect, and manage Guild skills locally."));
+    assert!(stdout.contains("Run, inspect, and review Guild skills, receipts, and evidence locally."));
     assert!(stdout.contains("Daily use:"));
     assert!(stdout.contains("Install and publish:"));
     assert!(stdout.contains("Setup and integration:"));
@@ -4998,7 +4998,7 @@ fn invalid_help_topic_fails_closed() {
 #[test]
 fn show_help_points_to_ref_topics() {
     let stdout = run_guild_success(&["show", "--help"], None);
-    assert!(stdout.contains("Show a skill, run, object, or evidence summary"));
+    assert!(stdout.contains("Show a skill, receipt, object, or evidence summary"));
     assert!(stdout.contains("Accepted refs:"));
     assert!(stdout.contains("does not run a skill"));
     assert!(stdout.contains("default output is a short human summary for reading, not parsing."));
@@ -5012,7 +5012,7 @@ fn show_help_points_to_ref_topics() {
 #[test]
 fn run_help_uses_input_file_flag_and_ref_topic() {
     let stdout = run_guild_success(&["run", "--help"], None);
-    assert!(stdout.contains("Run a skill locally"));
+    assert!(stdout.contains("Run an installed skill under explicit capability policy"));
     assert!(stdout.contains("--input-file <PATH>"));
     assert!(!stdout.contains("input-file-path"));
     assert!(stdout.contains("Authority lifecycle:"));
@@ -5157,7 +5157,7 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     assert!(why_help.contains("guild get --help"));
 
     let verify_help = run_guild_success(&["verify", "--help"], None);
-    assert!(verify_help.contains("Show installed trust and verification status"));
+    assert!(verify_help.contains("Review installed trust and verification status"));
     assert!(
         verify_help
             .contains("default output is a short human trust summary for reading, not parsing.")
@@ -5882,10 +5882,11 @@ fn follow_on_program_tracking_stays_rebased() {
         fs::read_to_string(repo_root().join(".github/ISSUE_TEMPLATE/ux-task.md")).unwrap();
 
     for phrase in [
-        "Track one UX-hardening epic in the Guild day-to-day usability program",
+        "Track one operator-facing docs or CLI epic in the Guild follow-on program",
         "No runtime-contract widening unless a separate contract issue says so",
         "No aspirational command names that the CLI does not already support honestly",
         "No repo-local planning file that duplicates the active GitHub issue tree",
+        "No playbook, replay, or capability claims that overstate the current support frontier",
     ] {
         assert!(
             epic_template.contains(phrase),
@@ -5905,6 +5906,17 @@ fn follow_on_program_tracking_stays_rebased() {
         assert!(
             !task_template.contains(forbidden),
             "ux-task.md reintroduced stale follow-on planning wording: {forbidden}"
+        );
+    }
+
+    for phrase in [
+        "Implement one concrete operator-facing docs or CLI task for Guild",
+        "The wording uses the approved Guild glossary where it fits",
+        "Do not introduce aspirational command names or playbook/replay claims that the CLI does not support honestly",
+    ] {
+        assert!(
+            task_template.contains(phrase),
+            "ux-task.md is missing follow-on program guardrail wording: {phrase}"
         );
     }
 }

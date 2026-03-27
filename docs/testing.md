@@ -4,7 +4,10 @@ This document collects the verification commands and proof workflows that go bey
 
 Use this page when you need regression sweeps, example proofs, benchmark checks, or deterministic repo-local Codex helper flows.
 
-For the current project framing and first-reference-application thesis, see [`project-positioning.md`](project-positioning.md).
+For the current project framing and first-reference-application thesis, see
+[`project-positioning.md`](project-positioning.md). For canonical
+operator-facing vocabulary, use
+[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
 
 The source-of-truth declaration lives in `SPECS.md` section "Source Of Truth".
 For the frozen runtime-contract surfaces in this milestone, use `SPECS.md` section "Contract Surface v1 (core)" rather than treating this testing guide as a parallel source.

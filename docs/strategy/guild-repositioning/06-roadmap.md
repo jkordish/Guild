@@ -1,5 +1,10 @@
 # Repositioning Roadmap
 
+Use [`02-glossary-and-banned-terms.md`](./02-glossary-and-banned-terms.md)
+as the canonical operator-facing vocabulary and user-facing language source for
+this roadmap and its follow-on tasks. It is a wording source, not a
+runtime-contract source.
+
 ## Phase 0: Decisions
 
 Goal: lock the operator story before rewriting public surfaces.

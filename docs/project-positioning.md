@@ -1,7 +1,13 @@
 # Project Positioning
 
 This document is the current explanatory framing for Guild. It freezes project
-thesis, product wording, and anti-thesis language for repo docs and planning.
+thesis, framing, and anti-thesis guardrails for repo docs and planning.
+
+For the canonical operator-facing vocabulary and discouraged-term list used by
+this repositioning work, see
+[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+That glossary is the user-facing language source for wording work; this
+document remains the framing and guardrail source.
 
 It is not a runtime-contract source. For normative runtime ownership, use
 [`../SPECS.md`](../SPECS.md), [`../wit/guild-skill-v1.wit`](../wit/guild-skill-v1.wit),
@@ -28,12 +34,12 @@ That does not imply every slice is proof-backed today. `bounded`,
 `proof-backed`, `upper-bound`, `linked`, `unlinked`, and `not_proven` remain
 explicit where the live runtime and checked draft-v1 surfaces require them.
 
-## First Reference Application Thesis
+## First Operator Starter Set Thesis
 
-Guild Ops Starter is the first operator starter set in the repo and the first
-reference application built on that trust chain. It uses receipts and evidence
-to summarize incidents, compare runs, explain evidence, and generate bounded
-operational reports without pretending it is the whole product.
+Guild Ops Starter is the first operator starter set in the repo. It is a
+repo-local release slice built on that trust chain. It uses receipts and
+evidence to summarize incidents, compare runs, explain evidence, and generate
+bounded operational reports without pretending it is the whole product.
 
 ## Anti-Thesis
 
@@ -94,7 +100,7 @@ for Guild:
 - bounded proof is bounded, not general
 - unsupported slices stay unsupported
 - mechanism-layer terms remain where the contract needs them
-- reference applications should be built on proven surfaces
+- repo-local release slices should be built on proven surfaces
 
 ## Sane Expectations
 

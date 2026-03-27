@@ -6,11 +6,16 @@ Guild is being built so operators can review and admit an ops playbook under exp
 
 Today, the repo exposes that model through portable skills, bounded capabilities, durable execution and evidence records, and stable Guild refs. The broader playbook surface is still being defined, so the docs keep the target operator story and the current implementation boundaries separate.
 
-Guild Ops Starter is the first operator starter set in the repo and the first reference application built on that trust chain. It is not the whole product story.
+Guild Ops Starter is the first operator starter set in the repo. It is a
+repo-local release slice built on that trust chain, not the whole product
+story.
 
 > Status: pre-alpha.
 >
-> For the current project framing and vocabulary freeze, start with [`docs/project-positioning.md`](docs/project-positioning.md).
+> For the current project framing, start with
+> [`docs/project-positioning.md`](docs/project-positioning.md). For canonical
+> operator-facing vocabulary, use
+> [`docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md`](docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md).
 >
 > Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
 >
@@ -251,8 +256,8 @@ The deeper proof and benchmark commands still live in [`docs/testing.md`](docs/t
 
 ## Guild Ops Starter
 
-Guild Ops Starter is the first operator starter set in the repo and the first
-reference application built on that trust chain. It is not the whole product
+Guild Ops Starter is the first operator starter set in the repo. It is a
+repo-local release slice built on that trust chain, not the whole product
 story. The current user-facing example set lives at
 [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
 The surrounding examples index lives at [`examples/README.md`](examples/README.md).
@@ -386,8 +391,8 @@ guild --registry-root target/dev-local-registry/b pull 127.0.0.1:5000/guild-exam
 
 Use `guild help preview` for the shipped CLI wording of that contract direction.
 
-For the current operator story around mirroring reviewed artifacts and promoting
-them between roots or OCI locations, read
+For the current operator story around mirroring reviewed installed state and
+promoting it between roots or OCI locations, read
 [`docs/mirroring-and-promotion.md`](docs/mirroring-and-promotion.md). That
 guide keeps one limit explicit: `guild export ...` and `guild push ...` are
 publication steps over installed state, not silent copy or retag primitives.

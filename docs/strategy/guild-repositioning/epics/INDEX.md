@@ -1,5 +1,9 @@
 # Epic Index
 
+Use [`../02-glossary-and-banned-terms.md`](../02-glossary-and-banned-terms.md)
+as the canonical operator-facing vocabulary and user-facing language source for
+epic titles, descriptions, and follow-on task wording.
+
 ## Sequence
 
 1. `EPIC-01-narrative-reset.md`

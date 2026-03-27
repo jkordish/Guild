@@ -1,7 +1,9 @@
 # Roadmap
 
 Guild is sequenced as a small set of ordered epics. The labels below keep the existing phase order, but the outcome comes first.
-Current framing and vocabulary freeze live in [`project-positioning.md`](project-positioning.md).
+Current framing and guardrails live in [`project-positioning.md`](project-positioning.md).
+Canonical operator-facing vocabulary lives in
+[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
 
 The first five epics built the contract, execution, trust, and evidence
 surfaces. The next narrative wave turns that existing trust chain into
@@ -42,7 +44,7 @@ Outcome: make durable execution state useful after the run completes.
 
 - child skill invocation
 - dependency snapshots
-- explain and debug skills over persisted artifacts
+- explain and debug skills over persisted execution state
 - bounded local query resources over stored executions
 - better diagnostics and provenance
 

@@ -1,6 +1,6 @@
 ---
 name: UX Task
-about: Implement one concrete UX-hardening task for Guild
+about: Implement one concrete operator-facing docs or CLI task for Guild
 title: "[Task] "
 labels: enhancement
 ---
@@ -38,10 +38,12 @@ guild ...
 - [ ] The change is observable from the intended user surface
 - [ ] Help, docs, or examples are updated if the user-visible contract changes
 - [ ] Core regression coverage or proof commands are identified
+- [ ] The wording uses the approved Guild glossary where it fits
 
 ## Non-Goals
 
 - Do not widen runtime authority or contract surface unless explicitly required
+- Do not introduce aspirational command names or playbook/replay claims that the CLI does not support honestly
 
 ## Files/Specs Likely Touched
 
@@ -57,4 +59,3 @@ guild ...
 
 - Blocked by:
 - Blocks:
-

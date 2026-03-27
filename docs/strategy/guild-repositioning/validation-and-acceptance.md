@@ -1,6 +1,9 @@
 # Validation And Acceptance
 
 Use these checks to keep the repositioning work honest. Validation should prove that wording, examples, and CLI surfaces changed together without widening Guild's actual trust or runtime guarantees.
+Use [`02-glossary-and-banned-terms.md`](./02-glossary-and-banned-terms.md)
+as the canonical operator-facing vocabulary and user-facing language source
+when reviewing doc and help-text wording.
 
 ## Core Acceptance Rules
 
