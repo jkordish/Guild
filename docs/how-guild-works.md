@@ -7,12 +7,30 @@ For the current project framing and vocabulary freeze, see [`project-positioning
 
 ## The Short Version
 
-Guild creates portable, capability-bounded skill artifacts. In day-to-day use,
-that means you ask for a skill by a human-meaningful ref, Guild resolves that
-request to installed executable state, runs it with host-owned authority
+Guild is being built around an operator flow: understand what a workflow is
+allowed to do, run it under explicit host-owned authority, and inspect the
+receipts and evidence afterward.
+
+Today, the repo exposes that flow through skills rather than a first-class
+playbook engine. You ask for a skill by a human-meaningful ref, Guild resolves
+that request to installed executable state, runs it with host-owned authority
 decisions, and leaves durable execution and evidence receipts behind.
 
-The important part is that Guild keeps those boundaries explicit instead of flattening them into "the tool ran somehow."
+The important part is that Guild keeps those boundaries explicit instead of
+flattening them into "the tool ran somehow."
+
+## Operator Model
+
+Guild's target operator story is simple:
+
+- review what a workflow is allowed to do before it runs
+- run it in isolation under explicit capability policy
+- inspect receipts and evidence after the run completes
+- compare, explain, and replay from stored refs instead of chat-only memory
+
+The current repo does not yet ship a broad playbook engine. It ships the trust,
+identity, execution, and evidence surfaces that playbooks are meant to sit on
+top of.
 
 ## Identity Layers
 

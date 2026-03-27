@@ -1,10 +1,12 @@
 # Guild
 
-Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced.
+Guild is trusted operational automation for engineering teams.
 
-Guild turns a skill run into a verifiable receipt chain tied to exact bundle identity, granted authority, observed effects, and durable artifacts.
+Guild is being built so operators can review and admit an ops playbook under explicit capability policy, run it in isolation, and keep receipts and evidence they can inspect later.
 
-Guild Ops Starter is the first reference application built on that trust layer. It is not the whole product story.
+Today, the repo exposes that model through portable skills, bounded capabilities, durable execution and evidence records, and stable Guild refs. The broader playbook surface is still being defined, so the docs keep the target operator story and the current implementation boundaries separate.
+
+Guild Ops Starter is the first operator starter set in the repo and the first reference application built on that trust chain. It is not the whole product story.
 
 > Status: pre-alpha.
 >
@@ -20,19 +22,19 @@ For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` 
 
 ## Why Guild
 
-Guild is strict about a few things on purpose:
+Guild is strict about a few things on purpose because safe operational automation needs them:
 
-- requested identity is not executable identity
-- the host, not the guest, owns trust-sensitive authority
-- evidence is a durable artifact, not a prompt scrap
-- inspect, plan, and apply are distinct modes
-- the MCP surface stays small and boring
+- operators should be able to understand what a workflow is allowed to do before it runs
+- the host, not the guest, owns trust-sensitive authority and isolation boundaries
+- execution should leave receipts and evidence that explain what happened later
+- inspect, plan, and apply must stay distinct
+- the MCP surface should stay small and boring
 
-The goal is not a loose agent wrapper or an ops playbook engine. It is a portable skill system where artifact identity, capability bounds, admission, execution receipts, and evidence stay tied to real runtime behavior.
+Guild is not a generic agent framework or a broad workflow engine. Today it runs skills directly and exposes the trust chain around them; the operator-facing playbook story should lead the product, while mechanism-layer terms remain available where precision matters.
 
 ## What Works Today
 
-Guild already has:
+Guild already ships the trust and evidence backbone behind that operator story:
 
 - a real local `guild` CLI for install, show, grants, run, ls, get, why, verify, trust, transport, and MCP setup
 - a local registry root with durable execution and evidence records under `guild://...`
@@ -40,9 +42,9 @@ Guild already has:
 - OCI image layout and OCI registry transport for installed signed bundles
 - a real stdio MCP server with one public tool, `guild.inspect`, plus Guild resources
 - bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, `emit-evidence`, and `log-write` slices
-- Guild Ops Starter, the first reference application in the repo, for compact operational analysis over stored executions, bounded query refs, and evidence refs
+- Guild Ops Starter, the first operator starter set in the repo, for compact operational analysis over stored executions, bounded query refs, and evidence refs
 
-The live-proof envelope is intentionally narrow. The exact current status lives in `SPECS.md`, `docs/testing.md`, and `docs/schemas/draft-v1/family_support_matrix.json`.
+The live-proof envelope is intentionally narrow. The exact current status lives in `SPECS.md`, `docs/testing.md`, and `docs/schemas/draft-v1/family_support_matrix.json`, and the docs below keep those limits explicit instead of smoothing them over.
 
 ## CLI
 
@@ -446,8 +448,8 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 
 ## Canonical Docs
 
-- `docs/project-positioning.md` - current project thesis, vocabulary freeze, and first-reference-application framing
-- `docs/how-guild-works.md` - short daily-user mental model for identity, authority, and the main CLI surfaces
+- `docs/project-positioning.md` - current narrative, target audience, and language decisions for Guild
+- `docs/how-guild-works.md` - short operator model for identity, authority, receipts, evidence, and the main CLI surfaces
 - `docs/mcp-agent-recipes.md` - task-shaped MCP recipes for agent users and integrators
 - `docs/command-language.md` - public CLI verbs, grouped workflows, and ref grammar
 - `docs/mirroring-and-promotion.md` - current operator guidance for mirroring and promoting signed installed-state artifacts
@@ -457,6 +459,6 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 - `docs/adr/README.md` - decision log and ADR backlog
 - `AGENTS.md` - contributor guardrails for contract-first changes
 - `docs/roadmap.md` - ordered epics and build priorities
-- `docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md` - next-phase epic for building reference applications on the trust and receipt layer
+- `docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md` - next-phase epic for turning the trust and receipt layer into operator-facing playbooks and starter sets
 
 Compatibility wrappers remain at `docs/contracts.md` and `docs/architecture.md` so existing links keep working.
