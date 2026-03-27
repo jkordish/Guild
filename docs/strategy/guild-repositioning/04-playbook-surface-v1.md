@@ -1,5 +1,10 @@
 # Playbook Surface V1
 
+This is the bounded v1 public playbook surface for Guild. It defines the
+operator-facing concept, the minimum schema shape, and the current repo
+boundary. Unless implementation catches up, treat it as a planning and UX
+target rather than a shipped runtime contract.
+
 ## Definition
 
 A playbook is the operator-facing automation unit in Guild.
@@ -19,6 +24,21 @@ A playbook expresses an operational procedure in a reviewable form:
 - A playbook may call one or more skills.
 - Skills remain the runtime-resolved executable identity.
 - Playbooks add operator structure, reviewability, and capability intent on top of existing skill execution.
+
+## Playbook-To-Skill Composition
+
+Today, Guild still runs skills directly rather than a first-class playbook
+runtime. The current composition story is therefore:
+
+- a playbook step points at a reusable skill through `uses`
+- the referenced skill still resolves to immutable executable identity before it
+  runs
+- the host still evaluates caller-requested authority and computes the final
+  granted capability slice for the execution
+- receipts and evidence still come from the underlying skill executions that
+  actually ran
+- a future playbook layer should add operator structure on top of that trust
+  chain rather than replacing it
 
 ## Minimum Viable Schema Shape
 
@@ -91,7 +111,26 @@ success:
     - ${steps.notify.status == "succeeded"}
 ```
 
+## Current Repo Boundary
+
+This document is a product and UX surface, not a shipped runtime contract.
+
+Today the repository still:
+
+- installs and executes skills directly
+- narrows requested authority through host-owned policy before guest start
+- persists durable execution and evidence records at the skill execution layer
+- keeps `inspect`, `plan`, and `apply` as distinct execution-mode boundaries
+
+The example YAML above is illustrative. Its playbook shape and operator-facing
+capability names are meant to guide docs and later UX work, not to claim that
+Guild already ships a broad playbook engine or that every example capability is
+executable today.
+
 ## Execution And Evidence Model
+
+If Guild grows a first-class playbook execution path later, it should reuse the
+current trust and evidence backbone rather than inventing a parallel one.
 
 - Playbook admission should show the requested operator-readable capabilities before execution starts.
 - Execution should still resolve each underlying skill to immutable executable identity.
@@ -117,3 +156,9 @@ success:
 - Does v1 support multi-step branching, or only linear step lists plus simple guards?
 - Is replay a full rerun, a step-by-step re-check, or a receipt-driven simulation in the first implementation wave?
 - How much playbook state should become first-class in stored receipts versus remaining derived from step receipts?
+
+## Related Docs
+
+- [`../../how-guild-works.md`](../../how-guild-works.md) is the thin main-docs entrypoint for readers coming from the README and CLI docs.
+- [`07-reference-playbooks.md`](07-reference-playbooks.md) captures the candidate operator stories this surface is meant to support.
+- [`08-manifest-to-playbook-translation-note.md`](08-manifest-to-playbook-translation-note.md) shows how a real current repo example maps into this framing without changing runtime truth.

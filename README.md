@@ -18,6 +18,9 @@ story.
 > [`docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md`](docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md).
 > For the canonical operator-facing capability vocabulary, use
 > [`docs/strategy/guild-repositioning/03-capability-taxonomy-v1.md`](docs/strategy/guild-repositioning/03-capability-taxonomy-v1.md).
+> For the current playbook surface and the playbook-to-skill composition
+> boundary, use
+> [`docs/strategy/guild-repositioning/04-playbook-surface-v1.md`](docs/strategy/guild-repositioning/04-playbook-surface-v1.md).
 > Current CLI help, manifests, and `guild grants template` still use the live
 > internal family names; the taxonomy doc is the operator-facing approval
 > vocabulary in this phase.

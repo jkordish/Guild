@@ -7,6 +7,7 @@ Audience: implementers, maintainers, reviewers, security and platform engineers
 This document is explanatory architecture, not the primary runtime-contract source of truth. For normative runtime ownership, use `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
 For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
 For the current project framing and vocabulary freeze, see [`docs/project-positioning.md`](docs/project-positioning.md).
+For the current operator-facing playbook surface and playbook-to-skill composition story, see [`docs/strategy/guild-repositioning/04-playbook-surface-v1.md`](docs/strategy/guild-repositioning/04-playbook-surface-v1.md). That surface is explanatory; the architecture below still describes how Guild executes skills today.
 
 ## 1. Overview
 

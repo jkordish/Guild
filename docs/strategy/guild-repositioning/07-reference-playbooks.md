@@ -6,6 +6,11 @@ Guild needs concrete operational stories that make admission, isolation, capabil
 
 The current repo already has incident-analysis examples. The next wave should add playbooks that show action plus trust, not just post-run explanation.
 
+For the bounded playbook surface and current repo boundary, see
+[`04-playbook-surface-v1.md`](04-playbook-surface-v1.md).
+For a repo-grounded bridge from today's examples into that framing, see
+[`08-manifest-to-playbook-translation-note.md`](08-manifest-to-playbook-translation-note.md).
+
 ## 1. Diagnose Service -> Restart Pods -> Notify On-Call
 
 - Required capabilities:

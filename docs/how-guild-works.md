@@ -4,6 +4,8 @@ This page is the short daily-user model for Guild.
 
 It is not the normative contract source. Use `SPECS.md` when you need the exact runtime contract, and use `ARCHITECTURE.md` when you need the fuller implementation view.
 For the current project framing, see [`project-positioning.md`](project-positioning.md).
+For the bounded playbook concept entrypoint, use
+[`strategy/guild-repositioning/04-playbook-surface-v1.md`](strategy/guild-repositioning/04-playbook-surface-v1.md).
 For canonical operator-facing vocabulary, use
 [`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
 For the canonical operator-facing capability vocabulary, use
@@ -35,6 +37,22 @@ Guild's target operator story is simple:
 The current repo does not yet ship a broad playbook engine. It ships the trust,
 identity, execution, and evidence surfaces that playbooks are meant to sit on
 top of.
+
+## Playbooks And Skills
+
+Guild now has one bounded public playbook concept doc. Use that surface when
+you want the operator-facing automation framing rather than the exact CLI or
+runtime contract.
+
+The honest translation to today's repo is:
+
+- a playbook is the operator-facing automation unit and review surface
+- one or more playbook steps still resolve to ordinary installed skills
+- capability review and admission stay host-owned before those skills run
+- durable receipts and evidence still come from the underlying skill executions
+
+That is why the main docs now point at the playbook surface explicitly, while
+still showing the real CLI, grants, and stored resources that exist today.
 
 ## Identity Layers
 
