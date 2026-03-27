@@ -23,7 +23,7 @@ That means v1 does three things only:
 
 - gives operators capability names that read like approvals
 - gives docs and examples one consistent capability vocabulary
-- keeps current runtime and manifest truth explicit instead of hidden
+- keeps the active runtime frontier and the broader manifest contract explicit instead of hidden
 
 It does not claim that every external capability listed here is runnable today.
 Where the current runtime does not have an honest implementation frontier yet,
@@ -49,7 +49,7 @@ the name remains an operator-facing target vocabulary only.
 ## Current Runtime Frontier
 
 Guild's current CLI and grant-authoring surfaces still expose these internal
-families as the live runtime and manifest truth:
+families as the active runtime frontier in the current inspect slice:
 
 - `http-request`
 - `read-resource`
@@ -57,10 +57,21 @@ families as the live runtime and manifest truth:
 - `emit-evidence`
 - `log-write`
 
-Those names remain canonical in the current runtime, manifests, and `guild
-grants template` output. The external capability taxonomy does not replace
-them in v1. It gives operators and docs a clearer approval vocabulary that can
-be mapped back to those internal families when precision is needed.
+Those names remain canonical in the current runtime and in `guild grants
+template` output. The external capability taxonomy does not replace them in v1.
+It gives operators and docs a clearer approval vocabulary that can be mapped
+back to those internal families when precision is needed.
+
+Broader manifest-level `CapabilityId` contract truth still exists beyond that
+active runtime frontier. The shared type layer currently defines additional
+capability IDs such as `get-secret`, `cache-read`, `cache-write`,
+`filesystem`, `monotonic-clock`, and `wall-clock`.
+
+Those IDs are real manifest- and contract-level vocabulary, but they are not
+all executable in the current inspect runtime. In particular, `filesystem` is
+already a typed host-side contract family with explicit guardrails in
+[`../../adr/0018-filesystem-policy-contract-not-yet-implemented.md`](../../adr/0018-filesystem-policy-contract-not-yet-implemented.md),
+while the active inspect slice still rejects it before guest start.
 
 ## Capability Families
 
