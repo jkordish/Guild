@@ -26,15 +26,27 @@ Keep using the normal CLI around those richer summaries:
 - `guild get` to read the raw stored resource
 - `guild show` to summarize one stored evidence ref
 
+In operator-facing capability language, this example set is the current
+read-only review surface for:
+
+- `runs:inspect`
+- `runs:compare`
+- `failures:query`
+- `evidence:inspect`
+
+The concrete runtime path still uses bounded `read-resource` grants and, for
+the parent report skills, one bounded `invoke-skill` alias for the zero-authority
+formatter child. Those internal family names remain the implementation truth.
+
 ## Skills
 
-| Skill | Question it answers | Input | Required capabilities |
-| --- | --- | --- | --- |
-| `incident-brief` | What happened in this one stored execution? | one `guild://executions/<id>` ref | `read-resource` on `guild://executions/`, `invoke-skill` for alias `renderer` |
-| `run-diff` | What changed between these two stored executions? | two `guild://executions/<id>` refs | `read-resource` on `guild://executions/`, `invoke-skill` for alias `renderer` |
-| `recent-failures` | What do the latest failed or refused executions look like inside this bounded query? | one `guild://queries/executions/...` ref | `read-resource` on `guild://queries/executions/` and `guild://executions/` |
-| `evidence-summary` | What is this stored evidence record and why does it exist? | one `guild://objects/records/<id>` ref | `read-resource` on `guild://objects/records/` |
-| `render-report` | Format a normalized report as compact markdown | normalized JSON report input | none |
+| Skill | Operator-facing capability review | Question it answers | Input | Current internal-family mapping |
+| --- | --- | --- | --- | --- |
+| `incident-brief` | `runs:inspect` | What happened in this one stored execution? | one `guild://executions/<id>` ref | `read-resource` on `guild://executions/`, plus bounded `invoke-skill` for alias `renderer` |
+| `run-diff` | `runs:compare` | What changed between these two stored executions? | two `guild://executions/<id>` refs | `read-resource` on `guild://executions/`, plus bounded `invoke-skill` for alias `renderer` |
+| `recent-failures` | `failures:query` | What do the latest failed or refused executions look like inside this bounded query? | one `guild://queries/executions/...` ref | `read-resource` on `guild://queries/executions/` and `guild://executions/` |
+| `evidence-summary` | `evidence:inspect` | What is this stored evidence record and why does it exist? | one `guild://objects/records/<id>` ref | `read-resource` on `guild://objects/records/` |
+| `render-report` | none; zero-authority formatter child | Format a normalized report as compact markdown | normalized JSON report input | none |
 
 `render-report` is the only composition demo in this example set. It is used as an exact single zero-authority child by `incident-brief` and `run-diff`. There is no fan-out, no recursion, and no hidden orchestration.
 
@@ -85,6 +97,9 @@ guild why --lineage <paste one subject_execution_uri>
 Then run `incident-brief` when you want a compact markdown report over that
 same stored execution:
 
+In operator-facing review language, this is the current `runs:inspect` example.
+The concrete `--grants-json` stays anchored to the live internal families:
+
 ```bash
 guild run \
   incident-brief@^0.1 \
@@ -95,6 +110,9 @@ guild run \
 ## Journey 2: Compare Two Stored Executions
 
 Use `run-diff` when you want one compact report for two stored executions:
+
+In operator-facing review language, this is the current `runs:compare`
+example. The concrete grant JSON still uses the live internal-family names:
 
 ```bash
 guild run \
@@ -112,6 +130,10 @@ guild get <paste one query_uri>
 ```
 
 Then run `recent-failures` when you want the compact grouped summary:
+
+In operator-facing review language, this is the current `failures:query`
+example. The grant JSON remains bounded `read-resource`, not a new query
+runtime family:
 
 ```bash
 guild run \
@@ -157,6 +179,10 @@ guild show <paste one emitted evidence uri>
 ```
 
 Then run `evidence-summary` for the richer markdown report:
+
+In operator-facing review language, this is the current `evidence:inspect`
+example. The concrete runtime path is still bounded `read-resource` on stored
+Guild evidence records:
 
 ```bash
 guild run \

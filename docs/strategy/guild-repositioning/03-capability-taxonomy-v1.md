@@ -90,6 +90,10 @@ family.
 | `k8s:drain` | Evict work from a node | docs-first target only | no direct first-class runtime family today |
 | `metrics:query` | Query health or performance metrics | expressible today in bounded cases | usually a narrow `http-request` grant in the current runtime; not a dedicated metrics family |
 | `logs:query` | Read logs or structured operational events | partially expressible today | `read-resource` for Guild-owned refs or a narrow `http-request` grant for backend-specific log APIs; not a generic live logs family |
+| `runs:inspect` | Read one stored run and explain what happened | expressible today in bounded cases | `read-resource` on `guild://executions/`; richer summaries may also use bounded `invoke-skill` for a zero-authority formatter child |
+| `runs:compare` | Compare two stored runs | expressible today in bounded cases | `read-resource` on `guild://executions/`; richer summaries may also use bounded `invoke-skill` for a zero-authority formatter child |
+| `failures:query` | Read a bounded failure query and summarize matching runs | expressible today in bounded cases | `read-resource` on `guild://queries/executions/...` plus `guild://executions/`; not a generic live search family |
+| `evidence:inspect` | Read one stored evidence record and its linkage | expressible today in bounded cases | `read-resource` on `guild://objects/records/`; not a separate evidence runtime family |
 | `chat:post` | Post to an operator chat destination | docs-first target only | no write-capable first-class runtime family today; a future bounded implementation may map through host-mediated `http-request` |
 | `incident:create` | Create or annotate an incident record | docs-first target only | no write-capable first-class runtime family today; a future bounded implementation may map through host-mediated `http-request` |
 | `deploy:rollback` | Roll back a deployment | docs-first target only | no direct first-class runtime family today |
@@ -129,7 +133,8 @@ This is the key distinction for v1:
 - Good:
   - `k8s:restart`
   - `metrics:query`
-  - `chat:post`
+  - `runs:inspect`
+  - `evidence:inspect`
 - Too low level:
   - `http-request`
   - `invoke-skill`

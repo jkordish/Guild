@@ -31,6 +31,18 @@ analysis over durable Guild refs. It uses:
 - `render-report` as the zero-authority child formatter used by the parent
   report skills
 
+In operator-facing capability language, that starter set currently teaches a
+read-only review surface that reads like:
+
+- `runs:inspect` for one stored run
+- `runs:compare` for two stored runs
+- `failures:query` for one bounded failure query
+- `evidence:inspect` for one stored evidence record
+
+The concrete runtime path still uses bounded `read-resource` grants and, for
+the report-formatting parent skills, a bounded `invoke-skill` alias for the
+zero-authority formatter child.
+
 ## User Journeys
 
 ### Install and run a skill
@@ -54,6 +66,11 @@ Use the current primary CLI first:
 
 Then move to the example skills when you want richer reusable reports:
 
+In operator-facing capability language, those richer read-only reports are the
+current `runs:inspect`, `runs:compare`, `failures:query`, and
+`evidence:inspect` examples. The concrete grant JSON still uses the current
+internal family names where needed for truth.
+
 - [`examples/skills/incident-brief`](./skills/incident-brief)
 - [`examples/skills/explain-execution`](./skills/explain-execution)
 - [`examples/skills/explain-execution-tree`](./skills/explain-execution-tree)
@@ -76,6 +93,11 @@ Keep starting with the native CLI:
 - `guild why -v` for the expanded requested-versus-granted diff and family-aware authority hints
 
 Use Guild Ops Starter for compact real-path troubleshooting:
+
+When you review those examples through the capability taxonomy, they are still
+read-only approvals first: `runs:inspect`, `runs:compare`, `failures:query`,
+and `evidence:inspect`. They do not imply broader runtime surfaces than the
+current bounded `read-resource` and `invoke-skill` frontier.
 
 - [`examples/skills/guild-ops-starter/README.md`](./skills/guild-ops-starter/README.md)
 - [`examples/skills/recent-failures`](./skills/recent-failures)
