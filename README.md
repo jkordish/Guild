@@ -269,6 +269,10 @@ repo-local release slice built on that trust chain, not the whole product
 story. The current user-facing example set lives at
 [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
 The surrounding examples index lives at [`examples/README.md`](examples/README.md).
+The approved reference playbook set and current first hero example plan live at
+[`docs/strategy/guild-repositioning/07-reference-playbooks.md`](docs/strategy/guild-repositioning/07-reference-playbooks.md)
+and
+[`docs/strategy/guild-repositioning/09-hero-reference-example-plan.md`](docs/strategy/guild-repositioning/09-hero-reference-example-plan.md).
 
 It is intentionally ordinary example-skill layout, not a new packaging system. The example set installs as five example skills and stays inside current honest repo truth:
 

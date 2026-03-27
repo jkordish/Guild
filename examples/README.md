@@ -58,6 +58,9 @@ that every reference playbook already ships as a first-class workflow:
 - Guild Ops Starter is the current strongest bridge because it already teaches
   trusted local operational review over stored receipts, bounded queries, and
   evidence records.
+- The current first hero example plan lives in
+  [`../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md`](../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md)
+  and keeps that future action-heavy story tied to today's support frontier.
 - The example inventory is strongest today at read-only review workflows such
   as `runs:inspect`, `runs:compare`, `failures:query`, and `evidence:inspect`.
 - The action-heavy playbooks in the reference set stay docs-first until they

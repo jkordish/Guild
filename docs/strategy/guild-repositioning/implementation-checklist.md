@@ -11,7 +11,7 @@ wording decisions across this checklist.
 - [ ] Approve the glossary defaults in [02-glossary-and-banned-terms.md](./02-glossary-and-banned-terms.md).
 - [ ] Confirm aliases-first CLI migration from [05-cli-simplification.md](./05-cli-simplification.md).
 - [ ] Confirm that external capability names are a UX layer first, not an internal type rename.
-- [ ] Confirm whether `examples/skills/guild-ops-starter/README.md` becomes a playbook-oriented starter.
+- [x] Confirm whether `examples/skills/guild-ops-starter/README.md` becomes a playbook-oriented starter.
 - [ ] Confirm whether any external website work is in scope outside this repo.
 
 ## Phase 1: Narrative, Docs, And Glossary
@@ -56,8 +56,8 @@ Phase 2 exit criteria:
 
 - [x] [TASK-21](./tasks/TASK-21-publish-reference-playbook-set.md) Publish the reference playbook set and sequence.
 - [x] [TASK-22](./tasks/TASK-22-examples-index-operator-reframe.md) Reframe the examples index around operator workflows.
-- [ ] [TASK-23](./tasks/TASK-23-guild-ops-starter-playbook-reframe.md) Reframe Guild Ops Starter as a playbook-oriented starter.
-- [ ] [TASK-24](./tasks/TASK-24-build-one-hero-reference-example-plan.md) Define the hero reference example plan on current surfaces.
+- [x] [TASK-23](./tasks/TASK-23-guild-ops-starter-playbook-reframe.md) Reframe Guild Ops Starter as a playbook-oriented starter.
+- [x] [TASK-24](./tasks/TASK-24-build-one-hero-reference-example-plan.md) Define the hero reference example plan on current surfaces.
 - [ ] [TASK-25](./tasks/TASK-25-add-trust-chain-explainer.md) Add the trust-chain explainer.
 - [ ] [TASK-26](./tasks/TASK-26-trust-heavy-docs-realignment.md) Realign trust-heavy docs around operator value.
 - [ ] [TASK-27](./tasks/TASK-27-repo-local-launch-copy-pack.md) Prepare a repo-local launch copy pack.

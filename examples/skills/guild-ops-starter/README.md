@@ -4,11 +4,36 @@ Guild Ops Starter is the first operator starter set in the repo. It is a
 repo-local release slice built on that trust chain, not the whole product
 story.
 
+It is also the first playbook-oriented operator starter set in the repo and
+the current runnable bridge from today's example surface into the approved
+reference playbook story.
+
 This is a small set of ordinary example skills. There is no new pack type here.
 
-The point of this example set is narrow: show useful local operational analysis over real persisted Guild execution receipts, bounded query resources, and evidence artifacts without widening runtime, proof, token, or witness semantics.
+The point of this example set is narrow: show useful local operational analysis
+over real persisted Guild execution receipts, bounded query resources, and
+evidence artifacts without widening runtime, proof, token, or witness
+semantics.
 
 If you want one current user-facing Guild workflow, start here.
+
+## Reference Playbook Fit
+
+The approved reference playbook set lives in
+[`../../../docs/strategy/guild-repositioning/07-reference-playbooks.md`](../../../docs/strategy/guild-repositioning/07-reference-playbooks.md).
+This starter is the current read-only bridge into that story, especially for:
+
+- `diagnose service -> restart pods -> notify on-call`
+- `rollback deployment -> verify health -> annotate incident`
+
+The current first hero example plan is:
+
+- [`../../../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md`](../../../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md)
+
+That plan keeps the action-heavy story honest. Guild Ops Starter currently
+covers the inspect, compare, and evidence-review side of those workflows. It
+does not yet execute the restart, rollback, incident-write, or notification
+steps themselves.
 
 ## Journey Map
 
@@ -194,6 +219,7 @@ guild run \
 ## What This Example Set Does Not Show
 
 - It does not broaden `invoke-skill`. Composition stays inside the current bounded zero-authority inspect slices, and this pack itself still uses the single-child formatter path.
+- It does not execute restart, rollback, incident-write, or notification actions from the reference playbook set yet.
 - It does not use broad `http-request` as the hero path.
 - It does not use `emit-evidence` as a proof claim. `emit-evidence` remains explicitly `not_proven`.
 - It does not add a workflow engine, a pack manifest, or a new installer abstraction.

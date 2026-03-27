@@ -186,3 +186,8 @@ For the current repo, that means:
 - use today's read-only starter examples as the honest bridge into that story
 - pick one future hero example only when it fits the current trust and
   capability frontier without widening runtime claims
+
+The approved first hero example is
+`diagnose service -> restart pods -> notify on-call`; use
+[`09-hero-reference-example-plan.md`](09-hero-reference-example-plan.md) for
+the current bounded rollout plan and proof commands.
