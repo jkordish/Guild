@@ -57,7 +57,7 @@ Guild is not primarily:
 - evidence
 - replay
 - inspectability
-- reference application
+- reference application, only as a secondary repo-organization or release-slice term after operator-facing framing
 - fail-closed
 - bounded proof
 - proof-backed
@@ -73,7 +73,6 @@ for Guild:
 
 - artifact
 - trust layer
-- reference application
 - platform
 - substrate
 - multi-step runtime
