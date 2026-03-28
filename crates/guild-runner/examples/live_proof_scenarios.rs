@@ -437,6 +437,113 @@ fn benchmark_scenario(
     })
 }
 
+type PreparedScenarioFactory = fn() -> PreparedScenario;
+
+const BENCHMARK_SCENARIOS: &[(&str, &str, PreparedScenarioFactory)] = &[
+    (
+        "read-resource-bounded",
+        "read-resource-bounded",
+        prepare_read_resource_bounded,
+    ),
+    (
+        "read-resource-query-unsupported",
+        "read-resource-query-unsupported",
+        prepare_read_resource_query_unsupported,
+    ),
+    (
+        "http-request-bounded",
+        "http-request-bounded",
+        prepare_http_request_bounded,
+    ),
+    (
+        "http-request-default-port-bounded",
+        "http-request-default-port-bounded",
+        prepare_http_request_default_port_bounded,
+    ),
+    (
+        "http-request-localhost-bounded",
+        "http-request-localhost-bounded",
+        prepare_http_request_localhost_bounded,
+    ),
+    (
+        "http-request-localhost-default-port-bounded",
+        "http-request-localhost-default-port-bounded",
+        prepare_http_request_localhost_default_port_bounded,
+    ),
+    (
+        "http-request-localhost-head-bounded",
+        "http-request-localhost-head-bounded",
+        prepare_http_request_localhost_head_bounded,
+    ),
+    (
+        "http-request-localhost-head-default-port-bounded",
+        "http-request-localhost-head-default-port-bounded",
+        prepare_http_request_localhost_head_default_port_bounded,
+    ),
+    (
+        "http-request-head-bounded",
+        "http-request-head-bounded",
+        prepare_http_request_head_bounded,
+    ),
+    (
+        "http-request-head-default-port-bounded",
+        "http-request-head-default-port-bounded",
+        prepare_http_request_head_default_port_bounded,
+    ),
+    (
+        "http-request-redirect-unsupported",
+        "http-request-redirect-unsupported",
+        prepare_http_request_redirect_unsupported,
+    ),
+    (
+        "http-request-no-replay",
+        "http-request-no-replay",
+        prepare_http_request_no_replay,
+    ),
+    (
+        "http-request-not-proven",
+        "http-request-no-replay",
+        prepare_http_request_no_replay,
+    ),
+    (
+        "log-write-reduced",
+        "log-write-reduced",
+        prepare_log_write_reduced,
+    ),
+    (
+        "emit-evidence-exact-single-sink",
+        "emit-evidence-exact-single-sink",
+        prepare_emit_evidence_exact_single_sink,
+    ),
+    (
+        "emit-evidence-single-sink-replay-unavailable",
+        "emit-evidence-single-sink-replay-unavailable",
+        prepare_emit_evidence_single_sink_replay_unavailable,
+    ),
+    (
+        "invoke-skill-single-child-bounded",
+        "invoke-skill-single-child-bounded",
+        prepare_invoke_skill_single_child_bounded,
+    ),
+    (
+        "invoke-skill-multi-child-bounded",
+        "invoke-skill-multi-child-bounded",
+        prepare_invoke_skill_multi_child_bounded,
+    ),
+    (
+        "invoke-skill-child-authority-unsupported",
+        "invoke-skill-child-authority-unsupported",
+        prepare_invoke_skill_child_authority_unsupported,
+    ),
+];
+
+fn benchmark_scenario_entry(name: &str) -> Option<(&'static str, PreparedScenarioFactory)> {
+    BENCHMARK_SCENARIOS
+        .iter()
+        .find(|(candidate, _, _)| *candidate == name)
+        .map(|(_, scenario_name, prepare)| (*scenario_name, *prepare))
+}
+
 #[allow(clippy::needless_pass_by_value)]
 fn scenario_output(scenario_name: &str, result: LiveProofScenarioResult) -> Value {
     json!({
@@ -1174,120 +1281,12 @@ fn run_named_scenario(name: &str) -> Value {
 }
 
 fn benchmark_named_scenario(name: &str, warmup_runs: usize, measured_runs: usize) -> Value {
-    match name {
-        "read-resource-bounded" => benchmark_scenario(
-            "read-resource-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_read_resource_bounded,
-        ),
-        "read-resource-query-unsupported" => benchmark_scenario(
-            "read-resource-query-unsupported",
-            warmup_runs,
-            measured_runs,
-            prepare_read_resource_query_unsupported,
-        ),
-        "http-request-bounded" => benchmark_scenario(
-            "http-request-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_bounded,
-        ),
-        "http-request-default-port-bounded" => benchmark_scenario(
-            "http-request-default-port-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_default_port_bounded,
-        ),
-        "http-request-localhost-bounded" => benchmark_scenario(
-            "http-request-localhost-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_localhost_bounded,
-        ),
-        "http-request-localhost-default-port-bounded" => benchmark_scenario(
-            "http-request-localhost-default-port-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_localhost_default_port_bounded,
-        ),
-        "http-request-localhost-head-bounded" => benchmark_scenario(
-            "http-request-localhost-head-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_localhost_head_bounded,
-        ),
-        "http-request-localhost-head-default-port-bounded" => benchmark_scenario(
-            "http-request-localhost-head-default-port-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_localhost_head_default_port_bounded,
-        ),
-        "http-request-head-bounded" => benchmark_scenario(
-            "http-request-head-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_head_bounded,
-        ),
-        "http-request-head-default-port-bounded" => benchmark_scenario(
-            "http-request-head-default-port-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_head_default_port_bounded,
-        ),
-        "http-request-redirect-unsupported" => benchmark_scenario(
-            "http-request-redirect-unsupported",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_redirect_unsupported,
-        ),
-        "http-request-no-replay" | "http-request-not-proven" => benchmark_scenario(
-            "http-request-no-replay",
-            warmup_runs,
-            measured_runs,
-            prepare_http_request_no_replay,
-        ),
-        "log-write-reduced" => benchmark_scenario(
-            "log-write-reduced",
-            warmup_runs,
-            measured_runs,
-            prepare_log_write_reduced,
-        ),
-        "emit-evidence-exact-single-sink" => benchmark_scenario(
-            "emit-evidence-exact-single-sink",
-            warmup_runs,
-            measured_runs,
-            prepare_emit_evidence_exact_single_sink,
-        ),
-        "emit-evidence-single-sink-replay-unavailable" => benchmark_scenario(
-            "emit-evidence-single-sink-replay-unavailable",
-            warmup_runs,
-            measured_runs,
-            prepare_emit_evidence_single_sink_replay_unavailable,
-        ),
-        "invoke-skill-single-child-bounded" => benchmark_scenario(
-            "invoke-skill-single-child-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_invoke_skill_single_child_bounded,
-        ),
-        "invoke-skill-multi-child-bounded" => benchmark_scenario(
-            "invoke-skill-multi-child-bounded",
-            warmup_runs,
-            measured_runs,
-            prepare_invoke_skill_multi_child_bounded,
-        ),
-        "invoke-skill-child-authority-unsupported" => benchmark_scenario(
-            "invoke-skill-child-authority-unsupported",
-            warmup_runs,
-            measured_runs,
-            prepare_invoke_skill_child_authority_unsupported,
-        ),
-        other => {
-            eprintln!("unknown live proof benchmark scenario: {other}");
-            std::process::exit(2);
-        }
+    if let Some((scenario_name, prepare)) = benchmark_scenario_entry(name) {
+        return benchmark_scenario(scenario_name, warmup_runs, measured_runs, prepare);
     }
+
+    eprintln!("unknown live proof benchmark scenario: {name}");
+    std::process::exit(2);
 }
 
 fn main() {

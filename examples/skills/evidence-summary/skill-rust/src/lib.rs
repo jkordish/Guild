@@ -52,7 +52,7 @@ impl Guest for EvidenceSummary {
 
         let sink_line = metadata
             .get("sink")
-            .map(render_sink_summary)
+            .map(ops_starter_support::render_sink_summary)
             .unwrap_or_else(|| "sink metadata unavailable".into());
         let produced_by_execution = metadata
             .get("produced_by_execution")
@@ -105,19 +105,6 @@ impl Guest for EvidenceSummary {
             evidence: Vec::new(),
         })
     }
-}
-
-fn render_sink_summary(value: &Value) -> String {
-    let kind = value.get("kind").and_then(Value::as_str).unwrap_or("unknown");
-    let routing = value
-        .get("routing_mode")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    let storage = value
-        .get("storage_class")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    format!("{kind} / {routing} / {storage}")
 }
 
 fn next_ref_lines(evidence_uri: &str, metadata: &Value) -> Vec<String> {

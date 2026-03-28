@@ -15,21 +15,28 @@ helpers, not the normal operator workflow.
 
 ## Start Here
 
-If you want one compact first-five-minutes workflow, start with Guild Ops
-Starter, the first operator starter set in the repo and the current repo-local
-release slice for trusted local operational analysis:
+If you want one compact first-five-minutes workflow, start with the Guild Ops
+Starter quickstart:
+
+- [`docs/guild-ops-starter-quickstart.md`](../docs/guild-ops-starter-quickstart.md)
+
+Then use the full starter README when you want the surrounding drill-down
+skills and boundaries:
 
 - [`examples/skills/guild-ops-starter/README.md`](./skills/guild-ops-starter/README.md)
 
 That starter set is the current user-facing path for trusted local operational
-analysis over durable Guild refs. It uses:
+analysis over durable Guild refs. It now centers:
+
+- `incident-casefile` for one cohesive casefile over one subject execution and optional nearby refs
+
+The focused drill-down skills remain:
 
 - `incident-brief` for one stored execution ref
 - `run-diff` for two stored execution refs
 - `recent-failures` for one bounded execution-query ref
 - `evidence-summary` for one stored evidence ref
-- `render-report` as the zero-authority child formatter used by the parent
-  report skills
+- `render-report` as the zero-authority child formatter used by the older parent report skills
 
 In operator-facing capability language, that starter set currently teaches a
 read-only review surface that reads like:
@@ -122,6 +129,7 @@ read-only approvals first: `runs:inspect`, `runs:compare`, `failures:query`,
 and `evidence:inspect`. They do not imply broader runtime surfaces than the
 current bounded `read-resource` and `invoke-skill` frontier.
 
+- [`../docs/guild-ops-starter-quickstart.md`](../docs/guild-ops-starter-quickstart.md)
 - [`examples/skills/guild-ops-starter/README.md`](./skills/guild-ops-starter/README.md)
 - [`examples/skills/recent-failures`](./skills/recent-failures)
 - [`examples/skills/run-diff`](./skills/run-diff)

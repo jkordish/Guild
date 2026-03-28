@@ -91,6 +91,7 @@ fn guild_codex_bootstrap_and_config_json_match_documented_stdio_shape() {
         skill_names,
         vec![
             "render-report",
+            "incident-casefile",
             "incident-brief",
             "run-diff",
             "recent-failures",
@@ -212,6 +213,39 @@ fn guild_codex_smoke_explain_execution_json_produces_resources() {
     );
     assert!(payload.flows[0].additional_report_execution_uris.is_empty());
     assert!(payload.flows[0].subject_query_uri.is_none());
+}
+
+#[test]
+fn guild_codex_smoke_incident_casefile_json_produces_resources() {
+    let temp_root = TempRegistryRoot::new("codex-workflow-incident-casefile");
+    bootstrap_codex_registry(temp_root.path(), true).unwrap();
+
+    let stdout = run_guild_codex_json(&[
+        "smoke",
+        "--registry-root",
+        &temp_root.path().to_string_lossy(),
+        "--flow",
+        "incident-casefile",
+        "--json",
+    ])
+    .unwrap();
+    let payload: CodexSmokeSummary = serde_json::from_slice(&stdout).unwrap();
+
+    assert_eq!(
+        payload.requested_flow,
+        CodexSmokeSelection::IncidentCasefile
+    );
+    assert_eq!(payload.flows.len(), 1);
+    assert_eq!(payload.flows[0].flow, CodexSmokeSelection::IncidentCasefile);
+    assert_eq!(payload.flows[0].subject_resource_items, 1);
+    assert_eq!(payload.flows[0].report_resource_items, 1);
+    assert!(payload.flows[0].subject_query_uri.is_some());
+    assert!(!payload.flows[0].comparison_execution_uris.is_empty());
+    assert!(
+        payload.flows[0]
+            .report_summary
+            .contains("Prepared incident casefile")
+    );
 }
 
 #[test]
@@ -577,6 +611,7 @@ fn guild_codex_smoke_all_runs_all_documented_flows() {
     assert_eq!(
         flow_names,
         vec![
+            CodexSmokeSelection::IncidentCasefile,
             CodexSmokeSelection::IncidentBrief,
             CodexSmokeSelection::RunDiff,
             CodexSmokeSelection::RecentFailures,

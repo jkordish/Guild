@@ -273,13 +273,10 @@ Starter-pack smoke:
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/ops-pack
 
-guild install examples/skills/render-report
-guild install examples/skills/incident-brief
-guild install examples/skills/run-diff
-guild install examples/skills/recent-failures
-guild install examples/skills/evidence-summary
-
 guild codex bootstrap --registry-root "$GUILD_REGISTRY_ROOT" --reset
+guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow incident-casefile
+
+# Focused drill-down flows after the primary casefile proof.
 guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow incident-brief
 guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow run-diff
 guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow recent-failures
@@ -287,7 +284,10 @@ guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow evidence-summary
 guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow render-report
 ```
 
-For the user-facing quickstart and exact capability-grant snippets, see [`../examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md). For the surrounding examples index, see [`../examples/README.md`](../examples/README.md).
+`guild codex bootstrap` installs the example skills used by the recommended
+starter and Codex smoke flows under that explicit repo-local root.
+
+For the user-facing quickstart and exact capability-grant snippets, start with [`guild-ops-starter-quickstart.md`](guild-ops-starter-quickstart.md), then use [`../examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md) for the full starter boundary and drill-down story. For the surrounding examples index, see [`../examples/README.md`](../examples/README.md).
 
 Trust and signed-bundle smoke with preview:
 
@@ -406,6 +406,7 @@ guild codex scenario --registry-root target/dev-local-registry/codex-local --sce
 Deterministic smoke flows:
 
 ```bash
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow incident-casefile
 guild codex smoke --registry-root target/dev-local-registry/codex-local --flow incident-brief
 guild codex smoke --registry-root target/dev-local-registry/codex-local --flow run-diff
 guild codex smoke --registry-root target/dev-local-registry/codex-local --flow recent-failures

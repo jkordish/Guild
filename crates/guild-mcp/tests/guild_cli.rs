@@ -51,6 +51,10 @@ fn incident_brief_source_dir() -> PathBuf {
     repo_root().join("examples/skills/incident-brief")
 }
 
+fn incident_casefile_source_dir() -> PathBuf {
+    repo_root().join("examples/skills/incident-casefile")
+}
+
 fn evidence_summary_source_dir() -> PathBuf {
     repo_root().join("examples/skills/evidence-summary")
 }
@@ -308,6 +312,38 @@ fn evidence_summary_grants_json() -> String {
                 resource_kinds: Some(vec![ResourceKind::Object]),
             }),
         }],
+    })
+    .unwrap()
+}
+
+fn incident_casefile_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![
+            GrantedCapability {
+                id: CapabilityId::ReadResource,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(vec!["guild://executions/".into()]),
+                    resource_kinds: Some(vec![ResourceKind::Execution]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::ReadResource,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(vec!["guild://queries/executions/".into()]),
+                    resource_kinds: Some(vec![ResourceKind::Query]),
+                }),
+            },
+            GrantedCapability {
+                id: CapabilityId::ReadResource,
+                access: CapabilityAccess::Read,
+                constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                    uri_prefixes: Some(vec!["guild://objects/records/".into()]),
+                    resource_kinds: Some(vec![ResourceKind::Object]),
+                }),
+            },
+        ],
     })
     .unwrap()
 }
@@ -1248,6 +1284,98 @@ fn starter_pack_incident_brief_runs_with_markdown_stdout() {
     assert!(stdout.contains("## Next refs"), "{stdout}");
     assert!(stderr.contains("succeeded  bounded  exec:"), "{stderr}");
     assert!(stderr.contains("example/incident-brief@0.1.0"), "{stderr}");
+    assert!(!stdout.contains("\"title\""), "{stdout}");
+}
+
+#[test]
+fn starter_pack_incident_casefile_runs_with_markdown_stdout() {
+    let temp = TempFixtureDir::new("guild-cli-incident-casefile");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    install_source_with_cli(&registry_root, &incident_casefile_source_dir());
+
+    let subject_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let comparison_value = inspect_hello_with_cli(
+        &registry_root,
+        "Grace",
+        "skill://example/hello-inspect@^0.1",
+    );
+
+    let subject_execution_uri = subject_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let comparison_execution_uri = comparison_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let evidence_uri = subject_value["record"]["emitted_evidence"][0]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let query_uri = "guild://queries/executions/recent/10";
+
+    let show_output = run_guild_success(
+        &["show", "incident-casefile@^0.1", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert!(show_output.contains("example/incident-casefile@0.1.0"));
+    assert!(show_output.contains("support: bounded("));
+    assert!(show_output.contains("read-resource"));
+    assert!(!show_output.contains("invoke-skill"), "{show_output}");
+
+    let verify_output = run_guild_success(
+        &["verify", "incident-casefile@^0.1", "--color", "never"],
+        Some(&registry_root),
+    );
+    assert_eq!(
+        verify_output,
+        format!(
+            concat!(
+                "example/incident-casefile@0.1.0\n",
+                "publisher: local-source\n",
+                "status: local-source / local-dev\n",
+                "Next: guild --registry-root {} show -v skill://example/incident-casefile@0.1.0\n",
+            ),
+            registry_root.display()
+        )
+    );
+
+    let grants_json = incident_casefile_grants_json();
+    let output = run_guild_success_output(
+        &[
+            "run",
+            "incident-casefile@^0.1",
+            "--input-json",
+            &command_json(json!({
+                "subject_execution_uri": subject_execution_uri,
+                "comparison_execution_uri": comparison_execution_uri,
+                "query_uri": query_uri,
+                "evidence_uri": evidence_uri,
+            })),
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.starts_with("# Incident Casefile\n\n"), "{stdout}");
+    assert!(stdout.contains("## Primary reason"), "{stdout}");
+    assert!(stdout.contains("## Comparison snapshot"), "{stdout}");
+    assert!(stdout.contains("## Query context"), "{stdout}");
+    assert!(stdout.contains("## Evidence context"), "{stdout}");
+    assert!(stdout.contains("## Exact refs used"), "{stdout}");
+    assert!(stdout.contains("## Next refs"), "{stdout}");
+    assert!(stderr.contains("succeeded  bounded  exec:"), "{stderr}");
+    assert!(
+        stderr.contains("example/incident-casefile@0.1.0"),
+        "{stderr}"
+    );
     assert!(!stdout.contains("\"title\""), "{stdout}");
 }
 
@@ -4876,6 +5004,7 @@ fn top_level_help_is_grouped_and_points_to_topic_help() {
     assert!(!stdout.contains("dogfood"));
 }
 
+#[allow(clippy::too_many_lines)]
 #[test]
 fn shared_help_topics_are_available() {
     let help = run_guild_success(&["help"], None);
@@ -5889,6 +6018,7 @@ fn user_facing_docs_use_installed_guild_cli_after_install() {
     let mut paths = vec![
         repo_root().join("README.md"),
         repo_root().join("docs/command-language.md"),
+        repo_root().join("docs/guild-ops-starter-quickstart.md"),
         repo_root().join("docs/how-guild-works.md"),
         repo_root().join("docs/mcp-agent-recipes.md"),
         repo_root().join("docs/adr/0019-thin-guild-cli.md"),
@@ -5962,6 +6092,7 @@ fn follow_on_program_tracking_stays_rebased() {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 #[test]
 fn journey_docs_stay_centered_on_user_workflows() {
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
@@ -5971,6 +6102,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(readme.contains("Explain what happened"));
     assert!(readme.contains("Verify trust state and move installed state"));
     assert!(readme.contains("Debug failures and compare runs"));
+    assert!(readme.contains("docs/guild-ops-starter-quickstart.md"));
     assert!(readme.contains("guild help inspect"));
     assert!(readme.contains("guild why -v"));
     assert!(readme.contains("guild why --lineage"));
@@ -5994,6 +6126,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
         command_language.contains("| Today Surface | Target Stage | Status | Migration Notes |")
     );
     assert!(command_language.contains("`guild inspect` | `exec` | alias-preview today"));
+    assert!(command_language.contains("guild-ops-starter-quickstart.md"));
     assert!(command_language.contains("Conceptual target flow:"));
     assert!(command_language.contains("### Journey Map"));
     assert!(command_language.contains("Compatible operator flow in today's CLI"));
@@ -6023,6 +6156,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     ));
 
     let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
+    assert!(examples_index.contains("../docs/guild-ops-starter-quickstart.md"));
     assert!(examples_index.contains("## User Journeys"));
     assert!(examples_index.contains("### Install and run a skill"));
     assert!(examples_index.contains("### Explain what happened"));
@@ -6114,13 +6248,37 @@ fn journey_docs_stay_centered_on_user_workflows() {
     let ops_pack =
         fs::read_to_string(repo_root().join("examples/skills/guild-ops-starter/README.md"))
             .unwrap();
-    assert!(ops_pack.contains("## Journey 1: Explain One Stored Execution"));
-    assert!(ops_pack.contains("## Journey 2: Compare Two Stored Executions"));
-    assert!(ops_pack.contains("## Journey 3: Scan Recent Failures"));
-    assert!(ops_pack.contains("## Journey 4: Discover And Inspect One Stored Evidence Record"));
+    assert!(ops_pack.contains("docs/guild-ops-starter-quickstart.md"));
+    assert!(ops_pack.contains("incident-casefile"));
+    assert!(ops_pack.contains("## Journey 1: Inspect The Subject In The Native CLI"));
+    assert!(ops_pack.contains("## Journey 2: Build One Incident Casefile"));
+    assert!(ops_pack.contains("## Journey 3: Drill Down With Focused Skills"));
+    assert!(ops_pack.contains("guild run \\\n  incident-casefile@^0.1"));
     assert!(ops_pack.contains("guild why --lineage"));
     assert!(ops_pack.contains("guild ls evidence --limit 5"));
-    assert!(ops_pack.contains("## Keep Going With The Normal CLI"));
+    assert!(
+        ops_pack.contains("It does not imply `k8s:restart`, `chat:post`, or `incident:create`")
+    );
+    assert!(ops_pack.contains("It does not add replay execution support."));
+
+    let starter_quickstart =
+        fs::read_to_string(repo_root().join("docs/guild-ops-starter-quickstart.md")).unwrap();
+    assert!(starter_quickstart.contains("guild codex bootstrap"));
+    assert!(starter_quickstart.contains("guild codex scenario"));
+    assert!(starter_quickstart.contains("guild why <paste one subject_execution_uri>"));
+    assert!(starter_quickstart.contains("guild why --lineage <paste one subject_execution_uri>"));
+    assert!(starter_quickstart.contains("guild run \\\n  incident-casefile@^0.1"));
+    for forbidden in [
+        "k8s:restart",
+        "chat:post",
+        "incident:create",
+        "replay execution",
+    ] {
+        assert!(
+            !starter_quickstart.contains(forbidden),
+            "starter quickstart drifted into unsupported claim: {forbidden}"
+        );
+    }
 
     let mcp_recipes = fs::read_to_string(repo_root().join("docs/mcp-agent-recipes.md")).unwrap();
     assert!(mcp_recipes.contains("## Recipe 1: Inspect A Skill"));
@@ -6195,7 +6353,11 @@ fn readme_overview_stays_operator_first() {
     }
 
     let normalized_opening = opening_block.to_lowercase();
-    for forbidden in ["substrate", "reference application", "reference-application"] {
+    for forbidden in [
+        "substrate",
+        "reference application",
+        "reference-application",
+    ] {
         assert!(
             !normalized_opening.contains(&forbidden.to_lowercase()),
             "README.md reintroduced discouraged overview wording in the first 18 lines: {forbidden}"
@@ -6530,17 +6692,20 @@ fn repositioning_docs_keep_the_glossary_as_the_language_entrypoint() {
         fs::read_to_string(repo_root().join("docs/strategy/guild-repositioning/00-north-star.md"))
             .unwrap();
     assert!(north_star.contains("02-glossary-and-banned-terms.md"));
-    assert!(north_star.contains("canonical operator-facing vocabulary and user-facing language source"));
+    assert!(
+        north_star.contains("canonical operator-facing vocabulary and user-facing language source")
+    );
     assert!(north_star.contains("does not rename"));
     assert!(north_star.contains("runtime contracts"));
     assert!(north_star.contains("Rust types"));
     assert!(north_star.contains("WIT surfaces"));
 
     let backlog =
-        fs::read_to_string(repo_root().join("docs/strategy/guild-repositioning/tasks.md"))
-            .unwrap();
+        fs::read_to_string(repo_root().join("docs/strategy/guild-repositioning/tasks.md")).unwrap();
     assert!(backlog.contains("02-glossary-and-banned-terms.md"));
-    assert!(backlog.contains("canonical operator-facing vocabulary and user-facing language source"));
+    assert!(
+        backlog.contains("canonical operator-facing vocabulary and user-facing language source")
+    );
 }
 
 #[test]

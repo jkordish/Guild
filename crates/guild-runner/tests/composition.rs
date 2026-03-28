@@ -601,6 +601,7 @@ fn single_child_invoke_fixture_persists_exact_child_digest_binding() {
     assert!(child.child_executions.is_empty());
 }
 
+#[allow(clippy::too_many_lines)]
 #[test]
 fn multi_child_invoke_fixture_persists_ordered_exact_child_digest_bindings() {
     let temp = TempFixtureDir::new();

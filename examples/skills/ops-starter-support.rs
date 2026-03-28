@@ -35,6 +35,13 @@ pub fn required_string<'a>(input: &'a Value, key: &str) -> Result<&'a str, Skill
         })
 }
 
+pub fn optional_string<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
+    input
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+}
+
 pub fn read_resource(uri: &str) -> Result<ResourceReadResult, SkillError> {
     host::read_resource(uri).map_err(|message| SkillError {
         code: "read-resource-failed".into(),
@@ -322,6 +329,19 @@ pub fn summarize_json_payload(
 
     lines.truncate(limit);
     lines
+}
+
+pub fn render_sink_summary(value: &Value) -> String {
+    let kind = value.get("kind").and_then(Value::as_str).unwrap_or("unknown");
+    let routing = value
+        .get("routing_mode")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let storage = value
+        .get("storage_class")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    format!("{kind} / {routing} / {storage}")
 }
 
 pub fn render_markdown_report(spec: &Value) -> Result<String, SkillError> {

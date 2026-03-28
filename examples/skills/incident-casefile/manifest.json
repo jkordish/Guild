@@ -1,0 +1,87 @@
+{
+  "manifest_schema_version": "guild-manifest-v1",
+  "skill_api_version": "guild-skill-v1",
+  "key": {
+    "namespace": "example",
+    "name": "incident-casefile"
+  },
+  "version": "0.1.0",
+  "display_name": "Incident Casefile",
+  "description": "An inspect-only starter skill that assembles one stored execution plus optional comparison, query, and evidence refs into a compact casefile.",
+  "runtime": {
+    "kind": "wasm-component",
+    "entrypoint": "guild-skill-inspect-v1",
+    "guest_abi_version": "guild-skill-inspect-v1"
+  },
+  "interface": {
+    "input_schema_uri": "./input.schema.json",
+    "output_schema_uri": "./output.schema.json",
+    "examples_uri": "./examples.json"
+  },
+  "behavior": {
+    "category": "explain",
+    "mutability": "read-only",
+    "idempotent": true,
+    "open_world": false,
+    "freshness": "deterministic",
+    "modes": {
+      "supported": ["inspect"],
+      "apply_requires_approval": false,
+      "apply_requires_idempotency_key": false
+    }
+  },
+  "capabilities": [
+    {
+      "id": "read-resource",
+      "access": "read",
+      "required": true,
+      "constraints": {
+        "uri_prefixes": ["guild://executions/"],
+        "resource_kinds": ["execution"]
+      }
+    },
+    {
+      "id": "read-resource",
+      "access": "read",
+      "required": true,
+      "constraints": {
+        "uri_prefixes": ["guild://queries/executions/"],
+        "resource_kinds": ["query"]
+      }
+    },
+    {
+      "id": "read-resource",
+      "access": "read",
+      "required": true,
+      "constraints": {
+        "uri_prefixes": ["guild://objects/records/"],
+        "resource_kinds": ["object"]
+      }
+    }
+  ],
+  "dependencies": [],
+  "publisher": {
+    "id": "local.example",
+    "display_name": "Local Example",
+    "homepage": null
+  },
+  "package": {
+    "visibility": "private",
+    "trust_tier": "local",
+    "sbom_uri": null,
+    "signature_uri": null
+  },
+  "build": {
+    "kind": "cargo-wasm-component",
+    "cargo_manifest_path": "./skill-rust/Cargo.toml",
+    "target": "wasm32-wasip2",
+    "profile": "release"
+  },
+  "tests": [
+    {
+      "name": "renders-a-compact-incident-casefile",
+      "fixtures_uri": "./tests/inspect-input.json",
+      "expected_output_uri": "./tests/expected-output.json"
+    }
+  ]
+}

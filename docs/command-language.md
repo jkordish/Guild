@@ -314,10 +314,10 @@ Use the examples and docs in this order when you want the current practical path
 
 - Compatible operator flow in today's CLI: review authority and execution identity -> execute a bounded action -> inspect the stored result -> verify installed trust state.
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](../examples/skills/hello-inspect/README.md)
-- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](../examples/skills/explain-execution-tree/README.md), or [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution
+- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](../examples/skills/explain-execution-tree/README.md), or the [`Guild Ops Starter quickstart`](guild-ops-starter-quickstart.md) when you want one cohesive casefile over the same stored execution
 - In operator-facing capability language, those current read-only examples are `runs:inspect`, `runs:compare`, `failures:query`, and `evidence:inspect`, while the concrete grant JSON still uses bounded `read-resource` and, where present, bounded `invoke-skill`.
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
-- Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) and the surrounding examples index at [`examples/README.md`](../examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](../examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](../examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](../examples/skills/explain-http-authority/README.md)
+- Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use the [`Guild Ops Starter quickstart`](guild-ops-starter-quickstart.md), [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md), and the surrounding examples index at [`examples/README.md`](../examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](../examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](../examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](../examples/skills/explain-http-authority/README.md)
 
 `docs/testing.md` remains the place for deeper proof commands, smoke coverage, and maintainer-oriented verification.
 
@@ -366,11 +366,18 @@ The current user-facing example set lives at
 [`examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md).
 The surrounding examples index lives at
 [`examples/README.md`](../examples/README.md).
+The shortest starter path lives at
+[`docs/guild-ops-starter-quickstart.md`](guild-ops-starter-quickstart.md).
 
 Guild Ops Starter is the current operator starter set in the repo. It remains
 a repo-local release slice and still uses ordinary example skills under
 `examples/skills/`, not a new packaging system.
-Use it when you want a compact real-path walkthrough over persisted Guild refs:
+Use it when you want a compact real-path walkthrough over persisted Guild refs.
+The starter story now centers:
+
+- `incident-casefile` for one cohesive casefile over a subject execution and optional nearby refs
+
+The focused drill-down skills remain:
 
 - `incident-brief` for one stored execution ref
 - `run-diff` for two stored execution refs
