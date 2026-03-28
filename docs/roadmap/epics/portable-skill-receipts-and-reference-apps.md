@@ -111,6 +111,9 @@ The first follow-on GitHub tracking set created from this planning note is:
 - `#132` Choose the first honest post-starter mutation demo
 - `#133` Define a verification matrix and curated-pack labeling story on current trust signals
 - `#134` Scope private-pack, policy, and governance phase boundaries
+- `#136` Document packaging and install-surface follow-on work on current shipped transport flows
+- `#137` Define bounded starter-pack and reference-playbook progression beyond Guild Ops Starter
+- `#138` Scope receipt-chain and replay-oriented explanation follow-on work
 
 Issue `#130` is the first concrete delivery slice because it stays completely
 inside the current proven frontier: installed portable skills, durable
