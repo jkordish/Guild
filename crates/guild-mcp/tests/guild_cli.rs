@@ -4881,7 +4881,7 @@ fn shared_help_topics_are_available() {
     let help = run_guild_success(&["help"], None);
     assert!(help.contains("Guild help topics"));
     assert!(help.contains("guild help [refs|inspect|trust|roots|doctor|preview|grants]"));
-    assert!(help.contains("inspect Preview of the target inspect-first operator surface"));
+    assert!(help.contains("inspect  Preview of the target inspect-first operator surface"));
 
     let refs = run_guild_success(&["help", "refs"], None);
     assert!(refs.contains("Guild ref forms"));

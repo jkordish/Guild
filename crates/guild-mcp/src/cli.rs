@@ -5434,7 +5434,7 @@ fn print_help_topics() {
     println!();
     println!("Topics:");
     println!("  refs    Accepted skill and resource ref forms");
-    println!("  inspect Preview of the target inspect-first operator surface");
+    println!("  inspect  Preview of the target inspect-first operator surface");
     println!("  trust   Installed trust and verification scope");
     println!("  roots   Guild root selection and initialization");
     println!("  doctor  Chosen read-only diagnostic command direction");
