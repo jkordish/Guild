@@ -5923,7 +5923,7 @@ fn follow_on_program_tracking_stays_rebased() {
         fs::read_to_string(repo_root().join(".github/ISSUE_TEMPLATE/ux-task.md")).unwrap();
 
     for phrase in [
-        "Track one operator-facing docs or CLI epic in the Guild follow-on program",
+        "Track one trusted operational automation docs or CLI epic in the Guild follow-on program",
         "No runtime-contract widening unless a separate contract issue says so",
         "No aspirational command names that the CLI does not already support honestly",
         "No repo-local planning file that duplicates the active GitHub issue tree",
@@ -5951,7 +5951,7 @@ fn follow_on_program_tracking_stays_rebased() {
     }
 
     for phrase in [
-        "Implement one concrete operator-facing docs or CLI task for Guild",
+        "Implement one concrete trusted operational automation docs or CLI task for Guild",
         "The wording uses the approved Guild glossary where it fits",
         "Do not introduce aspirational command names or playbook/replay claims that the CLI does not support honestly",
     ] {
@@ -6134,6 +6134,70 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(mcp_recipes.contains("`guild.inspect`"));
     assert!(mcp_recipes.contains("guild://queries/executions/failures/recent/10"));
     assert!(mcp_recipes.contains("guild://objects/records/<evidence-record-id>/metadata"));
+}
+
+#[test]
+fn top_level_docs_keep_discouraged_lead_terms_out_of_entrypoints() {
+    for path in [
+        repo_root().join("README.md"),
+        repo_root().join("docs/how-guild-works.md"),
+        repo_root().join("docs/roadmap.md"),
+        repo_root().join("examples/README.md"),
+    ] {
+        let body = fs::read_to_string(&path).unwrap();
+        for forbidden in [
+            "portable skill artifact",
+            "reference application",
+            "reference-application",
+            "substrate",
+        ] {
+            assert!(
+                !body.contains(forbidden),
+                "{} reintroduced discouraged lead-term wording: {forbidden}",
+                path.display()
+            );
+        }
+    }
+}
+
+#[test]
+fn readme_overview_stays_operator_first() {
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+
+    for phrase in [
+        "Guild is trusted operational automation for engineering teams.",
+        "Guild gives operators one trust chain they can review before a workflow runs",
+        "Today, the repo exposes that model through portable skills, bounded",
+        "capabilities, durable execution and evidence records, and stable Guild refs.",
+        "The broader playbook surface is still being defined, so the docs keep the",
+        "target operator story and the current implementation boundaries separate.",
+        "Guild Ops Starter is the first operator starter set in the repo. It is a",
+        "repo-local release slice built on that trust chain, not the whole product",
+        "story.",
+    ] {
+        assert!(
+            readme.contains(phrase),
+            "README.md is missing operator-first overview wording: {phrase}"
+        );
+    }
+
+    let opening = readme.lines().take(18).collect::<Vec<_>>().join("\n");
+    let normalized_opening = opening.to_lowercase();
+    for forbidden in ["substrate", "reference application", "reference-application"] {
+        assert!(
+            !normalized_opening.contains(&forbidden.to_lowercase()),
+            "README.md reintroduced discouraged overview wording in the first 18 lines: {forbidden}"
+        );
+    }
+
+    let overview_start = readme
+        .find("Guild is trusted operational automation for engineering teams.")
+        .unwrap();
+    let normative_note = readme.find("Normative runtime sources live in").unwrap();
+    assert!(
+        overview_start < normative_note,
+        "README.md should keep the operator-first overview ahead of the normative runtime note"
+    );
 }
 
 #[test]
@@ -6442,6 +6506,72 @@ fn trust_policy_glossary_stays_canonical_across_help_and_docs() {
             "guild help trust is missing trust/policy glossary wording: {phrase}"
         );
     }
+}
+
+#[test]
+fn repositioning_docs_keep_the_glossary_as_the_language_entrypoint() {
+    let north_star =
+        fs::read_to_string(repo_root().join("docs/strategy/guild-repositioning/00-north-star.md"))
+            .unwrap();
+    assert!(north_star.contains("02-glossary-and-banned-terms.md"));
+    assert!(north_star.contains("canonical operator-facing vocabulary and user-facing language source"));
+    assert!(north_star.contains("does not rename"));
+    assert!(north_star.contains("runtime contracts"));
+    assert!(north_star.contains("Rust types"));
+    assert!(north_star.contains("WIT surfaces"));
+
+    let backlog =
+        fs::read_to_string(repo_root().join("docs/strategy/guild-repositioning/tasks.md"))
+            .unwrap();
+    assert!(backlog.contains("02-glossary-and-banned-terms.md"));
+    assert!(backlog.contains("canonical operator-facing vocabulary and user-facing language source"));
+}
+
+#[test]
+fn how_guild_works_intro_stays_operator_first() {
+    let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
+
+    for phrase in [
+        "This page is the short daily-user model for Guild.",
+        "Guild is being built around an operator flow",
+        "admission -> bounded execution ->",
+        "receipt -> evidence -> replay-oriented explanation.",
+        "## Operator Model",
+        "review what a workflow is allowed to do before it runs",
+        "run it in isolation under explicit capability policy",
+        "inspect receipts and evidence after the run completes",
+        "compare and explain from stored refs today, with replay-oriented explanation",
+        "The current repo does not yet ship a broad playbook engine.",
+        "Guild does not hand the guest ambient authority.",
+    ] {
+        assert!(
+            how_it_works.contains(phrase),
+            "docs/how-guild-works.md is missing operator-first framing: {phrase}"
+        );
+    }
+
+    let short_version = how_it_works.find("## The Short Version").unwrap();
+    let operator_model = how_it_works.find("## Operator Model").unwrap();
+    let playbooks_and_skills = how_it_works.find("## Playbooks And Skills").unwrap();
+    let identity_layers = how_it_works.find("## Identity Layers").unwrap();
+    let authority_lifecycle = how_it_works.find("## Authority Lifecycle").unwrap();
+
+    assert!(
+        short_version < identity_layers,
+        "docs/how-guild-works.md should explain the operator short version before mechanism-layer identity details"
+    );
+    assert!(
+        operator_model < identity_layers,
+        "docs/how-guild-works.md should keep the operator model ahead of identity-layer detail"
+    );
+    assert!(
+        playbooks_and_skills < identity_layers,
+        "docs/how-guild-works.md should frame playbooks before identity-layer detail"
+    );
+    assert!(
+        operator_model < authority_lifecycle,
+        "docs/how-guild-works.md should keep the operator model ahead of authority lifecycle mechanics"
+    );
 }
 
 #[test]

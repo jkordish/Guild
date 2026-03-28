@@ -84,5 +84,5 @@ into a generic runtime story.
 - operator-first onboarding and trust review
 - playbook-first docs and examples on top of the current skill surfaces
 - receipt-first execution, evidence, and bounded-query views
-- bounded starter-set and reference-application reports on current proven surfaces
+- bounded starter-set and reference-playbook reports on current proven surfaces
 - drift guards that keep the project thesis and anti-thesis stable
