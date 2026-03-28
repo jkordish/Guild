@@ -103,15 +103,17 @@ guild show -v skill://example/hello-inspect@^0.1
 # Start from a concrete active-family grant template.
 guild grants template emit-evidence
 
-# Execute the bounded action on today's shipped surface.
+# Execute the bounded action on today's shipped surface and note the
+# `where` execution URI from the JSON wrapper.
 guild run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
-  --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
+  --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
+  --json
 
 # Inspect the stored result and evidence trail with today's inspect surfaces.
-guild why exec:abc123
-guild get guild://executions/<execution-id>
+guild why exec:<execution-id-prefix-from-where>
+guild get guild://executions/<execution-id-from-where>
 
 # Verify installed trust state separately.
 guild verify skill://example/hello-inspect@^0.1

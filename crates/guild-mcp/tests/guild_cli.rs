@@ -6009,11 +6009,14 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(command_language.contains("guild why --lineage"));
     assert!(command_language.contains("guild ls evidence --limit 5"));
     assert!(command_language.contains("guild grants template"));
+    assert!(command_language.contains("`where` execution URI from the JSON wrapper"));
     assert!(command_language.contains("--grants-json"));
+    assert!(command_language.contains("--json"));
     assert!(
         command_language.contains("\"grants\":[{\"id\":\"emit-evidence\",\"access\":\"write\"")
     );
-    assert!(command_language.contains("guild get guild://executions/<execution-id>"));
+    assert!(command_language.contains("guild why exec:<execution-id-prefix-from-where>"));
+    assert!(command_language.contains("guild get guild://executions/<execution-id-from-where>"));
     assert!(command_language.contains("../examples/skills/explain-execution-tree/README.md"));
     assert!(command_language.contains(
         "move to narrower authority and policy example skills only when `guild why -v` is no longer enough"
