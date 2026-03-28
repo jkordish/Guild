@@ -6092,6 +6092,47 @@ fn follow_on_program_tracking_stays_rebased() {
     }
 }
 
+#[test]
+fn follow_on_execution_guides_cover_every_open_issue() {
+    let epic_doc = fs::read_to_string(
+        repo_root().join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md"),
+    )
+    .unwrap();
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+
+    assert!(epic_doc.contains("portable-skill-receipts-and-reference-apps-execution-guide.md"));
+    assert!(guide.contains("## Program Sequence"));
+
+    for issue in [
+        "#129", "#130", "#131", "#132", "#133", "#134", "#136", "#137", "#138",
+    ] {
+        assert!(
+            epic_doc.contains(issue),
+            "roadmap epic doc is missing follow-on issue reference: {issue}"
+        );
+        assert!(
+            guide.contains(issue),
+            "execution guide is missing follow-on issue section: {issue}"
+        );
+    }
+
+    for phrase in [
+        "### Design Guide",
+        "### Implementation Guide",
+        "### Suggested Subtasks",
+        "### Validation",
+    ] {
+        assert!(
+            guide.contains(phrase),
+            "execution guide is missing required structure phrase: {phrase}"
+        );
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 #[test]
 fn journey_docs_stay_centered_on_user_workflows() {

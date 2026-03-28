@@ -6,6 +6,9 @@ Normative runtime ownership remains in [`../../../SPECS.md`](../../../SPECS.md),
 [`../../../wit/guild-skill-v1.wit`](../../../wit/guild-skill-v1.wit), and the
 core Rust runtime/types.
 
+Execution-ready guidance for the open follow-on GitHub issue set lives in
+[`portable-skill-receipts-and-reference-apps-execution-guide.md`](portable-skill-receipts-and-reference-apps-execution-guide.md).
+
 ## Summary
 
 The next phase should turn Guild's existing trust and receipt layer into an
