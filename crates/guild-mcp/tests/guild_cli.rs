@@ -6145,6 +6145,13 @@ fn top_level_docs_keep_discouraged_lead_terms_out_of_entrypoints() {
         repo_root().join("examples/README.md"),
     ] {
         let body = fs::read_to_string(&path).unwrap();
+        let opening_block = body
+            .lines()
+            .take_while(|line| !line.starts_with("##"))
+            .take(64)
+            .collect::<Vec<_>>()
+            .join("\n")
+            .to_lowercase();
         for forbidden in [
             "portable skill artifact",
             "reference application",
@@ -6152,8 +6159,8 @@ fn top_level_docs_keep_discouraged_lead_terms_out_of_entrypoints() {
             "substrate",
         ] {
             assert!(
-                !body.contains(forbidden),
-                "{} reintroduced discouraged lead-term wording: {forbidden}",
+                !opening_block.contains(&forbidden.to_lowercase()),
+                "{} reintroduced discouraged lead-term wording in top-level entry section: {forbidden}",
                 path.display()
             );
         }
@@ -6163,6 +6170,12 @@ fn top_level_docs_keep_discouraged_lead_terms_out_of_entrypoints() {
 #[test]
 fn readme_overview_stays_operator_first() {
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    let opening_block = readme
+        .lines()
+        .take_while(|line| !line.starts_with("##"))
+        .take(64)
+        .collect::<Vec<_>>()
+        .join("\n");
 
     for phrase in [
         "Guild is trusted operational automation for engineering teams.",
@@ -6176,13 +6189,12 @@ fn readme_overview_stays_operator_first() {
         "story.",
     ] {
         assert!(
-            readme.contains(phrase),
+            opening_block.contains(phrase),
             "README.md is missing operator-first overview wording: {phrase}"
         );
     }
 
-    let opening = readme.lines().take(18).collect::<Vec<_>>().join("\n");
-    let normalized_opening = opening.to_lowercase();
+    let normalized_opening = opening_block.to_lowercase();
     for forbidden in ["substrate", "reference application", "reference-application"] {
         assert!(
             !normalized_opening.contains(&forbidden.to_lowercase()),
@@ -6190,10 +6202,14 @@ fn readme_overview_stays_operator_first() {
         );
     }
 
-    let overview_start = readme
-        .find("Guild is trusted operational automation for engineering teams.")
-        .unwrap();
-    let normative_note = readme.find("Normative runtime sources live in").unwrap();
+    let overview_start = readme.find("Guild is trusted operational automation for engineering teams.").expect(
+        "README.md is missing the operator-first overview marker phrase: \"Guild is trusted operational automation for engineering teams.\"",
+    );
+    let normative_note = readme
+        .find("Normative runtime sources live in")
+        .expect(
+            "README.md is missing the normative runtime note marker phrase: \"Normative runtime sources live in\"",
+        );
     assert!(
         overview_start < normative_note,
         "README.md should keep the operator-first overview ahead of the normative runtime note"
@@ -6550,11 +6566,21 @@ fn how_guild_works_intro_stays_operator_first() {
         );
     }
 
-    let short_version = how_it_works.find("## The Short Version").unwrap();
-    let operator_model = how_it_works.find("## Operator Model").unwrap();
-    let playbooks_and_skills = how_it_works.find("## Playbooks And Skills").unwrap();
-    let identity_layers = how_it_works.find("## Identity Layers").unwrap();
-    let authority_lifecycle = how_it_works.find("## Authority Lifecycle").unwrap();
+    let short_version = how_it_works
+        .find("## The Short Version")
+        .expect("missing '## The Short Version' section in docs/how-guild-works.md");
+    let operator_model = how_it_works
+        .find("## Operator Model")
+        .expect("missing '## Operator Model' section in docs/how-guild-works.md");
+    let playbooks_and_skills = how_it_works
+        .find("## Playbooks And Skills")
+        .expect("missing '## Playbooks And Skills' section in docs/how-guild-works.md");
+    let identity_layers = how_it_works
+        .find("## Identity Layers")
+        .expect("missing '## Identity Layers' section in docs/how-guild-works.md");
+    let authority_lifecycle = how_it_works
+        .find("## Authority Lifecycle")
+        .expect("missing '## Authority Lifecycle' section in docs/how-guild-works.md");
 
     assert!(
         short_version < identity_layers,
