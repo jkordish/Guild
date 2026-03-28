@@ -104,11 +104,14 @@ guild show -v skill://example/hello-inspect@^0.1
 guild grants template emit-evidence
 
 # Execute the bounded action on today's shipped surface.
-guild run skill://example/hello-inspect@^0.1 --input-json '{"name":"Ada"}'
+guild run \
+  skill://example/hello-inspect@^0.1 \
+  --input-json '{"name":"Ada"}' \
+  --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}'
 
 # Inspect the stored result and evidence trail with today's inspect surfaces.
 guild why exec:abc123
-guild get guild://executions/abc123
+guild get guild://executions/<execution-id>
 
 # Verify installed trust state separately.
 guild verify skill://example/hello-inspect@^0.1
