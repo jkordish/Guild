@@ -107,13 +107,16 @@ What to look for:
 ## Checked Deeper Proof Paths
 
 When you want the deterministic repo-local proof helpers that keep this story
-honest, run:
+honest, bootstrap the local proof registry first, then run:
 
 ```bash
+cargo run -q -p guild-mcp --bin guild -- codex bootstrap --registry-root target/dev-local-registry/codex-local --reset
 cargo run -q -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution
 cargo run -q -p guild-mcp --bin guild -- codex smoke --registry-root target/dev-local-registry/codex-local --flow explain-execution-tree
 ```
 
-Those smoke flows exercise the reusable explain surfaces over deterministic
-local data. Use them to confirm that the trust-story walkthrough above still
-matches the current live proof path.
+The bootstrap step creates the deterministic local registry root and installs
+the scenario fixtures those smoke commands depend on. The smoke flows then
+exercise the reusable explain surfaces over deterministic local data. Use them
+to confirm that the trust-story walkthrough above still matches the current
+live proof path.
