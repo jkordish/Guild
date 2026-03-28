@@ -31,6 +31,7 @@ The default help is task-oriented:
 
 - `guild --help`
 - `guild help refs`
+- `guild help inspect`
 - `guild help trust`
 - `guild help roots`
 - `guild help doctor`
@@ -38,9 +39,89 @@ The default help is task-oriented:
 - `guild help grants`
 - `guild <command> --help`
 
+## Target Operator Flow
+
+Guild's target operator journey is:
+
+1. `admit`
+2. `exec`
+3. `inspect`
+4. `replay`
+
+That sequence describes the target UX, not the fully shipped top-level CLI in
+this milestone. Use the target verbs in planning and migration language, but
+keep today's binary surface explicit and use `guild help inspect` for the
+shipped inspect-first preview:
+
+- `guild admit`: target-state preflight for capability review, policy
+  narrowing, and execution readiness. There is no first-class command today.
+  The closest current surfaces are `guild show`, `guild grants template`, and
+  the read-only preview/help direction.
+- `guild exec`: target-state execution surface. Today this is `guild run`.
+- `guild inspect`: target-state inspection surface for receipts, evidence, and
+  execution history. Today that work is split across `guild show`, `guild why`,
+  `guild get`, and `guild ls`.
+- `guild replay`: target-state rerun or re-check surface from stored receipt
+  context. There is no first-class command today.
+
+Keep these boundary notes visible:
+
+- current commands remain the source of truth for what the binary actually
+  accepts today
+- `guild inspect` currently exists only as a compatibility alias for
+  `guild run`; it is not yet the target-state inspect surface
+- `guild verify` remains a trust-specific review command and is not absorbed
+  into the target inspect surface
+
+Conceptual target flow:
+
+- `admit`: review requested authority, policy narrowing, and readiness before execution
+- `exec`: perform the bounded action
+- `inspect`: review the stored receipt, evidence, and execution history
+- `replay`: rerun or re-check from stored receipt context when that contract lands
+
+### Command Mapping
+
+| Today Surface | Target Stage | Status | Migration Notes |
+| --- | --- | --- | --- |
+| `guild show` | `inspect` | current surface today | primary non-executing summary path for skills, receipts, objects, and evidence |
+| `guild why` | `inspect` | current surface today | primary persisted-execution explanation path for authority outcomes and nearby refs |
+| `guild get` | `inspect` | current surface today | raw durable read path for Guild resources |
+| `guild ls` | `inspect` | current surface today | discovery path for installed skills and persisted Guild state |
+| `guild run` | `exec` | current surface today | actual execution entrypoint today |
+| `guild inspect` | `exec` | alias-preview today | compatibility alias for `guild run`, not the target inspect surface |
+| `guild grants template` | `admit` | helper-preview today | read-only grant-authoring helper for current active families before a run |
+| `guild verify` | trust review / verify | current surface today | stays trust-specific and separate from the target inspect surface |
+| no first-class command today | `replay` | future only | keep replay descriptive until bounded replay semantics exist |
+
+Current compatible flow:
+
+```bash
+# Review execution identity and declared authority before running.
+guild show -v skill://example/hello-inspect@^0.1
+
+# Start from a concrete active-family grant template.
+guild grants template emit-evidence
+
+# Execute the bounded action on today's shipped surface and note the
+# `where` execution URI from the JSON wrapper.
+guild run \
+  skill://example/hello-inspect@^0.1 \
+  --input-json '{"name":"Ada"}' \
+  --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
+  --json
+
+# Inspect the stored result and evidence trail with today's inspect surfaces.
+guild why exec:<execution-id-prefix-from-where>
+guild get guild://executions/<execution-id-from-where>
+
+# Verify installed trust state separately.
+guild verify skill://example/hello-inspect@^0.1
+```
+
 ## Command Groups
 
-Guild's first-class local verbs are:
+Guild's first-class local verbs today are:
 
 ### Daily Use
 
@@ -72,6 +153,10 @@ Legacy aliases remain supported for compatibility:
 - `guild inspect` -> `guild run`
 - `guild read` -> `guild get`
 - `guild list` -> `guild ls`
+
+Do not read those aliases as proof that the target `admit` / `exec` /
+`inspect` / `replay` journey has already landed in code. They are compatibility
+bridges only.
 
 ## Ref Forms
 
@@ -185,18 +270,27 @@ Non-goals:
 ### Quickstart
 
 ```bash
+# Create the local Guild root and install the example skill.
 guild init
 guild install examples/skills/hello-inspect
+
+# Review execution identity and declared authority before running.
 guild show skill://example/hello-inspect@^0.1
 guild grants template emit-evidence
+
+# Execute the bounded action.
 guild run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
   --json
+
+# Inspect the stored result and nearby durable state.
 guild ls runs --limit 5
 guild why exec:<execution-id-prefix>
 guild get guild://executions/<execution-id>
+
+# Verify installed trust state separately.
 guild verify skill://example/hello-inspect@^0.1
 ```
 
@@ -209,6 +303,7 @@ What this flow teaches:
 - `grants template` is the read-only authoring helper for current active-family grant JSON
 - `run` executes a `skill://...` ref through the real Guild runtime path after host policy computes the final granted authority for that run
 - success produces a durable `guild://executions/...` receipt
+- `ls`, `why`, and `get` together are today's concrete inspect surfaces while the broader inspect story is still split across multiple commands
 - `why` explains one stored execution record, points to nearby child or evidence refs when present, summarizes requested-versus-granted authority, and summarizes stored authority observations
 - `get` reads the same backend used by MCP and guest `read-resource`
 - `verify` reports installed trust and verification state for skill refs only
@@ -217,9 +312,10 @@ What this flow teaches:
 
 Use the examples and docs in this order when you want the current practical path rather than the full maintainer proof surface:
 
+- Compatible operator flow in today's CLI: review authority and execution identity -> execute a bounded action -> inspect the stored result -> verify installed trust state.
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](../examples/skills/hello-inspect/README.md)
 - Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](../examples/skills/explain-execution-tree/README.md), or [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution
-- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](../examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](../examples/skills/explain-execution-tree/README.md), or [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution. In operator-facing capability language, those current read-only examples are `runs:inspect`, `runs:compare`, `failures:query`, and `evidence:inspect`, while the concrete grant JSON still uses bounded `read-resource` and, where present, bounded `invoke-skill`.
+- In operator-facing capability language, those current read-only examples are `runs:inspect`, `runs:compare`, `failures:query`, and `evidence:inspect`, while the concrete grant JSON still uses bounded `read-resource` and, where present, bounded `invoke-skill`.
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
 - Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use [`Guild Ops Starter`](../examples/skills/guild-ops-starter/README.md) and the surrounding examples index at [`examples/README.md`](../examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](../examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](../examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](../examples/skills/explain-http-authority/README.md)
 
