@@ -9,9 +9,16 @@ For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` 
 For the current project framing and vocabulary freeze, see [`docs/project-positioning.md`](docs/project-positioning.md).
 For the current operator-facing playbook surface and playbook-to-skill composition story, see [`docs/strategy/guild-repositioning/04-playbook-surface-v1.md`](docs/strategy/guild-repositioning/04-playbook-surface-v1.md). That surface is explanatory; the architecture below still describes how Guild executes skills today.
 
+Read this document as the practical map for how Guild delivers admission,
+isolation, receipts, evidence, and replay-oriented explanation on today's live
+path. It explains how the subsystems fit together; it does not widen the live
+runtime or proof-backed surface by prose alone.
+
 ## 1. Overview
 
-Guild's architecture exists to support portable, capability-bounded skill artifacts and the host-owned trust layer around how they are admitted, executed, and evidenced.
+Guild's architecture exists to support portable, capability-bounded skill
+artifacts and the host-owned trust chain around how they are admitted,
+executed, evidenced, and later explained.
 
 The current live path already makes execution and evidence durable. The bounded
 draft-v1 admission layer stays separate and explicit; this architecture doc

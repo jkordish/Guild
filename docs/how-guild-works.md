@@ -4,6 +4,8 @@ This page is the short daily-user model for Guild.
 
 It is not the normative contract source. Use `SPECS.md` when you need the exact runtime contract, and use `ARCHITECTURE.md` when you need the fuller implementation view.
 For the current project framing, see [`project-positioning.md`](project-positioning.md).
+For one current end-to-end trust proof path, use
+[`trust-proof-walkthrough.md`](trust-proof-walkthrough.md).
 For the bounded playbook concept entrypoint, use
 [`strategy/guild-repositioning/04-playbook-surface-v1.md`](strategy/guild-repositioning/04-playbook-surface-v1.md).
 For canonical operator-facing vocabulary, use
@@ -16,6 +18,9 @@ For the canonical operator-facing capability vocabulary, use
 Guild is being built around an operator flow: understand what a workflow is
 allowed to do, run it under explicit host-owned authority, and inspect the
 receipts and evidence afterward.
+
+On today's live path, that trust chain is: admission -> bounded execution ->
+receipt -> evidence -> replay-oriented explanation.
 
 Today, the repo exposes that flow through skills rather than a first-class
 playbook engine. You ask for a skill by a human-meaningful ref, Guild resolves
@@ -32,11 +37,16 @@ Guild's target operator story is simple:
 - review what a workflow is allowed to do before it runs
 - run it in isolation under explicit capability policy
 - inspect receipts and evidence after the run completes
-- compare, explain, and replay from stored refs instead of chat-only memory
+- compare and explain from stored refs today, with replay-oriented explanation
+  grounded in the same durable state
 
 The current repo does not yet ship a broad playbook engine. It ships the trust,
 identity, execution, and evidence surfaces that playbooks are meant to sit on
 top of.
+
+Today that replay-oriented explanation lives in `guild why`, `guild get`, and
+the explain/report surfaces over stored refs. It is not yet a first-class
+replay engine.
 
 ## Playbooks And Skills
 

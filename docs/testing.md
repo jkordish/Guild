@@ -3,6 +3,9 @@
 This document collects the verification commands and proof workflows that go beyond the quick operator path in the README.
 
 Use this page when you need regression sweeps, example proofs, benchmark checks, or deterministic repo-local Codex helper flows.
+If you want one current end-to-end operator trust story before the broader
+proof suites, start with
+[`trust-proof-walkthrough.md`](trust-proof-walkthrough.md).
 
 For the current project framing and first-reference-application thesis, see
 [`project-positioning.md`](project-positioning.md). For canonical

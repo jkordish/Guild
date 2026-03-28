@@ -2,9 +2,14 @@
 
 Guild is trusted operational automation for engineering teams.
 
-Guild is being built so operators can review and admit an ops playbook under explicit capability policy, run it in isolation, and keep receipts and evidence they can inspect later.
+Guild gives operators one trust chain they can review before a workflow runs
+and inspect after it completes: admission -> bounded execution -> receipt ->
+evidence -> replay-oriented explanation.
 
-Today, the repo exposes that model through portable skills, bounded capabilities, durable execution and evidence records, and stable Guild refs. The broader playbook surface is still being defined, so the docs keep the target operator story and the current implementation boundaries separate.
+Today, the repo exposes that model through portable skills, bounded
+capabilities, durable execution and evidence records, and stable Guild refs.
+The broader playbook surface is still being defined, so the docs keep the
+target operator story and the current implementation boundaries separate.
 
 Guild Ops Starter is the first operator starter set in the repo. It is a
 repo-local release slice built on that trust chain, not the whole product
@@ -28,10 +33,36 @@ story.
 > Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
 >
 > If you want the short daily-user model first, start with [`docs/how-guild-works.md`](docs/how-guild-works.md).
+> If you want one current end-to-end trust proof path, start with
+> [`docs/trust-proof-walkthrough.md`](docs/trust-proof-walkthrough.md).
 
 Normative runtime sources live in `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
 Generated support, compatibility, and benchmark artifacts remain checked outputs, not primary contract definitions.
 For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
+
+## Trust Chain
+
+Guild's operator-facing trust chain on today's live path is:
+
+- `admission`: review execution identity, declared authority, and the
+  caller-requested grants before a run starts
+- `bounded execution`: the host narrows authority and runs the guest inside
+  explicit runtime boundaries
+- `receipt`: Guild persists a durable execution record for what ran and how it
+  ended
+- `evidence`: Guild keeps durable evidence payloads and metadata that point
+  back to that run
+- `replay-oriented explanation`: operators can explain or re-check what
+  happened from stored refs using `guild why`, `guild get`, and the
+  explain/report surfaces that exist today; this is not yet a first-class
+  replay engine
+
+For the short daily-user model, start with
+[`docs/how-guild-works.md`](docs/how-guild-works.md). For one current
+operator proof path, start with
+[`docs/trust-proof-walkthrough.md`](docs/trust-proof-walkthrough.md). Use
+`SPECS.md` and `ARCHITECTURE.md` when you need the exact contract and
+subsystem boundaries behind that story.
 
 ## Why Guild
 
@@ -481,6 +512,7 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 
 - `docs/project-positioning.md` - current narrative, target audience, and language decisions for Guild
 - `docs/how-guild-works.md` - short operator model for identity, authority, receipts, evidence, and the main CLI surfaces
+- `docs/trust-proof-walkthrough.md` - current end-to-end operator trust proof over review, receipt, evidence, and explanation surfaces
 - `docs/mcp-agent-recipes.md` - task-shaped MCP recipes for agent users and integrators
 - `docs/command-language.md` - public CLI verbs, grouped workflows, and ref grammar
 - `docs/mirroring-and-promotion.md` - current operator guidance for mirroring and promoting signed installed-state artifacts
