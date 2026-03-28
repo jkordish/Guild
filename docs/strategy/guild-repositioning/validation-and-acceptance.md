@@ -1,6 +1,8 @@
 # Validation And Acceptance
 
 Use these checks to keep the repositioning work honest. Validation should prove that wording, examples, and CLI surfaces changed together without widening Guild's actual trust or runtime guarantees.
+For one current end-to-end operator proof story, see
+[`../../trust-proof-walkthrough.md`](../../trust-proof-walkthrough.md).
 Use [`02-glossary-and-banned-terms.md`](./02-glossary-and-banned-terms.md)
 as the canonical operator-facing vocabulary and user-facing language source
 when reviewing doc and help-text wording.

@@ -1,13 +1,14 @@
 ---
 name: UX Epic
-about: Track one operator-facing docs or CLI epic in the Guild follow-on program
+about: Track one trusted operational automation docs or CLI epic in the Guild follow-on program
 title: "[Epic] "
 labels: enhancement
 ---
 
 ## Summary
 
-Describe the operator-facing problem this epic solves in one short paragraph.
+Describe the operator-facing trust, docs, or CLI problem this epic solves in
+one short paragraph.
 
 ## Persona And Journey
 

@@ -1,13 +1,14 @@
 ---
 name: UX Task
-about: Implement one concrete operator-facing docs or CLI task for Guild
+about: Implement one concrete trusted operational automation docs or CLI task for Guild
 title: "[Task] "
 labels: enhancement
 ---
 
 ## Problem
 
-State the specific user-facing problem in one or two sentences.
+State the specific operator-facing trust, docs, or CLI problem in one or two
+sentences.
 
 ## User/Persona
 

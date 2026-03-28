@@ -9,7 +9,7 @@ runtime contracts, Rust types, or WIT surfaces.
 
 - Ops engineers running recurring operational procedures
 - Platform engineers standardizing safe automation
-- SREs who need inspectable execution and replayable recovery paths
+- SREs who need inspectable execution and replay-oriented recovery paths
 - Security engineers reviewing admission, isolation, capabilities, receipts, and evidence
 
 ## Product Thesis
@@ -18,14 +18,18 @@ Guild is trusted operational automation for engineering teams.
 
 The playbook is the application. The trust chain is the product.
 
-Guild should read as the system that lets operators define an ops playbook, admit it under explicit capability policy, run it in isolation, and keep receipts and evidence that can be inspected and replayed later.
+Guild should read as the system that lets operators review and admit an ops
+playbook under explicit capability policy, run it in isolation, and keep
+receipts and evidence that can be inspected later and used for replay-oriented
+explanation.
 
 ## Narrative Hierarchy
 
 1. Safe operational automation
 2. Expressed as playbooks
 3. Powered by portable skills
-4. Made trustworthy by admission, isolation, explicit capabilities, signed receipts and evidence, and replay
+4. Made trustworthy by admission, isolation, explicit capabilities, host-owned
+   receipts and evidence, and replay-oriented explanation
 
 ## Product Promises
 
@@ -33,7 +37,8 @@ Guild should read as the system that lets operators define an ops playbook, admi
 - Playbooks are legible enough to review like operational procedure, not substrate plumbing.
 - Execution leaves receipts and evidence that explain what happened.
 - Capabilities are human-readable and scoped to real operator intent.
-- Replay and inspection stay grounded in stored receipts instead of chat-only memory.
+- Replay-oriented explanation and inspection stay grounded in stored receipts
+  instead of chat-only memory.
 
 ## Non-Goals
 

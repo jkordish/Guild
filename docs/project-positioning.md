@@ -27,11 +27,14 @@ The playbook is the application. The trust chain is the product.
 
 Guild should read as the system that lets operators review and admit an ops
 playbook under explicit capability policy, run it in isolation, and keep
-receipts and evidence they can inspect and replay later.
+receipts and evidence they can inspect later and use for replay-oriented
+explanation.
 
 Today, the repo still exposes that model through skills, durable Guild refs,
 local policy decisions, and bounded runtime surfaces. The playbook surface is a
 product direction, not a claim that a broad playbook engine already ships.
+The current explanation path is replay-oriented explanation over stored refs,
+not a first-class replay engine.
 
 The external capability taxonomy is also docs-first in this phase. It is the
 operator-facing approval vocabulary, while the current internal family

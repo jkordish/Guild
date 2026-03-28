@@ -4,9 +4,16 @@ Status: Draft v0.1
 Scope: core normative contract for Guild implementations  
 Audience: runtime implementers, registry authors, skill authors, security reviewers, platform engineers
 
+Guild's operator-facing promise is simple: review authority at admission, run
+inside host-managed isolation, keep receipts and evidence, and use
+replay-oriented explanation from stored refs later. This specification defines
+the exact runtime contract behind that promise; it does not widen the current
+support frontier by prose alone.
+
 ## 1. Purpose
 
-Guild defines a local-first execution and artifact model for AI skills.
+Guild defines a local-first execution and artifact model for AI skills that
+makes that trust chain concrete.
 
 For current project framing and repository vocabulary, use [`docs/project-positioning.md`](docs/project-positioning.md). That document is explanatory and strategic; it does not override the normative contract in this specification.
 For the current operator-facing playbook surface, use [`docs/strategy/guild-repositioning/04-playbook-surface-v1.md`](docs/strategy/guild-repositioning/04-playbook-surface-v1.md). That document is explanatory only: playbooks are the target operator-facing application unit there, while skills remain the normative execution unit in this specification.
