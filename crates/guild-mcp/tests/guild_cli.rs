@@ -4855,12 +4855,16 @@ fn codex_subcommand_help_is_available_through_guild_cli() {
 fn top_level_help_is_grouped_and_points_to_topic_help() {
     let stdout = run_guild_success(&["--help"], None);
     assert!(stdout.contains("Guild CLI"));
-    assert!(stdout.contains("Run, inspect, and review Guild skills, receipts, and evidence locally."));
+    assert!(
+        stdout.contains("Run, inspect, and review Guild skills, receipts, and evidence locally.")
+    );
     assert!(stdout.contains("Daily use:"));
     assert!(stdout.contains("Install and publish:"));
     assert!(stdout.contains("Setup and integration:"));
     assert!(stdout.contains("grants    Print read-only grant templates"));
     assert!(stdout.contains("guild help refs"));
+    assert!(stdout.contains("Target inspect preview: guild help inspect"));
+    assert!(stdout.contains("guild help inspect"));
     assert!(stdout.contains("guild help trust"));
     assert!(stdout.contains("guild help roots"));
     assert!(stdout.contains("guild help doctor"));
@@ -4876,7 +4880,8 @@ fn top_level_help_is_grouped_and_points_to_topic_help() {
 fn shared_help_topics_are_available() {
     let help = run_guild_success(&["help"], None);
     assert!(help.contains("Guild help topics"));
-    assert!(help.contains("guild help [refs|trust|roots|doctor|preview|grants]"));
+    assert!(help.contains("guild help [refs|inspect|trust|roots|doctor|preview|grants]"));
+    assert!(help.contains("inspect Preview of the target inspect-first operator surface"));
 
     let refs = run_guild_success(&["help", "refs"], None);
     assert!(refs.contains("Guild ref forms"));
@@ -4887,6 +4892,25 @@ fn shared_help_topics_are_available() {
     assert!(refs.contains("resolved executable identity"));
     assert!(refs.contains("guild show -v skill://example/hello-inspect@^0.1"));
     assert!(refs.contains("guild show -vv skill://example/hello-inspect@^0.1"));
+
+    let inspect = run_guild_success(&["help", "inspect"], None);
+    assert!(inspect.contains("Inspect-first preview"));
+    assert!(inspect.contains("admit -> exec -> inspect -> replay"));
+    assert!(inspect.contains("shipped inspect-first preview"));
+    assert!(inspect.contains("Current inspect surfaces today:"));
+    assert!(inspect.contains("guild show"));
+    assert!(inspect.contains("guild why"));
+    assert!(inspect.contains("guild get"));
+    assert!(inspect.contains("guild ls"));
+    assert!(inspect.contains("Compatibility boundary:"));
+    assert!(inspect.contains("guild inspect ..."));
+    assert!(inspect.contains("This still runs a skill through `guild run`"));
+    assert!(inspect.contains("Do not infer shipped `guild admit` or `guild replay` commands"));
+    assert!(inspect.contains("Current real commands:"));
+    assert!(inspect.contains("guild show -v skill://example/hello-inspect@^0.1"));
+    assert!(inspect.contains("guild why exec:<execution-id-prefix>"));
+    assert!(inspect.contains("guild ls evidence --limit 5"));
+    assert!(inspect.contains("guild get guild://executions/<execution-id>"));
 
     let trust = run_guild_success(&["help", "trust"], None);
     assert!(trust.contains("Trust and verification"));
@@ -5006,11 +5030,13 @@ fn show_help_points_to_ref_topics() {
     assert!(stdout.contains("Show a skill, receipt, object, or evidence summary"));
     assert!(stdout.contains("Accepted refs:"));
     assert!(stdout.contains("does not run a skill"));
+    assert!(stdout.contains("one current inspect surface"));
     assert!(stdout.contains("default output is a short human summary for reading, not parsing."));
     assert!(stdout.contains("low-noise `Next:` hints"));
     assert!(stdout.contains("Use -v with a skill ref"));
     assert!(stdout.contains("Use -vv with a skill ref"));
     assert!(stdout.contains("guild help refs"));
+    assert!(stdout.contains("guild help inspect"));
     assert!(stdout.contains("guild why --help"));
 }
 
@@ -5037,7 +5063,11 @@ fn run_help_uses_input_file_flag_and_ref_topic() {
         )
     );
     assert!(stdout.contains("low-noise `Next:` hints"));
+    assert!(stdout.contains("Compatibility alias:"));
+    assert!(stdout.contains("guild inspect ..."));
+    assert!(stdout.contains("use `guild help inspect` for the target inspect-first preview"));
     assert!(stdout.contains("guild help refs"));
+    assert!(stdout.contains("guild help inspect"));
     assert!(stdout.contains("guild why --help"));
 }
 
@@ -5114,11 +5144,13 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     let ls_help = run_guild_success(&["ls", "--help"], None);
     assert!(ls_help.contains("List skills, runs, objects, or evidence"));
     assert!(ls_help.contains("primary local-state listing command"));
+    assert!(ls_help.contains("one current inspect surface"));
     assert!(
         ls_help.contains("default output is a short local-state listing for reading, not parsing.")
     );
     assert!(ls_help.contains("Legacy alias:"));
     assert!(ls_help.contains("guild list ..."));
+    assert!(ls_help.contains("guild help inspect"));
     assert!(ls_help.contains("guild show --help"));
     assert!(ls_help.contains("guild why --help"));
 
@@ -5127,6 +5159,7 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     assert!(get_help.contains("Accepted refs:"));
     assert!(get_help.contains("exec:<execution-id-prefix>"));
     assert!(get_help.contains("primary raw resource-read command"));
+    assert!(get_help.contains("one current inspect surface"));
     assert!(get_help.contains("reads go to stdout by default."));
     assert!(
         get_help.contains(
@@ -5137,11 +5170,13 @@ fn ls_get_why_and_verify_help_call_out_scope() {
     assert!(get_help.contains("Legacy alias:"));
     assert!(get_help.contains("guild read ..."));
     assert!(get_help.contains("guild help refs"));
+    assert!(get_help.contains("guild help inspect"));
     assert!(get_help.contains("guild why --help"));
 
     let why_help = run_guild_success(&["why", "--help"], None);
     assert!(why_help.contains("Explain a persisted execution"));
     assert!(why_help.contains("primary persisted-execution explanation command"));
+    assert!(why_help.contains("one current inspect surface"));
     assert!(
         why_help.contains("default output is a short human explanation for reading, not parsing.")
     );
@@ -5159,6 +5194,7 @@ fn ls_get_why_and_verify_help_call_out_scope() {
         why_help.contains("example skills may produce richer reusable authority or policy reports")
     );
     assert!(why_help.contains("persisted execution record"));
+    assert!(why_help.contains("guild help inspect"));
     assert!(why_help.contains("guild get --help"));
 
     let verify_help = run_guild_success(&["verify", "--help"], None);
@@ -5930,14 +5966,19 @@ fn follow_on_program_tracking_stays_rebased() {
 fn journey_docs_stay_centered_on_user_workflows() {
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
     assert!(readme.contains("## User Journeys"));
+    assert!(readme.contains("Compatible operator flow in today's CLI"));
     assert!(readme.contains("Install and run a skill"));
     assert!(readme.contains("Explain what happened"));
     assert!(readme.contains("Verify trust state and move installed state"));
     assert!(readme.contains("Debug failures and compare runs"));
+    assert!(readme.contains("guild help inspect"));
     assert!(readme.contains("guild why -v"));
     assert!(readme.contains("guild why --lineage"));
     assert!(readme.contains("guild ls evidence --limit 5"));
     assert!(readme.contains("guild grants template"));
+    assert!(
+        readme.contains("`ls`, `why`, and `get` together are today's concrete inspect surfaces")
+    );
     assert!(readme.contains("examples/skills/explain-execution-tree/README.md"));
     assert!(readme.contains(
         "move to narrower authority and policy example skills only when `guild why -v` is no longer enough"
@@ -5945,11 +5986,25 @@ fn journey_docs_stay_centered_on_user_workflows() {
 
     let command_language =
         fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    assert!(command_language.contains("## Target Operator Flow"));
+    assert!(command_language.contains("Use the target verbs in planning and migration language"));
+    assert!(command_language.contains("guild help inspect"));
+    assert!(command_language.contains("### Command Mapping"));
+    assert!(
+        command_language.contains("| Today Surface | Target Stage | Status | Migration Notes |")
+    );
+    assert!(command_language.contains("`guild inspect` | `exec` | alias-preview today"));
+    assert!(command_language.contains("Conceptual target flow:"));
     assert!(command_language.contains("### Journey Map"));
+    assert!(command_language.contains("Compatible operator flow in today's CLI"));
     assert!(command_language.contains("Install and run a skill"));
     assert!(command_language.contains("Explain what happened"));
     assert!(command_language.contains("Verify trust state and move installed state"));
     assert!(command_language.contains("Debug failures and compare runs"));
+    assert!(
+        command_language
+            .contains("`ls`, `why`, and `get` together are today's concrete inspect surfaces")
+    );
     assert!(command_language.contains("guild why -v"));
     assert!(command_language.contains("guild why --lineage"));
     assert!(command_language.contains("guild ls evidence --limit 5"));
@@ -6031,6 +6086,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(how_it_works.contains("low-noise follow-up hints such as `Next: ...`"));
     assert!(how_it_works.contains("use `--json` for structured machine-readable output"));
     assert!(how_it_works.contains("use `--porcelain` for stable one-line machine-readable output"));
+    assert!(how_it_works.contains("guild help inspect"));
     assert!(how_it_works.contains("guild help doctor"));
     assert!(how_it_works.contains("guild help preview"));
     assert!(how_it_works.contains("guild help grants"));

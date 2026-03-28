@@ -86,6 +86,7 @@ Legacy aliases remain available for existing scripts:
 The CLI now also ships focused help topics:
 
 - `guild help refs`
+- `guild help inspect`
 - `guild help trust`
 - `guild help roots`
 - `guild help doctor`
@@ -159,34 +160,39 @@ Its non-goals are just as important:
 - no remote registry probing or generic machine-inspector behavior
 - no hidden bootstrap or repair side effects
 
-### Install, Show, Run, And Read Back
+### Review Authority, Execute, Inspect, And Verify
 
 ```bash
 guild init
 
 guild install examples/skills/hello-inspect
 
+# Review execution identity and declared authority before running.
 guild show skill://example/hello-inspect@^0.1
 
 guild grants template emit-evidence
 
+# Execute the bounded action.
 guild run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
   --json
 
+# Inspect the stored result and nearby durable state.
 guild ls runs --limit 5
 
 guild why exec:<execution-id-prefix>
 
 guild get guild://executions/<execution-id>
 
+# Verify installed trust state separately.
 guild verify skill://example/hello-inspect@^0.1
 ```
 
 What that flow shows:
 
+- it is today's compatible operator flow: review authority and execution identity -> execute a bounded action -> inspect the stored result -> verify installed trust state
 - `install` builds source into installed executable state
 - `show` is the primary non-executing summary path
 - `show -v` traces requested ref -> resolved ref -> resolved digest -> installed path
@@ -194,6 +200,7 @@ What that flow shows:
 - `grants template` is the read-only starting point when you need concrete JSON for an active capability family before a run
 - `run` executes a human-facing `skill://...` ref through the real Guild path using caller-requested grants filtered through host policy into final runtime authority
 - `ls` shows installed skills and recent persisted activity
+- `ls`, `why`, and `get` together are today's concrete inspect surfaces while the broader inspect story is still split across multiple commands
 - successful runs return a durable `guild://executions/...` receipt
 - `why` explains a persisted execution record, points to nearby child or evidence refs when present, summarizes requested-versus-granted authority, and summarizes stored authority observations
 - `get` reads the same resource backend used by MCP and guest `read-resource`
@@ -255,6 +262,7 @@ Next: run `guild trust list` to inspect the target root, then add the publisher 
 
 If you are deciding where to start, use the user-facing docs in this order:
 
+- Compatible operator flow in today's CLI: review authority and execution identity -> execute a bounded action -> inspect the stored result -> verify installed trust state.
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](examples/skills/hello-inspect/README.md)
 - Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](examples/skills/explain-execution-tree/README.md), or [`Guild Ops Starter`](examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
@@ -401,7 +409,7 @@ guild --registry-root target/dev-local-registry/b import bundle target/dev-local
 guild --registry-root target/dev-local-registry/b pull 127.0.0.1:5000/guild-example-hello-inspect:0.1.0 --allow-http --preview
 ```
 
-Use `guild help preview` for the shipped CLI wording of that contract direction.
+Use `guild help inspect` for the shipped inspect-first preview and `guild help preview` for the risky-flow preflight wording of that contract direction.
 
 For the current operator story around mirroring reviewed installed state and
 promoting it between roots or OCI locations, read

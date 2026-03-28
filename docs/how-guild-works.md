@@ -196,9 +196,10 @@ Trust-store maintenance stays local and explicit:
 
 ## Planned Help Topics
 
-Two future-facing directions are fixed now, even though the commands or flags
-themselves are not implemented yet:
+One inspect-first preview is now shipped, and two future-facing directions are
+fixed even where the commands or flags themselves are not implemented yet:
 
+- `guild help inspect` previews the target inspect-first operator surface while keeping today's `guild show`, `guild why`, `guild get`, and `guild ls` explicit
 - `guild help doctor` defines the first read-only diagnostic command direction
 - `guild help preview` defines the first read-only preflight direction for risky
   `import` and `pull` flows
@@ -206,8 +207,7 @@ themselves are not implemented yet:
 ## Where To Go Next
 
 - Use `guild help refs`, `guild help trust`, `guild help roots`,
-  `guild help doctor`, `guild help preview`, and `guild help grants` when you want the shipped CLI
-  wording first.
+  `guild help inspect`, `guild help doctor`, `guild help preview`, and `guild help grants` when you want the shipped CLI wording first.
 - Read [`docs/command-language.md`](command-language.md) for the full public CLI surface.
 - Read [`docs/mirroring-and-promotion.md`](mirroring-and-promotion.md) when you are moving reviewed installed state between roots or OCI locations.
 - Read [`docs/testing.md`](testing.md) for proof commands and smoke flows.
