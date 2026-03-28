@@ -21,14 +21,17 @@ using only shipped repo surfaces. It is not a runtime-contract source; use
 Use today's admission-facing review surfaces first:
 
 ```bash
-guild init
-guild install examples/skills/hello-inspect
-guild show -v skill://example/hello-inspect@^0.1
-guild grants template emit-evidence
+export GUILD_TRUST_PROOF_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/guild-trust-proof-XXXXXX")"
+guild init --registry-root "$GUILD_TRUST_PROOF_ROOT"
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" install examples/skills/hello-inspect
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" show -v skill://example/hello-inspect@^0.1
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" grants template emit-evidence
 ```
 
 What to look for:
 
+- The explicit fresh registry root keeps this walkthrough reproducible even if
+  your default `~/.guild` already contains older installs.
 - `guild show -v` tells you which installed executable identity Guild will use.
 - Declared authority stays separate from the caller-requested grants you are
   about to pass into the run.
@@ -40,7 +43,7 @@ What to look for:
 Run the smallest real receipt-and-evidence flow in the repo:
 
 ```bash
-guild run \
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" run \
   skill://example/hello-inspect@^0.1 \
   --input-json '{"name":"Ada"}' \
   --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
@@ -59,8 +62,8 @@ What to look for:
 Use the stored execution URI from the `where` field to review what happened:
 
 ```bash
-guild why exec:<execution-id-prefix-from-where>
-guild get guild://executions/<execution-id-from-where>
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" why exec:<execution-id-prefix-from-where>
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" get guild://executions/<execution-id-from-where>
 ```
 
 What to look for:
@@ -73,16 +76,19 @@ What to look for:
 
 ## 4. Inspect Evidence Metadata And Payload
 
-Use the nearby evidence ref from `guild why`, or discover one explicitly:
+Reuse the nearby evidence ref from the same `guild why` output:
 
 ```bash
-guild ls evidence --limit 5
-guild get guild://objects/records/<evidence-record-id>/metadata
-guild get guild://objects/records/<evidence-record-id>
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" why exec:<execution-id-prefix-from-where>
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" get guild://objects/records/<evidence-record-id-from-the-same-guild-why-output>/metadata
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" get guild://objects/records/<evidence-record-id-from-the-same-guild-why-output>
 ```
 
 What to look for:
 
+- Stay on the evidence ref anchored to the execution you just explained.
+  `guild ls evidence` is a global discovery tool, so it is not a safe
+  substitute for this walkthrough path.
 - Evidence metadata stays separate from the evidence payload.
 - The metadata resource keeps the evidence tied back to the execution that
   produced it.
@@ -94,7 +100,7 @@ What to look for:
 Stay on the same stored execution path when you need a richer explanation:
 
 ```bash
-guild why --lineage exec:<execution-id-prefix-from-where>
+guild --registry-root "$GUILD_TRUST_PROOF_ROOT" why --lineage exec:<execution-id-prefix-from-where>
 ```
 
 What to look for:
