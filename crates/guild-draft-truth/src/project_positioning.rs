@@ -146,6 +146,9 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
             "If a field changes runtime behavior, it must compile down into current manifest, WIT, or Rust truth that the runtime already validates.",
             "If a field cannot compile down exactly, the authoring layer should fail closed instead of inventing hidden semantics.",
             "Do not let `SKILL.md` or future YAML authoring inputs become runtime truth by inertia.",
+            "a new `v1alpha1` contract surface",
+            "runtime support for authoring metadata that competes with Rust, manifests, WIT, or `SPECS.md`",
+            "without ambiguity about what the runtime actually trusts.",
         ],
     ),
     (

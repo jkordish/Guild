@@ -111,6 +111,16 @@ ones:
 - Do not use authoring ergonomics to smuggle in a new pack type, workflow
   engine, or marketplace layer.
 
+## Out Of Scope
+
+This guardrail page does not authorize or imply:
+
+- a new `v1alpha1` contract surface
+- runtime support for authoring metadata that competes with Rust, manifests,
+  WIT, or `SPECS.md`
+- a second acceptance path where the runtime consumes authoring YAML directly
+  instead of compiled manifest/runtime truth
+
 ## Working Rule
 
 When a future authoring-layer proposal comes up, ask one question first:
@@ -120,3 +130,6 @@ without changing what the runtime trusts?
 
 If the answer is no, the proposal is still planning input, not Guild contract
 surface.
+
+That is the completion boundary for this topic: a future authoring layer should
+be discussable without ambiguity about what the runtime actually trusts.

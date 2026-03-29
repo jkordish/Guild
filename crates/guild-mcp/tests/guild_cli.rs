@@ -6409,9 +6409,12 @@ fn execution_guide_keeps_issue_131_authoring_guardrails_honest() {
         "### Current Docs-First Outcome",
         "### Current Default Classification For Candidate Authoring Metadata",
         "### Compile-Down Guardrails",
+        "### Explicit Out-Of-Scope Boundary",
         "it classifies future authoring metadata as advisory, derived, or normative",
         "it keeps `SKILL.md` and proposed YAML authoring files as advisory inputs unless and until they compile down into today's manifest, WIT, Rust, and spec truth",
         "if a proposed field changes runtime behavior but cannot compile down exactly, it should fail closed rather than inventing hidden semantics",
+        "this does not introduce a new `v1alpha1` contract surface",
+        "this does not let authoring metadata compete with Rust, manifests, WIT, or `SPECS.md`",
         "- [x] Write a source-of-truth matrix for Rust types, manifests, WIT, and docs.",
         "- [x] Add anti-goals that forbid contract duplication.",
     ] {
@@ -6438,6 +6441,9 @@ fn execution_guide_keeps_issue_131_authoring_guardrails_honest() {
         "If a field changes runtime behavior, it must compile down into current manifest, WIT, or Rust truth that the runtime already validates.",
         "If a field cannot compile down exactly, the authoring layer should fail closed instead of inventing hidden semantics.",
         "Do not let `SKILL.md` or future YAML authoring inputs become runtime truth by inertia.",
+        "a new `v1alpha1` contract surface",
+        "runtime support for authoring metadata that competes with Rust, manifests, WIT, or `SPECS.md`",
+        "without ambiguity about what the runtime actually trusts.",
     ] {
         assert!(
             normalized_doc.contains(&normalize_whitespace(phrase)),

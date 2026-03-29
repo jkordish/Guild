@@ -150,6 +150,15 @@ Keep the compile-down boundary explicit:
 - generated normative files must remain reviewable and subordinate to the
   current manifest/runtime truth
 
+### Explicit Out-Of-Scope Boundary
+
+Keep the issue's non-goals visible in the docs-first output too:
+
+- this does not introduce a new `v1alpha1` contract surface
+- this does not let authoring metadata compete with Rust, manifests, WIT, or
+  `SPECS.md`
+- this does not make authoring YAML a second runtime acceptance path
+
 ### Imported Design Inputs To Keep Visible
 
 The removed strategy stack contributed useful design inputs that should remain
@@ -172,6 +181,8 @@ visible here without becoming implied commitments:
 - `git diff --check`
 - docs review against `SPECS.md`, `ARCHITECTURE.md`, and the roadmap epic
 - `cargo run -q -p xtask -- project-positioning check`
+- confirm the result keeps future authoring-layer discussion free of ambiguity
+  about what the runtime actually trusts
 
 ## Issue #132: First Honest Post-Starter Mutation Demo
 
