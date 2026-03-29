@@ -32,6 +32,9 @@ story.
 > If you want the short daily-user model first, start with [`docs/how-guild-works.md`](docs/how-guild-works.md).
 > If you want one current end-to-end trust proof path, start with
 > [`docs/trust-proof-walkthrough.md`](docs/trust-proof-walkthrough.md).
+> If you want the current verification matrix and the exact meaning of
+> `experimental`, `curated`, and `verified`, use
+> [`docs/verification-matrix.md`](docs/verification-matrix.md).
 
 Normative runtime sources live in `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
 Generated support, compatibility, and benchmark artifacts remain checked outputs, not primary contract definitions.
@@ -397,6 +400,13 @@ Current installed-state terms:
 - `local-dev`: local source state in the current Guild root
 - `trusted-imported`: imported publisher trusted for normal imported use
 - `restricted`: imported publisher trusted only under restricted local policy posture
+
+Those installed-state terms are current trust signals, not higher-level pack or
+starter-set labels by themselves. In particular, `verified-import` is one
+target-root verification fact for one installed skill; it does not by itself
+make a broader curated asset `verified`. Use
+[`docs/verification-matrix.md`](docs/verification-matrix.md) for the current
+labeling bar.
 
 Keep these terms distinct:
 

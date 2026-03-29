@@ -202,6 +202,12 @@ Current installed-state terms:
 - `trusted-imported`: imported publisher trusted for normal imported use
 - `restricted`: imported publisher trusted only under restricted local policy posture
 
+Those installed-state terms are current trust signals, not higher-level
+starter-set or curated-view labels by themselves. `verified-import` is one
+target-root verification fact for one installed skill, not a blanket guarantee
+for a broader asset. Use [`verification-matrix.md`](verification-matrix.md) for
+the current `experimental` / `curated` / `verified` bar.
+
 Keep these terms distinct:
 
 - `guild verify` reviews installed trust and verification state for a skill.

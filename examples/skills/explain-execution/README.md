@@ -67,7 +67,7 @@ guild codex smoke --registry-root target/dev-local-registry/codex-local --flow e
 
 `codex_explain_execution_local` remains as the lower-level compatibility smoke command and now wraps that same shared helper path.
 
-Imported verified skills produce the same local execution resources. That means `explain-execution` can also be used against records created by the native signed-bundle, OCI image layout, and OCI registry portability proof flows after import.
+Imported skills with successful target-root verification produce the same local execution resources. That means `explain-execution` can also be used against records created by the native signed-bundle, OCI image layout, and OCI registry portability proof flows after import.
 
 The required `read-resource` capability is constrained to local Guild execution and object URIs:
 

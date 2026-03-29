@@ -63,7 +63,7 @@ Both execution records carry host-stamped timestamps, and the child lineage is p
 2. generates a local publisher identity
 3. exports `hello-composite` together with its transitive installed dependency closure as a signed bundle
 4. trusts that publisher in fresh registry B
-5. imports the verified bundle into registry B
+5. imports the signed bundle into registry B after target-root verification succeeds
 6. resolves `skill://example/hello-composite@^0.1`
 7. executes the parent and child entirely from imported installed records
 
@@ -73,7 +73,7 @@ Both execution records carry host-stamped timestamps, and the child lineage is p
 2. generates a local publisher identity
 3. exports `hello-composite` together with its transitive installed dependency closure as an OCI image layout
 4. trusts that publisher in fresh registry B
-5. imports the verified OCI layout into registry B
+5. imports the OCI layout into registry B after target-root verification succeeds
 6. resolves `skill://example/hello-composite@^0.1`
 7. executes the parent and child entirely from imported installed records
 
@@ -83,7 +83,7 @@ Both execution records carry host-stamped timestamps, and the child lineage is p
 2. generates a local publisher identity
 3. publishes `hello-composite` together with its transitive installed dependency closure to a local OCI registry
 4. trusts that publisher in fresh registry B
-5. pulls the verified artifact into registry B through the normal local trust/signature gate
+5. pulls the signed artifact into registry B after target-root verification succeeds
 6. resolves `skill://example/hello-composite@^0.1`
 7. executes the parent and child entirely from pulled installed records
 

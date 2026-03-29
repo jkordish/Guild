@@ -6453,6 +6453,82 @@ fn execution_guide_keeps_issue_131_authoring_guardrails_honest() {
 }
 
 #[test]
+fn verification_matrix_docs_and_issue_stay_aligned() {
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+
+    for phrase in [
+        "## Issue #133: Verification Matrix And Curated-Pack Labels",
+        "### Current Docs-First Outcome",
+        "### Current Label Boundary",
+        "it distinguishes installed-state terms such as `verified-import` from the higher-level `experimental` / `curated` / `verified` labels for future curated views",
+        "it keeps labels as a presentation layer over current host-owned trust and proof surfaces rather than turning them into a new pack contract",
+        "- [x] Build the current-signal inventory.",
+        "- [x] Add examples showing what does not qualify as `verified` yet.",
+        "`cargo run -q -p xtask -- project-positioning check`",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide issue #133 verification guidance drifted: missing `{phrase}`"
+        );
+    }
+
+    let doc = fs::read_to_string(repo_root().join("docs/verification-matrix.md")).unwrap();
+    let normalized_doc = normalize_whitespace(&doc);
+
+    for phrase in [
+        "# Verification Matrix And Curated Labels",
+        "## Current Signal Inventory",
+        "## Current Verification Matrix",
+        "## Label Semantics",
+        "## Promotion Bar",
+        "## What Does Not Qualify As `Verified` Yet",
+        "Treat `verified-import` as an installed-state fact for one skill in one target root, not as a whole-asset guarantee by itself.",
+        "Can we score mutation safety or blast radius?",
+        "Can we auto-rank compatibility across hosts or environments?",
+        "A local-source example or starter slice with no target-root signed import or pull review.",
+        "Any asset that is merely `verified-import`.",
+    ] {
+        assert!(
+            normalized_doc.contains(&normalize_whitespace(phrase)),
+            "verification matrix doc drifted: missing `{phrase}`"
+        );
+    }
+
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    let normalized_readme = normalize_whitespace(&readme);
+    assert!(readme.contains("docs/verification-matrix.md"));
+    assert!(normalized_readme.contains(&normalize_whitespace(
+        "Those installed-state terms are current trust signals, not higher-level pack or starter-set labels by themselves."
+    )));
+
+    let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
+    let normalized_how_it_works = normalize_whitespace(&how_it_works);
+    assert!(how_it_works.contains("verification-matrix.md"));
+    assert!(normalized_how_it_works.contains(&normalize_whitespace(
+        "Those installed-state terms are current trust signals, not higher-level starter-set or curated-view labels by themselves."
+    )));
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    let normalized_command_language = normalize_whitespace(&command_language);
+    assert!(command_language.contains("verification-matrix.md"));
+    assert!(normalized_command_language.contains(&normalize_whitespace(
+        "Those installed-state terms are current trust signals, not higher-level pack or starter-set labels by themselves."
+    )));
+
+    let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
+    let normalized_examples_index = normalize_whitespace(&examples_index);
+    assert!(
+        normalized_examples_index.contains(&normalize_whitespace("../docs/verification-matrix.md"))
+    );
+}
+
+#[test]
 fn mirroring_doc_keeps_install_surface_layered_on_preview_and_verify() {
     let doc = fs::read_to_string(repo_root().join("docs/mirroring-and-promotion.md")).unwrap();
     let normalized_doc = normalize_whitespace(&doc);
@@ -6463,6 +6539,7 @@ fn mirroring_doc_keeps_install_surface_layered_on_preview_and_verify() {
         "`guild import ... --preview`, `guild import oci-layout ... --preview`, and `guild pull ... --preview` are the current read-only admission review steps",
         "`guild verify -v <skill-ref>` remains the first installed-state explanation path after import or pull",
         "If Guild later gains a more curated install view, it should stay a presentation layer over those existing surfaces and their host-owned truth:",
+        "`verified-import` remains an installed-state classification there, not a whole-pack label by itself.",
         "That later presentation must not become a new pack type, a second metadata contract, or a bypass around target-root trust review.",
         "It also must not drift into marketplace or hosted-control-plane language while the current repo still ships a local-first trust and transport model.",
     ] {
@@ -7144,6 +7221,9 @@ fn project_positioning_keeps_language_and_capability_guidance_canonical() {
             .contains("Current operator-facing examples that map cleanly to the live repo truth")
     );
     assert!(positioning.contains("Docs-first target names that are useful for planning"));
+    assert!(positioning.contains("| **Experimental** |"));
+    assert!(positioning.contains("| **Curated** |"));
+    assert!(positioning.contains("| **Verified** |"));
 
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
     assert!(readme.contains("docs/project-positioning.md"));

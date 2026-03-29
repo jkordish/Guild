@@ -8,6 +8,9 @@ specific honest slices of the current repo. Today Guild runs skills directly,
 and these examples show how the trust chain, receipts, and evidence support
 real operational tasks on those current surfaces.
 For the current project framing, see [`../docs/project-positioning.md`](../docs/project-positioning.md).
+For the current `experimental` / `curated` / `verified` labeling bar on future
+curated views, starter sets, and reference playbooks, use
+[`../docs/verification-matrix.md`](../docs/verification-matrix.md).
 
 The canonical command examples assume `guild` is installed and on `PATH`.
 Lower-level `cargo run -p guild-mcp --example ...` commands are developer proof

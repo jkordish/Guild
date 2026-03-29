@@ -240,17 +240,49 @@ broader support surface.
 3. Write status-label definitions and the minimum bar for each one.
 4. Ensure the proposal does not imply automatic ranking or safety guarantees the repo cannot prove.
 
+### Current Docs-First Outcome
+
+The current bounded output for this issue is
+[`docs/verification-matrix.md`](../../../docs/verification-matrix.md).
+That doc keeps the labeling story fail-closed:
+
+- it inventories exact executable identity, target-root transport review,
+  installed-state classification, publisher trust review, durable
+  receipt/evidence refs, and the checked proof frontier as the current signal
+  set
+- it keeps one explicit current-versus-future matrix visible so eval scoring,
+  mutation-risk scoring, and compatibility ranking stay future-only
+- it distinguishes installed-state terms such as `verified-import` from the
+  higher-level `experimental` / `curated` / `verified` labels for future
+  curated views
+- it keeps labels as a presentation layer over current host-owned trust and
+  proof surfaces rather than turning them into a new pack contract
+
+### Current Label Boundary
+
+Keep the current label meanings narrow:
+
+- `experimental` means visible on purpose, but still docs-first or only
+  partially proven on current surfaces
+- `curated` means reviewed against today's signal inventory and support
+  frontier without claiming more than the repo can currently prove
+- `verified` means curated plus exact current trust/proof backing for every
+  current claim the asset makes
+- no label implies automatic safety, mutation readiness, replay execution, or
+  future scoring signals
+
 ### Suggested Subtasks
 
-- [ ] Build the current-signal inventory.
-- [ ] Draft the first matrix table with “current” and “future” markers.
-- [ ] Define label semantics and promotion criteria.
-- [ ] Add examples showing what does not qualify as `verified` yet.
+- [x] Build the current-signal inventory.
+- [x] Draft the first matrix table with “current” and “future” markers.
+- [x] Define label semantics and promotion criteria.
+- [x] Add examples showing what does not qualify as `verified` yet.
 
 ### Validation
 
 - `git diff --check`
 - consistency review against trust docs and transport/export/import behavior
+- `cargo run -q -p xtask -- project-positioning check`
 
 ## Issue #134: Private-Pack, Policy, And Governance Boundaries
 

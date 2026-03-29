@@ -94,6 +94,7 @@ operational reports.
 ## Expected Next Deliverables
 
 - operator-first onboarding and verification paths that still start from installed skill refs and trust review
+- one honest verification matrix that keeps `experimental`, `curated`, and `verified` tied to current trust signals instead of future scoring ideas
 - receipt-first navigation and explanation across execution, evidence, and bounded query resources
 - bounded playbook, casefile, and report views built only on current durable refs and proven read paths
 - tighter starter-set docs and examples that stay inside the current support frontier
