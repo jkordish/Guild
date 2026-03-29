@@ -448,6 +448,10 @@ promoting it between roots or OCI locations, read
 [`docs/mirroring-and-promotion.md`](docs/mirroring-and-promotion.md). That
 guide keeps one limit explicit: `guild export ...` and `guild push ...` are
 publication steps over installed state, not silent copy or retag primitives.
+It also now anchors the current install-review surface: `--preview` before
+admission, then `guild verify -v` after import or pull. Any future curated
+install view should stay layered on those existing trust and compatibility
+surfaces rather than introducing a new pack type or marketplace contract.
 
 ## MCP And Codex
 

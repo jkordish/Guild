@@ -517,7 +517,11 @@ promotes it between roots and OCI locations, read
 [`docs/mirroring-and-promotion.md`](mirroring-and-promotion.md). That guide
 keeps the current boundary explicit: `guild export ...` and `guild push ...`
 are publication steps over installed state, not silent registry-copy or retag
-primitives.
+primitives. It also keeps the current install-review surface explicit:
+`--preview` before admission and `guild verify -v` after import or pull. Any
+future curated install view should stay layered on those existing trust and
+compatibility surfaces instead of becoming a new pack type or marketplace
+contract.
 
 ### Execution Plan Signing
 

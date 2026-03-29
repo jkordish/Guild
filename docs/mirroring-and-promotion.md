@@ -32,6 +32,40 @@ Guild also does not yet ship:
 - remote trust-store sync
 - automatic environment promotion workflows
 
+## Current Install Review Surface
+
+Today the install surface for reviewed transported state is still the existing
+`preview` plus `verify -v` loop, not a separate package browser or pack
+contract.
+
+Keep that boundary explicit:
+
+- `guild import ... --preview`, `guild import oci-layout ... --preview`, and
+  `guild pull ... --preview` are the current read-only admission review steps
+- preview should be the first place an operator sees the transport shape they
+  are reviewing: bundle path, OCI-layout path, or OCI registry reference
+- preview should keep publisher identity, verification result, trust tier,
+  bundle digest context, and bundled closure scope visible before any
+  installation happens
+- `guild verify -v <skill-ref>` remains the first installed-state explanation
+  path after import or pull
+
+If Guild later gains a more curated install view, it should stay a presentation
+layer over those existing surfaces and their host-owned truth:
+
+- resolved skill identity and the concrete installed-state digest context
+- transport shape and reviewed source reference
+- publisher identity, signature status, verification result, and local trust
+  tier
+- closure scope and resulting installed-state classification
+- manifest/runtime compatibility facts already derived from the shipped
+  contracts and runtime checks
+
+That later presentation must not become a new pack type, a second metadata
+contract, or a bypass around target-root trust review. It also must not drift
+into marketplace or hosted-control-plane language while the current repo still
+ships a local-first trust and transport model.
+
 ## Bundle Mirror Between Roots
 
 Use the native signed bundle directory when you want one explicit local artifact

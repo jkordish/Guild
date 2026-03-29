@@ -127,6 +127,16 @@ Start with the trust and transport flow in the top-level
 [`README.md`](../README.md). Then use these example READMEs when you want the
 same journey grounded in one concrete skill or closure:
 
+Keep the current install-review loop explicit:
+
+- `guild import ... --preview` or `guild pull ... --preview`
+- `guild import ...` or `guild pull ...`
+- `guild verify -v <skill-ref>`
+
+Any future curated install view should stay a presentation layer over those
+existing trust and compatibility surfaces rather than becoming a new pack type
+or marketplace contract.
+
 - [`examples/skills/hello-inspect/README.md`](./skills/hello-inspect/README.md)
 - [`examples/skills/hello-composite/README.md`](./skills/hello-composite/README.md)
 

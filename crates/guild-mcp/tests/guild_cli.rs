@@ -111,6 +111,10 @@ fn assert_contains_canonical_authority_lifecycle(contents: &str, label: &str) {
     }
 }
 
+fn normalize_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn emit_evidence_grants_json() -> String {
     serde_json::to_string(&CapabilityGrantSet {
         grants: vec![GrantedCapability {
@@ -6277,6 +6281,102 @@ fn execution_guide_processes_imported_strategy_stack() {
     }
 }
 
+#[test]
+fn execution_guide_keeps_issue_136_packaging_follow_on_honest() {
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+
+    for phrase in [
+        "## Issue #136: Packaging And Install-Surface Follow-On",
+        "### Current Packaging Map",
+        "### Minimum Compatibility Metadata For Future Curated-Pack Installs",
+        "### Docs-Only Versus Code Follow-On",
+        "### Anti-Goals For Packaging Language",
+        "Native signed installed-state bundle directory",
+        "OCI image layout",
+        "OCI registry transport",
+        "host-owned install report",
+        "It should not become a new `pack` schema",
+        "Do not introduce a `guild pack` command family",
+        "Do not let packaging language drift into marketplace, hosted-control-plane, or",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide issue #136 packaging guidance drifted: missing `{phrase}`"
+        );
+    }
+}
+
+#[test]
+fn mirroring_doc_keeps_install_surface_layered_on_preview_and_verify() {
+    let doc = fs::read_to_string(repo_root().join("docs/mirroring-and-promotion.md")).unwrap();
+    let normalized_doc = normalize_whitespace(&doc);
+
+    for phrase in [
+        "## Current Install Review Surface",
+        "Today the install surface for reviewed transported state is still the existing `preview` plus `verify -v` loop, not a separate package browser or pack contract.",
+        "`guild import ... --preview`, `guild import oci-layout ... --preview`, and `guild pull ... --preview` are the current read-only admission review steps",
+        "`guild verify -v <skill-ref>` remains the first installed-state explanation path after import or pull",
+        "If Guild later gains a more curated install view, it should stay a presentation layer over those existing surfaces and their host-owned truth:",
+        "That later presentation must not become a new pack type, a second metadata contract, or a bypass around target-root trust review.",
+        "It also must not drift into marketplace or hosted-control-plane language while the current repo still ships a local-first trust and transport model.",
+    ] {
+        assert!(
+            normalized_doc.contains(&normalize_whitespace(phrase)),
+            "mirroring-and-promotion doc install-surface guidance drifted: missing `{phrase}`"
+        );
+    }
+}
+
+#[test]
+fn example_transport_docs_keep_install_review_layered_on_preview_and_verify() {
+    let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
+    let normalized_examples_index = normalize_whitespace(&examples_index);
+
+    for phrase in [
+        "Keep the current install-review loop explicit:",
+        "`guild import ... --preview` or `guild pull ... --preview`",
+        "`guild import ...` or `guild pull ...`",
+        "`guild verify -v <skill-ref>`",
+        "Any future curated install view should stay a presentation layer over those existing trust and compatibility surfaces rather than becoming a new pack type or marketplace contract.",
+    ] {
+        assert!(
+            normalized_examples_index.contains(&normalize_whitespace(phrase)),
+            "examples/README.md transport guidance drifted: missing `{phrase}`"
+        );
+    }
+
+    for (path, label) in [
+        (
+            "examples/skills/hello-inspect/README.md",
+            "hello-inspect transport README",
+        ),
+        (
+            "examples/skills/hello-composite/README.md",
+            "hello-composite transport README",
+        ),
+    ] {
+        let contents = fs::read_to_string(repo_root().join(path)).unwrap();
+        let normalized_contents = normalize_whitespace(&contents);
+
+        for phrase in [
+            "`guild import bundle ... --preview`, `guild import oci-layout ... --preview`, or `guild pull ... --preview`",
+            "the matching real `guild import ...` or `guild pull ...` command",
+            "`guild verify -v <skill-ref>`",
+            "any future curated install view should remain a presentation layer over those same surfaces rather than becoming a new pack type or marketplace contract.",
+        ] {
+            assert!(
+                normalized_contents.contains(&normalize_whitespace(phrase)),
+                "{label} drifted: missing `{phrase}`"
+            );
+        }
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 #[test]
 fn journey_docs_stay_centered_on_user_workflows() {
@@ -6303,6 +6403,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
 
     let command_language =
         fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    let normalized_command_language = normalize_whitespace(&command_language);
     assert!(command_language.contains("## Target Operator Flow"));
     assert!(command_language.contains("Use the target verbs in planning and migration language"));
     assert!(command_language.contains("guild help inspect"));
@@ -6333,6 +6434,9 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(
         command_language.contains("\"grants\":[{\"id\":\"emit-evidence\",\"access\":\"write\"")
     );
+    assert!(normalized_command_language.contains(&normalize_whitespace(
+        "Any future curated install view should stay layered on those existing trust and compatibility surfaces instead of becoming a new pack type or marketplace contract."
+    )));
     assert!(command_language.contains("guild why exec:<execution-id-prefix-from-where>"));
     assert!(command_language.contains("guild get guild://executions/<execution-id-from-where>"));
     assert!(command_language.contains("../examples/skills/explain-execution-tree/README.md"));
@@ -6352,6 +6456,8 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(examples_index.contains("guild ls evidence --limit 5"));
     assert!(examples_index.contains("guild grants template"));
     assert!(examples_index.contains("Keep starting with the native CLI:"));
+    assert!(examples_index.contains("Keep the current install-review loop explicit:"));
+    assert!(examples_index.contains("guild verify -v <skill-ref>"));
     assert!(
         examples_index
             .contains("For narrower authority and policy debugging after that native CLI path")
@@ -6364,6 +6470,18 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(hello_readme.contains(" show skill://example/hello-inspect@^0.1"));
     assert!(hello_readme.contains(" why exec:<execution-id-prefix>"));
     assert!(hello_readme.contains(" verify skill://example/hello-inspect@^0.1"));
+    assert!(hello_readme.contains("guild import bundle ... --preview"));
+    assert!(hello_readme.contains("guild import oci-layout ... --preview"));
+    assert!(hello_readme.contains("guild pull ... --preview"));
+    assert!(hello_readme.contains("guild verify -v <skill-ref>"));
+
+    let composite_readme =
+        fs::read_to_string(repo_root().join("examples/skills/hello-composite/README.md"))
+            .unwrap();
+    assert!(composite_readme.contains("guild import bundle ... --preview"));
+    assert!(composite_readme.contains("guild import oci-layout ... --preview"));
+    assert!(composite_readme.contains("guild pull ... --preview"));
+    assert!(composite_readme.contains("guild verify -v <skill-ref>"));
 
     let explain_readme =
         fs::read_to_string(repo_root().join("examples/skills/explain-execution/README.md"))

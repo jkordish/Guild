@@ -244,16 +244,82 @@ broader support surface.
 3. Define how future curated-pack installation should present compatibility metadata without broadening contracts.
 4. Keep the output tightly scoped to current bundle/OCI/trust-review behavior.
 
+### Current Packaging Map
+
+Use this map when deciding whether a packaging or install idea is already
+shipped, only needs docs cleanup, or still requires code follow-on:
+
+| Surface | Current commands | What it proves now | What it is not |
+| --- | --- | --- | --- |
+| Native signed installed-state bundle directory | `guild export bundle`, `guild import bundle`, `guild import bundle --preview` | one signed installed-state artifact can move between Guild roots without re-resolving source trees | not a source-directory tarball, package registry, or retag primitive |
+| OCI image layout directory | `guild export oci-layout`, `guild import oci-layout`, `guild import oci-layout --preview` | the same signed installed-state payload can travel in OCI-layout form without changing local trust or verification rules | not a second trust model and not a bypass around bundle verification |
+| OCI registry transport | `guild push`, `guild pull`, `guild pull --preview` | the same OCI-mapped signed payload can move through a registry reference and still verify locally before installation | not registry-to-registry copy, not retag-only promotion, and not remote trust-store sync |
+| Target-root trust review | `guild trust list`, `guild trust add`, preview on `import`/`pull`, `guild verify -v` | publisher review, trust tier, verification result, and installed-state outcome remain host-owned and local to the target Guild root | not globally shared trust, not automatic environment promotion, and not a hidden admission side effect |
+
+Keep these current repository boundaries explicit:
+
+- the transport unit is installed executable state, never a source tree
+- the native signed bundle directory remains the canonical signed transport unit
+- `export` and `push` are publication steps that require a signer and create a
+  fresh signed transport artifact
+- `import` and `pull` are admission steps into a target root and must verify
+  trust, signature, and bundled digests before installation
+- `--preview` is the shipped read-only preflight slice for `import bundle`,
+  `import oci-layout`, and `pull`; it is not a general detached package report
+
+### Minimum Compatibility Metadata For Future Curated-Pack Installs
+
+If Guild later presents a more curated install view, the minimum compatibility
+metadata should stay host-derived from the current installed-bundle and
+verification truth rather than becoming a second package contract:
+
+- resolved skill identity plus the concrete installed bundle digest or OCI-backed transport digest context
+- bundled closure scope, including which dependency aliases or bundled installed records arrive together
+- publisher identity, signature presence, verification result, and local trust tier in the target root
+- transport shape and source reference actually reviewed by the operator: bundle path, OCI-layout path, or OCI registry reference
+- runtime-entrypoint and declared capability-surface summary already carried by current manifest/runtime truth and surfaced as compatibility review, not as a new manifest layer
+- resulting installed-state classification such as `verified-import`, `trusted-imported`, or `restricted`
+
+That metadata should be presented as a host-owned install report layered on top
+of current `preview`, `verify`, and manifest/runtime checks. It should not
+become a new `pack` schema, a parallel metadata file, or a second source of
+truth beside Rust types, manifests, WIT, and the current host-owned verification
+records.
+
+### Docs-Only Versus Code Follow-On
+
+For this phase, keep the split below explicit:
+
+| Bucket | Follow-on work |
+| --- | --- |
+| Docs-only now | tighten the operator wording around bundle, OCI layout, OCI registry, local trust review, and preview; explain that curated-pack install is a presentation layer over current transport units; keep mirroring and promotion guidance aligned with the current commands |
+| Code follow-on later | improve install/preview UX so the current compatibility metadata is easier to review in one place; make closure scope and compatibility summaries more legible in existing `preview` or `verify` surfaces; add bounded curated-install presentation only if it reuses current bundle/import semantics instead of inventing a new packaging model |
+| Explicitly deferred | registry-to-registry mirror, retag-only promotion, remote trust synchronization, automatic environment promotion workflows, marketplace-style discovery, and any new pack type or pack manifest |
+
+### Anti-Goals For Packaging Language
+
+- Do not introduce a `guild pack` command family, pack manifest, or other second
+  package contract surface.
+- Do not describe `export` or `push` as silent copy, mirror, or retag
+  operations; they are fresh publication events over installed state.
+- Do not describe curated installs as bypassing local trust review, preview, or
+  verification in the target root.
+- Do not collapse bundle, OCI layout, and OCI registry into vague generic
+  registry rhetoric; the transport shape still matters operationally.
+- Do not let packaging language drift into marketplace, hosted-control-plane, or
+  broad distribution promises the current repo does not ship.
+
 ### Suggested Subtasks
 
-- [ ] Write the current-state packaging map.
-- [ ] Identify the minimum compatibility metadata needed for curated-pack installs.
-- [ ] Clarify what packaging work is docs-only versus code-follow-on.
-- [ ] Add anti-goals that rule out marketplace language.
+- [x] Write the current-state packaging map.
+- [x] Identify the minimum compatibility metadata needed for curated-pack installs.
+- [x] Clarify what packaging work is docs-only versus code-follow-on.
+- [x] Add anti-goals that rule out marketplace language.
 
 ### Validation
 
 - `git diff --check`
+- `cargo run -q -p xtask -- project-positioning check`
 - consistency review against current export/import/pull/push docs and examples
 
 ## Issue #137: Starter-Pack And Reference-Playbook Progression

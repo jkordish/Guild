@@ -148,6 +148,18 @@ The stored execution URI is host-issued. Any caller-supplied request ID is prese
 1. an untrusted pulled signed bundle is rejected before installation
 2. a tampered pulled OCI blob is rejected even after the publisher is trusted
 
+Across those bundle, OCI-layout, and OCI-registry proofs, keep the operator
+review loop in this order:
+
+- `guild import bundle ... --preview`, `guild import oci-layout ... --preview`, or `guild pull ... --preview`
+- the matching real `guild import ...` or `guild pull ...` command
+- `guild verify -v <skill-ref>`
+
+That review loop stays on host-owned trust and verification truth. It is not a
+separate pack browser, and any future curated install view should remain a
+presentation layer over those same surfaces rather than becoming a new pack
+type or marketplace contract.
+
 The normal happy path grants:
 
 - `emit-evidence` with a bounded byte limit plus allowed audience/redaction sets

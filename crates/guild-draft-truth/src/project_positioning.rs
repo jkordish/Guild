@@ -7,6 +7,7 @@ use crate::util::{read_to_string, repo_root};
 
 const POSITIONING_DOC: &str = "docs/project-positioning.md";
 const EPIC_DOC: &str = "docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md";
+const MIRRORING_DOC: &str = "docs/mirroring-and-promotion.md";
 
 const CHECKED_DOCS: &[&str] = &[
     "README.md",
@@ -15,6 +16,7 @@ const CHECKED_DOCS: &[&str] = &[
     "docs/testing.md",
     "docs/command-language.md",
     "docs/how-guild-works.md",
+    MIRRORING_DOC,
     "docs/contracts.md",
     "docs/architecture.md",
     "docs/adr/README.md",
@@ -50,6 +52,7 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
         &[
             "docs/project-positioning.md",
             "docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md",
+            "docs/mirroring-and-promotion.md",
         ],
     ),
     ("ARCHITECTURE.md", &["docs/project-positioning.md"]),
@@ -59,10 +62,15 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
         &[
             "project-positioning.md",
             "cargo run -q -p xtask -- project-positioning check",
+            "mirroring-and-promotion.md",
         ],
     ),
     ("docs/command-language.md", &["project-positioning.md"]),
     ("docs/how-guild-works.md", &["project-positioning.md"]),
+    (
+        MIRRORING_DOC,
+        &["../README.md", "command-language.md", "testing.md"],
+    ),
     ("docs/contracts.md", &["project-positioning.md"]),
     ("docs/architecture.md", &["project-positioning.md"]),
     ("docs/adr/README.md", &["../project-positioning.md"]),
@@ -94,6 +102,24 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
             "Today, the repo exposes that model through portable skills, bounded capabilities, durable execution and evidence records, and stable Guild refs.",
             "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain, not the whole product story.",
             "bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, `emit-evidence`, and `log-write` slices",
+            "Any future curated install view should stay layered on those existing trust and compatibility surfaces rather than introducing a new pack type or marketplace contract.",
+        ],
+    ),
+    (
+        "docs/testing.md",
+        &[
+            "That smoke path is the current install-review surface for transported state: preview first, then `guild verify -v <skill-ref>` after the real install if you want the installed-state verification explanation.",
+            "That guide now keeps the same boundary explicit: `--preview` before admission, `guild verify -v` after install, and any future curated install view as a layer over the current trust and compatibility surfaces rather than a new pack contract.",
+        ],
+    ),
+    (
+        MIRRORING_DOC,
+        &[
+            "Today the install surface for reviewed transported state is still the existing `preview` plus `verify -v` loop, not a separate package browser or pack contract.",
+            "`guild verify -v <skill-ref>` remains the first installed-state explanation path after import or pull",
+            "If Guild later gains a more curated install view, it should stay a presentation layer over those existing surfaces and their host-owned truth:",
+            "That later presentation must not become a new pack type, a second metadata contract, or a bypass around target-root trust review.",
+            "It also must not drift into marketplace or hosted-control-plane language while the current repo still ships a local-first trust and transport model.",
         ],
     ),
     (

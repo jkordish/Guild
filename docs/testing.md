@@ -320,6 +320,9 @@ guild --registry-root target/dev-local-registry/b-preview import bundle \
 
 `--preview` should refuse cleanly before trust is recorded, then report
 `would-import` after `guild trust add ...` and before the final import.
+That smoke path is the current install-review surface for transported state:
+preview first, then `guild verify -v <skill-ref>` after the real install if you
+want the installed-state verification explanation.
 
 OCI registry smoke with preview:
 
@@ -352,7 +355,10 @@ guild --registry-root target/dev-local-registry/c-preview pull \
 
 For the operator story that connects those preview-first proof steps to
 artifact mirroring and environment promotion, read
-[`mirroring-and-promotion.md`](mirroring-and-promotion.md).
+[`mirroring-and-promotion.md`](mirroring-and-promotion.md). That guide now
+keeps the same boundary explicit: `--preview` before admission, `guild verify
+-v` after install, and any future curated install view as a layer over the
+current trust and compatibility surfaces rather than a new pack contract.
 
 Failure-oriented CLI smoke:
 
