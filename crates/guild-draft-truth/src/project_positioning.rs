@@ -71,13 +71,12 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
             "mirroring-and-promotion.md",
         ],
     ),
-    ("docs/command-language.md", &["project-positioning.md"]),
     (
-        "docs/how-guild-works.md",
+        "docs/command-language.md",
         &["project-positioning.md", "verification-matrix.md"],
     ),
     (
-        "docs/command-language.md",
+        "docs/how-guild-works.md",
         &["project-positioning.md", "verification-matrix.md"],
     ),
     (
