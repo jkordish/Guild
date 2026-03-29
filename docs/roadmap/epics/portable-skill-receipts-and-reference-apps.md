@@ -99,6 +99,19 @@ operational reports.
 - tighter starter-set docs and examples that stay inside the current support frontier
 - drift guards that keep project framing, anti-thesis wording, and starter-set positioning stable
 
+## Current Follow-On Progression
+
+The current bounded progression after Guild Ops Starter is:
+
+- docs-first next progression: `service-recovery review pack`
+- secondary docs-first concept kept visible: `rollback verification pack`
+- first plausible later implementation candidate: `cache purge with evidence trail`
+- deferred until broader apply/runtime support: certificate renewal, node remediation, and secret rotation packs
+
+That progression stays honest because the review half already fits today's
+durable execution refs, bounded failure queries, evidence inspection, and
+casefile/report surfaces, while the action-heavy steps stay explicitly future.
+
 ## Success Criteria
 
 - top-level docs and examples lead with operator workflows, capability review, receipts, evidence, and starter sets instead of runtime or substrate-first language

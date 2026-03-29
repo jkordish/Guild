@@ -6238,6 +6238,24 @@ fn follow_on_execution_guides_cover_every_open_issue() {
 
 #[test]
 fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
+    let epic_doc = fs::read_to_string(
+        repo_root().join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md"),
+    )
+    .unwrap();
+    let normalized_epic_doc = normalize_whitespace(&epic_doc);
+    for phrase in [
+        "## Current Follow-On Progression",
+        "The current bounded progression after Guild Ops Starter is:",
+        "docs-first next progression: `service-recovery review pack`",
+        "secondary docs-first concept kept visible: `rollback verification pack`",
+        "first plausible later implementation candidate: `cache purge with evidence trail`",
+    ] {
+        assert!(
+            normalized_epic_doc.contains(&normalize_whitespace(phrase)),
+            "roadmap epic starter-pack progression drifted: missing `{phrase}`"
+        );
+    }
+
     let guide =
         fs::read_to_string(repo_root().join(
             "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
@@ -6250,6 +6268,10 @@ fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
         "rollback verification pack",
         "cache purge with evidence trail",
         "restart and notify remain future action steps",
+        "- [x] Build the candidate matrix with support-level classification.",
+        "- [x] Choose one or two docs-first starter-pack/report concepts to keep visible.",
+        "- [x] Name the first plausible next implementation candidate, if one exists.",
+        "- [x] Record which concepts remain deferred until apply-mode/runtime support grows.",
     ] {
         assert!(
             normalized_guide.contains(&normalize_whitespace(phrase)),

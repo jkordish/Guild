@@ -381,10 +381,10 @@ Keep the first plausible next implementation candidate explicit:
 
 ### Suggested Subtasks
 
-- [ ] Build the candidate matrix with support-level classification.
-- [ ] Choose one or two docs-first starter-pack/report concepts to keep visible.
-- [ ] Name the first plausible next implementation candidate, if one exists.
-- [ ] Record which concepts remain deferred until apply-mode/runtime support grows.
+- [x] Build the candidate matrix with support-level classification.
+- [x] Choose one or two docs-first starter-pack/report concepts to keep visible.
+- [x] Name the first plausible next implementation candidate, if one exists.
+- [x] Record which concepts remain deferred until apply-mode/runtime support grows.
 
 ### Validation
 
