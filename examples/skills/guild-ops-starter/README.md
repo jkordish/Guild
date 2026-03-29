@@ -1,226 +1,187 @@
 # Guild Ops Starter
 
-Guild Ops Starter is the first operator starter set in the repo. It is a
-repo-local release slice built on that trust chain, not the whole product
-story.
+Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain, not the whole product story.
 
-It is also the first playbook-oriented operator starter set in the repo and
-the current runnable bridge from today's example surface into the approved
-reference playbook story.
+This starter now centers one cohesive read-only artifact:
+`incident-casefile`. The supporting example skills still exist, but they are
+drill-down tools rather than the primary onboarding path.
 
-This is a small set of ordinary example skills. There is no new pack type here.
-
-The point of this example set is narrow: show useful local operational analysis
-over real persisted Guild execution receipts, bounded query resources, and
-evidence artifacts without widening runtime, proof, token, or witness
-semantics.
-
-If you want one current user-facing Guild workflow, start here.
+There is no new pack type here. Guild Ops Starter is still a small set of
+ordinary example skills under `examples/skills/`.
 
 ## Reference Playbook Fit
 
-The approved reference playbook set lives in
-[`../../../docs/strategy/guild-repositioning/07-reference-playbooks.md`](../../../docs/strategy/guild-repositioning/07-reference-playbooks.md).
-This starter is the current read-only bridge into that story, especially for:
+This starter is the current read-only bridge into the reference-playbook story,
+especially for:
 
 - `diagnose service -> restart pods -> notify on-call`
 - `rollback deployment -> verify health -> annotate incident`
 
-The current first hero example plan is:
+Guild Ops Starter currently covers the inspect, compare, query, and
+evidence-review side of those workflows. It does not yet execute restart,
+rollback, incident-write, or notification steps.
 
-- [`../../../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md`](../../../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md)
+Treat the current hero-example boundary like this:
 
-That plan keeps the action-heavy story honest. Guild Ops Starter currently
-covers the inspect, compare, and evidence-review side of those workflows. It
-does not yet execute the restart, rollback, incident-write, or notification
-steps themselves.
+- operator intent: diagnose and verify one operational incident from durable refs
+- current runnable path: `guild why`, `guild why --lineage`, then `guild run incident-casefile@^0.1 ...`
+- docs-first future action steps: restart, rollback, and notify flows
 
-## Journey Map
+That keeps the action-heavy story honest while still letting the docs describe
+where the starter path is headed.
 
-This example set is organized around four practical questions:
+## Playbook Translation Boundary
 
-- explain one stored execution
-- compare two stored executions
-- scan recent failures inside one bounded query
-- inspect one stored evidence record
+When maintainers describe Guild Ops Starter in playbook terms, the wording can
+change in these narrow ways:
 
-Keep using the normal CLI around those richer summaries:
+- the starter reads as one operator-facing playbook family rather than just a collection of example skills
+- the README journey map reads like playbook intent: explain one run, compare two runs, scan failures, inspect evidence
+- operator-facing capability names such as `runs:inspect` and `failures:query` become the review language a future playbook surface would show first
+- the installed skills become reusable execution steps that a future playbook layer could point at
 
-- `guild ls` to see recent local activity
-- `guild why` to explain one stored execution
-- `guild get` to read the raw stored resource
-- `guild show` to summarize one stored evidence ref
+What does not change underneath:
 
-In operator-facing capability language, this example set is the current
-read-only review surface for:
+- Guild Ops Starter is still a small set of ordinary installed skills
+- each referenced skill still resolves to immutable installed executable identity before execution
+- caller-requested authority is still narrowed by host-owned policy before guest start
+- the live grant JSON still uses the current internal family names such as `read-resource` and `invoke-skill`
+- durable execution receipts and evidence records still live at the underlying skill execution layer
+- `render-report` remains a bounded zero-authority formatter child, not a workflow engine
+
+## Start Here
+
+If you want one current five-minutes-to-first-useful-run path, start with:
+
+- [`../../../docs/guild-ops-starter-quickstart.md`](../../../docs/guild-ops-starter-quickstart.md)
+
+That quickstart keeps the order explicit:
+
+1. `guild codex bootstrap`
+2. `guild codex scenario --scenario recent-failure-triage --json`
+3. `guild why`
+4. `guild why --lineage`
+5. `guild run incident-casefile@^0.1`
+
+If you are not using the deterministic Codex dogfood path, install the primary
+starter skill directly with:
+
+```bash
+guild install examples/skills/incident-casefile
+```
+
+## What This Starter Includes
+
+| Skill | Role in the starter | Question it answers | Input |
+| --- | --- | --- | --- |
+| `incident-casefile` | primary starter artifact | What happened here, what nearby refs add context, and what should I inspect next? | one required `guild://executions/<id>` ref plus optional comparison/query/evidence refs |
+| `incident-brief` | execution drill-down | What happened in this one stored execution? | one `guild://executions/<id>` ref |
+| `run-diff` | comparison drill-down | What changed between these two stored executions? | two `guild://executions/<id>` refs |
+| `recent-failures` | query drill-down | What do the latest failed or refused executions look like inside this bounded query? | one `guild://queries/executions/...` ref |
+| `evidence-summary` | evidence drill-down | What is this stored evidence record and why does it exist? | one `guild://objects/records/<id>` ref |
+| `render-report` | formatter child used by legacy report skills | Render normalized report JSON as compact markdown | normalized JSON report input |
+
+In operator-facing capability language, the current honest read-only review
+surface still reads like:
 
 - `runs:inspect`
 - `runs:compare`
 - `failures:query`
 - `evidence:inspect`
 
-The concrete runtime path still uses bounded `read-resource` grants and, for
-the parent report skills, one bounded `invoke-skill` alias for the zero-authority
-formatter child. Those internal family names remain the implementation truth.
+The concrete runtime path remains bounded `read-resource` over
+`guild://executions/`, `guild://queries/executions/`, and
+`guild://objects/records/`. Only the older report skills still use one bounded
+`invoke-skill` alias for the zero-authority formatter child.
 
-## Skills
+## Deterministic Setup
 
-| Skill | Operator-facing capability review | Question it answers | Input | Current internal-family mapping |
-| --- | --- | --- | --- | --- |
-| `incident-brief` | `runs:inspect` | What happened in this one stored execution? | one `guild://executions/<id>` ref | `read-resource` on `guild://executions/`, plus bounded `invoke-skill` for alias `renderer` |
-| `run-diff` | `runs:compare` | What changed between these two stored executions? | two `guild://executions/<id>` refs | `read-resource` on `guild://executions/`, plus bounded `invoke-skill` for alias `renderer` |
-| `recent-failures` | `failures:query` | What do the latest failed or refused executions look like inside this bounded query? | one `guild://queries/executions/...` ref | `read-resource` on `guild://queries/executions/` and `guild://executions/` |
-| `evidence-summary` | `evidence:inspect` | What is this stored evidence record and why does it exist? | one `guild://objects/records/<id>` ref | `read-resource` on `guild://objects/records/` |
-| `render-report` | none; zero-authority formatter child | Format a normalized report as compact markdown | normalized JSON report input | none |
-
-`render-report` is the only composition demo in this example set. It is used as an exact single zero-authority child by `incident-brief` and `run-diff`. There is no fan-out, no recursion, and no hidden orchestration.
-
-## Install The Example Set
+Use the repo-local deterministic setup when you want real stored refs quickly:
 
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/ops-pack
 
-guild install examples/skills/render-report
-guild install examples/skills/incident-brief
-guild install examples/skills/run-diff
-guild install examples/skills/recent-failures
-guild install examples/skills/evidence-summary
-
-guild verify skill://example/incident-brief@^0.1
-```
-
-## Prepare Real Refs
-
-Use the existing deterministic repo-local scenario prep to get real execution and query refs:
-
-```bash
 guild codex bootstrap --registry-root "$GUILD_REGISTRY_ROOT" --reset
 guild codex scenario --registry-root "$GUILD_REGISTRY_ROOT" --scenario recent-failure-triage --json
 ```
 
-That JSON includes:
+That scenario JSON includes:
 
 - `subject_execution_uris`
 - `comparison_execution_uris`
 - `query_uris`
 
-Use those real refs directly with these skills.
+Use one subject execution ref first. Add one comparison execution ref and one
+query ref when you want a fuller casefile. If you already have one concrete
+evidence record URI, you can pass that too.
 
-The repo-local scenario prep is only there to hand you real stored refs quickly.
-The workflows below still use the normal installed `guild` CLI and the same
-durable Guild resources you would read in day-to-day use.
+## Journey 1: Inspect The Subject In The Native CLI
 
-## Journey 1: Explain One Stored Execution
-
-Start with the primary CLI explanation path:
+Start with the normal CLI before you ask the reusable starter artifact to build
+the report:
 
 ```bash
 guild why <paste one subject_execution_uri>
 guild why --lineage <paste one subject_execution_uri>
 ```
 
-Then run `incident-brief` when you want a compact markdown report over that
-same stored execution:
+That keeps the native stored-execution explanation path in front:
 
-In operator-facing review language, this is the current `runs:inspect` example.
-The concrete `--grants-json` stays anchored to the live internal families:
+- `guild why` is the first compact explanation surface
+- `guild why --lineage` is the first bounded ancestor/descendant surface
+- `guild get` remains the raw resource read if you need the stored JSON
 
-```bash
-guild run \
-  incident-brief@^0.1 \
-  --input-json '{"execution_uri":"<paste one subject_execution_uri>"}' \
-  --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"invoke-skill","access":"invoke","constraints":{"aliases":["renderer"]}}]}'
-```
+## Journey 2: Build One Incident Casefile
 
-## Journey 2: Compare Two Stored Executions
-
-Use `run-diff` when you want one compact report for two stored executions:
-
-In operator-facing review language, this is the current `runs:compare`
-example. The concrete grant JSON still uses the live internal-family names:
+Use `incident-casefile` when you want one compact markdown casefile over the
+same durable refs:
 
 ```bash
 guild run \
-  run-diff@^0.1 \
-  --input-json '{"left_execution_uri":"<paste first execution_uri>","right_execution_uri":"<paste second execution_uri>"}' \
-  --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"invoke-skill","access":"invoke","constraints":{"aliases":["renderer"]}}]}'
+  incident-casefile@^0.1 \
+  --input-json '{"subject_execution_uri":"<paste one subject_execution_uri>","comparison_execution_uri":"<paste one comparison_execution_uri>","query_uri":"<paste one query_uri>"}' \
+  --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}},{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://queries/executions/"],"resource_kinds":["query"]}}]}'
 ```
 
-## Journey 3: Scan Recent Failures
-
-Start with the raw bounded query if you want to see the stored resource:
+If you also have one evidence record URI you want folded into the report, add
+`"evidence_uri":"<paste one evidence_uri>"` to the input JSON and add one more
+bounded object-record read grant:
 
 ```bash
-guild get <paste one query_uri>
+{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://objects/records/"],"resource_kinds":["object"]}}
 ```
 
-Then run `recent-failures` when you want the compact grouped summary:
+The casefile stays read-only and host-mediated:
 
-In operator-facing review language, this is the current `failures:query`
-example. The grant JSON remains bounded `read-resource`, not a new query
-runtime family:
+- no new CLI verb
+- no new MCP tool
+- no new pack manifest
+- no mutation hidden inside the report path
 
-```bash
-guild run \
-  recent-failures@^0.1 \
-  --input-json '{"query_uri":"<paste one query_uri>"}' \
-  --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://queries/executions/"],"resource_kinds":["query"]}},{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://executions/"],"resource_kinds":["execution"]}}]}'
-```
+## Journey 3: Drill Down With Focused Skills
 
-## Keep Going With The Normal CLI
+After the casefile, move to the narrower starter skills only when you need a
+more specific read:
 
-After any of those runs, keep using the daily CLI to inspect the same refs:
+- `incident-brief` for one execution-focused markdown report
+- `run-diff` for one two-execution comparison report
+- `recent-failures` for one bounded failure-query summary
+- `evidence-summary` for one concrete evidence-record explanation
+
+Keep using the normal CLI around those follow-ups:
 
 ```bash
 guild ls runs --limit 5
-guild why exec:<execution-id-prefix>
-guild get guild://executions/<execution-id>
-```
-
-## Journey 4: Discover And Inspect One Stored Evidence Record
-
-If your selected Guild root already has stored evidence, start discovery with:
-
-```bash
 guild ls evidence --limit 5
+guild get <paste one query_uri>
+guild show <paste one evidence_uri>
 ```
 
-`evidence-summary` still needs one real stored evidence ref. If your root is empty, one easy way to create one is the existing `hello-inspect` example:
+## What This Starter Does Not Show
 
-```bash
-guild install examples/skills/hello-inspect
-
-guild run \
-  hello-inspect@^0.1 \
-  --input-json '{"name":"Ada"}' \
-  --grants-json '{"grants":[{"id":"emit-evidence","access":"write","constraints":{"max_bytes":65536,"audiences":["user"],"redactions":["none"]}}]}' \
-  --json
-```
-
-Start with the normal CLI summary for that evidence ref:
-
-```bash
-guild show <paste one emitted evidence uri>
-```
-
-Then run `evidence-summary` for the richer markdown report:
-
-In operator-facing review language, this is the current `evidence:inspect`
-example. The concrete runtime path is still bounded `read-resource` on stored
-Guild evidence records:
-
-```bash
-guild run \
-  evidence-summary@^0.1 \
-  --input-json '{"evidence_uri":"<paste one emitted evidence uri>"}' \
-  --grants-json '{"grants":[{"id":"read-resource","access":"read","constraints":{"uri_prefixes":["guild://objects/records/"],"resource_kinds":["object"]}}]}'
-```
-
-## What This Example Set Does Not Show
-
-- It does not broaden `invoke-skill`. Composition stays inside the current bounded zero-authority inspect slices, and this pack itself still uses the single-child formatter path.
 - It does not execute restart, rollback, incident-write, or notification actions from the reference playbook set yet.
-- It does not use broad `http-request` as the hero path.
-- It does not use `emit-evidence` as a proof claim. `emit-evidence` remains explicitly `not_proven`.
-- It does not add a workflow engine, a pack manifest, or a new installer abstraction.
-- It does not dump raw JSON by default. The report skills return compact markdown strings so `guild run` prints useful terminal output directly.
+- It does not imply `k8s:restart`, `chat:post`, or `incident:create` already ship as runnable capabilities.
+- It does not add replay execution support. `guild why` and `guild get` remain the current replay-oriented explanation surfaces.
+- It does not broaden `http-request` into the hero path.
+- It does not add a workflow engine, pack manifest, or new installer abstraction.
+- It does not dump raw JSON by default. The report skills return compact markdown so `guild run` prints useful terminal output directly.

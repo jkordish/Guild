@@ -6,6 +6,12 @@ Normative runtime ownership remains in [`../../../SPECS.md`](../../../SPECS.md),
 [`../../../wit/guild-skill-v1.wit`](../../../wit/guild-skill-v1.wit), and the
 core Rust runtime/types.
 
+Execution-ready guidance for the open follow-on GitHub issue set lives in
+[`portable-skill-receipts-and-reference-apps-execution-guide.md`](portable-skill-receipts-and-reference-apps-execution-guide.md).
+That execution guide now also absorbs the imported repositioning milestone,
+epic, and task mapping so the repo does not need a separate strategy stack for
+tracker intake.
+
 ## Summary
 
 The next phase should turn Guild's existing trust and receipt layer into an
@@ -100,6 +106,25 @@ operational reports.
 - new follow-on work is framed in terms of playbooks on top of portable skills, receipt chains, and durable refs
 - no runtime or draft-v1 support claim is broadened by wording alone
 - repo-native validation catches framing drift in the selected top-level docs
+
+## Initial GitHub Issue Map
+
+The first follow-on GitHub tracking set created from this planning note is:
+
+- `#129` EPIC: Portable skill receipts and reference playbooks follow-on program
+- `#130` Make Guild Ops Starter a cohesive incident-casefile-first starter path
+- `#131` Document authoring-layer guardrails without creating a second contract surface
+- `#132` Choose the first honest post-starter mutation demo
+- `#133` Define a verification matrix and curated-pack labeling story on current trust signals
+- `#134` Scope private-pack, policy, and governance phase boundaries
+- `#136` Document packaging and install-surface follow-on work on current shipped transport flows
+- `#137` Define bounded starter-pack and reference-playbook progression beyond Guild Ops Starter
+- `#138` Scope receipt-chain and replay-oriented explanation follow-on work
+
+Issue `#130` is the first concrete delivery slice because it stays completely
+inside the current proven frontier: installed portable skills, durable
+execution and evidence refs, bounded execution-query resources, trust review,
+and docs/tests that keep the starter story honest.
 
 ## Anti-Goals
 

@@ -8,9 +8,8 @@ proof suites, start with
 [`trust-proof-walkthrough.md`](trust-proof-walkthrough.md).
 
 For the current project framing and first-reference-application thesis, see
-[`project-positioning.md`](project-positioning.md). For canonical
-operator-facing vocabulary, use
-[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+[`project-positioning.md`](project-positioning.md). That doc also carries the
+canonical operator-facing vocabulary and capability language for this phase.
 
 The source-of-truth declaration lives in `SPECS.md` section "Source Of Truth".
 For the frozen runtime-contract surfaces in this milestone, use `SPECS.md` section "Contract Surface v1 (core)" rather than treating this testing guide as a parallel source.
@@ -273,13 +272,10 @@ Starter-pack smoke:
 ```bash
 export GUILD_REGISTRY_ROOT=target/dev-local-registry/ops-pack
 
-guild install examples/skills/render-report
-guild install examples/skills/incident-brief
-guild install examples/skills/run-diff
-guild install examples/skills/recent-failures
-guild install examples/skills/evidence-summary
-
 guild codex bootstrap --registry-root "$GUILD_REGISTRY_ROOT" --reset
+guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow incident-casefile
+
+# Focused drill-down flows after the primary casefile proof.
 guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow incident-brief
 guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow run-diff
 guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow recent-failures
@@ -287,7 +283,10 @@ guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow evidence-summary
 guild codex smoke --registry-root "$GUILD_REGISTRY_ROOT" --flow render-report
 ```
 
-For the user-facing quickstart and exact capability-grant snippets, see [`../examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md). For the surrounding examples index, see [`../examples/README.md`](../examples/README.md).
+`guild codex bootstrap` installs the example skills used by the recommended
+starter and Codex smoke flows under that explicit repo-local root.
+
+For the user-facing quickstart and exact capability-grant snippets, start with [`guild-ops-starter-quickstart.md`](guild-ops-starter-quickstart.md), then use [`../examples/skills/guild-ops-starter/README.md`](../examples/skills/guild-ops-starter/README.md) for the full starter boundary and drill-down story. For the surrounding examples index, see [`../examples/README.md`](../examples/README.md).
 
 Trust and signed-bundle smoke with preview:
 
@@ -406,6 +405,7 @@ guild codex scenario --registry-root target/dev-local-registry/codex-local --sce
 Deterministic smoke flows:
 
 ```bash
+guild codex smoke --registry-root target/dev-local-registry/codex-local --flow incident-casefile
 guild codex smoke --registry-root target/dev-local-registry/codex-local --flow incident-brief
 guild codex smoke --registry-root target/dev-local-registry/codex-local --flow run-diff
 guild codex smoke --registry-root target/dev-local-registry/codex-local --flow recent-failures

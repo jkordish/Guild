@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IncidentCasefileInput",
+  "type": "object",
+  "properties": {
+    "subject_execution_uri": {
+      "type": "string"
+    },
+    "comparison_execution_uri": {
+      "type": "string"
+    },
+    "query_uri": {
+      "type": "string"
+    },
+    "evidence_uri": {
+      "type": "string"
+    }
+  },
+  "required": ["subject_execution_uri"],
+  "additionalProperties": false
+}

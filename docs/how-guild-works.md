@@ -6,12 +6,8 @@ It is not the normative contract source. Use `SPECS.md` when you need the exact 
 For the current project framing, see [`project-positioning.md`](project-positioning.md).
 For one current end-to-end trust proof path, use
 [`trust-proof-walkthrough.md`](trust-proof-walkthrough.md).
-For the bounded playbook concept entrypoint, use
-[`strategy/guild-repositioning/04-playbook-surface-v1.md`](strategy/guild-repositioning/04-playbook-surface-v1.md).
-For canonical operator-facing vocabulary, use
-[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
-For the canonical operator-facing capability vocabulary, use
-[`strategy/guild-repositioning/03-capability-taxonomy-v1.md`](strategy/guild-repositioning/03-capability-taxonomy-v1.md).
+`docs/project-positioning.md` now also carries the canonical operator-facing
+vocabulary and capability language used by this page.
 
 ## The Short Version
 
@@ -50,19 +46,37 @@ replay engine.
 
 ## Playbooks And Skills
 
-Guild now has one bounded public playbook concept doc. Use that surface when
-you want the operator-facing automation framing rather than the exact CLI or
-runtime contract.
+Guild's target operator story is playbook-first, but the honest runtime story
+is still skill-first today.
 
-The honest translation to today's repo is:
+The translation to today's repo is:
 
 - a playbook is the operator-facing automation unit and review surface
 - one or more playbook steps still resolve to ordinary installed skills
 - capability review and admission stay host-owned before those skills run
 - durable receipts and evidence still come from the underlying skill executions
 
-That is why the main docs now point at the playbook surface explicitly, while
-still showing the real CLI, grants, and stored resources that exist today.
+That is why the main docs lead with playbook language while still showing the
+real CLI, grants, and stored resources that exist today.
+
+The safest way to describe that translation is:
+
+| Current repo artifact | Playbook-facing reading | Unchanged underlying fact |
+| --- | --- | --- |
+| Guild Ops Starter journey map | One small operator playbook family for read-only operational review | Installation still happens skill by skill through `guild install` |
+| `incident-casefile`, `incident-brief`, `run-diff`, `recent-failures`, `evidence-summary` | Reusable playbook steps or reference skills | Each one still executes as an ordinary installed skill |
+| Operator-facing names like `runs:inspect` or `failures:query` | Capability review language shown to the operator | Concrete grant authoring still uses `read-resource` and `invoke-skill` today |
+| `guild why`, `guild get`, and stored Guild URIs | The receipt and evidence context around a future playbook run | Stored Guild resources remain the durable host-owned truth |
+| `render-report` child alias | Internal helper step hidden behind the operator story | Composition is still the current bounded alias invoke path only |
+
+What does not change underneath:
+
+- Guild Ops Starter is still a small set of ordinary installed skills.
+- Each referenced skill still resolves to immutable installed executable identity before execution.
+- Caller-requested authority is still narrowed by host-owned policy before guest start.
+- The live grant JSON still uses the current internal family names such as `read-resource` and `invoke-skill`.
+- Durable execution receipts and evidence records still live at the underlying skill execution layer.
+- `render-report` remains a bounded zero-authority formatter child, not a workflow engine.
 
 ## Identity Layers
 

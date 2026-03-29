@@ -37,8 +37,9 @@ pub const DEFAULT_CODEX_SERVER_NAME: &str = "guild-local";
 const GUILD_MCP_MANIFEST_RELATIVE_PATH: &str = "crates/guild-mcp/Cargo.toml";
 const EXAMPLE_NAMESPACE: &str = "example";
 const EXAMPLE_VERSION_REQUIREMENT: &str = "^0.1";
-const DEFAULT_CODEX_SKILLS: [&str; 14] = [
+const DEFAULT_CODEX_SKILLS: [&str; 15] = [
     "render-report",
+    "incident-casefile",
     "incident-brief",
     "run-diff",
     "recent-failures",
@@ -69,6 +70,7 @@ const EXECUTION_TREE_SCENARIO_SKILLS: [&str; 3] =
 const EXPLAIN_EXECUTION_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::ExplainExecution];
 const EXPLAIN_EXECUTION_TREE_ONLY: [CodexSmokeSelection; 1] =
     [CodexSmokeSelection::ExplainExecutionTree];
+const INCIDENT_CASEFILE_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::IncidentCasefile];
 const INCIDENT_BRIEF_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::IncidentBrief];
 const RUN_DIFF_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::RunDiff];
 const RECENT_FAILURES_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::RecentFailures];
@@ -77,7 +79,8 @@ const RENDER_REPORT_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::Rende
 const RECENT_FAILURE_TRIAGE_ONLY: [CodexSmokeSelection; 1] =
     [CodexSmokeSelection::RecentFailureTriage];
 const POLICY_DENIAL_DEBUG_ONLY: [CodexSmokeSelection; 1] = [CodexSmokeSelection::PolicyDenialDebug];
-const ALL_CODEX_SMOKE_FLOWS: [CodexSmokeSelection; 9] = [
+const ALL_CODEX_SMOKE_FLOWS: [CodexSmokeSelection; 10] = [
+    CodexSmokeSelection::IncidentCasefile,
     CodexSmokeSelection::IncidentBrief,
     CodexSmokeSelection::RunDiff,
     CodexSmokeSelection::RecentFailures,
@@ -255,6 +258,7 @@ impl CodexScenarioSummary {
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum CodexSmokeSelection {
+    IncidentCasefile,
     IncidentBrief,
     RunDiff,
     RecentFailures,
@@ -271,6 +275,7 @@ impl CodexSmokeSelection {
     #[must_use]
     pub fn flows(self) -> &'static [Self] {
         match self {
+            Self::IncidentCasefile => &INCIDENT_CASEFILE_ONLY,
             Self::IncidentBrief => &INCIDENT_BRIEF_ONLY,
             Self::RunDiff => &RUN_DIFF_ONLY,
             Self::RecentFailures => &RECENT_FAILURES_ONLY,
@@ -288,6 +293,7 @@ impl CodexSmokeSelection {
 impl std::fmt::Display for CodexSmokeSelection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value = match self {
+            Self::IncidentCasefile => "incident-casefile",
             Self::IncidentBrief => "incident-brief",
             Self::RunDiff => "run-diff",
             Self::RecentFailures => "recent-failures",
@@ -308,6 +314,7 @@ impl FromStr for CodexSmokeSelection {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
+            "incident-casefile" => Ok(Self::IncidentCasefile),
             "incident-brief" => Ok(Self::IncidentBrief),
             "run-diff" => Ok(Self::RunDiff),
             "recent-failures" => Ok(Self::RecentFailures),
@@ -319,7 +326,7 @@ impl FromStr for CodexSmokeSelection {
             "policy-denial-debug" => Ok(Self::PolicyDenialDebug),
             "all" => Ok(Self::All),
             _ => Err(format!(
-                "unknown flow `{value}`; expected incident-brief, run-diff, recent-failures, evidence-summary, render-report, explain-execution, explain-execution-tree, recent-failure-triage, policy-denial-debug, or all"
+                "unknown flow `{value}`; expected incident-casefile, incident-brief, run-diff, recent-failures, evidence-summary, render-report, explain-execution, explain-execution-tree, recent-failure-triage, policy-denial-debug, or all"
             )),
         }
     }
@@ -1090,6 +1097,7 @@ fn validate_codex_smoke_registry(
 
 fn required_skill_names_for_flow(flow: CodexSmokeSelection) -> &'static [&'static str] {
     match flow {
+        CodexSmokeSelection::IncidentCasefile => &["incident-casefile"],
         CodexSmokeSelection::IncidentBrief => &["render-report", "incident-brief"],
         CodexSmokeSelection::RunDiff => &["render-report", "run-diff"],
         CodexSmokeSelection::RecentFailures => &["recent-failures"],
@@ -1121,6 +1129,7 @@ fn run_single_codex_smoke_flow(
     flow: CodexSmokeSelection,
 ) -> Result<CodexSmokeFlowSummary, CodexWorkflowError> {
     match flow {
+        CodexSmokeSelection::IncidentCasefile => run_incident_casefile_smoke(registry_root, client),
         CodexSmokeSelection::IncidentBrief => run_incident_brief_smoke(registry_root, client),
         CodexSmokeSelection::RunDiff => run_run_diff_smoke(registry_root, client),
         CodexSmokeSelection::RecentFailures => run_recent_failures_smoke(registry_root, client),
@@ -1136,6 +1145,93 @@ fn run_single_codex_smoke_flow(
         }
         CodexSmokeSelection::All => unreachable!("all expands before per-flow execution"),
     }
+}
+
+fn run_incident_casefile_smoke(
+    registry_root: &Path,
+    client: &mut McpStdioClient,
+) -> Result<CodexSmokeFlowSummary, CodexWorkflowError> {
+    let scenario =
+        prepare_codex_scenario(registry_root, CodexScenarioSelection::RecentFailureTriage)?;
+    let subject_execution_uri = scenario
+        .subject_execution_uris
+        .first()
+        .cloned()
+        .ok_or_else(|| {
+            CodexWorkflowError::new(
+                "codex-smoke-missing-subject-execution",
+                "incident-casefile smoke did not get a subject execution URI",
+            )
+        })?;
+    let comparison_execution_uri = scenario
+        .comparison_execution_uris
+        .first()
+        .cloned()
+        .or_else(|| scenario.subject_execution_uris.get(1).cloned());
+    let query_uri = scenario.query_uris.first().cloned().ok_or_else(|| {
+        CodexWorkflowError::new(
+            "codex-smoke-missing-query-uri",
+            "incident-casefile smoke did not get a query URI",
+        )
+    })?;
+
+    let mut input = json!({
+        "subject_execution_uri": subject_execution_uri,
+        "query_uri": query_uri,
+    });
+    if let Some(comparison_execution_uri) = &comparison_execution_uri {
+        input["comparison_execution_uri"] = Value::String(comparison_execution_uri.clone());
+    }
+
+    let response_value = client.request(
+        "tools/call",
+        &example_inspect_request(
+            "incident-casefile",
+            &input,
+            &[
+                execution_read_grant(),
+                query_read_grant(),
+                object_read_grant(),
+            ],
+        ),
+    )?;
+    let response: CallToolResult = McpStdioClient::parse_result(&response_value)?;
+    let record = parse_execution_record(&response)?;
+    let _ = output_markdown_string(
+        &record,
+        "codex-smoke-incident-casefile-missing-output",
+        "incident-casefile did not return markdown output",
+    )?;
+
+    let subject_resource_value =
+        client.request("resources/read", &json!({ "uri": subject_execution_uri }))?;
+    let subject_resource: ReadResourceResult =
+        McpStdioClient::parse_result(&subject_resource_value)?;
+    let report_resource_value =
+        client.request("resources/read", &json!({ "uri": record.receipt.uri }))?;
+    let report_resource: ReadResourceResult = McpStdioClient::parse_result(&report_resource_value)?;
+
+    Ok(CodexSmokeFlowSummary {
+        flow: CodexSmokeSelection::IncidentCasefile,
+        subject_execution_uri,
+        report_execution_uri: record.receipt.uri,
+        additional_report_execution_uris: Vec::new(),
+        comparison_execution_uris: comparison_execution_uri.into_iter().collect(),
+        subject_query_uri: Some(query_uri),
+        subject_resource_items: subject_resource.contents.len(),
+        report_resource_items: report_resource.contents.len(),
+        subject_emitted_evidence: 0,
+        subject_child_executions: 0,
+        report_summary: record
+            .output
+            .ok_or_else(|| {
+                CodexWorkflowError::new(
+                    "codex-smoke-report-missing-output",
+                    "incident-casefile did not return skill output",
+                )
+            })?
+            .summary,
+    })
 }
 
 fn run_incident_brief_smoke(

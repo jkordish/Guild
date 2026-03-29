@@ -18,17 +18,14 @@ story.
 > Status: pre-alpha.
 >
 > For the current project framing, start with
-> [`docs/project-positioning.md`](docs/project-positioning.md). For canonical
-> operator-facing vocabulary, use
-> [`docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md`](docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md).
-> For the canonical operator-facing capability vocabulary, use
-> [`docs/strategy/guild-repositioning/03-capability-taxonomy-v1.md`](docs/strategy/guild-repositioning/03-capability-taxonomy-v1.md).
-> For the current playbook surface and the playbook-to-skill composition
-> boundary, use
-> [`docs/strategy/guild-repositioning/04-playbook-surface-v1.md`](docs/strategy/guild-repositioning/04-playbook-surface-v1.md).
-> Current CLI help, manifests, and `guild grants template` still use the live
-> internal family names; the taxonomy doc is the operator-facing approval
-> vocabulary in this phase.
+> [`docs/project-positioning.md`](docs/project-positioning.md). That doc now
+> carries the canonical operator-facing vocabulary and capability language for
+> this phase. For the current playbook-facing explanation of how those terms
+> map onto today’s skill-driven runtime, use
+> [`docs/how-guild-works.md`](docs/how-guild-works.md). Current CLI help,
+> manifests, and `guild grants template` still use the live internal family
+> names; the positioning doc is the operator-facing approval vocabulary in this
+> phase.
 >
 > Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
 >
@@ -86,7 +83,7 @@ Guild already ships the trust and evidence backbone behind that operator story:
 - OCI image layout and OCI registry transport for installed signed bundles
 - a real stdio MCP server with one public tool, `guild.inspect`, plus Guild resources
 - bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, `emit-evidence`, and `log-write` slices
-- Guild Ops Starter, the first operator starter set in the repo, for compact operational analysis over stored executions, bounded query refs, and evidence refs
+- Guild Ops Starter, the first operator starter set in the repo, now centered on one `incident-casefile` quickstart over stored executions, bounded query refs, and optional evidence refs
 
 The live-proof envelope is intentionally narrow. The exact current status lives in `SPECS.md`, `docs/testing.md`, and `docs/schemas/draft-v1/family_support_matrix.json`, and the docs below keep those limits explicit instead of smoothing them over.
 
@@ -295,9 +292,9 @@ If you are deciding where to start, use the user-facing docs in this order:
 
 - Compatible operator flow in today's CLI: review authority and execution identity -> execute a bounded action -> inspect the stored result -> verify installed trust state.
 - Install and run a skill: the quickstart above plus [`examples/skills/hello-inspect/README.md`](examples/skills/hello-inspect/README.md)
-- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](examples/skills/explain-execution-tree/README.md), or [`Guild Ops Starter`](examples/skills/guild-ops-starter/README.md) when you want richer reusable reports over the same stored execution
+- Explain what happened: start with `guild why` as the first nearby-ref, requested-versus-granted authority, and authority-observation surface, use `guild why -v` for the expanded stored diff and family-aware request hints, use `guild why --lineage` for the native bounded ancestor/descendant view, use `guild get` for raw durable reads, and use `guild ls evidence --limit 5` when you need to discover stored evidence first; then move to [`examples/skills/explain-execution/README.md`](examples/skills/explain-execution/README.md), [`examples/skills/explain-execution-tree/README.md`](examples/skills/explain-execution-tree/README.md), or the [`Guild Ops Starter quickstart`](docs/guild-ops-starter-quickstart.md) when you want one cohesive casefile over the same stored execution
 - Verify trust state and move installed state: use `guild verify` plus the trust and transport flow below
-- Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use [`Guild Ops Starter`](examples/skills/guild-ops-starter/README.md) and the surrounding index at [`examples/README.md`](examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](examples/skills/explain-http-authority/README.md)
+- Debug failures and compare runs: start with `guild why -v` for the stored requested-versus-granted diff and family-aware hints, then use the [`Guild Ops Starter quickstart`](docs/guild-ops-starter-quickstart.md), [`Guild Ops Starter`](examples/skills/guild-ops-starter/README.md), and the surrounding index at [`examples/README.md`](examples/README.md); move to narrower authority and policy example skills only when `guild why -v` is no longer enough, especially [`examples/skills/explain-capability-denial/README.md`](examples/skills/explain-capability-denial/README.md), [`examples/skills/diff-execution-authority/README.md`](examples/skills/diff-execution-authority/README.md), and [`examples/skills/explain-http-authority/README.md`](examples/skills/explain-http-authority/README.md)
 
 The deeper proof and benchmark commands still live in [`docs/testing.md`](docs/testing.md), but they are maintainers' helper paths rather than the main onboarding route.
 
@@ -307,23 +304,27 @@ Guild Ops Starter is the first operator starter set in the repo. It is a
 repo-local release slice built on that trust chain, not the whole product
 story. The current user-facing example set lives at
 [`examples/skills/guild-ops-starter/README.md`](examples/skills/guild-ops-starter/README.md).
+The shortest current starter path lives at
+[`docs/guild-ops-starter-quickstart.md`](docs/guild-ops-starter-quickstart.md).
 The surrounding examples index lives at [`examples/README.md`](examples/README.md).
-The approved reference playbook set and current first hero example plan live at
-[`docs/strategy/guild-repositioning/07-reference-playbooks.md`](docs/strategy/guild-repositioning/07-reference-playbooks.md)
-and
-[`docs/strategy/guild-repositioning/09-hero-reference-example-plan.md`](docs/strategy/guild-repositioning/09-hero-reference-example-plan.md).
+The examples docs now also carry the approved reference playbook set and the
+current hero-example boundary without depending on a separate strategy
+directory.
 
-It is intentionally ordinary example-skill layout, not a new packaging system. The example set installs as five example skills and stays inside current honest repo truth:
+It is intentionally ordinary example-skill layout, not a new packaging system.
+The starter story now centers one primary read-only artifact plus focused
+drill-down skills:
 
+- `incident-casefile` as the primary starter artifact
 - `incident-brief` for one stored execution ref
 - `run-diff` for two stored execution refs
 - `recent-failures` for one bounded execution-query ref
 - `evidence-summary` for one stored evidence ref
-- `render-report` as the zero-authority child formatter used by the parent report skills
+- `render-report` as the zero-authority child formatter used by older parent report skills
 
 The example set is meant to show the current Guild story without broadening
 runtime or proof semantics: durable refs, compact terminal output, explicit
-capability requirements, and bounded single-child composition only where it is
+capability requirements, and bounded host-mediated reads only where they are
 already real.
 
 ## Trust And Transport

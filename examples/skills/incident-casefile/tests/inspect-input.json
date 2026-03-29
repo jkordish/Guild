@@ -1,0 +1,6 @@
+{
+  "subject_execution_uri": "guild://executions/example-subject",
+  "comparison_execution_uri": "guild://executions/example-comparison",
+  "query_uri": "guild://queries/executions/failures/recent/10",
+  "evidence_uri": "guild://objects/records/example-evidence"
+}

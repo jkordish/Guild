@@ -2,8 +2,8 @@
 
 Guild is sequenced as a small set of ordered epics. The labels below keep the existing phase order, but the outcome comes first.
 Current framing and guardrails live in [`project-positioning.md`](project-positioning.md).
-Canonical operator-facing vocabulary lives in
-[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+Canonical operator-facing vocabulary and capability language now live in
+[`project-positioning.md`](project-positioning.md).
 
 The first five epics built the contract, execution, trust, and evidence
 surfaces. The next narrative wave turns that existing trust chain into
