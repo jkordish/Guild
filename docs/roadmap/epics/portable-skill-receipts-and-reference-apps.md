@@ -126,6 +126,14 @@ inside the current proven frontier: installed portable skills, durable
 execution and evidence refs, bounded execution-query resources, trust review,
 and docs/tests that keep the starter story honest.
 
+Issue `#136` is the next follow-on slice because it still stays on already
+shipped transport and trust behavior: native signed bundle export/import, OCI
+layout export/import, OCI registry push/pull, local preview before risky
+admission, and target-root trust review with `guild verify -v`. The point of
+that slice is to make curated-pack installation and compatibility review more
+legible on top of those existing flows, not to invent a new pack type,
+marketplace surface, or broader distribution contract.
+
 ## Anti-Goals
 
 - do not broaden support
