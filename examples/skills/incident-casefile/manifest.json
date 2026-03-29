@@ -43,7 +43,7 @@
     {
       "id": "read-resource",
       "access": "read",
-      "required": true,
+      "required": false,
       "constraints": {
         "uri_prefixes": ["guild://queries/executions/"],
         "resource_kinds": ["query"]
@@ -52,7 +52,7 @@
     {
       "id": "read-resource",
       "access": "read",
-      "required": true,
+      "required": false,
       "constraints": {
         "uri_prefixes": ["guild://objects/records/"],
         "resource_kinds": ["object"]

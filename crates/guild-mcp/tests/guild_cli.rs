@@ -348,6 +348,20 @@ fn incident_casefile_grants_json() -> String {
     .unwrap()
 }
 
+fn incident_casefile_subject_only_grants_json() -> String {
+    serde_json::to_string(&CapabilityGrantSet {
+        grants: vec![GrantedCapability {
+            id: CapabilityId::ReadResource,
+            access: CapabilityAccess::Read,
+            constraints: CapabilityConstraints::ReadResource(ReadResourceConstraints {
+                uri_prefixes: Some(vec!["guild://executions/".into()]),
+                resource_kinds: Some(vec![ResourceKind::Execution]),
+            }),
+        }],
+    })
+    .unwrap()
+}
+
 #[allow(clippy::needless_pass_by_value)]
 fn command_json(value: Value) -> String {
     serde_json::to_string(&value).unwrap()
@@ -1377,6 +1391,57 @@ fn starter_pack_incident_casefile_runs_with_markdown_stdout() {
         "{stderr}"
     );
     assert!(!stdout.contains("\"title\""), "{stdout}");
+}
+
+#[test]
+fn starter_pack_incident_casefile_runs_with_subject_only_input_and_execution_grant() {
+    let temp = TempFixtureDir::new("guild-cli-incident-casefile-subject-only");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    install_source_with_cli(&registry_root, &incident_casefile_source_dir());
+
+    let subject_value =
+        inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+    let subject_execution_uri = subject_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let grants_json = incident_casefile_subject_only_grants_json();
+    let output = run_guild_success_output(
+        &[
+            "run",
+            "incident-casefile@^0.1",
+            "--input-json",
+            &command_json(json!({
+                "subject_execution_uri": subject_execution_uri,
+            })),
+            "--grants-json",
+            &grants_json,
+            "--color",
+            "never",
+        ],
+        Some(&registry_root),
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stdout.starts_with("# Incident Casefile\n\n"), "{stdout}");
+    assert!(stdout.contains("## Primary reason"), "{stdout}");
+    assert!(stdout.contains("## Nearby subject refs"), "{stdout}");
+    assert!(stdout.contains("## Query context"), "{stdout}");
+    assert!(
+        stdout.contains("no bounded execution-query ref supplied"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("## Evidence context"), "{stdout}");
+    assert!(stdout.contains("no explicit evidence ref supplied"), "{stdout}");
+    assert!(stdout.contains("## Next refs"), "{stdout}");
+    assert!(stderr.contains("succeeded  bounded  exec:"), "{stderr}");
+    assert!(
+        stderr.contains("example/incident-casefile@0.1.0"),
+        "{stderr}"
+    );
 }
 
 #[test]
