@@ -129,12 +129,21 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
             "The playbook is the application. The trust chain is the product.",
             "eight `http-request`, two `invoke-skill`, and one exact `emit-evidence` checked slices, plus proof-only `log-write`",
             "Guild Ops Starter clearly reads as the first operator starter set and a repo-local release slice, not the whole product thesis",
+            "The current bounded progression after Guild Ops Starter is:",
+            "docs-first next progression: `service-recovery review pack`",
         ],
     ),
     (
         "examples/skills/guild-ops-starter/README.md",
         &[
             "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain, not the whole product story.",
+            "The next believable progression after this starter is a docs-first `service-recovery review pack`.",
+        ],
+    ),
+    (
+        "examples/README.md",
+        &[
+            "The next believable progression after Guild Ops Starter is a docs-first `service-recovery review pack`.",
         ],
     ),
 ];

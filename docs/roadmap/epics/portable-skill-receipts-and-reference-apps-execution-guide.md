@@ -77,7 +77,8 @@ planning, and governance in the order they become believable.
 Keep the current progression explicit:
 
 - real now: incident-casefile-first operational review over stored refs
-- docs-first next: restart-and-notify and rollback-and-annotate playbook stories
+- docs-first next: `service-recovery review pack`
+- secondary docs-first concept kept visible: `rollback verification pack`
 - likely first mutation-demo candidate: `cache purge with evidence trail`
 - deferred until broader action support: certificate rotation, node remediation, and secret rotation flows
 
@@ -351,12 +352,40 @@ Use this support classification when triaging future reference playbooks:
 | node remediation -> cordon -> drain -> verify recovery | deferred until apply | higher blast radius than the current phase supports |
 | secret rotation with approval gate and receipts | deferred until apply | secrets and propagation checks stay later-phase |
 
+### Chosen Next Progression
+
+The next believable progression after `#130` is a docs-first
+`service-recovery review pack`.
+
+Keep that choice bounded like this:
+
+- It stays on current read-only runtime truth: one subject execution, one
+  comparison execution, one bounded failures query, and optional evidence
+  review rendered through the existing casefile and drill-down skills.
+- It keeps the current hero story visible in honest terms: diagnose and verify
+  are real now, while restart and notify remain future action steps rather than
+  starter-pack claims.
+- It is closer to current shipped surfaces than a rollback or cache-mutation
+  story, so it is the sensible docs-first progression immediately after Guild
+  Ops Starter.
+
+Keep one secondary docs-first concept visible too:
+
+- `rollback verification pack`: use the same read-only explain, compare, and
+  evidence surfaces to frame the review half of rollback work, while rollback
+  and incident annotation remain deferred actions.
+
+Keep the first plausible next implementation candidate explicit:
+
+- `cache purge with evidence trail` remains the leading mutation-demo candidate
+  once later work (`#132`) chooses the first honest apply-oriented slice.
+
 ### Suggested Subtasks
 
-- [ ] Build the candidate matrix with support-level classification.
-- [ ] Choose one or two docs-first starter-pack/report concepts to keep visible.
-- [ ] Name the first plausible next implementation candidate, if one exists.
-- [ ] Record which concepts remain deferred until apply-mode/runtime support grows.
+- [x] Build the candidate matrix with support-level classification.
+- [x] Choose one or two docs-first starter-pack/report concepts to keep visible.
+- [x] Name the first plausible next implementation candidate, if one exists.
+- [x] Record which concepts remain deferred until apply-mode/runtime support grows.
 
 ### Validation
 

@@ -6237,6 +6237,90 @@ fn follow_on_execution_guides_cover_every_open_issue() {
 }
 
 #[test]
+fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
+    let epic_doc = fs::read_to_string(
+        repo_root().join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md"),
+    )
+    .unwrap();
+    let normalized_epic_doc = normalize_whitespace(&epic_doc);
+    for phrase in [
+        "## Current Follow-On Progression",
+        "The current bounded progression after Guild Ops Starter is:",
+        "docs-first next progression: `service-recovery review pack`",
+        "secondary docs-first concept kept visible: `rollback verification pack`",
+        "first plausible later implementation candidate: `cache purge with evidence trail`",
+    ] {
+        assert!(
+            normalized_epic_doc.contains(&normalize_whitespace(phrase)),
+            "roadmap epic starter-pack progression drifted: missing `{phrase}`"
+        );
+    }
+
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+    for phrase in [
+        "### Chosen Next Progression",
+        "service-recovery review pack",
+        "rollback verification pack",
+        "cache purge with evidence trail",
+        "restart and notify remain future action steps",
+        "- [x] Build the candidate matrix with support-level classification.",
+        "- [x] Choose one or two docs-first starter-pack/report concepts to keep visible.",
+        "- [x] Name the first plausible next implementation candidate, if one exists.",
+        "- [x] Record which concepts remain deferred until apply-mode/runtime support grows.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide starter-pack progression drifted: missing `{phrase}`"
+        );
+    }
+    assert!(
+        !normalized_guide.contains(&normalize_whitespace(
+            "docs-first next: restart-and-notify and rollback-and-annotate playbook stories"
+        )),
+        "execution guide reintroduced the superseded docs-first next progression wording"
+    );
+
+    let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
+    let normalized_examples_index = normalize_whitespace(&examples_index);
+    for phrase in [
+        "## What Comes Next After Guild Ops Starter",
+        "The next believable progression after Guild Ops Starter is a docs-first `service-recovery review pack`.",
+        "service-recovery review pack",
+        "rollback verification pack",
+        "cache purge with evidence trail",
+        "not a current starter-pack claim",
+    ] {
+        assert!(
+            normalized_examples_index.contains(&normalize_whitespace(phrase)),
+            "examples/README.md starter-pack progression drifted: missing `{phrase}`"
+        );
+    }
+
+    let ops_pack =
+        fs::read_to_string(repo_root().join("examples/skills/guild-ops-starter/README.md"))
+            .unwrap();
+    let normalized_ops_pack = normalize_whitespace(&ops_pack);
+    for phrase in [
+        "## What Comes Next",
+        "The next believable progression after this starter is a docs-first `service-recovery review pack`.",
+        "service-recovery review pack",
+        "rollback verification pack",
+        "cache purge with evidence trail",
+        "restart and notify remain future action steps",
+    ] {
+        assert!(
+            normalized_ops_pack.contains(&normalize_whitespace(phrase)),
+            "Guild Ops Starter README progression drifted: missing `{phrase}`"
+        );
+    }
+}
+
+#[test]
 fn execution_guide_processes_imported_strategy_stack() {
     let epic_doc = fs::read_to_string(
         repo_root().join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md"),
@@ -6476,8 +6560,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(hello_readme.contains("guild verify -v <skill-ref>"));
 
     let composite_readme =
-        fs::read_to_string(repo_root().join("examples/skills/hello-composite/README.md"))
-            .unwrap();
+        fs::read_to_string(repo_root().join("examples/skills/hello-composite/README.md")).unwrap();
     assert!(composite_readme.contains("guild import bundle ... --preview"));
     assert!(composite_readme.contains("guild import oci-layout ... --preview"));
     assert!(composite_readme.contains("guild pull ... --preview"));

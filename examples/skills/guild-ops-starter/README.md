@@ -30,6 +30,28 @@ Treat the current hero-example boundary like this:
 That keeps the action-heavy story honest while still letting the docs describe
 where the starter path is headed.
 
+## What Comes Next
+
+The next believable progression after this starter is a docs-first
+`service-recovery review pack`.
+
+That next pack stays inside the surfaces this starter already proves:
+
+- one subject execution review in `guild why`
+- one comparison run for context
+- one bounded recent-failures query
+- optional evidence review
+- one compact casefile or drill-down report before any future action step
+
+Keep the follow-on concepts classified like this:
+
+| Concept | Current status | Boundary |
+| --- | --- | --- |
+| service-recovery review pack | docs-first next progression | diagnose and verify are real now; restart and notify remain future action steps |
+| rollback verification pack | docs-first visible concept | explain, compare, and evidence review fit today's repo; rollback and incident annotation do not |
+| cache purge with evidence trail | first plausible next implementation candidate | keep it visible for later mutation planning, not as current starter truth |
+| certificate renewal, node remediation, and secret rotation packs | deferred until apply | broader action, approval, and blast-radius support stay later-phase |
+
 ## Playbook Translation Boundary
 
 When maintainers describe Guild Ops Starter in playbook terms, the wording can
