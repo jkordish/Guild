@@ -7,6 +7,8 @@ ABI, and security truth still live in [`SPECS.md`](../../../SPECS.md),
 
 Use this guide when writing issue bodies, sequencing work, or deciding whether
 a proposed change belongs in the current proven frontier or in a later phase.
+It is also the canonical intake point for the imported repositioning strategy
+stack that has now been absorbed into the live repo docs and issue tracker.
 
 ## Program Sequence
 
@@ -61,6 +63,7 @@ planning, and governance in the order they become believable.
 - The user promise is one bounded outcome: inspect a stored execution, trace evidence, and render one casefile from exact refs.
 - The starter path must not imply broad action support, replay execution, or ambient discovery.
 - `Guild Ops Starter` remains a repo-local starter set and release slice, not the whole product thesis.
+- The hero example remains `diagnose service -> restart workload -> notify on-call`, but only the diagnose and verify side is runnable today.
 
 ### Implementation Guide
 
@@ -68,6 +71,15 @@ planning, and governance in the order they become believable.
 2. Make every starter example consume exact execution, query, or evidence refs as input.
 3. Keep Codex/bootstrap helpers aligned with the same honest CLI-first path.
 4. Add drift guards that reject unsupported starter claims.
+
+### Reference Playbook Boundary
+
+Keep the current progression explicit:
+
+- real now: incident-casefile-first operational review over stored refs
+- docs-first next: restart-and-notify and rollback-and-annotate playbook stories
+- likely first mutation-demo candidate: `cache purge with evidence trail`
+- deferred until broader action support: certificate rotation, node remediation, and secret rotation flows
 
 ### Suggested Subtasks
 
@@ -98,6 +110,16 @@ planning, and governance in the order they become believable.
 3. Document what an authoring layer may generate versus what the runtime must verify directly.
 4. Keep the result tightly linked to the existing contracts-first repo posture.
 
+### Imported Design Inputs To Keep Visible
+
+The removed strategy stack contributed useful design inputs that should remain
+visible here without becoming implied commitments:
+
+- a future humane authoring layer may separate reusable skill, operator-facing playbook, and installable bundle concepts
+- evidence requirements and approval requirements should stay visible at authoring time rather than hidden later
+- example names such as `guild.skill.yaml`, `guild.playbook.yaml`, and `guild-pack.yaml` are design inputs only, not accepted contract or CLI surface
+- any authoring layer must compile down to current manifest/runtime truth rather than replace it
+
 ### Suggested Subtasks
 
 - [ ] Write a source-of-truth matrix for Rust types, manifests, WIT, and docs.
@@ -125,6 +147,18 @@ planning, and governance in the order they become believable.
 2. Pick one candidate and explain why the others remain deferred.
 3. Define the minimum approval, evidence, retry, and idempotency requirements before implementation begins.
 4. Keep the output docs-first until the runtime path is proven.
+
+### Candidate Ordering
+
+Use this ordering unless the support frontier changes materially:
+
+1. `cache purge with evidence trail`
+2. rollback-and-annotate
+3. restart-and-notify
+
+The hero example stays above those mutation candidates as the long-term
+operator story, but it is not the first action slice because it implies a
+broader support surface.
 
 ### Suggested Subtasks
 
@@ -238,6 +272,19 @@ planning, and governance in the order they become believable.
 3. Define the smallest believable next progression after `#130`.
 4. Keep the chosen path aligned with current runtime truth and existing examples.
 
+### Candidate Progression
+
+Use this support classification when triaging future reference playbooks:
+
+| Candidate | Support level now | Why |
+| --- | --- | --- |
+| diagnose -> restart -> notify | docs-first hero example with real inspect bridge | the review half is real now; restart and notify are not |
+| rollback -> verify -> annotate incident | docs-first | legible follow-on, but broader mutation surface than the current starter path |
+| cache purge with evidence trail | docs-first and mutation-demo candidate | narrowest believable trust-heavy mutation slice |
+| cert renewal -> endpoint validation -> notify | deferred until apply | action surface and verification boundaries are not yet honest runtime truth |
+| node remediation -> cordon -> drain -> verify recovery | deferred until apply | higher blast radius than the current phase supports |
+| secret rotation with approval gate and receipts | deferred until apply | secrets and propagation checks stay later-phase |
+
 ### Suggested Subtasks
 
 - [ ] Build the candidate matrix with support-level classification.
@@ -277,3 +324,52 @@ planning, and governance in the order they become believable.
 
 - `git diff --check`
 - consistency review against trust docs, `guild why`, and stored execution/evidence resources
+
+## Imported Strategy Intake
+
+The imported repositioning stack is planning input, not automatic product
+truth. Its durable guidance now lives here so the repo does not need a second
+parallel strategy directory.
+
+### Adoption Rules
+
+- Treat imported strategy as planning input, not runtime truth.
+- Keep already-completed M1 work closed unless the repo needs new code or docs.
+- Absorb overlapping M2-M4 work into the active issue set instead of creating another roadmap.
+- Reject imported assumptions that overstate the current support frontier.
+
+### Imported Assumption Review
+
+| Imported assumption | Current disposition | Tracking |
+| --- | --- | --- |
+| Keep `SKILL.md` canonical | not adopted literally | `#131` |
+| Add a friendlier Guild authoring layer | accepted with guardrails | `#131` |
+| Package curated starter packs now | accepted in narrower form | `#130`, `#136`, `#137` |
+| Differentiate on trust primitives | accepted | `#132`, `#133`, `#138`, `#134` |
+| Aim at ops / platform / security teams first | accepted | current project positioning |
+
+### Milestone Mapping
+
+| Imported milestone | Current tracker status | GitHub issues |
+| --- | --- | --- |
+| M1. Make Guild Legible | largely complete | closed `#86` through `#120` |
+| M2. Make Guild Installable and Useful | active | `#130`, `#131`, `#136`, `#137` |
+| M3. Make Guild Trustworthy and Differentiated | sequenced after M2 | `#132`, `#133`, `#138`, parts of `#134` |
+| M4. Make Guild Adoptable by Teams | later-phase planning | `#134` |
+
+### Imported Epic And Task Mapping
+
+| Imported work | Current disposition | Active tracking |
+| --- | --- | --- |
+| EPIC-01 and M1 wording reset tasks `GR-001` through `GR-008` | completed overlap | closed `#86` through `#120` |
+| EPIC-03 authoring/schema tasks `GR-009` through `GR-013` | bounded evaluation only | `#131` |
+| EPIC-04 packaging/install tasks `GR-014` through `GR-018` | direct overlap on current transport flows | `#136` and starter quickstart follow-on in `#130` |
+| EPIC-05 starter-pack/reference-playbook tasks `GR-019` through `GR-026` | split into current starter, progression planning, and later mutation planning | `#130`, `#137`, `#132` |
+| EPIC-06 receipt/policy/replay tasks `GR-027` through `GR-032` | partly already shipped, partly later planning | `#138`, `#132`, `#134` |
+| EPIC-07 verification tasks `GR-033` through `GR-036` | direct overlap | `#133` |
+| EPIC-08 governance tasks `GR-037` through `GR-040` | direct overlap | `#134` |
+
+### Cleanup Outcome
+
+The repo-side cleanup formerly tracked in `#139` is complete once the imported
+strategy directory is removed and the canonical docs/issues point here instead.

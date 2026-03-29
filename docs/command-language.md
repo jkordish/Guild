@@ -5,12 +5,10 @@ This document is the source of truth for Guild's public command and URI grammar 
 It is not the runtime-contract source of truth; see `SPECS.md` section "Source Of Truth".
 For the frozen runtime URI roots and support vocabulary in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
 For current project framing, see [`project-positioning.md`](project-positioning.md).
-For canonical operator-facing vocabulary, use
-[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
-For the canonical operator-facing capability vocabulary, use
-[`strategy/guild-repositioning/03-capability-taxonomy-v1.md`](strategy/guild-repositioning/03-capability-taxonomy-v1.md).
+`project-positioning.md` also carries the canonical operator-facing vocabulary
+and capability language for this phase.
 The current command surface still uses the live internal family names in help
-and `guild grants template`; the taxonomy doc is the docs and approval
+and `guild grants template`; the positioning doc is the docs and approval
 vocabulary in this phase, not a command rename.
 
 ## Install And Run

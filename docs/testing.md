@@ -8,9 +8,8 @@ proof suites, start with
 [`trust-proof-walkthrough.md`](trust-proof-walkthrough.md).
 
 For the current project framing and first-reference-application thesis, see
-[`project-positioning.md`](project-positioning.md). For canonical
-operator-facing vocabulary, use
-[`strategy/guild-repositioning/02-glossary-and-banned-terms.md`](strategy/guild-repositioning/02-glossary-and-banned-terms.md).
+[`project-positioning.md`](project-positioning.md). That doc also carries the
+canonical operator-facing vocabulary and capability language for this phase.
 
 The source-of-truth declaration lives in `SPECS.md` section "Source Of Truth".
 For the frozen runtime-contract surfaces in this milestone, use `SPECS.md` section "Contract Surface v1 (core)" rather than treating this testing guide as a parallel source.

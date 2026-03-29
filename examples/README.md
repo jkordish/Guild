@@ -50,28 +50,43 @@ The concrete runtime path still uses bounded `read-resource` grants and, for
 the report-formatting parent skills, a bounded `invoke-skill` alias for the
 zero-authority formatter child.
 
-## Reference Playbook Anchors
+## Reference Playbook Progression
 
-The approved operator-facing reference playbook set lives in
-[`../docs/strategy/guild-repositioning/07-reference-playbooks.md`](../docs/strategy/guild-repositioning/07-reference-playbooks.md).
+The approved operator-facing reference playbook set for this phase is:
 
-Use that doc when you want to see which operational workflows Guild should lead
-with over time: restart and notify, rollback and verify, cache purge, cert
-renewal, node remediation, and secret rotation.
+| Playbook | Outcome | Current status |
+| --- | --- | --- |
+| diagnose service -> restart workload -> notify on-call | restore a degraded service after collecting basic evidence | hero example; inspect/verify path is real now, restart/notify remain docs-first |
+| roll back deployment -> verify health -> annotate incident | reverse a bad release with a visible trust chain | docs-first candidate after the starter path is stable |
+| cache purge with evidence trail | invalidate stale edge content and prove what changed | leading narrow mutation-demo candidate |
+| certificate renewal -> endpoint validation -> notify | rotate expiring cert material and verify endpoint health | deferred until broader action support is believable |
+| node remediation -> cordon -> drain -> verify recovery | isolate a bad node and verify workload recovery | deferred until apply-mode/runtime support grows |
+| secret rotation with approval gate and receipts | rotate a secret, verify propagation, preserve an audit trail | deferred until apply-mode/runtime support grows |
 
-Today's examples are the current runnable bridge into that story, not a claim
-that every reference playbook already ships as a first-class workflow:
+Today's examples are the runnable bridge into that story, not a claim that all
+of those playbooks already ship as first-class workflows:
 
-- Guild Ops Starter is the current strongest bridge because it already teaches
-  trusted local operational review over stored receipts, bounded queries, and
-  evidence records.
-- The current first hero example plan lives in
-  [`../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md`](../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md)
-  and keeps that future action-heavy story tied to today's support frontier.
-- The example inventory is strongest today at read-only review workflows such
-  as `runs:inspect`, `runs:compare`, `failures:query`, and `evidence:inspect`.
-- The action-heavy playbooks in the reference set stay docs-first until they
-  fit the current runtime and capability frontier honestly.
+- Guild Ops Starter is the strongest bridge because it already teaches trusted local operational review over stored receipts, bounded queries, and evidence records.
+- The current hero example is still `diagnose service -> restart workload -> notify on-call`, but only the diagnose and verify side is real now.
+- The example inventory is strongest today at read-only review workflows such as `runs:inspect`, `runs:compare`, `failures:query`, and `evidence:inspect`.
+- Action-heavy playbooks stay docs-first until they fit the current runtime and capability frontier honestly.
+
+## Hero Example Boundary
+
+The first hero example should keep one legible operator story tied to today's
+repo truth:
+
+- review what a workflow is allowed to do before it runs
+- inspect one stored execution and its nearby refs
+- produce one bounded casefile from exact durable refs
+- treat restart and notify as future action steps rather than implied shipped behavior
+
+That is why the current runnable bridge remains:
+
+- `guild why <execution>`
+- `guild why --lineage <execution>`
+- `guild run incident-casefile@^0.1 ...`
+- optional drill-down via `incident-brief`, `run-diff`, `recent-failures`, and `evidence-summary`
 
 ## User Journeys
 

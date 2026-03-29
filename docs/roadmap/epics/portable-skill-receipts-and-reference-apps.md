@@ -8,6 +8,9 @@ core Rust runtime/types.
 
 Execution-ready guidance for the open follow-on GitHub issue set lives in
 [`portable-skill-receipts-and-reference-apps-execution-guide.md`](portable-skill-receipts-and-reference-apps-execution-guide.md).
+That execution guide now also absorbs the imported repositioning milestone,
+epic, and task mapping so the repo does not need a separate strategy stack for
+tracker intake.
 
 ## Summary
 

@@ -18,17 +18,14 @@ story.
 > Status: pre-alpha.
 >
 > For the current project framing, start with
-> [`docs/project-positioning.md`](docs/project-positioning.md). For canonical
-> operator-facing vocabulary, use
-> [`docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md`](docs/strategy/guild-repositioning/02-glossary-and-banned-terms.md).
-> For the canonical operator-facing capability vocabulary, use
-> [`docs/strategy/guild-repositioning/03-capability-taxonomy-v1.md`](docs/strategy/guild-repositioning/03-capability-taxonomy-v1.md).
-> For the current playbook surface and the playbook-to-skill composition
-> boundary, use
-> [`docs/strategy/guild-repositioning/04-playbook-surface-v1.md`](docs/strategy/guild-repositioning/04-playbook-surface-v1.md).
-> Current CLI help, manifests, and `guild grants template` still use the live
-> internal family names; the taxonomy doc is the operator-facing approval
-> vocabulary in this phase.
+> [`docs/project-positioning.md`](docs/project-positioning.md). That doc now
+> carries the canonical operator-facing vocabulary and capability language for
+> this phase. For the current playbook-facing explanation of how those terms
+> map onto today’s skill-driven runtime, use
+> [`docs/how-guild-works.md`](docs/how-guild-works.md). Current CLI help,
+> manifests, and `guild grants template` still use the live internal family
+> names; the positioning doc is the operator-facing approval vocabulary in this
+> phase.
 >
 > Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
 >
@@ -310,10 +307,9 @@ story. The current user-facing example set lives at
 The shortest current starter path lives at
 [`docs/guild-ops-starter-quickstart.md`](docs/guild-ops-starter-quickstart.md).
 The surrounding examples index lives at [`examples/README.md`](examples/README.md).
-The approved reference playbook set and current first hero example plan live at
-[`docs/strategy/guild-repositioning/07-reference-playbooks.md`](docs/strategy/guild-repositioning/07-reference-playbooks.md)
-and
-[`docs/strategy/guild-repositioning/09-hero-reference-example-plan.md`](docs/strategy/guild-repositioning/09-hero-reference-example-plan.md).
+The examples docs now also carry the approved reference playbook set and the
+current hero-example boundary without depending on a separate strategy
+directory.
 
 It is intentionally ordinary example-skill layout, not a new packaging system.
 The starter story now centers one primary read-only artifact plus focused

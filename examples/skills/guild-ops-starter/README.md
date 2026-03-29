@@ -11,21 +11,43 @@ ordinary example skills under `examples/skills/`.
 
 ## Reference Playbook Fit
 
-The approved reference playbook set lives in
-[`../../../docs/strategy/guild-repositioning/07-reference-playbooks.md`](../../../docs/strategy/guild-repositioning/07-reference-playbooks.md).
-This starter is the current read-only bridge into that story, especially for:
+This starter is the current read-only bridge into the reference-playbook story,
+especially for:
 
 - `diagnose service -> restart pods -> notify on-call`
 - `rollback deployment -> verify health -> annotate incident`
 
-The current first hero example plan lives in:
+Guild Ops Starter currently covers the inspect, compare, query, and
+evidence-review side of those workflows. It does not yet execute restart,
+rollback, incident-write, or notification steps.
 
-- [`../../../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md`](../../../docs/strategy/guild-repositioning/09-hero-reference-example-plan.md)
+Treat the current hero-example boundary like this:
 
-That plan keeps the action-heavy story honest. Guild Ops Starter currently
-covers the inspect, compare, query, and evidence-review side of those
-workflows. It does not yet execute restart, rollback, incident-write, or
-notification steps.
+- operator intent: diagnose and verify one operational incident from durable refs
+- current runnable path: `guild why`, `guild why --lineage`, then `guild run incident-casefile@^0.1 ...`
+- docs-first future action steps: restart, rollback, and notify flows
+
+That keeps the action-heavy story honest while still letting the docs describe
+where the starter path is headed.
+
+## Playbook Translation Boundary
+
+When maintainers describe Guild Ops Starter in playbook terms, the wording can
+change in these narrow ways:
+
+- the starter reads as one operator-facing playbook family rather than just a collection of example skills
+- the README journey map reads like playbook intent: explain one run, compare two runs, scan failures, inspect evidence
+- operator-facing capability names such as `runs:inspect` and `failures:query` become the review language a future playbook surface would show first
+- the installed skills become reusable execution steps that a future playbook layer could point at
+
+What does not change underneath:
+
+- Guild Ops Starter is still a small set of ordinary installed skills
+- each referenced skill still resolves to immutable installed executable identity before execution
+- caller-requested authority is still narrowed by host-owned policy before guest start
+- the live grant JSON still uses the current internal family names such as `read-resource` and `invoke-skill`
+- durable execution receipts and evidence records still live at the underlying skill execution layer
+- `render-report` remains a bounded zero-authority formatter child, not a workflow engine
 
 ## Start Here
 

@@ -6134,27 +6134,31 @@ fn follow_on_execution_guides_cover_every_open_issue() {
 }
 
 #[test]
-fn repositioning_tracker_crosswalk_processes_imported_stack() {
-    let readme =
-        fs::read_to_string(repo_root().join("docs/strategy/guild-repositioning/README.md"))
-            .unwrap();
-    let crosswalk = fs::read_to_string(
-        repo_root().join("docs/strategy/guild-repositioning/11-tracker-crosswalk.md"),
+fn execution_guide_processes_imported_strategy_stack() {
+    let epic_doc = fs::read_to_string(
+        repo_root()
+            .join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md"),
+    )
+    .unwrap();
+    let guide = fs::read_to_string(
+        repo_root()
+            .join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md"),
     )
     .unwrap();
 
-    assert!(readme.contains("11-tracker-crosswalk.md"));
+    assert!(epic_doc.contains("absorbs the imported repositioning milestone"));
 
     for phrase in [
-        "## Imported Assumption Review",
-        "## Milestone Crosswalk",
-        "## Epic Crosswalk",
-        "## Task Crosswalk",
-        "## Current Canonical Issue Set",
+        "## Imported Strategy Intake",
+        "### Adoption Rules",
+        "### Imported Assumption Review",
+        "### Milestone Mapping",
+        "### Imported Epic And Task Mapping",
+        "### Cleanup Outcome",
     ] {
         assert!(
-            crosswalk.contains(phrase),
-            "tracker crosswalk is missing required section: {phrase}"
+            guide.contains(phrase),
+            "execution guide is missing imported-strategy section: {phrase}"
         );
     }
 
@@ -6163,16 +6167,14 @@ fn repositioning_tracker_crosswalk_processes_imported_stack() {
         "M2. Make Guild Installable and Useful",
         "M3. Make Guild Trustworthy and Differentiated",
         "M4. Make Guild Adoptable by Teams",
-        "EPIC-01",
-        "EPIC-08",
         "GR-001",
         "GR-040",
         "#129",
         "#139",
     ] {
         assert!(
-            crosswalk.contains(marker),
-            "tracker crosswalk is missing imported-stack marker: {marker}"
+            guide.contains(marker),
+            "execution guide is missing imported-strategy marker: {marker}"
         );
     }
 }
@@ -6772,25 +6774,29 @@ fn trust_policy_glossary_stays_canonical_across_help_and_docs() {
 }
 
 #[test]
-fn repositioning_docs_keep_the_glossary_as_the_language_entrypoint() {
-    let north_star =
-        fs::read_to_string(repo_root().join("docs/strategy/guild-repositioning/00-north-star.md"))
-            .unwrap();
-    assert!(north_star.contains("02-glossary-and-banned-terms.md"));
+fn project_positioning_keeps_language_and_capability_guidance_canonical() {
+    let positioning =
+        fs::read_to_string(repo_root().join("docs/project-positioning.md")).unwrap();
     assert!(
-        north_star.contains("canonical operator-facing vocabulary and user-facing language source")
+        positioning.contains("## Canonical Operator Vocabulary")
     );
-    assert!(north_star.contains("does not rename"));
-    assert!(north_star.contains("runtime contracts"));
-    assert!(north_star.contains("Rust types"));
-    assert!(north_star.contains("WIT surfaces"));
+    assert!(positioning.contains("## Terms To Avoid As Primary Framing"));
+    assert!(positioning.contains("## Operator-Facing Capability Vocabulary"));
+    assert!(positioning.contains("Guild lets ops, platform, and security teams run trusted playbooks"));
+    assert!(positioning.contains("The taxonomy is docs and approval vocabulary in this phase"));
+    assert!(positioning.contains("Current operator-facing examples that map cleanly to the live repo truth"));
+    assert!(positioning.contains("Docs-first target names that are useful for planning"));
 
-    let backlog =
-        fs::read_to_string(repo_root().join("docs/strategy/guild-repositioning/tasks.md")).unwrap();
-    assert!(backlog.contains("02-glossary-and-banned-terms.md"));
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(readme.contains("docs/project-positioning.md"));
     assert!(
-        backlog.contains("canonical operator-facing vocabulary and user-facing language source")
+        readme.contains("canonical operator-facing vocabulary and capability language")
     );
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    assert!(command_language.contains("project-positioning.md"));
+    assert!(command_language.contains("canonical operator-facing vocabulary"));
 }
 
 #[test]
