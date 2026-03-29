@@ -521,6 +521,7 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 - `docs/mcp-agent-recipes.md` - task-shaped MCP recipes for agent users and integrators
 - `docs/command-language.md` - public CLI verbs, grouped workflows, and ref grammar
 - `docs/mirroring-and-promotion.md` - current operator guidance for mirroring and promoting signed installed-state artifacts
+- `docs/authoring-layer-guardrails.md` - compile-down rules for future authoring ergonomics without creating a second contract surface
 - `docs/testing.md` - verification commands, proof workflows, and smoke paths
 - `SPECS.md` - normative contract and conformance language
 - `ARCHITECTURE.md` - practical system view and trust boundaries

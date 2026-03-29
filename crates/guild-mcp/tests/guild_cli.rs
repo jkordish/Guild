@@ -6396,6 +6396,63 @@ fn execution_guide_keeps_issue_136_packaging_follow_on_honest() {
 }
 
 #[test]
+fn execution_guide_keeps_issue_131_authoring_guardrails_honest() {
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+
+    for phrase in [
+        "## Issue #131: Authoring-Layer Guardrails",
+        "### Current Docs-First Outcome",
+        "### Current Default Classification For Candidate Authoring Metadata",
+        "### Compile-Down Guardrails",
+        "### Explicit Out-Of-Scope Boundary",
+        "it classifies future authoring metadata as advisory, derived, or normative",
+        "it keeps `SKILL.md` and proposed YAML authoring files as advisory inputs unless and until they compile down into today's manifest, WIT, Rust, and spec truth",
+        "if a proposed field changes runtime behavior but cannot compile down exactly, it should fail closed rather than inventing hidden semantics",
+        "this does not introduce a new `v1alpha1` contract surface",
+        "this does not let authoring metadata compete with Rust, manifests, WIT, or `SPECS.md`",
+        "- [x] Write a source-of-truth matrix for Rust types, manifests, WIT, and docs.",
+        "- [x] Add anti-goals that forbid contract duplication.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide issue #131 authoring guidance drifted: missing `{phrase}`"
+        );
+    }
+
+    let doc = fs::read_to_string(repo_root().join("docs/authoring-layer-guardrails.md")).unwrap();
+    let normalized_doc = normalize_whitespace(&doc);
+
+    for phrase in [
+        "# Authoring Layer Guardrails",
+        "## Source-Of-Truth Matrix",
+        "## Classification Rubric",
+        "## Compile-Down Boundary",
+        "## Failure Modes To Keep Explicit",
+        "## Anti-Goals",
+        "Docs are not one undifferentiated class.",
+        "`SPECS.md` is the normative human-facing contract,",
+        "runtime-consumed contract surfaces,",
+        "Current default classification for candidate authoring metadata is narrow:",
+        "If a field changes runtime behavior, it must compile down into current manifest, WIT, or Rust truth that the runtime already validates.",
+        "If a field cannot compile down exactly, the authoring layer should fail closed instead of inventing hidden semantics.",
+        "Do not let `SKILL.md` or future YAML authoring inputs become runtime truth by inertia.",
+        "a new `v1alpha1` contract surface",
+        "runtime support for authoring metadata that competes with Rust, manifests, WIT, or `SPECS.md`",
+        "without ambiguity about what the runtime actually trusts.",
+    ] {
+        assert!(
+            normalized_doc.contains(&normalize_whitespace(phrase)),
+            "authoring-layer guardrails doc drifted: missing `{phrase}`"
+        );
+    }
+}
+
+#[test]
 fn mirroring_doc_keeps_install_surface_layered_on_preview_and_verify() {
     let doc = fs::read_to_string(repo_root().join("docs/mirroring-and-promotion.md")).unwrap();
     let normalized_doc = normalize_whitespace(&doc);
