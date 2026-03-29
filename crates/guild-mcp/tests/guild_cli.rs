@@ -6373,6 +6373,29 @@ fn mutation_demo_docs_choose_one_target_and_keep_apply_honest() {
 }
 
 #[test]
+fn umbrella_epic_guide_stays_synchronized_with_tracker_closeout() {
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+
+    for phrase in [
+        "## Issue #129: Portable Skill Receipts And Reference Playbooks Follow-On Program",
+        "- [x] Keep the child-issue list current in the roadmap epic doc and GitHub epic body.",
+        "- [x] Reclassify any child issue that broadens support without matching runtime proof.",
+        "- [x] Record deliberate deferrals instead of leaving them implied.",
+        "Do not let the umbrella drift into a generic workflow-engine, marketplace, or hosted-control-plane story.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide issue #129 closeout drifted: missing `{phrase}`"
+        );
+    }
+}
+
+#[test]
 fn execution_guide_processes_imported_strategy_stack() {
     let epic_doc = fs::read_to_string(
         repo_root().join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md"),

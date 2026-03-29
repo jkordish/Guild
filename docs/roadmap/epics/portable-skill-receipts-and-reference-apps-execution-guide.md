@@ -46,9 +46,9 @@ planning, and governance in the order they become believable.
 
 ### Suggested Subtasks
 
-- [ ] Keep the child-issue list current in the roadmap epic doc and GitHub epic body.
-- [ ] Reclassify any child issue that broadens support without matching runtime proof.
-- [ ] Record deliberate deferrals instead of leaving them implied.
+- [x] Keep the child-issue list current in the roadmap epic doc and GitHub epic body.
+- [x] Reclassify any child issue that broadens support without matching runtime proof.
+- [x] Record deliberate deferrals instead of leaving them implied.
 
 ### Validation
 
