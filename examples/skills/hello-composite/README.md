@@ -87,6 +87,18 @@ Both execution records carry host-stamped timestamps, and the child lineage is p
 6. resolves `skill://example/hello-composite@^0.1`
 7. executes the parent and child entirely from pulled installed records
 
+Across those closure-bundle, OCI-layout, and OCI-registry proofs, keep the
+operator review loop in this order:
+
+- `guild import bundle ... --preview`, `guild import oci-layout ... --preview`, or `guild pull ... --preview`
+- the matching real `guild import ...` or `guild pull ...` command
+- `guild verify -v <skill-ref>`
+
+That review loop stays on host-owned trust and verification truth. It is not a
+separate pack browser, and any future curated install view should remain a
+presentation layer over those same surfaces rather than becoming a new pack
+type or marketplace contract.
+
 The working example uses:
 
 - `invoke-skill` with the declared alias `hello`

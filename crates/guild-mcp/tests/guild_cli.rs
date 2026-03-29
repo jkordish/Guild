@@ -6332,6 +6332,51 @@ fn mirroring_doc_keeps_install_surface_layered_on_preview_and_verify() {
     }
 }
 
+#[test]
+fn example_transport_docs_keep_install_review_layered_on_preview_and_verify() {
+    let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
+    let normalized_examples_index = normalize_whitespace(&examples_index);
+
+    for phrase in [
+        "Keep the current install-review loop explicit:",
+        "`guild import ... --preview` or `guild pull ... --preview`",
+        "`guild import ...` or `guild pull ...`",
+        "`guild verify -v <skill-ref>`",
+        "Any future curated install view should stay a presentation layer over those existing trust and compatibility surfaces rather than becoming a new pack type or marketplace contract.",
+    ] {
+        assert!(
+            normalized_examples_index.contains(&normalize_whitespace(phrase)),
+            "examples/README.md transport guidance drifted: missing `{phrase}`"
+        );
+    }
+
+    for (path, label) in [
+        (
+            "examples/skills/hello-inspect/README.md",
+            "hello-inspect transport README",
+        ),
+        (
+            "examples/skills/hello-composite/README.md",
+            "hello-composite transport README",
+        ),
+    ] {
+        let contents = fs::read_to_string(repo_root().join(path)).unwrap();
+        let normalized_contents = normalize_whitespace(&contents);
+
+        for phrase in [
+            "`guild import bundle ... --preview`, `guild import oci-layout ... --preview`, or `guild pull ... --preview`",
+            "the matching real `guild import ...` or `guild pull ...` command",
+            "`guild verify -v <skill-ref>`",
+            "any future curated install view should remain a presentation layer over those same surfaces rather than becoming a new pack type or marketplace contract.",
+        ] {
+            assert!(
+                normalized_contents.contains(&normalize_whitespace(phrase)),
+                "{label} drifted: missing `{phrase}`"
+            );
+        }
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 #[test]
 fn journey_docs_stay_centered_on_user_workflows() {
@@ -6411,6 +6456,8 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(examples_index.contains("guild ls evidence --limit 5"));
     assert!(examples_index.contains("guild grants template"));
     assert!(examples_index.contains("Keep starting with the native CLI:"));
+    assert!(examples_index.contains("Keep the current install-review loop explicit:"));
+    assert!(examples_index.contains("guild verify -v <skill-ref>"));
     assert!(
         examples_index
             .contains("For narrower authority and policy debugging after that native CLI path")
@@ -6423,6 +6470,18 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(hello_readme.contains(" show skill://example/hello-inspect@^0.1"));
     assert!(hello_readme.contains(" why exec:<execution-id-prefix>"));
     assert!(hello_readme.contains(" verify skill://example/hello-inspect@^0.1"));
+    assert!(hello_readme.contains("guild import bundle ... --preview"));
+    assert!(hello_readme.contains("guild import oci-layout ... --preview"));
+    assert!(hello_readme.contains("guild pull ... --preview"));
+    assert!(hello_readme.contains("guild verify -v <skill-ref>"));
+
+    let composite_readme =
+        fs::read_to_string(repo_root().join("examples/skills/hello-composite/README.md"))
+            .unwrap();
+    assert!(composite_readme.contains("guild import bundle ... --preview"));
+    assert!(composite_readme.contains("guild import oci-layout ... --preview"));
+    assert!(composite_readme.contains("guild pull ... --preview"));
+    assert!(composite_readme.contains("guild verify -v <skill-ref>"));
 
     let explain_readme =
         fs::read_to_string(repo_root().join("examples/skills/explain-execution/README.md"))

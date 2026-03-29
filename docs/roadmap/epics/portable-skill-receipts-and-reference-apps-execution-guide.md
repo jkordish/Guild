@@ -311,10 +311,10 @@ For this phase, keep the split below explicit:
 
 ### Suggested Subtasks
 
-- [ ] Write the current-state packaging map.
-- [ ] Identify the minimum compatibility metadata needed for curated-pack installs.
-- [ ] Clarify what packaging work is docs-only versus code-follow-on.
-- [ ] Add anti-goals that rule out marketplace language.
+- [x] Write the current-state packaging map.
+- [x] Identify the minimum compatibility metadata needed for curated-pack installs.
+- [x] Clarify what packaging work is docs-only versus code-follow-on.
+- [x] Add anti-goals that rule out marketplace language.
 
 ### Validation
 
