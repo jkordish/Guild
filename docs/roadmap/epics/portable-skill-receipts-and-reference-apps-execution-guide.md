@@ -77,7 +77,8 @@ planning, and governance in the order they become believable.
 Keep the current progression explicit:
 
 - real now: incident-casefile-first operational review over stored refs
-- docs-first next: restart-and-notify and rollback-and-annotate playbook stories
+- docs-first next: `service-recovery review pack`
+- secondary docs-first concept kept visible: `rollback verification pack`
 - likely first mutation-demo candidate: `cache purge with evidence trail`
 - deferred until broader action support: certificate rotation, node remediation, and secret rotation flows
 

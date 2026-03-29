@@ -6278,6 +6278,12 @@ fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
             "execution guide starter-pack progression drifted: missing `{phrase}`"
         );
     }
+    assert!(
+        !normalized_guide.contains(&normalize_whitespace(
+            "docs-first next: restart-and-notify and rollback-and-annotate playbook stories"
+        )),
+        "execution guide reintroduced the superseded docs-first next progression wording"
+    );
 
     let examples_index = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
     let normalized_examples_index = normalize_whitespace(&examples_index);
