@@ -351,6 +351,34 @@ Use this support classification when triaging future reference playbooks:
 | node remediation -> cordon -> drain -> verify recovery | deferred until apply | higher blast radius than the current phase supports |
 | secret rotation with approval gate and receipts | deferred until apply | secrets and propagation checks stay later-phase |
 
+### Chosen Next Progression
+
+The next believable progression after `#130` is a docs-first
+`service-recovery review pack`.
+
+Keep that choice bounded like this:
+
+- It stays on current read-only runtime truth: one subject execution, one
+  comparison execution, one bounded failures query, and optional evidence
+  review rendered through the existing casefile and drill-down skills.
+- It keeps the current hero story visible in honest terms: diagnose and verify
+  are real now, while restart and notify remain future action steps rather than
+  starter-pack claims.
+- It is closer to current shipped surfaces than a rollback or cache-mutation
+  story, so it is the sensible docs-first progression immediately after Guild
+  Ops Starter.
+
+Keep one secondary docs-first concept visible too:
+
+- `rollback verification pack`: use the same read-only explain, compare, and
+  evidence surfaces to frame the review half of rollback work, while rollback
+  and incident annotation remain deferred actions.
+
+Keep the first plausible next implementation candidate explicit:
+
+- `cache purge with evidence trail` remains the leading mutation-demo candidate
+  once later work (`#132`) chooses the first honest apply-oriented slice.
+
 ### Suggested Subtasks
 
 - [ ] Build the candidate matrix with support-level classification.

@@ -71,6 +71,29 @@ of those playbooks already ship as first-class workflows:
 - The example inventory is strongest today at read-only review workflows such as `runs:inspect`, `runs:compare`, `failures:query`, and `evidence:inspect`.
 - Action-heavy playbooks stay docs-first until they fit the current runtime and capability frontier honestly.
 
+## What Comes Next After Guild Ops Starter
+
+The next believable progression after Guild Ops Starter is a docs-first
+`service-recovery review pack`.
+
+That progression stays honest because it still uses the current read-only
+surfaces we already ship:
+
+- inspect one subject run
+- compare one prior or neighboring run
+- summarize one bounded recent-failures query
+- inspect one concrete evidence record
+- render one compact casefile or drill-down report before any future action step
+
+Use this support classification when deciding what stays visible:
+
+| Concept | Current status | Why it stays honest |
+| --- | --- | --- |
+| service-recovery review pack | docs-first next progression | keeps the hero story visible while staying on today's casefile, compare, query, and evidence-review surfaces; restart and notify remain future action steps |
+| rollback verification pack | docs-first visible concept | the review half fits current explain/diff/evidence paths, but rollback and incident annotation are still deferred actions |
+| cache purge with evidence trail | first plausible next implementation candidate | narrowest mutation-oriented concept once later apply work is ready, but not a current starter-pack claim |
+| cert renewal, node remediation, and secret rotation packs | deferred until apply | they need broader action, approval, audit, or high-blast-radius support than this phase can claim honestly |
+
 ## Hero Example Boundary
 
 The first hero example should keep one legible operator story tied to today's

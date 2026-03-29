@@ -135,6 +135,13 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
         "examples/skills/guild-ops-starter/README.md",
         &[
             "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain, not the whole product story.",
+            "The next believable progression after this starter is a docs-first `service-recovery review pack`.",
+        ],
+    ),
+    (
+        "examples/README.md",
+        &[
+            "The next believable progression after Guild Ops Starter is a docs-first `service-recovery review pack`.",
         ],
     ),
 ];
