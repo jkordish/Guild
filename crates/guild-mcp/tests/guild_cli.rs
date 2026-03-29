@@ -6248,7 +6248,8 @@ fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
         "The current bounded progression after Guild Ops Starter is:",
         "docs-first next progression: `service-recovery review pack`",
         "secondary docs-first concept kept visible: `rollback verification pack`",
-        "first plausible later implementation candidate: `cache purge with evidence trail`",
+        "chosen first honest mutation demo target: `cache purge with evidence trail`",
+        "fallback mutation demo if the first target stalls: `rollback-and-annotate`",
     ] {
         assert!(
             normalized_epic_doc.contains(&normalize_whitespace(phrase)),
@@ -6293,6 +6294,8 @@ fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
         "service-recovery review pack",
         "rollback verification pack",
         "cache purge with evidence trail",
+        "chosen first honest mutation demo target",
+        "rollback-and-annotate` remains the fallback",
         "not a current starter-pack claim",
     ] {
         assert!(
@@ -6311,11 +6314,60 @@ fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
         "service-recovery review pack",
         "rollback verification pack",
         "cache purge with evidence trail",
+        "chosen first honest mutation demo target",
+        "rollback-and-annotate` remains the fallback",
         "restart and notify remain future action steps",
     ] {
         assert!(
             normalized_ops_pack.contains(&normalize_whitespace(phrase)),
             "Guild Ops Starter README progression drifted: missing `{phrase}`"
+        );
+    }
+}
+
+#[test]
+fn mutation_demo_docs_choose_one_target_and_keep_apply_honest() {
+    let decision =
+        fs::read_to_string(repo_root().join("docs/first-honest-mutation-demo.md")).unwrap();
+    let normalized_decision = normalize_whitespace(&decision);
+    for phrase in [
+        "# First Honest Mutation Demo",
+        "apply mode remains globally gated until audit and approval paths exist",
+        "cache purge with evidence trail",
+        "rollback-and-annotate",
+        "restart-and-notify",
+        "Preferred target:",
+        "Fallback if the cache-specific path stalls:",
+        "every purge request must carry an explicit approval or policy decision",
+        "the request must require a caller-supplied idempotency key",
+        "only ambiguous transport or provider failures may be retried automatically",
+        "the durable receipt must record the requested mutation intent",
+    ] {
+        assert!(
+            normalized_decision.contains(&normalize_whitespace(phrase)),
+            "mutation demo decision doc drifted: missing `{phrase}`"
+        );
+    }
+
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+    for phrase in [
+        "### Current Docs-First Outcome",
+        "docs/first-honest-mutation-demo.md",
+        "it chooses `cache purge with evidence trail` as the first honest mutation-demo target",
+        "it keeps `rollback-and-annotate` as the fallback",
+        "- [x] Write the candidate comparison matrix.",
+        "- [x] Choose one preferred mutation demo and one fallback.",
+        "- [x] Define the approval and idempotency invariants for that demo.",
+        "- [x] Record the reasons broader actions remain deferred.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "mutation demo execution guide drifted: missing `{phrase}`"
         );
     }
 }

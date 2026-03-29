@@ -61,7 +61,7 @@ The approved operator-facing reference playbook set for this phase is:
 | --- | --- | --- |
 | diagnose service -> restart workload -> notify on-call | restore a degraded service after collecting basic evidence | hero example; inspect/verify path is real now, restart/notify remain docs-first |
 | roll back deployment -> verify health -> annotate incident | reverse a bad release with a visible trust chain | docs-first candidate after the starter path is stable |
-| cache purge with evidence trail | invalidate stale edge content and prove what changed | leading narrow mutation-demo candidate |
+| cache purge with evidence trail | invalidate stale edge content and prove what changed | chosen first honest mutation-demo target; still docs-first until apply exists |
 | certificate renewal -> endpoint validation -> notify | rotate expiring cert material and verify endpoint health | deferred until broader action support is believable |
 | node remediation -> cordon -> drain -> verify recovery | isolate a bad node and verify workload recovery | deferred until apply-mode/runtime support grows |
 | secret rotation with approval gate and receipts | rotate a secret, verify propagation, preserve an audit trail | deferred until apply-mode/runtime support grows |
@@ -94,7 +94,7 @@ Use this support classification when deciding what stays visible:
 | --- | --- | --- |
 | service-recovery review pack | docs-first next progression | keeps the hero story visible while staying on today's casefile, compare, query, and evidence-review surfaces; restart and notify remain future action steps |
 | rollback verification pack | docs-first visible concept | the review half fits current explain/diff/evidence paths, but rollback and incident annotation are still deferred actions |
-| cache purge with evidence trail | first plausible next implementation candidate | narrowest mutation-oriented concept once later apply work is ready, but not a current starter-pack claim |
+| cache purge with evidence trail | chosen first honest mutation demo target | selected later mutation target once apply readiness lands; `rollback-and-annotate` remains the fallback, and this is still not a current starter-pack claim |
 | cert renewal, node remediation, and secret rotation packs | deferred until apply | they need broader action, approval, audit, or high-blast-radius support than this phase can claim honestly |
 
 ## Hero Example Boundary

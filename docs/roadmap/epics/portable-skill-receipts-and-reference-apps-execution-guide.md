@@ -200,6 +200,21 @@ visible here without becoming implied commitments:
 3. Define the minimum approval, evidence, retry, and idempotency requirements before implementation begins.
 4. Keep the output docs-first until the runtime path is proven.
 
+### Current Docs-First Outcome
+
+The current bounded output for this issue is
+[`docs/first-honest-mutation-demo.md`](../../../docs/first-honest-mutation-demo.md).
+That note keeps the choice and boundary fail-closed:
+
+- it chooses `cache purge with evidence trail` as the first honest
+  mutation-demo target
+- it keeps `rollback-and-annotate` as the fallback if the cache-specific path
+  stalls
+- it writes one explicit approval, idempotency, evidence, retry, and audit bar
+  without implying that `apply` mode already ships
+- it keeps broader action stories such as `restart-and-notify`, cert renewal,
+  node remediation, and secret rotation explicitly deferred
+
 ### Candidate Ordering
 
 Use this ordering unless the support frontier changes materially:
@@ -214,10 +229,10 @@ broader support surface.
 
 ### Suggested Subtasks
 
-- [ ] Write the candidate comparison matrix.
-- [ ] Choose one preferred mutation demo and one fallback.
-- [ ] Define the approval and idempotency invariants for that demo.
-- [ ] Record the reasons broader actions remain deferred.
+- [x] Write the candidate comparison matrix.
+- [x] Choose one preferred mutation demo and one fallback.
+- [x] Define the approval and idempotency invariants for that demo.
+- [x] Record the reasons broader actions remain deferred.
 
 ### Validation
 
@@ -460,8 +475,9 @@ Keep one secondary docs-first concept visible too:
 
 Keep the first plausible next implementation candidate explicit:
 
-- `cache purge with evidence trail` remains the leading mutation-demo candidate
-  once later work (`#132`) chooses the first honest apply-oriented slice.
+- `cache purge with evidence trail` is now the chosen first honest
+  mutation-demo target, and `rollback-and-annotate` remains the fallback if
+  the cache-specific path stalls once later apply-oriented work becomes real.
 
 ### Suggested Subtasks
 

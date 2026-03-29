@@ -49,7 +49,7 @@ Keep the follow-on concepts classified like this:
 | --- | --- | --- |
 | service-recovery review pack | docs-first next progression | diagnose and verify are real now; restart and notify remain future action steps |
 | rollback verification pack | docs-first visible concept | explain, compare, and evidence review fit today's repo; rollback and incident annotation do not |
-| cache purge with evidence trail | first plausible next implementation candidate | keep it visible for later mutation planning, not as current starter truth |
+| cache purge with evidence trail | chosen first honest mutation demo target | keep it visible as the selected later mutation target; `rollback-and-annotate` remains the fallback and it is not current starter truth |
 | certificate renewal, node remediation, and secret rotation packs | deferred until apply | broader action, approval, and blast-radius support stay later-phase |
 
 ## Playbook Translation Boundary

@@ -106,7 +106,8 @@ The current bounded progression after Guild Ops Starter is:
 
 - docs-first next progression: `service-recovery review pack`
 - secondary docs-first concept kept visible: `rollback verification pack`
-- first plausible later implementation candidate: `cache purge with evidence trail`
+- chosen first honest mutation demo target: `cache purge with evidence trail`
+- fallback mutation demo if the first target stalls: `rollback-and-annotate`
 - deferred until broader apply/runtime support: certificate renewal, node remediation, and secret rotation packs
 
 That progression stays honest because the review half already fits today's
