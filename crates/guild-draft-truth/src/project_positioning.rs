@@ -8,6 +8,7 @@ use crate::util::{read_to_string, repo_root};
 const POSITIONING_DOC: &str = "docs/project-positioning.md";
 const EPIC_DOC: &str = "docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md";
 const MIRRORING_DOC: &str = "docs/mirroring-and-promotion.md";
+const AUTHORING_GUARDRAILS_DOC: &str = "docs/authoring-layer-guardrails.md";
 
 const CHECKED_DOCS: &[&str] = &[
     "README.md",
@@ -17,6 +18,7 @@ const CHECKED_DOCS: &[&str] = &[
     "docs/command-language.md",
     "docs/how-guild-works.md",
     MIRRORING_DOC,
+    AUTHORING_GUARDRAILS_DOC,
     "docs/contracts.md",
     "docs/architecture.md",
     "docs/adr/README.md",
@@ -53,6 +55,7 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
             "docs/project-positioning.md",
             "docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md",
             "docs/mirroring-and-promotion.md",
+            "docs/authoring-layer-guardrails.md",
         ],
     ),
     ("ARCHITECTURE.md", &["docs/project-positioning.md"]),
@@ -70,6 +73,16 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
     (
         MIRRORING_DOC,
         &["../README.md", "command-language.md", "testing.md"],
+    ),
+    (
+        AUTHORING_GUARDRAILS_DOC,
+        &[
+            "../SPECS.md",
+            "../wit/guild-skill-v1.wit",
+            "../ARCHITECTURE.md",
+            "project-positioning.md",
+            "portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ],
     ),
     ("docs/contracts.md", &["project-positioning.md"]),
     ("docs/architecture.md", &["project-positioning.md"]),
@@ -120,6 +133,17 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
             "If Guild later gains a more curated install view, it should stay a presentation layer over those existing surfaces and their host-owned truth:",
             "That later presentation must not become a new pack type, a second metadata contract, or a bypass around target-root trust review.",
             "It also must not drift into marketplace or hosted-control-plane language while the current repo still ships a local-first trust and transport model.",
+        ],
+    ),
+    (
+        AUTHORING_GUARDRAILS_DOC,
+        &[
+            "The short rule is simple: ergonomic authoring can exist, but runtime truth stays contracts-first.",
+            "Docs are not one undifferentiated class.",
+            "Current default classification for candidate authoring metadata is narrow:",
+            "If a field changes runtime behavior, it must compile down into current manifest, WIT, or Rust truth that the runtime already validates.",
+            "If a field cannot compile down exactly, the authoring layer should fail closed instead of inventing hidden semantics.",
+            "Do not let `SKILL.md` or future YAML authoring inputs become runtime truth by inertia.",
         ],
     ),
     (

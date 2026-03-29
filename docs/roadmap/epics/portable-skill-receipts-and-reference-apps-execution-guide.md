@@ -111,6 +111,45 @@ Keep the current progression explicit:
 3. Document what an authoring layer may generate versus what the runtime must verify directly.
 4. Keep the result tightly linked to the existing contracts-first repo posture.
 
+### Current Docs-First Outcome
+
+The current bounded output for this issue is
+[`docs/authoring-layer-guardrails.md`](../../../docs/authoring-layer-guardrails.md).
+That doc keeps the evaluation docs-first and fail-closed:
+
+- it writes the current source-of-truth matrix instead of treating "docs" as
+  one blob
+- it classifies future authoring metadata as advisory, derived, or normative
+- it defines compile-down rules for what a future authoring layer may generate
+  versus what the runtime must still verify directly
+- it keeps `SKILL.md` and proposed YAML authoring files as advisory inputs
+  unless and until they compile down into today's manifest, WIT, Rust, and
+  spec truth
+
+### Current Default Classification For Candidate Authoring Metadata
+
+Use this default unless a later runtime change makes a field concrete:
+
+- advisory today: `use_cases`, `risk`, `examples`, `eval_scenarios`, approval
+  notes, and future authoring YAML
+- derived today: support matrices, compatibility reports, install reports, and
+  trust labels generated from current signals
+- normative today: manifest fields, WIT imports/exports, Rust capability
+  evaluation, and `SPECS.md` contract language
+
+### Compile-Down Guardrails
+
+Keep the compile-down boundary explicit:
+
+- a friendlier authoring layer may generate `manifest.json`, examples, docs,
+  and lint output
+- the runtime must still verify manifest identity, requirements, dependency
+  wiring, WIT compatibility, and host-owned capability evaluation directly
+- if a proposed field changes runtime behavior but cannot compile down exactly,
+  it should fail closed rather than inventing hidden semantics
+- generated normative files must remain reviewable and subordinate to the
+  current manifest/runtime truth
+
 ### Imported Design Inputs To Keep Visible
 
 The removed strategy stack contributed useful design inputs that should remain
@@ -123,15 +162,16 @@ visible here without becoming implied commitments:
 
 ### Suggested Subtasks
 
-- [ ] Write a source-of-truth matrix for Rust types, manifests, WIT, and docs.
-- [ ] Classify proposed authoring metadata fields by enforcement level.
-- [ ] Document compilation boundaries and failure modes for any future authoring layer.
-- [ ] Add anti-goals that forbid contract duplication.
+- [x] Write a source-of-truth matrix for Rust types, manifests, WIT, and docs.
+- [x] Classify proposed authoring metadata fields by enforcement level.
+- [x] Document compilation boundaries and failure modes for any future authoring layer.
+- [x] Add anti-goals that forbid contract duplication.
 
 ### Validation
 
 - `git diff --check`
 - docs review against `SPECS.md`, `ARCHITECTURE.md`, and the roadmap epic
+- `cargo run -q -p xtask -- project-positioning check`
 
 ## Issue #132: First Honest Post-Starter Mutation Demo
 
