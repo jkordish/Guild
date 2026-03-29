@@ -1315,12 +1315,21 @@ fn starter_pack_incident_casefile_runs_with_markdown_stdout() {
         "Grace",
         "skill://example/hello-inspect@^0.1",
     );
+    let unrelated_value = inspect_hello_with_cli(
+        &registry_root,
+        "Linus",
+        "skill://example/hello-inspect@^0.1",
+    );
 
     let subject_execution_uri = subject_value["record"]["receipt"]["uri"]
         .as_str()
         .unwrap()
         .to_owned();
     let comparison_execution_uri = comparison_value["record"]["receipt"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let unrelated_execution_uri = unrelated_value["record"]["receipt"]["uri"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -1385,6 +1394,28 @@ fn starter_pack_incident_casefile_runs_with_markdown_stdout() {
     assert!(stdout.contains("## Evidence context"), "{stdout}");
     assert!(stdout.contains("## Exact refs used"), "{stdout}");
     assert!(stdout.contains("## Next refs"), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "- query-expanded execution: {subject_execution_uri}"
+        )),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!(
+            "- query-expanded execution: {comparison_execution_uri}"
+        )),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("- additional query matches not expanded: "),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains(&format!(
+            "- query-expanded execution: {unrelated_execution_uri}"
+        )),
+        "{stdout}"
+    );
     assert!(stderr.contains("succeeded  bounded  exec:"), "{stderr}");
     assert!(
         stderr.contains("example/incident-casefile@0.1.0"),
@@ -1435,7 +1466,10 @@ fn starter_pack_incident_casefile_runs_with_subject_only_input_and_execution_gra
         "{stdout}"
     );
     assert!(stdout.contains("## Evidence context"), "{stdout}");
-    assert!(stdout.contains("no explicit evidence ref supplied"), "{stdout}");
+    assert!(
+        stdout.contains("no explicit evidence ref supplied"),
+        "{stdout}"
+    );
     assert!(stdout.contains("## Next refs"), "{stdout}");
     assert!(stderr.contains("succeeded  bounded  exec:"), "{stderr}");
     assert!(
@@ -6201,15 +6235,14 @@ fn follow_on_execution_guides_cover_every_open_issue() {
 #[test]
 fn execution_guide_processes_imported_strategy_stack() {
     let epic_doc = fs::read_to_string(
-        repo_root()
-            .join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md"),
+        repo_root().join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md"),
     )
     .unwrap();
-    let guide = fs::read_to_string(
-        repo_root()
-            .join("docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md"),
-    )
-    .unwrap();
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
 
     assert!(epic_doc.contains("absorbs the imported repositioning milestone"));
 
@@ -6840,23 +6873,23 @@ fn trust_policy_glossary_stays_canonical_across_help_and_docs() {
 
 #[test]
 fn project_positioning_keeps_language_and_capability_guidance_canonical() {
-    let positioning =
-        fs::read_to_string(repo_root().join("docs/project-positioning.md")).unwrap();
-    assert!(
-        positioning.contains("## Canonical Operator Vocabulary")
-    );
+    let positioning = fs::read_to_string(repo_root().join("docs/project-positioning.md")).unwrap();
+    assert!(positioning.contains("## Canonical Operator Vocabulary"));
     assert!(positioning.contains("## Terms To Avoid As Primary Framing"));
     assert!(positioning.contains("## Operator-Facing Capability Vocabulary"));
-    assert!(positioning.contains("Guild lets ops, platform, and security teams run trusted playbooks"));
+    assert!(
+        positioning.contains("Guild lets ops, platform, and security teams run trusted playbooks")
+    );
     assert!(positioning.contains("The taxonomy is docs and approval vocabulary in this phase"));
-    assert!(positioning.contains("Current operator-facing examples that map cleanly to the live repo truth"));
+    assert!(
+        positioning
+            .contains("Current operator-facing examples that map cleanly to the live repo truth")
+    );
     assert!(positioning.contains("Docs-first target names that are useful for planning"));
 
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
     assert!(readme.contains("docs/project-positioning.md"));
-    assert!(
-        readme.contains("canonical operator-facing vocabulary and capability language")
-    );
+    assert!(readme.contains("canonical operator-facing vocabulary and capability language"));
 
     let command_language =
         fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();

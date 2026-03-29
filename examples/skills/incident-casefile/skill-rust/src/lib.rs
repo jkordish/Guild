@@ -15,11 +15,15 @@ use crate::exports::guild::skill::inspect_skill::{
     ExecutionContext, Guest, Json, SkillError, SkillOutput,
 };
 
-const TOP_QUERY_MATCH_LIMIT: usize = 3;
 const SUBJECT_REF_LIMIT: usize = 3;
 const PAYLOAD_DETAIL_MAX_BYTES: u64 = 32 * 1024;
 
 struct IncidentCasefile;
+
+struct QueryContext {
+    lines: Vec<String>,
+    expanded_execution_uris: Vec<String>,
+}
 
 impl Guest for IncidentCasefile {
     fn run(_ctx: ExecutionContext, input: Json) -> Result<SkillOutput, SkillError> {
@@ -57,18 +61,28 @@ impl Guest for IncidentCasefile {
             Some(uri) => comparison_snapshot_lines(uri, &subject_record)?,
             None => vec!["no comparison execution ref supplied".into()],
         };
-        let query_lines = match query_uri.as_deref() {
-            Some(uri) => query_context_lines(
+        let query_context = match query_uri.as_deref() {
+            Some(uri) => build_query_context(
                 uri,
                 subject_execution_uri,
                 comparison_execution_uri.as_deref(),
             )?,
-            None => vec!["no bounded execution-query ref supplied".into()],
+            None => QueryContext {
+                lines: vec!["no bounded execution-query ref supplied".into()],
+                expanded_execution_uris: Vec::new(),
+            },
         };
         let evidence_lines = match evidence_uri.as_deref() {
             Some(uri) => evidence_context_lines(uri)?,
             None => missing_evidence_lines(&subject_evidence_uris),
         };
+        let exact_refs = exact_ref_lines(
+            subject_execution_uri,
+            comparison_execution_uri.as_deref(),
+            query_uri.as_deref(),
+            &query_context.expanded_execution_uris,
+            evidence_uri.as_deref(),
+        );
 
         let markdown = ops_starter_support::render_markdown_report(&json!({
             "title": "Incident Casefile",
@@ -119,7 +133,7 @@ impl Guest for IncidentCasefile {
                 },
                 {
                     "title": "Query context",
-                    "lines": query_lines
+                    "lines": query_context.lines
                 },
                 {
                     "title": "Evidence context",
@@ -127,12 +141,7 @@ impl Guest for IncidentCasefile {
                 },
                 {
                     "title": "Exact refs used",
-                    "lines": exact_ref_lines(
-                        subject_execution_uri,
-                        comparison_execution_uri.as_deref(),
-                        query_uri.as_deref(),
-                        evidence_uri.as_deref()
-                    )
+                    "lines": exact_refs
                 },
                 {
                     "title": "Next refs",
@@ -231,11 +240,11 @@ fn diff_summary(subject_record: &Value, comparison_record: &Value) -> String {
     }
 }
 
-fn query_context_lines(
+fn build_query_context(
     query_uri: &str,
     subject_execution_uri: &str,
     comparison_execution_uri: Option<&str>,
-) -> Result<Vec<String>, SkillError> {
+) -> Result<QueryContext, SkillError> {
     let (_, query_result) =
         ops_starter_support::read_json_resource(query_uri, "execution query resource")?;
     let results = query_result
@@ -251,6 +260,7 @@ fn query_context_lines(
     let matched_execution_uris = results
         .iter()
         .filter_map(|result| result.pointer("/receipt/uri").and_then(Value::as_str))
+        .map(ToOwned::to_owned)
         .collect::<Vec<_>>();
 
     let mut lines = vec![
@@ -278,30 +288,43 @@ fn query_context_lines(
         ),
         format!(
             "- subject listed: {}",
-            yes_no(matched_execution_uris.contains(&subject_execution_uri))
+            yes_no(
+                matched_execution_uris
+                    .iter()
+                    .any(|uri| uri == subject_execution_uri)
+            )
         ),
     ];
 
     if let Some(comparison_execution_uri) = comparison_execution_uri {
         lines.push(format!(
             "- comparison listed: {}",
-            yes_no(matched_execution_uris.contains(&comparison_execution_uri))
+            yes_no(
+                matched_execution_uris
+                    .iter()
+                    .any(|uri| uri == comparison_execution_uri)
+            )
         ));
     }
 
+    let mut expanded_execution_uris = Vec::new();
     let mut rendered_matches = Vec::new();
-    for result in results.iter().take(TOP_QUERY_MATCH_LIMIT) {
-        let execution_uri = result
-            .pointer("/receipt/uri")
-            .and_then(Value::as_str)
-            .ok_or_else(|| SkillError {
-                code: "invalid-query-resource".into(),
-                message: "execution query match did not include a receipt URI".into(),
-                retryable: false,
-                detail: Some(result.to_string()),
-            })?;
+    for execution_uri in [Some(subject_execution_uri), comparison_execution_uri]
+        .into_iter()
+        .flatten()
+    {
+        if expanded_execution_uris
+            .iter()
+            .any(|existing| existing == execution_uri)
+        {
+            continue;
+        }
+        if !matched_execution_uris.iter().any(|uri| uri == execution_uri) {
+            continue;
+        }
         let (_, record) =
             ops_starter_support::read_json_resource(execution_uri, "query execution resource")?;
+        expanded_execution_uris.push(execution_uri.to_owned());
         rendered_matches.push(format!(
             "- {}  {}  {}  {}",
             ops_starter_support::short_execution_ref_from_uri(execution_uri),
@@ -312,12 +335,33 @@ fn query_context_lines(
     }
 
     if rendered_matches.is_empty() {
-        lines.push("no stored execution matches were returned".into());
+        if matched_execution_uris.is_empty() {
+            lines.push("no stored execution matches were returned".into());
+        } else {
+            lines.push("no supplied execution refs were expanded from this query".into());
+        }
     } else {
         lines.extend(rendered_matches);
     }
 
-    Ok(lines)
+    let additional_match_count = matched_execution_uris
+        .iter()
+        .filter(|execution_uri| {
+            !expanded_execution_uris
+                .iter()
+                .any(|expanded| expanded == *execution_uri)
+        })
+        .count();
+    if additional_match_count > 0 {
+        lines.push(format!(
+            "- additional query matches not expanded: {additional_match_count}"
+        ));
+    }
+
+    Ok(QueryContext {
+        lines,
+        expanded_execution_uris,
+    })
 }
 
 fn evidence_context_lines(evidence_uri: &str) -> Result<Vec<String>, SkillError> {
@@ -443,6 +487,7 @@ fn exact_ref_lines(
     subject_execution_uri: &str,
     comparison_execution_uri: Option<&str>,
     query_uri: Option<&str>,
+    query_expanded_execution_uris: &[String],
     evidence_uri: Option<&str>,
 ) -> Vec<String> {
     let mut lines = vec![format!("- subject execution: {subject_execution_uri}")];
@@ -452,6 +497,11 @@ fn exact_ref_lines(
     }
     if let Some(query_uri) = query_uri {
         lines.push(format!("- bounded query: {query_uri}"));
+        lines.extend(
+            query_expanded_execution_uris
+                .iter()
+                .map(|execution_uri| format!("- query-expanded execution: {execution_uri}")),
+        );
     }
     if let Some(evidence_uri) = evidence_uri {
         lines.push(format!("- evidence: {evidence_uri}"));
