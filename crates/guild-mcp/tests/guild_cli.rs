@@ -6581,6 +6581,108 @@ fn verification_matrix_docs_and_issue_stay_aligned() {
 }
 
 #[test]
+fn replay_boundary_docs_and_issue_stay_aligned() {
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+
+    for phrase in [
+        "## Issue #138: Receipt-Chain And Replay-Oriented Explanation Follow-On",
+        "### Current Docs-First Outcome",
+        "docs/receipt-chain-and-replay-boundaries.md",
+        "it defines `replay-oriented explanation` as explanation from stored refs, not replay execution",
+        "it names the approval, idempotency, audit, and effect-capture prerequisites a true replay execution feature would still require",
+        "- [x] Write the current receipt-chain map from request to evidence.",
+        "- [x] Explain the current operator-facing meaning of “replay-oriented explanation.”",
+        "- [x] Define the prerequisites for any future replay execution semantics.",
+        "- [x] Add anti-goals forbidding early replay claims in docs or examples.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide issue #138 replay guidance drifted: missing `{phrase}`"
+        );
+    }
+
+    let doc = fs::read_to_string(repo_root().join("docs/receipt-chain-and-replay-boundaries.md"))
+        .unwrap();
+    let normalized_doc = normalize_whitespace(&doc);
+
+    for phrase in [
+        "# Receipt Chain And Replay Boundaries",
+        "## Current Receipt Chain",
+        "## Operator Meaning Of Replay-Oriented Explanation",
+        "## Current Durable Inputs That Make Explanation Honest",
+        "## What Future Replay Execution Would Still Require",
+        "## Anti-Goals",
+        "Guild can explain from stored refs today",
+        "Guild does not yet ship first-class replay execution",
+        "do not describe `guild why`, lineage views, or explain/report skills as replay execution",
+        "do not describe a future `guild replay` surface before approval, idempotency, audit, and effect semantics are real",
+    ] {
+        assert!(
+            normalized_doc.contains(&normalize_whitespace(phrase)),
+            "receipt-chain and replay doc drifted: missing `{phrase}`"
+        );
+    }
+
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(readme.contains("docs/receipt-chain-and-replay-boundaries.md"));
+}
+
+#[test]
+fn governance_boundaries_docs_and_issue_stay_aligned() {
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+
+    for phrase in [
+        "## Issue #134: Private-Pack, Policy, And Governance Boundaries",
+        "### Current Docs-First Outcome",
+        "docs/team-governance-boundaries.md",
+        "it separates policy, audit, retention, and redaction into explicit buckets",
+        "it keeps private distribution anchored to current signed transport and target-root trust review instead of inventing a new pack type or hosted control plane",
+        "- [x] Write the governance problem statement in team-review terms.",
+        "- [x] Define the policy, audit, retention, and redaction buckets.",
+        "- [x] List the future runtime dependencies without committing to them as shipped work.",
+        "- [x] Record anti-goals for marketplace or control-plane drift.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide issue #134 governance guidance drifted: missing `{phrase}`"
+        );
+    }
+
+    let doc = fs::read_to_string(repo_root().join("docs/team-governance-boundaries.md")).unwrap();
+    let normalized_doc = normalize_whitespace(&doc);
+
+    for phrase in [
+        "# Team Governance Boundaries",
+        "## Governance Problem Statement",
+        "## Boundary Buckets",
+        "### Policy",
+        "### Audit",
+        "### Retention",
+        "### Redaction",
+        "## Future Runtime Dependencies, Planning-Only",
+        "## Private Distribution Boundary",
+        "## Anti-Goals",
+        "private visibility is a governance and distribution concern, not a reason to invent a second package contract",
+        "no hosted-control-plane promise by wording alone",
+    ] {
+        assert!(
+            normalized_doc.contains(&normalize_whitespace(phrase)),
+            "team-governance boundaries doc drifted: missing `{phrase}`"
+        );
+    }
+}
+
+#[test]
 fn mirroring_doc_keeps_install_surface_layered_on_preview_and_verify() {
     let doc = fs::read_to_string(repo_root().join("docs/mirroring-and-promotion.md")).unwrap();
     let normalized_doc = normalize_whitespace(&doc);
