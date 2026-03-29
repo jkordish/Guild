@@ -3,15 +3,21 @@
 This page bounds any future Guild authoring ergonomics work so it does not
 turn into a second contract surface.
 
-It is not a runtime-contract source. For normative runtime ownership, use
-[`../SPECS.md`](../SPECS.md), [`../wit/guild-skill-v1.wit`](../wit/guild-skill-v1.wit),
-[`../ARCHITECTURE.md`](../ARCHITECTURE.md), and the core Rust runtime/types.
+It is not a runtime-contract source. Keep the current ownership split explicit:
+[`../SPECS.md`](../SPECS.md) is the normative human-facing contract,
+[`../wit/guild-skill-v1.wit`](../wit/guild-skill-v1.wit) plus the core Rust
+runtime/types are the runtime-consumed contract surfaces, and
+[`../ARCHITECTURE.md`](../ARCHITECTURE.md) is the explanatory subsystem map.
 For the current project framing and the follow-on issue sequence that led to
 this doc, use [`project-positioning.md`](project-positioning.md) and
 [`roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md`](roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md).
 
 The short rule is simple: ergonomic authoring can exist, but runtime truth
 stays contracts-first.
+
+`SPECS.md` is the normative human-facing contract, while
+`wit/guild-skill-v1.wit` and the core Rust runtime/types are the
+runtime-consumed contract surfaces.
 
 ## Source-Of-Truth Matrix
 
@@ -23,15 +29,15 @@ some are derived from those normative surfaces, and some are advisory only.
 | `crates/guild-types` and `crates/guild-runner` | normative | Host-owned execution model, capability evaluation, durable record shape, and rejection behavior | yes |
 | `crates/guild-manifest` plus checked `manifest.json` files | normative | Installed skill declaration, requirements, dependency snapshots, and manifest validation | yes |
 | `wit/guild-skill-v1.wit` | normative | Guest ABI, active inspect world, and import/export boundary | yes |
-| `SPECS.md` | normative | Human-facing runtime contract and frozen vocabulary | yes, as the repo's normative contract text paired with code |
+| `SPECS.md` | normative | Human-facing runtime contract and frozen vocabulary | no |
 | Generated matrices, compatibility tables, benchmark outputs, install reports, and similar checked outputs | derived | Regenerated or host-produced views over normative truth | no |
 | `ARCHITECTURE.md`, `README.md`, `docs/project-positioning.md`, roadmap docs, and examples | advisory | Explanation, planning, onboarding, and product framing | no |
 | Repo-scoped `.agents/skills/**/SKILL.md` files | advisory | Coding-agent workflow helpers and repo-local task instructions | no |
 | Future authoring inputs such as `guild.skill.yaml`, `guild.playbook.yaml`, or `guild-pack.yaml` | advisory until explicitly compiled down | Human-friendly source material for generation or linting | no |
 
-The runtime may read generated or installed artifacts that an authoring layer
-produces, but it still trusts the compiled manifest, WIT, Rust types, and
-runtime checks directly rather than the authoring source itself.
+The runtime consumes manifests, WIT, Rust types, and runtime checks directly.
+`SPECS.md` stays normative for humans and review, while `ARCHITECTURE.md`
+stays explanatory. An authoring layer does not get to bypass that split.
 
 ## Classification Rubric
 

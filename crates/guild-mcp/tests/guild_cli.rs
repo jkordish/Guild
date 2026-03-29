@@ -6432,6 +6432,8 @@ fn execution_guide_keeps_issue_131_authoring_guardrails_honest() {
         "## Failure Modes To Keep Explicit",
         "## Anti-Goals",
         "Docs are not one undifferentiated class.",
+        "`SPECS.md` is the normative human-facing contract,",
+        "runtime-consumed contract surfaces,",
         "Current default classification for candidate authoring metadata is narrow:",
         "If a field changes runtime behavior, it must compile down into current manifest, WIT, or Rust truth that the runtime already validates.",
         "If a field cannot compile down exactly, the authoring layer should fail closed instead of inventing hidden semantics.",
