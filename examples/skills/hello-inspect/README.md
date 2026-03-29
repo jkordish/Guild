@@ -109,7 +109,7 @@ The stored execution URI is host-issued. Any caller-supplied request ID is prese
 2. generates a local publisher identity
 3. exports a signed portable bundle from the installed record
 4. trusts that publisher in fresh registry B
-5. imports the verified bundle into registry B
+5. imports the signed bundle into registry B after target-root verification succeeds
 6. resolves `skill://example/hello-inspect@^0.1` in registry B
 7. executes it through the normal Wasmtime-backed path without rebuilding
 
@@ -119,7 +119,7 @@ The stored execution URI is host-issued. Any caller-supplied request ID is prese
 2. generates a local publisher identity
 3. exports the installed signed bundle payload as an OCI image layout
 4. trusts that publisher in fresh registry B
-5. imports the verified OCI layout into registry B
+5. imports the OCI layout into registry B after target-root verification succeeds
 6. resolves `skill://example/hello-inspect@^0.1` in registry B
 7. executes it through the normal Wasmtime-backed path without rebuilding
 
