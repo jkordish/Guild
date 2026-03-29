@@ -100,9 +100,10 @@ planning unless precision demands lower-level contract language.
 | **Evidence** | The facts collected during a run: inputs, observations, checks, and outputs. | Talking about what was gathered. | Referring to the whole run record. |
 | **Receipt** | The structured record of intent, approvals, actions, evidence, and outcome for a run. | Talking about run history, auditability, or replay-oriented explanation. | Talking about a single evidence item. |
 | **Verify** | Evaluate whether a skill or future curated asset is installable, compatible, and backed by explicit trust signals. | Talking about curation and trust. | Talking about runtime health checks only. |
+| **Experimental** | Visible on purpose, but still relying on docs-first or only partially proven current surfaces. | Labeling an honest early slice without overstating trust. | Treating it as already curated or verified. |
 | **Replay-oriented explanation** | Re-check or explain prior work from stored refs and receipts. | Talking about what Guild can do today from durable state. | Claiming first-class replay execution already exists. |
-| **Curated** | Reviewed with explicit trust and support checks. | Labeling the first honest trust tier. | Claiming deep compatibility or eval coverage that does not exist. |
-| **Verified** | Passed an explicit verification matrix for the supported surfaces it claims. | Labeling the strongest current trust state. | Any asset lacking proof-backed criteria. |
+| **Curated** | Reviewed against the current signal inventory and support frontier. | Labeling the first honest trust tier. | Claiming deep compatibility, mutation safety, or eval coverage that does not exist. |
+| **Verified** | Passed the current verification matrix for every supported surface it claims. | Labeling the strongest current trust state. | Any asset lacking proof-backed or trust-backed criteria for its current claims. |
 
 ## Terms To Avoid As Primary Framing
 

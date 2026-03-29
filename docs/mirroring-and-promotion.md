@@ -61,6 +61,10 @@ layer over those existing surfaces and their host-owned truth:
 - manifest/runtime compatibility facts already derived from the shipped
   contracts and runtime checks
 
+Those same surfaces are also the inputs to the current verification matrix in
+[`verification-matrix.md`](verification-matrix.md). `verified-import` remains
+an installed-state classification there, not a whole-pack label by itself.
+
 That later presentation must not become a new pack type, a second metadata
 contract, or a bypass around target-root trust review. It also must not drift
 into marketplace or hosted-control-plane language while the current repo still

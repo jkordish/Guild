@@ -8,6 +8,7 @@ use crate::util::{read_to_string, repo_root};
 const POSITIONING_DOC: &str = "docs/project-positioning.md";
 const EPIC_DOC: &str = "docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md";
 const MIRRORING_DOC: &str = "docs/mirroring-and-promotion.md";
+const VERIFICATION_MATRIX_DOC: &str = "docs/verification-matrix.md";
 const AUTHORING_GUARDRAILS_DOC: &str = "docs/authoring-layer-guardrails.md";
 
 const CHECKED_DOCS: &[&str] = &[
@@ -18,6 +19,7 @@ const CHECKED_DOCS: &[&str] = &[
     "docs/command-language.md",
     "docs/how-guild-works.md",
     MIRRORING_DOC,
+    VERIFICATION_MATRIX_DOC,
     AUTHORING_GUARDRAILS_DOC,
     "docs/contracts.md",
     "docs/architecture.md",
@@ -55,6 +57,7 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
             "docs/project-positioning.md",
             "docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md",
             "docs/mirroring-and-promotion.md",
+            "docs/verification-matrix.md",
             "docs/authoring-layer-guardrails.md",
         ],
     ),
@@ -69,10 +72,32 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
         ],
     ),
     ("docs/command-language.md", &["project-positioning.md"]),
-    ("docs/how-guild-works.md", &["project-positioning.md"]),
+    (
+        "docs/how-guild-works.md",
+        &["project-positioning.md", "verification-matrix.md"],
+    ),
+    (
+        "docs/command-language.md",
+        &["project-positioning.md", "verification-matrix.md"],
+    ),
     (
         MIRRORING_DOC,
-        &["../README.md", "command-language.md", "testing.md"],
+        &[
+            "../README.md",
+            "command-language.md",
+            "testing.md",
+            "verification-matrix.md",
+        ],
+    ),
+    (
+        VERIFICATION_MATRIX_DOC,
+        &[
+            "project-positioning.md",
+            "portable-skill-receipts-and-reference-apps-execution-guide.md",
+            "mirroring-and-promotion.md",
+            "../README.md",
+            "how-guild-works.md",
+        ],
     ),
     (
         AUTHORING_GUARDRAILS_DOC,
@@ -99,7 +124,13 @@ const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
         &["roadmap/epics/portable-skill-receipts-and-reference-apps.md"],
     ),
     (EPIC_DOC, &["../../project-positioning.md"]),
-    ("examples/README.md", &["../docs/project-positioning.md"]),
+    (
+        "examples/README.md",
+        &[
+            "../docs/project-positioning.md",
+            "../docs/verification-matrix.md",
+        ],
+    ),
     (
         "examples/skills/guild-ops-starter/README.md",
         &["repo-local release slice"],
@@ -116,6 +147,21 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
             "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain, not the whole product story.",
             "bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, `emit-evidence`, and `log-write` slices",
             "Any future curated install view should stay layered on those existing trust and compatibility surfaces rather than introducing a new pack type or marketplace contract.",
+            "Those installed-state terms are current trust signals, not higher-level pack or starter-set labels by themselves.",
+        ],
+    ),
+    (
+        "docs/how-guild-works.md",
+        &[
+            "Those installed-state terms are current trust signals, not higher-level starter-set or curated-view labels by themselves.",
+            "Use [`verification-matrix.md`](verification-matrix.md) for the current `experimental` / `curated` / `verified` bar.",
+        ],
+    ),
+    (
+        "docs/command-language.md",
+        &[
+            "Those installed-state terms are current trust signals, not higher-level pack or starter-set labels by themselves.",
+            "Use [`verification-matrix.md`](verification-matrix.md) for the current labeling bar.",
         ],
     ),
     (
@@ -131,8 +177,22 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
             "Today the install surface for reviewed transported state is still the existing `preview` plus `verify -v` loop, not a separate package browser or pack contract.",
             "`guild verify -v <skill-ref>` remains the first installed-state explanation path after import or pull",
             "If Guild later gains a more curated install view, it should stay a presentation layer over those existing surfaces and their host-owned truth:",
+            "`verified-import` remains an installed-state classification there, not a whole-pack label by itself.",
             "That later presentation must not become a new pack type, a second metadata contract, or a bypass around target-root trust review.",
             "It also must not drift into marketplace or hosted-control-plane language while the current repo still ships a local-first trust and transport model.",
+        ],
+    ),
+    (
+        VERIFICATION_MATRIX_DOC,
+        &[
+            "This page defines the first honest labeling story for future curated install views, starter sets, and reference playbooks built on Guild's current trust signals.",
+            "Treat `verified-import` as an installed-state fact for one skill in one target root, not as a whole-asset guarantee by itself.",
+            "## Current Signal Inventory",
+            "## Current Verification Matrix",
+            "## Label Semantics",
+            "## Promotion Bar",
+            "## What Does Not Qualify As `Verified` Yet",
+            "Any asset that is merely `verified-import`.",
         ],
     ),
     (
@@ -156,6 +216,7 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
         &[
             "Guild is trusted operational automation for engineering teams.",
             "The playbook is the application. The trust chain is the product.",
+            "one honest verification matrix that keeps `experimental`, `curated`, and `verified` tied to current trust signals instead of future scoring ideas",
             "eight `http-request`, two `invoke-skill`, and one exact `emit-evidence` checked slices, plus proof-only `log-write`",
             "Guild Ops Starter clearly reads as the first operator starter set and a repo-local release slice, not the whole product thesis",
             "The current bounded progression after Guild Ops Starter is:",
@@ -173,6 +234,7 @@ const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
         "examples/README.md",
         &[
             "The next believable progression after Guild Ops Starter is a docs-first `service-recovery review pack`.",
+            "For the current `experimental` / `curated` / `verified` labeling bar on future curated views, starter sets, and reference playbooks, use",
         ],
     ),
 ];
