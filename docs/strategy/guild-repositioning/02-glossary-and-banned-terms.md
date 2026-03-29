@@ -1,56 +1,86 @@
-# Glossary And Banned Terms
+# 02. Glossary and Banned Terms
 
-## Canonical Terms
+**Status:** Proposed
+**Owner:** Product + docs
+**Last updated:** 2026-03-28
 
-| Term | Use It For | Rationale | Preferred Usage |
+This is the canonical vocabulary for Guild. If a noun is not in the approved list, it should not be a top-level noun in site copy, README copy, or CLI help unless there is a strong reason.
+
+## Canonical terms
+
+| Term | Definition | Use when | Avoid when |
 | --- | --- | --- | --- |
-| trusted operational automation | The product category | Says what Guild does for operators in plain language | "Guild is trusted operational automation for engineering teams." |
-| ops playbook | The operator-facing workflow unit | Makes the application model concrete | "This playbook rolls back the deployment and verifies recovery." |
-| portable skill | The reusable execution unit | Keeps the existing technical truth without leading with artifacts | "The playbook uses portable skills for diagnosis, rollback, and notification." |
-| capability | Human-readable permission | Better operator term than grant algebra | "This playbook needs `chat:post` and `deploy:rollback`." |
-| admission | Pre-execution approval and narrowing | Ties policy to an operator checkpoint | "Admission confirms the requested capabilities before execution." |
-| isolation | Runtime boundary language | Easier to understand than runtime-surface jargon | "Execution stays isolated from ambient host authority." |
-| receipt | Durable execution record | Shorter and more operator-readable than execution-record-first wording | "The run produced a receipt you can inspect later." |
-| evidence | Durable proof material | Already strong and user-meaningful | "Evidence includes the health check output and notification record." |
-| replay | Re-run or re-check from stored execution context | Useful operator concept and future CLI anchor | "Replay the rollback flow against the stored receipt." |
-| inspectability | Ability to explain what happened after the run | Better user-value phrase than provenance-heavy wording | "Guild prioritizes inspectability over hidden automation." |
+| **Capability** | A permissionable action alias such as `k8s:restart` or `metrics:query`. | Explaining what a playbook is allowed to do. | Referring to a whole workflow. |
+| **Skill** | A reusable procedural unit that teaches the system how to perform a task. | Explaining the portable building block. | Referring to the end-user outcome. |
+| **Pack** | A versioned bundle of skills, playbooks, metadata, and verification state. | Talking about installable distribution. | Referring to a single skill. |
+| **Playbook** | A user-facing operational workflow assembled from skills and capabilities. | Talking about the thing a user runs. | Referring to a single tool call. |
+| **Approval** | A policy or human gate that must pass before risky mutation. | Talking about control and governance. | Referring to generic auth or identity. |
+| **Evidence** | The facts collected during a run: inputs, observations, checks, outputs. | Talking about what was gathered. | Referring to the whole run record. |
+| **Receipt** | The structured record of intent, approvals, actions, evidence, and outcome for a run. | Talking about run history or auditability. | Talking about a single evidence item. |
+| **Verify** | Evaluate whether a skill, pack, or playbook is valid, installable, compatible, and tested. | Talking about curation and trust. | Talking about runtime health checks only. |
+| **Replay** | Re-run or reconstruct a prior execution path using a receipt. | Talking about post-run review and reproducibility. | Talking about simple retries. |
+| **Curated** | Reviewed by the Guild team with basic trust checks. | Labeling first rung of trust. | Claiming deep compatibility or eval coverage. |
+| **Verified** | Passed the verification matrix for supported targets. | Labeling strongest trust state. | Any asset lacking tests and receipts. |
 
-## Discouraged Terms
+## Discouraged or banned top-level terms
 
-| Term | Status | Rationale | Use Instead |
-| --- | --- | --- | --- |
-| artifact | Discouraged as a lead term | Technically correct, but too packaging-heavy for the opening story | portable skill, receipt, evidence |
-| substrate | Avoid | Internal-architecture word with no operator value | platform surface, runtime boundary, system |
-| runtime | Avoid as a hero noun | Important technically, but not the user promise | isolation, execution boundary, host-mediated execution |
-| typed grant algebra | Avoid publicly | Accurate internally, unreadable externally | capability model, capability policy |
-| trust layer | Discouraged as lead wording | Abstract and infrastructure-shaped | admission, isolation, receipts, evidence |
-| provenance-heavy phrasing without user value | Avoid | Explains mechanics before value | inspectability, replay, evidence trail |
-| reference application | Discouraged as default example framing | Explains repo organization, not operator benefit | operator starter set, reference playbook |
-| playbook engine | Avoid as a lead product category | Sounds generic and platform-heavy | trusted operational automation |
+| Term | Why it hurts | Preferred replacement |
+| --- | --- | --- |
+| **Agent operating system** | Too broad, sounds infrastructure-heavy, invites the wrong comparison set. | Trusted playbook layer |
+| **Workflow engine** | Sounds generic and loses the AI / packaging / trust angle. | Playbook runtime |
+| **Orchestration layer** | Internal-mechanism framing. | Playbook layer or execution layer |
+| **Artifact** (as a headline noun) | Too abstract. Users care about packs, skills, and receipts. | Pack, skill, receipt |
+| **Autonomous remediation** | Over-claims and triggers immediate trust skepticism. | Policy-gated remediation |
+| **Self-healing** | Marketing language unless narrowly bounded and proven. | Verified remediation playbook |
+| **Marketplace** | Premature and implies breadth over trust. | Curated pack catalog |
+| **Memory platform** | Competes in a much broader category and muddies the thesis. | Not a Guild headline concept |
+| **Multi-agent system** | Tells the user about internals they did not ask for. | Playbooks, approvals, receipts |
 
-## Preferred Usage Examples
+## Naming rules
 
-- Prefer:
-  - "Guild admits and runs ops playbooks with explicit capabilities."
-- Instead of:
-  - "Guild executes portable artifacts through a trust layer."
+### Capability names
 
-- Prefer:
-  - "This playbook needs `k8s:restart`, `metrics:query`, and `chat:post`."
-- Instead of:
-  - "This run requires multiple capability grants and transport-scoped constraints."
+- Format: `domain:verb`
+- Examples: `metrics:query`, `k8s:restart`, `deploy:rollback`, `chat:post`
+- Keep the external name coarse and human-readable.
+- Put tool-specific nuance in metadata or adapters.
 
-- Prefer:
-  - "Inspect the receipt and evidence trail after the rollback."
-- Instead of:
-  - "Review the durable execution record and artifact provenance after the run."
+### Skill names
 
-## When Mechanism-Layer Terms Are Still Necessary
+- Use short, descriptive, action-oriented names.
+- Example: `k8s-restart`, `logs-query`, `cert-validate`.
+- Do not put environment or vendor details in the primary name unless they are essential.
 
-- `artifact_digest`, `ResolvedSkillRef`, and similar terms remain correct in specs, code, and migration notes.
-- Internal family names such as `read-resource` and `invoke-skill` remain canonical for the current runtime and manifest contract until a later implementation phase changes that explicitly.
-- `runtime/compatibility`, `trust/verification`, and other established failure labels should only change when the CLI contract changes with tests and migration notes.
+### Pack names
 
-## Editorial Rule
+- Name by operational outcome, not implementation detail.
+- Good: `incident-triage`, `safe-change`, `k8s-remediation`
+- Bad: `ops-skill-collection`, `multi-tool-runtime-pack`
 
-Lead with the operator-readable term first. Introduce the mechanism-layer term only when the repo needs exact technical precision.
+### Playbook names
+
+- Name by user intent and outcome.
+- Good: `restart-service-with-evidence`, `rollback-and-verify`
+- Bad: `run-pipeline-7`, `dynamic-procedure-02`
+
+## Style rules
+
+- Prefer concrete verbs over abstract claims.
+- Name the target audience when possible.
+- Describe the blast radius before celebrating automation.
+- Explain trust with evidence, approval, and verification, not with adjectives.
+
+## Copy examples
+
+### Good
+
+- Run a playbook.
+- Inspect the receipt.
+- Verify the pack before installing it.
+- This playbook needs `k8s:restart` and `chat:post`.
+
+### Bad
+
+- Execute an intelligent operational artifact.
+- Autonomous remediation with confidence.
+- Universal workflow substrate.

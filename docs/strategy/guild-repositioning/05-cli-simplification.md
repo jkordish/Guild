@@ -1,103 +1,134 @@
-# CLI Simplification
+# 05. CLI Simplification
+
+**Status:** Proposed
+**Owner:** CLI / DX
+**Last updated:** 2026-03-28
 
 ## Goal
 
-Tighten the Guild CLI story around the operator flow:
+Give Guild a command surface that matches the product thesis and does not leak internal implementation nouns into the operator experience.
 
-1. admit
-2. exec
-3. inspect
-4. replay
+## Strong position
 
-This document defines the target UX. It does not require a hard CLI rename in the first wave.
+**The top-level CLI should optimize for three roles only:**
 
-## Current State
+- author
+- operator
+- reviewer
 
-Current first-class commands are:
+If a command does not clearly serve one of those roles, it probably belongs behind a subcommand or should not exist.
 
-- `show`
-- `grants`
-- `run`
-- `ls`
-- `get`
-- `why`
-- `verify`
-- install and transport commands
+## Target command surface
 
-This is cleaner than earlier substrate-heavy wording, but it still exposes the mechanics of the current implementation rather than the operator journey.
-
-## Target Command Set
-
-| Target Command | Description | Current Closest Surface |
+| Command | Role | Purpose |
 | --- | --- | --- |
-| `guild admit` | Preview capability use, policy narrowing, and execution readiness before a run | no first-class equivalent today; partially described by docs and future `doctor/preview` direction |
-| `guild exec` | Execute a playbook or skill | `guild run` |
-| `guild inspect` | Inspect receipts, evidence, and execution history | `guild show`, `guild why`, `guild get`, `guild ls` |
-| `guild replay` | Re-run or re-check from a stored receipt context | no first-class equivalent today |
+| `guild pack init` | author | scaffold a new pack |
+| `guild pack build` | author | compile authoring files into distributable assets |
+| `guild pack export` | author | export a pack to target formats / locations |
+| `guild verify` | author / reviewer | validate and score a skill, pack, or playbook |
+| `guild eval` | author / reviewer | run eval fixtures and smoke scenarios |
+| `guild admit` | operator | perform preflight policy and approval checks |
+| `guild exec` | operator | run a playbook |
+| `guild inspect` | reviewer | inspect the receipt, evidence, and decisions from a run |
+| `guild replay` | reviewer / operator | replay or reconstruct a prior execution |
 
-## Recommended Migration Posture
+## Commands that should stay out of the top level
 
-- Keep current commands stable in the first implementation wave.
-- Add aliases and doc mappings before any hard rename.
-- Use the target verbs in strategy docs and roadmap language now.
-- Avoid claiming that `admit` or `replay` already exist as shipped commands.
+Do not make these top-level concepts unless they prove essential:
 
-## Command Descriptions
+- adapters
+- graphs
+- loaders
+- manifests
+- registries
+- resolver internals
+
+These can exist internally or under expert subcommands. They do not belong in the primary user story.
+
+## Recommended operator flow
+
+```bash
+guild admit playbooks/restart-service-with-evidence --env prod --input service=payments-api
+guild exec playbooks/restart-service-with-evidence --env prod --input service=payments-api
+guild inspect runs/run-2026-03-28-001
+guild replay runs/run-2026-03-28-001
+```
+
+## Recommended author flow
+
+```bash
+guild pack init incident-triage
+guild pack build packs/incident-triage
+guild verify packs/incident-triage
+guild pack export packs/incident-triage --target openai
+```
+
+## Recommended reviewer flow
+
+```bash
+guild verify packs/incident-triage --report markdown
+guild inspect runs/run-2026-03-28-001 --format summary
+```
+
+## Help text style
+
+Help text should sound like this:
+
+> Build, verify, run, inspect, and replay trusted playbooks.
+
+It should not sound like this:
+
+> Manage artifacts, registries, graphs, and execution adapters.
+
+## Output expectations
 
 ### `guild admit`
 
-- Review requested capabilities in operator language.
-- Show policy narrowing, approval requirements, and isolation posture.
-- Fail before execution when the requested playbook cannot be honestly admitted.
+Show:
+
+- declared capabilities
+- target environment
+- policy result
+- approvals required
+- reasons for deny / require-approval outcomes
 
 ### `guild exec`
 
-- Run the admitted skill or playbook.
-- Preserve current receipt and evidence model.
-- Keep execution output concise and operator-readable.
+Show:
+
+- playbook name
+- environment
+- major steps
+- approval pauses
+- receipt id on completion
 
 ### `guild inspect`
 
-- Unify the current show / why / get mental model under one inspectable surface.
-- Keep receipt, evidence, and lineage navigation explicit.
+Show:
+
+- run summary
+- approvals
+- capabilities used
+- evidence summary
+- mutation summary
+- final outcome
 
 ### `guild replay`
 
-- Start from a stored receipt.
-- Re-run or re-check the automation in a bounded way.
-- Make replay expectations explicit instead of implied.
+Show:
 
-## Examples
+- source receipt id
+- replay mode
+- environment / target overrides
+- differences from original run
 
-```bash
-# target operator flow
-guild admit playbooks/rollback-service.yaml --input-file rollback.json
-guild exec playbooks/rollback-service.yaml --input-file rollback.json
-guild inspect exec:abc123
-guild replay exec:abc123
-```
+## Deprecation strategy
 
-```bash
-# current equivalent surfaces
-guild grants template read-resource
-guild run skill://example/incident-brief@^0.1 --input-json '{"execution_uri":"guild://executions/abc123"}'
-guild why exec:abc123
-guild get guild://executions/abc123
-```
+- Add aliases from current commands to the new surface.
+- Update docs first.
+- Print deprecation notices for one minor release.
+- Remove old surface only after examples and quickstarts are migrated.
 
-## Planned Deprecations And Aliases
+## Decision
 
-| Current | Future Role |
-| --- | --- |
-| `run` | stable alias toward `exec` |
-| `show` | inspect sub-surface or compatibility alias |
-| `why` | inspect explanation sub-surface or compatibility alias |
-| `get` | inspect raw-read sub-surface or compatibility alias |
-| `grants template` | capability authoring helper, likely folded into `admit` and playbook tooling later |
-
-## Migration Notes
-
-- `verify` should remain a trust-specific command rather than being absorbed into `inspect`.
-- `install`, `export`, `import`, `push`, `pull`, and `trust` remain important, but they should no longer dominate the top-level product story.
-- The first CLI wave should be documentation and alias planning, not a disruptive command break.
-- Any eventual rename must ship with tests, help updates, migration notes, and compatibility aliases.
+**Use the CLI to reinforce the narrative.** The command surface should make Guild feel like a playbook tool with trust semantics, not a bag of engine internals.

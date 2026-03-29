@@ -6133,6 +6133,50 @@ fn follow_on_execution_guides_cover_every_open_issue() {
     }
 }
 
+#[test]
+fn repositioning_tracker_crosswalk_processes_imported_stack() {
+    let readme =
+        fs::read_to_string(repo_root().join("docs/strategy/guild-repositioning/README.md"))
+            .unwrap();
+    let crosswalk = fs::read_to_string(
+        repo_root().join("docs/strategy/guild-repositioning/11-tracker-crosswalk.md"),
+    )
+    .unwrap();
+
+    assert!(readme.contains("11-tracker-crosswalk.md"));
+
+    for phrase in [
+        "## Imported Assumption Review",
+        "## Milestone Crosswalk",
+        "## Epic Crosswalk",
+        "## Task Crosswalk",
+        "## Current Canonical Issue Set",
+    ] {
+        assert!(
+            crosswalk.contains(phrase),
+            "tracker crosswalk is missing required section: {phrase}"
+        );
+    }
+
+    for marker in [
+        "M1. Make Guild Legible",
+        "M2. Make Guild Installable and Useful",
+        "M3. Make Guild Trustworthy and Differentiated",
+        "M4. Make Guild Adoptable by Teams",
+        "EPIC-01",
+        "EPIC-08",
+        "GR-001",
+        "GR-040",
+        "#129",
+        "#139",
+    ] {
+        assert!(
+            crosswalk.contains(marker),
+            "tracker crosswalk is missing imported-stack marker: {marker}"
+        );
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 #[test]
 fn journey_docs_stay_centered_on_user_workflows() {

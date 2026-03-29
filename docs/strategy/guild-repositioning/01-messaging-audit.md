@@ -1,98 +1,174 @@
-# Messaging Audit
+# 01. Messaging Audit
 
-## Top Messaging Problems
+**Status:** Proposed rewrite plan
+**Owner:** Product + founder
+**Last updated:** 2026-03-28
 
-1. The repo still leads with mechanism-heavy language instead of operator outcomes.
-2. Playbooks are mostly absent, and when they do appear they are framed defensively.
-3. Capabilities are exposed as grant JSON and low-level family names before users understand the operator task.
-4. Guild Ops Starter carries too much of the product story under the label "reference application."
-5. CLI wording is more usable than the top-level docs, but it still sounds like a prototype shell around a substrate.
+This is a rewrite plan for the repo and site narrative. It focuses on the repeated problems that make Guild feel more abstract than it needs to be.
 
-## Highest-Value Fixes First
+## Core diagnosis
 
-1. Replace the README and top-doc hero framing with trusted operational automation and playbooks.
-2. Introduce a glossary that turns current internal terms into operator-readable terms.
-3. Define the operator-facing capability taxonomy and playbook surface before broad doc rewrites.
-4. Reframe Guild Ops Starter and future examples around concrete ops workflows.
-5. Publish a staged CLI migration story so docs and examples stop inventing parallel command narratives.
+Guild currently risks sounding like:
 
-## Concrete Repo Evidence
+- a substrate in search of a job
+- a technical framework explained from the inside out
+- a packaging idea without a user-facing outcome
+- a trust story that appears too late
 
-### README leads with artifacts and trust layer
+None of those are fatal. They are just common founder-project gravity. Humans love building a machine and then explaining the pistons first.
 
-- Current:
-  - `README.md`: "Guild creates portable, capability-bounded skill artifacts and a trust layer..."
-  - `README.md`: "Guild turns a skill run into a verifiable receipt chain..."
-- Problem:
-  - Accurate, but it makes the product read like infrastructure plumbing before the operator value is visible.
-- Suggested after:
-  - "Guild is trusted operational automation for engineering teams."
-  - "Write an ops playbook, admit it with explicit capabilities, run it in isolation, and keep receipts and evidence for inspection and replay."
+## The five messaging problems to fix
 
-### Playbooks are positioned as something Guild is not
+### 1. Substrate-first framing
 
-- Current:
-  - `README.md`: "The goal is not ... an ops playbook engine."
-  - `docs/project-positioning.md`: "a broad ops playbook runtime" under anti-thesis language.
-- Problem:
-  - This protects against overclaiming, but it also blocks the operator-facing story the product now wants to tell.
-- Suggested after:
-  - "Guild is not a generic workflow engine."
-  - "Guild is for trusted ops playbooks built on explicit capability and evidence boundaries."
+If the site leads with internals, schemas, artifacts, or orchestration mechanics, the reader has to infer the actual user value.
 
-### Guild Ops Starter is overworked as a story vehicle
+**Fix:** lead with *trusted playbooks for operational work*.
 
-- Current:
-  - `README.md`, `examples/README.md`, and `examples/skills/guild-ops-starter/README.md` repeatedly call it the "first reference application."
-- Problem:
-  - "Reference application" is accurate but abstract. It says how the repo is organized, not why an operator should care.
-- Suggested after:
-  - Reframe it as "the first ops playbook starter set" or "the first operator starter set."
-  - Keep "reference application" only where the repo needs to explain packaging or planning lineage.
+### 2. Too many nouns
 
-### Capability UX is too implementation-shaped
+If the site rotates through terms like skills, artifacts, workflows, packages, receipts, adapters, and agents with no strict hierarchy, the reader loses the plot.
 
-- Current:
-  - CLI help and examples lead with `guild grants template ...`
-  - Templates expose `read-resource`, `invoke-skill`, `http-request`, and constraint JSON immediately.
-- Problem:
-  - This is legible to maintainers, but not to operators who think in terms like "restart pods" or "post to chat."
-- Suggested after:
-  - Introduce operator-readable names like `k8s:restart` and `chat:post` in docs, playbooks, and approvals.
-  - Keep the current internal families for implementation and migration notes.
+**Fix:** keep exactly three primary nouns up front:
 
-### CLI wording is useful, but not yet operator-centered
+- capability
+- skill
+- playbook
 
-- Current:
-  - `guild --help` and `guild run --help` are clear, but the story is still "run a skill locally," "print grant templates," and "explain a persisted execution."
-- Problem:
-  - Those are honest verbs for today, but they do not tell the future operator story of admit, exec, inspect, and replay.
-- Suggested after:
-  - Publish the target command story in docs now.
-  - Keep current verbs stable, but map them to the future operator flow explicitly.
+"Receipt" and "pack" are supporting nouns, not headline nouns.
 
-## Before / After Wording Suggestions
+### 3. Audience leakage
 
-| Surface | Before | After |
-| --- | --- | --- |
-| `README.md` hero | "portable, capability-bounded skill artifacts and a trust layer" | "trusted operational automation expressed as ops playbooks" |
-| Product value | "verifiable receipt chain" | "admitted, isolated automation with inspectable receipts and evidence" |
-| Example framing | "first reference application" | "first operator starter set" or "reference playbook starter" |
-| Capability story | "grant templates" | "capabilities operators can review and approve" |
-| CLI story | `show / grants / run / ls / get / why / verify` | target operator flow of `admit / exec / inspect / replay`, with compatibility mappings |
+If the copy sounds like it is for any team doing any kind of AI work, it will feel generic.
 
-## Terminology That Is Too Abstract Today
+**Fix:** talk directly to ops / platform / security teams doing risky, real-world work.
 
-- `artifact` as a lead noun
-- `trust layer`
-- `reference application`
-- `runtime` as a lead-value word
-- `capability-bounded` without operator explanation
-- `grants` without capability intent
+### 4. Trust story is buried
 
-## Messaging Gaps
+If approval gates, evidence, replay, and verification do not appear immediately, Guild looks like another automation toy.
 
-- There are almost no concrete ops workflows in the repo today beyond incident-analysis examples.
-- The repo already has `SkillCategory::Playbook`, but the docs do not use that seam to tell a playbook story.
-- The strategy guardrail in `crates/guild-draft-truth/src/project_positioning.rs` currently enforces the older portable-artifact thesis, so the future narrative reset will need an explicit guardrail migration.
-- No in-repo website or landing-page source was found, so "site realignment" currently means README, docs, examples, and GitHub metadata unless an external site repo is introduced later.
+**Fix:** trust claims need to show up in the hero and in every product explanation.
+
+### 5. Examples are too abstract
+
+A reader should see a concrete operational playbook in the first screen or very close to it.
+
+**Fix:** show one live example immediately.
+
+## Recommended narrative hierarchy
+
+Use this order everywhere:
+
+1. **Category:** trusted playbooks for ops and security automation
+2. **User value:** package approvals, steps, permissions, and evidence once
+3. **Mechanism:** skills + capabilities + policy + receipts
+4. **Proof:** starter packs, replay, verification
+
+## Homepage rewrite
+
+### Recommended hero
+
+**Headline**
+
+> Trusted playbooks for ops and security automation.
+
+**Subhead**
+
+> Guild turns runbooks into installable playbooks that agents can execute with clear capabilities, approval gates, and replayable evidence.
+
+**Primary CTA**
+
+> Run a reference playbook
+
+**Secondary CTA**
+
+> Inspect a receipt
+
+### Recommended three-up value blocks
+
+**Package operational knowledge**
+Turn an incident or change workflow into a reusable playbook instead of re-explaining it every time.
+
+**Gate risky mutations**
+Capabilities and approval rules make it clear what can happen before anything touches production.
+
+**Replay and verify**
+Every serious run produces evidence that can be inspected, replayed, and scored.
+
+## README rewrite
+
+### Recommended opening paragraph
+
+> Guild is a playbook layer for trusted operational automation. It packages runbooks into portable skills and playbooks that agents can use across compatible environments, while keeping policy, approvals, and evidence visible.
+
+### Recommended first example
+
+> Example: diagnose a degraded service, inspect logs and metrics, request approval, restart the Kubernetes workload, verify recovery, and post the outcome to the incident channel with a receipt.
+
+### Recommended quick bullets
+
+- Portable skills and packs
+- Human-readable capabilities
+- Approval gates before mutation
+- Replayable evidence after execution
+- Verified first-party playbooks
+
+## Feature-page rewrite anchors
+
+### Packaging
+
+Say:
+
+> Install curated packs for incident response, Kubernetes remediation, safe changes, and secrets or edge operations.
+
+Do not say:
+
+> A flexible artifact model for workflow composition.
+
+### Schema
+
+Say:
+
+> Author in a friendly Guild format, then compile to the standard skill format.
+
+Do not say:
+
+> A novel declarative schema for agentic procedure encoding.
+
+### Trust
+
+Say:
+
+> Inspect what the playbook intended to do, what it was allowed to do, what it actually did, and what evidence it collected.
+
+Do not say:
+
+> Built for trustworthy execution.
+
+The latter is too vague. Trust must be made concrete.
+
+## CLI introduction copy
+
+The CLI should describe itself as:
+
+> Build, verify, run, inspect, and replay trusted playbooks.
+
+## Anti-pattern checklist
+
+Reject copy that does any of the following:
+
+- leads with internal implementation nouns
+- says "AI workflows" with no domain anchor
+- says "autonomous" without controls or limits
+- promises safety without evidence, policy, or verification
+- talks about a marketplace before showing a reason to care
+
+## Message review gate
+
+Every net-new top-level page should pass this test:
+
+- Can the first 50 words name the audience?
+- Can the first 50 words name the user outcome?
+- Does the trust story show up before the fold?
+- Is there a concrete playbook example?
+- Are the canonical nouns used consistently?

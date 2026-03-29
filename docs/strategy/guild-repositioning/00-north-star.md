@@ -1,65 +1,147 @@
-# Guild Repositioning North Star
+# 00. North Star
 
-Use [`02-glossary-and-banned-terms.md`](./02-glossary-and-banned-terms.md)
-as the canonical operator-facing vocabulary and user-facing language source for
-this repositioning pack. It guides wording and review, but it does not rename
-runtime contracts, Rust types, or WIT surfaces.
+**Status:** Proposed
+**Owner:** Founding team
+**Last updated:** 2026-03-28
 
-## Target Audience
+## One-line product definition
 
-- Ops engineers running recurring operational procedures
-- Platform engineers standardizing safe automation
-- SREs who need inspectable execution and replay-oriented recovery paths
-- Security engineers reviewing admission, isolation, capabilities, receipts, and evidence
+**Guild lets ops, platform, and security teams run trusted playbooks that package steps, permissions, approvals, and evidence.**
 
-## Product Thesis
+## Thesis
 
-Guild is trusted operational automation for engineering teams.
+Guild should stop presenting itself as a generic agent substrate and instead present itself as the trusted playbook layer for operational work.
 
-The playbook is the application. The trust chain is the product.
+The winning shape is:
 
-Guild should read as the system that lets operators review and admit an ops
-playbook under explicit capability policy, run it in isolation, and keep
-receipts and evidence that can be inspected later and used for replay-oriented
-explanation.
+- **playbooks** as the user-facing product
+- **capabilities** as the permissionable action model
+- **skills** as the portable procedural building blocks
+- **receipts / evidence** as the trust layer
 
-## Narrative Hierarchy
+The product is not "agents doing things." The product is **bounded automation that a team can inspect, approve, replay, and trust**.
 
-1. Safe operational automation
-2. Expressed as playbooks
-3. Powered by portable skills
-4. Made trustworthy by admission, isolation, explicit capabilities, host-owned
-   receipts and evidence, and replay-oriented explanation
+## Ideal user
 
-## Product Promises
+Primary:
 
-- Operators can understand what a workflow is allowed to do before it runs.
-- Playbooks are legible enough to review like operational procedure, not substrate plumbing.
-- Execution leaves receipts and evidence that explain what happened.
-- Capabilities are human-readable and scoped to real operator intent.
-- Replay-oriented explanation and inspection stay grounded in stored receipts
-  instead of chat-only memory.
+- platform engineer
+- SRE / incident commander
+- DevOps engineer
+- security engineer
+- staff+ engineer standardizing risky operational workflows
 
-## Non-Goals
+Secondary:
 
-- Do not reposition Guild as a generic agent framework or orchestration engine.
-- Do not rename the internal runtime contract in the first wave.
-- Do not imply that every future capability or playbook shape is implemented today.
-- Do not hide current bounded or not-yet-supported runtime surfaces behind marketing language.
-- Do not make the first wave depend on a hosted control plane or marketplace story.
+- engineering manager who wants repeatable incident / change handling
+- internal developer platform team packaging operational knowledge
 
-## Decision Summary
+## Jobs to be done
 
-- Lead the product story with trusted operational automation, not portable artifacts.
-- Raise playbooks above skills in the operator story while keeping skills as the reusable execution unit.
-- Introduce an external capability taxonomy that is operator-readable and maps to current internal mechanics.
-- Tighten the target CLI story around `admit`, `exec`, `inspect`, and `replay`, but take an aliases-first migration path.
-- Use concrete ops workflows as the primary examples for the next narrative wave.
+1. Turn a tribal runbook into a reusable playbook.
+2. Let an AI system execute useful work without getting vague or reckless.
+3. Require approval before risky mutations.
+4. Produce evidence that can be reviewed after the fact.
+5. Package the workflow so it can move across products that understand skills.
 
-## Constraints From Current Repo Truth
+## Product promises
 
-- Current public docs still lead with portable artifacts, trust layers, and receipt chains.
-- Current CLI is shaped around `show`, `grants`, `run`, `ls`, `get`, `why`, and `verify`.
-- Current active runtime families are `http-request`, `read-resource`, `invoke-skill`, `emit-evidence`, and `log-write`.
-- `SkillCategory::Playbook` already exists in the type system, but playbooks are not yet a first-class user-facing concept.
-- This strategy doc is explanatory planning, not a runtime-contract source.
+Guild must make five promises and keep all five:
+
+1. **Legibility** - users can tell what a playbook can do and what it cannot do.
+2. **Portability** - packaged skills and playbooks move across compatible hosts.
+3. **Control** - risky mutations can be gated by approval and policy.
+4. **Evidence** - every serious run produces inspectable receipts.
+5. **Verification** - first-party and curated packs are tested, scored, and labeled.
+
+## What Guild is
+
+Guild is:
+
+- a packaging and execution layer for trusted operational playbooks
+- a capability model for policy and review
+- a way to turn runbooks into reusable, installable artifacts
+- a system for replayable evidence and verification
+
+## What Guild is not
+
+Guild is not:
+
+- an "agent operating system"
+- a generic workflow engine for every domain
+- a marketplace-first product
+- a replacement for the underlying tools being called
+- a promise of fully autonomous remediation with no human control
+
+## Strategic pillars
+
+### 1. Keep the wire format standard
+
+Guild should compile to the open Agent Skills ecosystem, not fork away from it.
+
+### 2. Make authoring humane
+
+Human authors should write friendly YAML and example files, then let Guild compile that to the canonical distribution format.
+
+### 3. Package outcomes, not fragments
+
+Users should install **starter packs** and run **playbooks**, not collect a bag of disconnected skills.
+
+### 4. Make trust visible
+
+Trust has to be an inspectable artifact, not a marketing claim. Receipt chains, verification reports, and replay are the feature.
+
+## Decision rules
+
+Use these rules whenever a product choice is unclear:
+
+1. Prefer the simpler external noun.
+2. Prefer a user-visible playbook over an internal mechanism.
+3. Prefer policy and evidence over more power.
+4. Prefer compatibility over clever proprietary format changes.
+5. Prefer first-party examples that mutate real systems safely over toy demos.
+6. Prefer curated packs over open catalog sprawl.
+7. Do not ship a generic feature when a trust-centered version would be stronger.
+
+## Success metrics for the next phase
+
+### Narrative success
+
+- README first screen explains Guild without internal jargon.
+- Landing page hero and CLI help use the same nouns.
+- At least one external reader can summarize the product accurately after a 30 second skim.
+
+### Product success
+
+- A first-party pack can be authored, built, exported, installed, and run in under 15 minutes.
+- At least 4 curated starter packs exist.
+- At least 6 reference playbooks exist and are runnable.
+- Every first-party playbook emits evidence and supports replay.
+
+### Adoption success
+
+- One real team can pilot Guild privately.
+- One security reviewer can understand blast radius from capabilities and receipts.
+- One manager can audit what happened without reading raw logs.
+
+## Canonical messaging hierarchy
+
+When describing Guild, use this order:
+
+1. **Outcome:** trusted playbooks for ops and security automation
+2. **Mechanism:** portable skills + capabilities + policy gates
+3. **Proof:** receipts, replay, verification, starter packs
+
+## Short approved copy
+
+### 12-word version
+
+**Trusted playbooks for operational work, with approvals, evidence, and replay.**
+
+### 30-word version
+
+**Guild turns runbooks into installable playbooks that agents can execute with clear capabilities, approval gates, and replayable evidence.**
+
+### 80-word version
+
+**Guild packages operational knowledge into portable skills and playbooks for SRE, platform, and security teams. Instead of vague agent behavior, Guild gives teams a capability model, policy gates before mutation, and evidence after execution. The result is automation that is both useful and reviewable.**
