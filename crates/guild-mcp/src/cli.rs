@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashSet};
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, IsTerminal, Write as _};
 use std::num::NonZeroUsize;
@@ -23,8 +24,8 @@ use guild_types::{
     EmitEvidenceConstraints, EvidenceAudience, EvidenceBlobRecord, EvidenceRecord, ExecutionRecord,
     ExecutionStatus, GUILD_EXECUTION_URI_PREFIX, GrantedCapability, GuildResourceUri, HttpMethod,
     HttpRequestConstraints, HttpScheme, InstalledVerificationState, InvokeDependencyConstraints,
-    LocalTrustTier, LogConstraints, ReadResourceConstraints, RedactionClass, RequestedSkillRef,
-    ResourceKind, ResourceReadResult, Severity, SkillKey, VersionRequirement,
+    LocalPolicyConfig, LocalTrustTier, LogConstraints, ReadResourceConstraints, RedactionClass,
+    RequestedSkillRef, ResourceKind, ResourceReadResult, Severity, SkillKey, VersionRequirement,
     execution_status_label,
 };
 use serde::Serialize;
@@ -62,6 +63,7 @@ const DEFAULT_LIST_SUMMARY_EXECUTION_LIMIT: usize = 10;
 const DEFAULT_LIST_EXECUTIONS_LIMIT: usize = 50;
 const DEFAULT_WHY_LINEAGE_MAX_DEPTH: usize = 4;
 const DEFAULT_WHY_LINEAGE_MAX_NODES: usize = 32;
+const DEFAULT_DOCTOR_SAMPLE_LIMIT: usize = 5;
 const SHOW_AFTER_HELP: &str = "Accepted refs:\n  skill://<namespace>/<name>@<version-or-range>\n  <namespace>/<name>@<version-or-range>\n  <name>@<version-or-range> when unambiguous\n  exec:<execution-id-prefix>, evidence:<evidence-record-id-prefix>, obj:<sha256-prefix>\n  guild://...\n\nScope:\n  `guild show` reads installed or persisted state; it does not run a skill.\n  it is one current inspect surface while the broader inspect story is still split across multiple commands.\n\nOutput:\n  default output is a short human summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  with --json, stdout carries the machine-readable result on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  use --porcelain for stable one-line machine reads.\n\nIdentity details:\n  Use -v with a skill ref to show the requested ref, resolved ref, digest, and installed path.\n  Use -vv with a skill ref to explain how the request matched installed state and resolved to one digest.\n\nSee also:\n  guild help refs\n  guild help inspect\n  guild why --help";
 const RUN_AFTER_HELP: &str = "Run an installed skill locally.\n\nInput:\n  Use a positional input file, --input-json, or --input-file.\n  Use --grants-json or --grants-file to pass caller-requested grants.\n\nAuthority lifecycle:\n  declared authority comes from the installed manifest.\n  requested authority comes from the caller-provided grants.\n  granted authority is the final capability slice the host policy allows for that run.\n  effective at runtime is the authority the guest can actually exercise during execution.\n  Guild does not hand the guest ambient authority. The host may reduce or deny caller-requested authority before guest start, and the runtime only exposes the final granted set.\n\nOutput:\n  in the default human mode, stdout carries the result payload.\n  in the default human mode, stderr carries the human status summary for reading, not parsing.\n  successful runs may point you to `guild why -v <exec-ref>` when requested authority differed from the final granted slice or a bounded authority check was blocked.\n  authority-denial failures may include one family-aware `hint:` line before the command follow-up steps.\n  with --json, stdout carries the machine-readable wrapper on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  that human status summary may include low-noise `Next:` hints when the follow-up is obvious.\n  use --porcelain when you need a stable one-line machine surface.\n\nCompatibility alias:\n  guild inspect ...\n  this alias still runs a skill through `guild run`; use `guild help inspect` for the target inspect-first preview.\n\nSee also:\n  guild help refs\n  guild help inspect\n  guild why --help";
 const LS_AFTER_HELP: &str = "Scope:\n  `guild ls` is the primary local-state listing command.\n  it is one current inspect surface for discovering installed skills and persisted Guild state.\n\nOutput:\n  default output is a short local-state listing for reading, not parsing.\n  with --json, stdout carries the machine-readable result on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  use --porcelain for stable one-line machine reads.\n\nLegacy alias:\n  guild list ...\n\nSee also:\n  guild help inspect\n  guild show --help\n  guild why --help";
@@ -70,6 +72,7 @@ const WHY_AFTER_HELP: &str = "Scope:\n  `guild why` is the primary persisted-exe
 const GRANTS_AFTER_HELP: &str = "Scope:\n  `guild grants` is a read-only grant-authoring helper.\n\nOutput:\n  `guild grants template <family>` prints concrete JSON you can narrow and pass back to `guild run` through `--grants-json` or `--grants-file`.\n  `guild grants template` without a family prints a read-only per-family catalog for discovery instead of one combined runnable request.\n  the templates cover only the currently active executable capability families.\n  this surface does not widen runtime support claims.\n\nSee also:\n  guild run --help\n  guild help grants";
 const GRANTS_TEMPLATE_AFTER_HELP: &str = "Usage:\n  `guild grants template <family>` prints one concrete `CapabilityGrantSet` template.\n  omit the family to print a read-only per-family catalog instead of one combined grant set.\n\nFamilies:\n  read-resource\n  invoke-skill\n  emit-evidence\n  log-write\n  http-request\n\nOutput:\n  family-specific template output is read-only JSON for editing and rerunning.\n  the no-family catalog is for browsing; pick one family before feeding JSON back to `guild run`.\n  replace placeholder values such as `<declared-alias>` before rerunning a skill.\n\nSee also:\n  guild help grants\n  guild run --help";
 const VERIFY_AFTER_HELP: &str = "Scope:\n  guild verify shows installed trust and verification status for installed skills only.\n  use `guild why` for one persisted execution, including policy outcomes for that run.\n  signed plan verification remains under guild trust verify-plan.\n\nOutput:\n  default output is a short human trust summary for reading, not parsing.\n  that summary may include low-noise `Next:` hints when the follow-up is obvious.\n  with --json, stdout carries the machine-readable result on success and a machine-readable `error` envelope on failure; stderr stays empty in either case.\n  use --porcelain for stable one-line machine reads.\n\nVerification details:\n  use -v after import or pull when you want the installed verification explanation.\n  that view adds signing scheme and short bundle digest details when verification metadata exists.\n\nSee also:\n  guild help trust\n  guild show --help";
+const DOCTOR_AFTER_HELP: &str = "Scope:\n  `guild doctor` is the first read-only Guild-scoped diagnostic command.\n  it reports whether the selected Guild root can be resolved and read as-is, then checks the daily local state the CLI depends on.\n\nChecks:\n  selected Guild root resolution and whether that root can be opened read-only\n  installed and persisted state needed by the daily CLI under the selected root\n  local trust-store state relevant to guild verify and guild trust\n  Guild-specific runtime or setup checks grounded in real Guild reads\n\nOutput:\n  default output is a short human diagnostic summary for reading, not parsing.\n  with --json, stdout carries a machine-readable diagnostic report; stderr stays empty on success.\n  diagnosed setup problems stay in the report instead of triggering hidden repair work.\n\nNon-goals:\n  no root creation, install, config writing, or trust mutation\n  no remote registry probing or generic machine-inspector behavior\n  no hidden bootstrap or repair side effects\n\nSee also:\n  guild help roots\n  guild verify --help\n  guild trust --help";
 const EXPORT_AFTER_HELP: &str = "Preview direction:\n  no preview contract is chosen for export in the first slice.\n  see `guild help preview` for the risky-flow preflight direction.";
 const IMPORT_AFTER_HELP: &str = "Preview direction:\n  use `--preview` for a read-only preflight over import and pull.\n  see `guild help preview` for the shipped scope and non-goals.";
 const IMPORT_SUBCOMMAND_AFTER_HELP: &str = "Preview direction:\n  `--preview` stays read-only and uses the same signed bundle and trust checks as import.\n  see `guild help preview` for the first contract.";
@@ -1151,6 +1154,115 @@ struct TrustVerifyPlanOutput {
     signed_digest: StructuredDigest,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum RegistryRootSource {
+    Flag,
+    Env,
+    Default,
+}
+
+impl RegistryRootSource {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Flag => "--registry-root",
+            Self::Env => "GUILD_REGISTRY_ROOT",
+            Self::Default => "default (~/.guild)",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RegistryRootSelection {
+    path: PathBuf,
+    source: RegistryRootSource,
+    default_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum DoctorStatus {
+    Ok,
+    Attention,
+    Skipped,
+}
+
+impl DoctorStatus {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Attention => "attention",
+            Self::Skipped => "skipped",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DoctorRootOutput {
+    status: DoctorStatus,
+    selected_path: String,
+    source: RegistryRootSource,
+    default_path: Option<String>,
+    canonical_path: Option<String>,
+    exists: bool,
+    is_directory: Option<bool>,
+    openable_read_only: bool,
+    summary: String,
+    error_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DoctorStateCheckOutput {
+    status: DoctorStatus,
+    summary: String,
+    error_code: Option<String>,
+    sample_limit: usize,
+    installed_skill_count: Option<usize>,
+    recent_execution_sample_count: Option<usize>,
+    recent_evidence_sample_count: Option<usize>,
+    recent_object_sample_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DoctorTrustCheckOutput {
+    status: DoctorStatus,
+    summary: String,
+    error_code: Option<String>,
+    trusted_publisher_count: Option<usize>,
+    trust_tiers: BTreeMap<String, usize>,
+    installed_verification_states: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DoctorPolicyCheckOutput {
+    status: DoctorStatus,
+    summary: String,
+    error_code: Option<String>,
+    policy_path: String,
+    configured: Option<bool>,
+    default_profile: Option<String>,
+    profile_count: Option<usize>,
+    binding_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DoctorCommandOutput {
+    overall_status: DoctorStatus,
+    registry_root: DoctorRootOutput,
+    state: DoctorStateCheckOutput,
+    trust: DoctorTrustCheckOutput,
+    policy: DoctorPolicyCheckOutput,
+    next_steps: Vec<String>,
+}
+
+#[derive(Debug)]
+struct DoctorRootCheck {
+    output: DoctorRootOutput,
+    registry: Option<LocalRegistry>,
+    registry_error: Option<RegistryError>,
+    next_steps: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 enum ShowTarget {
@@ -1292,6 +1404,11 @@ enum CliCommand {
         after_help = VERIFY_AFTER_HELP
     )]
     Verify(VerifyCliArgs),
+    #[command(
+        about = "Run Guild-scoped read-only diagnostics",
+        after_help = DOCTOR_AFTER_HELP
+    )]
+    Doctor(DoctorCliArgs),
     #[command(about = "Install a source skill into a Guild root")]
     Install(InstallCliArgs),
     #[command(
@@ -1393,6 +1510,12 @@ struct VerifyCliArgs {
     skill_ref: String,
     #[command(flatten)]
     render: RenderCliArgs,
+}
+
+#[derive(Debug, Clone, Args)]
+struct DoctorCliArgs {
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -1823,6 +1946,16 @@ impl VerifyCliArgs {
     }
 }
 
+impl DoctorCliArgs {
+    fn to_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+        if self.json {
+            args.push("--json".into());
+        }
+        args
+    }
+}
+
 impl InitCliArgs {
     fn to_args(&self) -> Vec<String> {
         let mut args = vec!["--name".into(), self.name.clone()];
@@ -2095,6 +2228,7 @@ pub fn run(
         CliCommand::Why(command) => run_why(&command.to_args(), &global, env_registry_root),
         CliCommand::Grants(command) => run_grants(&command),
         CliCommand::Verify(command) => run_verify(&command.to_args(), &global, env_registry_root),
+        CliCommand::Doctor(command) => run_doctor(&command.to_args(), &global, env_registry_root),
         CliCommand::Init(command) => run_init(&command.to_args(), &global, env_registry_root),
         CliCommand::Install(command) => run_install(&command.to_args(), &global, env_registry_root),
         CliCommand::Export(command) => run_export(&command.to_args(), &global, env_registry_root),
@@ -2159,8 +2293,8 @@ fn command_requests_json_error_output(args: &[String]) -> bool {
     let remaining = &args[command_index + 1..];
 
     match command {
-        "show" | "run" | "inspect" | "ls" | "list" | "get" | "read" | "why" | "verify" | "init"
-        | "install" | "export" | "import" | "push" | "pull" => {
+        "show" | "run" | "inspect" | "ls" | "list" | "get" | "read" | "why" | "verify"
+        | "doctor" | "init" | "install" | "export" | "import" | "push" | "pull" => {
             remaining.iter().any(|arg| arg == "--json")
         }
         "trust" => remaining.iter().any(|arg| arg == "--json"),
@@ -3025,6 +3159,605 @@ fn run_verify(
         );
     }
     Ok(())
+}
+
+fn run_doctor(
+    args: &[String],
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<(), CliError> {
+    if !args.is_empty() && is_help(args[0].as_str()) {
+        print_doctor_usage();
+        return Ok(());
+    }
+
+    let mut json_output = false;
+    for argument in args {
+        match argument.as_str() {
+            "--json" => json_output = true,
+            other => {
+                return Err(CliError::new(format!(
+                    "unexpected argument for `guild doctor`: `{other}`"
+                )));
+            }
+        }
+    }
+
+    let selection = resolve_registry_root_selection(global, env_registry_root)?;
+    let output = build_doctor_report(&selection);
+    if json_output {
+        print_json(&output)?;
+    } else {
+        print_doctor_text(&output);
+    }
+    Ok(())
+}
+
+fn build_doctor_report(selection: &RegistryRootSelection) -> DoctorCommandOutput {
+    let root_check = inspect_doctor_root(selection);
+    let state = inspect_doctor_state(
+        root_check.registry.as_ref(),
+        root_check.registry_error.as_ref(),
+    );
+    let trust = inspect_doctor_trust(
+        selection,
+        root_check.registry.as_ref(),
+        root_check.registry_error.as_ref(),
+    );
+    let policy = inspect_doctor_policy(selection);
+
+    let overall_status = doctor_overall_status([
+        root_check.output.status,
+        state.status,
+        trust.status,
+        policy.status,
+    ]);
+
+    let mut next_steps = Vec::new();
+    extend_unique(&mut next_steps, root_check.next_steps);
+    if state.status == DoctorStatus::Attention {
+        extend_unique(
+            &mut next_steps,
+            doctor_next_steps_for_registry_error(state.error_code.as_deref(), &selection.path),
+        );
+    }
+    if trust.status == DoctorStatus::Attention {
+        extend_unique(
+            &mut next_steps,
+            doctor_next_steps_for_registry_error(trust.error_code.as_deref(), &selection.path),
+        );
+    }
+    if policy.status == DoctorStatus::Attention {
+        extend_unique(
+            &mut next_steps,
+            doctor_next_steps_for_policy_error(policy.error_code.as_deref(), &selection.path),
+        );
+    }
+
+    DoctorCommandOutput {
+        overall_status,
+        registry_root: root_check.output,
+        state,
+        trust,
+        policy,
+        next_steps,
+    }
+}
+
+fn inspect_doctor_root(selection: &RegistryRootSelection) -> DoctorRootCheck {
+    let metadata = fs::metadata(&selection.path).ok();
+    let selected_path = display_path(&selection.path);
+    let default_path = selection
+        .default_path
+        .as_ref()
+        .map(|path| display_path(path));
+    let canonical_path = fs::canonicalize(&selection.path)
+        .ok()
+        .map(|path| path.display().to_string());
+
+    match LocalRegistry::load_existing(&selection.path) {
+        Ok(registry) => DoctorRootCheck {
+            output: DoctorRootOutput {
+                status: DoctorStatus::Ok,
+                selected_path,
+                source: selection.source,
+                default_path,
+                canonical_path,
+                exists: metadata.is_some(),
+                is_directory: metadata.as_ref().map(std::fs::Metadata::is_dir),
+                openable_read_only: true,
+                summary: "selected Guild root is readable as-is".into(),
+                error_code: None,
+            },
+            registry: Some(registry),
+            registry_error: None,
+            next_steps: Vec::new(),
+        },
+        Err(error) => {
+            let cli_error = if error.code == "registry-root-missing" {
+                missing_registry_root_error(&selection.path)
+            } else {
+                cli_error_from_registry_with_root(&error, &selection.path)
+            };
+            DoctorRootCheck {
+                output: DoctorRootOutput {
+                    status: DoctorStatus::Attention,
+                    selected_path,
+                    source: selection.source,
+                    default_path,
+                    canonical_path,
+                    exists: metadata.is_some(),
+                    is_directory: metadata.as_ref().map(std::fs::Metadata::is_dir),
+                    openable_read_only: false,
+                    summary: doctor_root_summary_from_error(&error),
+                    error_code: Some(error.code.clone()),
+                },
+                registry: None,
+                registry_error: Some(error),
+                next_steps: cli_error.json_next_steps(),
+            }
+        }
+    }
+}
+
+fn inspect_doctor_state(
+    registry: Option<&LocalRegistry>,
+    registry_error: Option<&RegistryError>,
+) -> DoctorStateCheckOutput {
+    if let Some(registry) = registry {
+        let installed_skill_count = registry.installed().len();
+        match (
+            registry.list_recent_execution_records(DEFAULT_DOCTOR_SAMPLE_LIMIT),
+            registry.list_recent_evidence_records(DEFAULT_DOCTOR_SAMPLE_LIMIT),
+            registry.list_object_blobs(DEFAULT_DOCTOR_SAMPLE_LIMIT),
+        ) {
+            (Ok(executions), Ok(evidence), Ok(objects)) => DoctorStateCheckOutput {
+                status: DoctorStatus::Ok,
+                summary: format!(
+                    "installed and persisted state is readable ({} installed, {} sampled run(s), {} sampled evidence record(s), {} sampled object(s))",
+                    installed_skill_count,
+                    executions.len(),
+                    evidence.len(),
+                    objects.len()
+                ),
+                error_code: None,
+                sample_limit: DEFAULT_DOCTOR_SAMPLE_LIMIT,
+                installed_skill_count: Some(installed_skill_count),
+                recent_execution_sample_count: Some(executions.len()),
+                recent_evidence_sample_count: Some(evidence.len()),
+                recent_object_sample_count: Some(objects.len()),
+            },
+            (execution_result, evidence_result, object_result) => {
+                let error = execution_result
+                    .err()
+                    .or_else(|| evidence_result.err())
+                    .or_else(|| object_result.err())
+                    .expect("one doctor state read should fail");
+                DoctorStateCheckOutput {
+                    status: DoctorStatus::Attention,
+                    summary: format!(
+                        "installed or persisted state could not be read: {}",
+                        humanize_runtime_surface_summary(
+                            &error.code,
+                            &error.message,
+                            error.detail.as_ref()
+                        )
+                    ),
+                    error_code: Some(error.code),
+                    sample_limit: DEFAULT_DOCTOR_SAMPLE_LIMIT,
+                    installed_skill_count: Some(installed_skill_count),
+                    recent_execution_sample_count: None,
+                    recent_evidence_sample_count: None,
+                    recent_object_sample_count: None,
+                }
+            }
+        }
+    } else {
+        let Some(error) = registry_error else {
+            return DoctorStateCheckOutput {
+                status: DoctorStatus::Skipped,
+                summary:
+                    "state checks were skipped because the selected Guild root could not be inspected"
+                        .into(),
+                error_code: None,
+                sample_limit: DEFAULT_DOCTOR_SAMPLE_LIMIT,
+                installed_skill_count: None,
+                recent_execution_sample_count: None,
+                recent_evidence_sample_count: None,
+                recent_object_sample_count: None,
+            };
+        };
+
+        if error.code == "registry-root-missing" {
+            DoctorStateCheckOutput {
+                status: DoctorStatus::Skipped,
+                summary:
+                    "state checks were skipped because the selected Guild root does not exist yet"
+                        .into(),
+                error_code: None,
+                sample_limit: DEFAULT_DOCTOR_SAMPLE_LIMIT,
+                installed_skill_count: None,
+                recent_execution_sample_count: None,
+                recent_evidence_sample_count: None,
+                recent_object_sample_count: None,
+            }
+        } else {
+            DoctorStateCheckOutput {
+                status: DoctorStatus::Attention,
+                summary: format!(
+                    "installed or persisted state could not be read: {}",
+                    humanize_runtime_surface_summary(
+                        &error.code,
+                        &error.message,
+                        error.detail.as_ref()
+                    )
+                ),
+                error_code: Some(error.code.clone()),
+                sample_limit: DEFAULT_DOCTOR_SAMPLE_LIMIT,
+                installed_skill_count: None,
+                recent_execution_sample_count: None,
+                recent_evidence_sample_count: None,
+                recent_object_sample_count: None,
+            }
+        }
+    }
+}
+
+fn inspect_doctor_trust(
+    selection: &RegistryRootSelection,
+    registry: Option<&LocalRegistry>,
+    registry_error: Option<&RegistryError>,
+) -> DoctorTrustCheckOutput {
+    match LocalRegistry::list_trusted_publishers(&selection.path) {
+        Ok(publishers) => {
+            let mut trust_tiers = BTreeMap::new();
+            for publisher in &publishers {
+                increment_named_count(&mut trust_tiers, publisher.trust_tier.to_string());
+            }
+
+            let installed_verification_states = registry.map(|registry| {
+                let mut counts = BTreeMap::new();
+                for skill in registry.installed() {
+                    increment_named_count(&mut counts, skill.trust.verification_state.to_string());
+                }
+                counts
+            });
+
+            let mut summary = format!(
+                "trusted publisher store is readable ({} publisher record(s))",
+                publishers.len()
+            );
+            if let Some(state_counts) = installed_verification_states.as_ref()
+                && let Some(state_summary) = format_named_counts(state_counts)
+            {
+                write!(
+                    &mut summary,
+                    "; installed verification states: {state_summary}"
+                )
+                .expect("writing to string cannot fail");
+            }
+
+            DoctorTrustCheckOutput {
+                status: DoctorStatus::Ok,
+                summary,
+                error_code: None,
+                trusted_publisher_count: Some(publishers.len()),
+                trust_tiers,
+                installed_verification_states: installed_verification_states.unwrap_or_default(),
+            }
+        }
+        Err(error) if error.code == "registry-root-missing" => {
+            let summary = if matches!(
+                registry_error.map(|entry| entry.code.as_str()),
+                Some("registry-root-missing")
+            ) {
+                "trust checks were skipped because the selected Guild root does not exist yet"
+                    .to_owned()
+            } else {
+                "trust checks were skipped because the selected Guild root could not be opened read-only".to_owned()
+            };
+            DoctorTrustCheckOutput {
+                status: DoctorStatus::Skipped,
+                summary,
+                error_code: None,
+                trusted_publisher_count: None,
+                trust_tiers: BTreeMap::new(),
+                installed_verification_states: BTreeMap::new(),
+            }
+        }
+        Err(error) => DoctorTrustCheckOutput {
+            status: DoctorStatus::Attention,
+            summary: format!(
+                "trusted publisher store could not be read: {}",
+                humanize_runtime_surface_summary(
+                    &error.code,
+                    &error.message,
+                    error.detail.as_ref()
+                )
+            ),
+            error_code: Some(error.code),
+            trusted_publisher_count: None,
+            trust_tiers: BTreeMap::new(),
+            installed_verification_states: BTreeMap::new(),
+        },
+    }
+}
+
+fn inspect_doctor_policy(selection: &RegistryRootSelection) -> DoctorPolicyCheckOutput {
+    let policy_path = selection.path.join("policy.json");
+    let policy_path_display = display_path(&policy_path);
+
+    if !selection.path.exists() {
+        return DoctorPolicyCheckOutput {
+            status: DoctorStatus::Skipped,
+            summary:
+                "policy checks were skipped because the selected Guild root does not exist yet"
+                    .into(),
+            error_code: None,
+            policy_path: policy_path_display,
+            configured: None,
+            default_profile: None,
+            profile_count: None,
+            binding_count: None,
+        };
+    }
+
+    if !policy_path.exists() {
+        return DoctorPolicyCheckOutput {
+            status: DoctorStatus::Ok,
+            summary: "no local policy file is configured; default host policy applies".into(),
+            error_code: None,
+            policy_path: policy_path_display,
+            configured: Some(false),
+            default_profile: None,
+            profile_count: None,
+            binding_count: None,
+        };
+    }
+
+    let contents = match fs::read_to_string(&policy_path) {
+        Ok(contents) => contents,
+        Err(error) => {
+            return DoctorPolicyCheckOutput {
+                status: DoctorStatus::Attention,
+                summary: format!("local policy file could not be read: {error}"),
+                error_code: Some("policy-read-failed".into()),
+                policy_path: policy_path_display,
+                configured: None,
+                default_profile: None,
+                profile_count: None,
+                binding_count: None,
+            };
+        }
+    };
+
+    let config: LocalPolicyConfig = match serde_json::from_str(&contents) {
+        Ok(config) => config,
+        Err(error) => {
+            return DoctorPolicyCheckOutput {
+                status: DoctorStatus::Attention,
+                summary: format!("local policy file could not be parsed: {error}"),
+                error_code: Some("policy-parse-failed".into()),
+                policy_path: policy_path_display,
+                configured: Some(true),
+                default_profile: None,
+                profile_count: None,
+                binding_count: None,
+            };
+        }
+    };
+
+    let validation_errors = config.validate();
+    if let Some(first_error) = validation_errors.first() {
+        return DoctorPolicyCheckOutput {
+            status: DoctorStatus::Attention,
+            summary: format!("local policy file failed validation: {first_error}"),
+            error_code: Some("policy-invalid".into()),
+            policy_path: policy_path_display,
+            configured: Some(true),
+            default_profile: Some(config.default_profile.clone()),
+            profile_count: Some(config.profiles.len()),
+            binding_count: Some(config.bindings.len()),
+        };
+    }
+
+    DoctorPolicyCheckOutput {
+        status: DoctorStatus::Ok,
+        summary: format!(
+            "local policy file is readable (default profile `{}`, {} profile(s), {} binding(s))",
+            config.default_profile,
+            config.profiles.len(),
+            config.bindings.len()
+        ),
+        error_code: None,
+        policy_path: policy_path_display,
+        configured: Some(true),
+        default_profile: Some(config.default_profile),
+        profile_count: Some(config.profiles.len()),
+        binding_count: Some(config.bindings.len()),
+    }
+}
+
+fn doctor_overall_status(statuses: [DoctorStatus; 4]) -> DoctorStatus {
+    if statuses.contains(&DoctorStatus::Attention) {
+        DoctorStatus::Attention
+    } else if statuses.contains(&DoctorStatus::Skipped) {
+        DoctorStatus::Skipped
+    } else {
+        DoctorStatus::Ok
+    }
+}
+
+fn doctor_root_summary_from_error(error: &RegistryError) -> String {
+    if error.code == "registry-root-missing" {
+        "selected Guild root does not exist yet".into()
+    } else {
+        format!(
+            "selected Guild root could not be opened read-only: {}",
+            humanize_runtime_surface_summary(&error.code, &error.message, error.detail.as_ref())
+        )
+    }
+}
+
+fn doctor_next_steps_for_registry_error(
+    error_code: Option<&str>,
+    registry_root: &Path,
+) -> Vec<String> {
+    let Some(error_code) = error_code else {
+        return Vec::new();
+    };
+    let cli_error = apply_failure_remediation(
+        CliError::classified(CliErrorCategory::RootSetup, "doctor follow-up")
+            .with_reason_code(error_code),
+        FailureRemediationContext::registry(error_code, None, Some(registry_root)),
+    );
+    cli_error.json_next_steps()
+}
+
+fn doctor_next_steps_for_policy_error(
+    error_code: Option<&str>,
+    registry_root: &Path,
+) -> Vec<String> {
+    let Some(error_code) = error_code else {
+        return Vec::new();
+    };
+    let cli_error = apply_failure_remediation(
+        CliError::classified(CliErrorCategory::RootSetup, "doctor follow-up")
+            .with_reason_code(error_code),
+        FailureRemediationContext::registry(error_code, None, Some(registry_root)),
+    );
+    cli_error.json_next_steps()
+}
+
+fn print_doctor_text(output: &DoctorCommandOutput) {
+    println!("guild doctor");
+    println!();
+    println!("overall: {}", output.overall_status.label());
+    println!();
+
+    println!("root: {}", output.registry_root.status.label());
+    println!("  selected: {}", output.registry_root.selected_path);
+    println!("  source: {}", output.registry_root.source.label());
+    if let Some(default_path) = output.registry_root.default_path.as_deref() {
+        println!("  default: {default_path}");
+    }
+    if let Some(canonical_path) = output.registry_root.canonical_path.as_deref() {
+        println!("  canonical: {canonical_path}");
+    }
+    println!(
+        "  openable_read_only: {}",
+        output.registry_root.openable_read_only
+    );
+    println!("  summary: {}", output.registry_root.summary);
+    if let Some(error_code) = output.registry_root.error_code.as_deref() {
+        println!("  error_code: {error_code}");
+    }
+
+    println!();
+    println!("state: {}", output.state.status.label());
+    println!("  summary: {}", output.state.summary);
+    if let Some(error_code) = output.state.error_code.as_deref() {
+        println!("  error_code: {error_code}");
+    }
+    if let Some(installed_skill_count) = output.state.installed_skill_count {
+        println!("  installed_skill_count: {installed_skill_count}");
+    }
+    if let Some(sample_count) = output.state.recent_execution_sample_count {
+        println!(
+            "  recent_execution_sample_count: {} / {}",
+            sample_count, output.state.sample_limit
+        );
+    }
+    if let Some(sample_count) = output.state.recent_evidence_sample_count {
+        println!(
+            "  recent_evidence_sample_count: {} / {}",
+            sample_count, output.state.sample_limit
+        );
+    }
+    if let Some(sample_count) = output.state.recent_object_sample_count {
+        println!(
+            "  recent_object_sample_count: {} / {}",
+            sample_count, output.state.sample_limit
+        );
+    }
+
+    println!();
+    println!("trust: {}", output.trust.status.label());
+    println!("  summary: {}", output.trust.summary);
+    if let Some(error_code) = output.trust.error_code.as_deref() {
+        println!("  error_code: {error_code}");
+    }
+    if let Some(trusted_publisher_count) = output.trust.trusted_publisher_count {
+        println!("  trusted_publisher_count: {trusted_publisher_count}");
+    }
+    if let Some(trust_tiers) = format_named_counts(&output.trust.trust_tiers) {
+        println!("  trust_tiers: {trust_tiers}");
+    }
+    if let Some(verification_states) =
+        format_named_counts(&output.trust.installed_verification_states)
+    {
+        println!("  installed_verification_states: {verification_states}");
+    }
+
+    println!();
+    println!("policy: {}", output.policy.status.label());
+    println!("  policy_path: {}", output.policy.policy_path);
+    println!("  summary: {}", output.policy.summary);
+    if let Some(error_code) = output.policy.error_code.as_deref() {
+        println!("  error_code: {error_code}");
+    }
+    if let Some(configured) = output.policy.configured {
+        println!("  configured: {configured}");
+    }
+    if let Some(default_profile) = output.policy.default_profile.as_deref() {
+        println!("  default_profile: {default_profile}");
+    }
+    if let Some(profile_count) = output.policy.profile_count {
+        println!("  profile_count: {profile_count}");
+    }
+    if let Some(binding_count) = output.policy.binding_count {
+        println!("  binding_count: {binding_count}");
+    }
+
+    if !output.next_steps.is_empty() {
+        println!();
+        println!("Next:");
+        for next_step in &output.next_steps {
+            println!(
+                "  {}",
+                qualify_next_steps_for_registry_root(
+                    &format!("Next: {next_step}"),
+                    Path::new(&output.registry_root.selected_path),
+                )
+            );
+        }
+    }
+}
+
+fn format_named_counts(counts: &BTreeMap<String, usize>) -> Option<String> {
+    if counts.is_empty() {
+        return None;
+    }
+
+    Some(
+        counts
+            .iter()
+            .map(|(name, count)| format!("{name}={count}"))
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
+}
+
+fn increment_named_count(counts: &mut BTreeMap<String, usize>, name: String) {
+    *counts.entry(name).or_insert(0) += 1;
+}
+
+fn extend_unique(target: &mut Vec<String>, items: Vec<String>) {
+    for item in items {
+        if !target.iter().any(|existing| existing == &item) {
+            target.push(item);
+        }
+    }
 }
 
 fn parse_ls_args(args: &[String]) -> Result<(RenderFlags, Vec<String>, usize), CliError> {
@@ -4469,19 +5202,39 @@ fn run_mcp_serve(
     Ok(())
 }
 
+fn resolve_registry_root_selection(
+    global: &GlobalOptions,
+    env_registry_root: Option<String>,
+) -> Result<RegistryRootSelection, CliError> {
+    if let Some(path) = &global.registry_root {
+        return Ok(RegistryRootSelection {
+            path: path.clone(),
+            source: RegistryRootSource::Flag,
+            default_path: paths::default_registry_root().ok(),
+        });
+    }
+
+    if let Some(path) = env_registry_root {
+        return Ok(RegistryRootSelection {
+            path: PathBuf::from(path),
+            source: RegistryRootSource::Env,
+            default_path: paths::default_registry_root().ok(),
+        });
+    }
+
+    let path = paths::default_registry_root().map_err(|error| CliError::new(error.to_string()))?;
+    Ok(RegistryRootSelection {
+        default_path: Some(path.clone()),
+        path,
+        source: RegistryRootSource::Default,
+    })
+}
+
 fn resolve_registry_root(
     global: &GlobalOptions,
     env_registry_root: Option<String>,
 ) -> Result<PathBuf, CliError> {
-    if let Some(path) = &global.registry_root {
-        return Ok(path.clone());
-    }
-
-    if let Some(path) = env_registry_root {
-        return Ok(PathBuf::from(path));
-    }
-
-    paths::default_registry_root().map_err(|error| CliError::new(error.to_string()))
+    resolve_registry_root_selection(global, env_registry_root).map(|selection| selection.path)
 }
 
 fn qualify_next_steps_for_registry_root(next_steps: &str, registry_root: &Path) -> String {
@@ -4502,6 +5255,17 @@ fn uses_default_registry_root(registry_root: &Path) -> bool {
     paths::default_registry_root()
         .map(|default| default == registry_root)
         .unwrap_or(false)
+}
+
+fn display_path(path: &Path) -> String {
+    if path.is_absolute() {
+        return path.display().to_string();
+    }
+
+    std::env::current_dir().map_or_else(
+        |_| path.display().to_string(),
+        |cwd| cwd.join(path).display().to_string(),
+    )
 }
 
 fn shell_quote_arg(value: &str) -> String {
@@ -5389,6 +6153,7 @@ fn print_usage() {
     println!("  get       Read a Guild resource");
     println!("  why       Explain a persisted execution");
     println!("  verify    Review installed trust and verification status");
+    println!("  doctor    Run Guild-scoped read-only diagnostics");
     println!();
     println!("Install and publish:");
     println!("  install   Install a source skill into a Guild root");
@@ -5437,7 +6202,7 @@ fn print_help_topics() {
     println!("  inspect  Preview of the target inspect-first operator surface");
     println!("  trust   Installed trust and verification scope");
     println!("  roots   Guild root selection and initialization");
-    println!("  doctor  Chosen read-only diagnostic command direction");
+    println!("  doctor  Read-only diagnostics for the selected Guild root");
     println!("  preview Chosen preflight direction for risky import and pull flows");
     println!("  grants  Read-only grant authoring templates for active families");
     println!();
@@ -5594,14 +6359,13 @@ fn print_help_roots() {
 }
 
 fn print_help_doctor() {
-    println!("Diagnostic command direction");
+    println!("Guild-scoped diagnostics");
     println!();
-    println!("Chosen direction:");
+    println!("Shipped command:");
     println!("  guild doctor");
-    println!("  This will be the first read-only Guild-scoped diagnostic command.");
-    println!("  It is not implemented yet; this help topic fixes the contract direction first.");
+    println!("  This is the first read-only Guild-scoped diagnostic command.");
     println!();
-    println!("Initial checks should stay tied to real Guild state:");
+    println!("Current checks stay tied to real Guild state:");
     println!("  selected Guild root resolution and whether that root can be opened read-only");
     println!("  installed and persisted state needed by the daily CLI under the selected root");
     println!("  local trust-store state relevant to guild verify and guild trust");
@@ -5727,6 +6491,11 @@ fn print_verify_usage() {
         "usage: guild [--registry-root <path>] verify <skill-ref> [--json | --porcelain] [-v|-vv|--debug] [--color auto|always|never]"
     );
     println!("{VERIFY_AFTER_HELP}");
+}
+
+fn print_doctor_usage() {
+    println!("usage: guild [--registry-root <path>] doctor [--json]");
+    println!("{DOCTOR_AFTER_HELP}");
 }
 
 fn print_init_usage() {
