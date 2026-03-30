@@ -3602,67 +3602,28 @@ fn inspect_doctor_policy(
     let policy_path_display = display_path(&policy_path);
 
     if !root_output.openable_read_only {
-        let summary = if root_output.error_code.as_deref() == Some("registry-root-missing") {
-            "policy checks were skipped because the selected Guild root does not exist yet".into()
-        } else {
-            "policy checks were skipped because the selected Guild root could not be opened read-only"
-                .into()
-        };
-        return DoctorPolicyCheckOutput {
-            status: DoctorStatus::Skipped,
-            summary,
-            error_code: None,
-            policy_path: policy_path_display,
-            configured: None,
-            default_profile: None,
-            profile_count: None,
-            binding_count: None,
-        };
+        return doctor_policy_skipped_output(
+            policy_path_display,
+            root_output.error_code.as_deref() == Some("registry-root-missing"),
+        );
     }
 
-    if !policy_path.exists() {
-        return DoctorPolicyCheckOutput {
-            status: DoctorStatus::Ok,
-            summary: "no local policy file is configured; default host policy applies".into(),
-            error_code: None,
-            policy_path: policy_path_display,
-            configured: Some(false),
-            default_profile: None,
-            profile_count: None,
-            binding_count: None,
-        };
+    match fs::symlink_metadata(&policy_path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return doctor_policy_absent_output(policy_path_display);
+        }
+        Err(error) => return doctor_policy_read_failed_output(policy_path_display, &error),
     }
 
     let contents = match fs::read_to_string(&policy_path) {
         Ok(contents) => contents,
-        Err(error) => {
-            return DoctorPolicyCheckOutput {
-                status: DoctorStatus::Attention,
-                summary: format!("local policy file could not be read: {error}"),
-                error_code: Some("policy-read-failed".into()),
-                policy_path: policy_path_display,
-                configured: None,
-                default_profile: None,
-                profile_count: None,
-                binding_count: None,
-            };
-        }
+        Err(error) => return doctor_policy_read_failed_output(policy_path_display, &error),
     };
 
     let config: LocalPolicyConfig = match serde_json::from_str(&contents) {
         Ok(config) => config,
-        Err(error) => {
-            return DoctorPolicyCheckOutput {
-                status: DoctorStatus::Attention,
-                summary: format!("local policy file could not be parsed: {error}"),
-                error_code: Some("policy-parse-failed".into()),
-                policy_path: policy_path_display,
-                configured: Some(true),
-                default_profile: None,
-                profile_count: None,
-                binding_count: None,
-            };
-        }
+        Err(error) => return doctor_policy_parse_failed_output(policy_path_display, &error),
     };
 
     let validation_errors = config.validate();
@@ -3693,6 +3654,72 @@ fn inspect_doctor_policy(
         default_profile: Some(config.default_profile),
         profile_count: Some(config.profiles.len()),
         binding_count: Some(config.bindings.len()),
+    }
+}
+
+fn doctor_policy_skipped_output(
+    policy_path: String,
+    root_missing: bool,
+) -> DoctorPolicyCheckOutput {
+    let summary = if root_missing {
+        "policy checks were skipped because the selected Guild root does not exist yet"
+    } else {
+        "policy checks were skipped because the selected Guild root could not be opened read-only"
+    };
+    DoctorPolicyCheckOutput {
+        status: DoctorStatus::Skipped,
+        summary: summary.into(),
+        error_code: None,
+        policy_path,
+        configured: None,
+        default_profile: None,
+        profile_count: None,
+        binding_count: None,
+    }
+}
+
+fn doctor_policy_absent_output(policy_path: String) -> DoctorPolicyCheckOutput {
+    DoctorPolicyCheckOutput {
+        status: DoctorStatus::Ok,
+        summary: "no local policy file is configured; default host policy applies".into(),
+        error_code: None,
+        policy_path,
+        configured: Some(false),
+        default_profile: None,
+        profile_count: None,
+        binding_count: None,
+    }
+}
+
+fn doctor_policy_read_failed_output(
+    policy_path: String,
+    error: &std::io::Error,
+) -> DoctorPolicyCheckOutput {
+    DoctorPolicyCheckOutput {
+        status: DoctorStatus::Attention,
+        summary: format!("local policy file could not be read: {error}"),
+        error_code: Some("policy-read-failed".into()),
+        policy_path,
+        configured: None,
+        default_profile: None,
+        profile_count: None,
+        binding_count: None,
+    }
+}
+
+fn doctor_policy_parse_failed_output(
+    policy_path: String,
+    error: &serde_json::Error,
+) -> DoctorPolicyCheckOutput {
+    DoctorPolicyCheckOutput {
+        status: DoctorStatus::Attention,
+        summary: format!("local policy file could not be parsed: {error}"),
+        error_code: Some("policy-parse-failed".into()),
+        policy_path,
+        configured: Some(true),
+        default_profile: None,
+        profile_count: None,
+        binding_count: None,
     }
 }
 

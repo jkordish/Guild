@@ -5446,6 +5446,38 @@ fn doctor_json_reports_invalid_policy_file() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn doctor_json_reports_broken_policy_symlinks_as_attention() {
+    use std::os::unix::fs::symlink;
+
+    let temp = TempFixtureDir::new("guild-cli-doctor-policy-broken-symlink");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let missing_target = temp.path().join("missing-policy.json");
+    symlink(&missing_target, registry_root.join("policy.json")).unwrap();
+
+    let stdout = run_guild_success(&["doctor", "--json"], Some(&registry_root));
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        doctor["overall_status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["error_code"].as_str(),
+        Some("policy-read-failed"),
+        "{stdout}"
+    );
+}
+
 #[test]
 fn doctor_json_skips_policy_when_root_path_is_invalid() {
     let temp = TempFixtureDir::new("guild-cli-doctor-root-invalid");
