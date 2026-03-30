@@ -117,22 +117,76 @@ Stop-state rules:
 - `durable-artifact`: packaged inputs and immutable artifacts used to rebuild a
   harness
 
-## What Must Survive Resume
+## Durable Host Truth Versus Rebuildable Harness State
 
-Must survive:
+Canonical durable host truth is the minimum continuity contract across
+`resumed`, `rehydrated`, and `cold` execution modes.
 
-- session identity
-- admission-relevant requested intent
-- granted capability envelope or enough data to recompute it safely
-- receipt lineage and evidence refs
-- references to required artifacts and runtime class
+Canonical durable host truth:
 
-May be rebuilt:
+- session identity and current durable lifecycle state
+- admission-relevant requested intent and caller correlation data
+- granted capability envelope or enough policy input to recompute it safely
+- references to required artifacts, runtime class, and harness identity mapping
+- receipt lineage, evidence refs, and host-owned audit metadata
+- explicit durable session data the host promised to preserve above one runtime
+  instance
+- reconnect descriptors and rebinding requirements for external services when
+  Guild expects a later wake to re-establish them
 
-- concrete sandbox instance
-- internal process handles
-- transient network connections
-- caches that are explicitly non-durable
+Rebuildable harness state:
+
+- concrete sandbox, process, container, VM, or placement identity
+- in-memory heap, runtime-local caches, temp directories, and file descriptors
+- live sockets, opaque client handles, service leases, and other active
+  connection state
+- snapshot blobs or serialized runtime state used only as optional resume or
+  rehydration aids
+
+Snapshot blobs are not canonical session truth. They may help one wake path,
+but the durable session contract must still be explainable without pretending a
+snapshot handle is the real session.
+
+## Survival Rules By Execution Mode
+
+| Execution mode | Must already survive before Guild chooses the path | What Guild may reuse | What Guild must treat as lost, rebuilt, or freshly proven |
+| --- | --- | --- | --- |
+| `resumed` | Canonical durable host truth and a still-valid suspended materialization | Preserved runtime-local memory, process state, and active service sessions only if wake-time checks prove they remain safe | Any stale secret, mount, network, placement, or external-service assumption that wake-time checks cannot re-prove |
+| `rehydrated` | Canonical durable host truth, durable artifacts, and any explicitly persisted session data needed to rebuild the harness | Validated serialized runtime state or snapshot content as rebuild input only after compatibility checks pass | Prior live handles, sockets, placement-specific state, and any runtime-local data that was never promoted into durable host truth |
+| `cold` | Canonical durable host truth plus immutable artifacts needed for a fresh materialization | The same `SessionId`, durable receipts, durable evidence refs, and immutable packaged artifacts | All runtime-local continuity, including snapshots, live connections, and caches, unless that continuity was separately captured as durable host truth |
+
+## External Service Reconnect Boundary
+
+Guild may persist enough host-owned truth to reconnect an external service on a
+later wake, but that does not make the live connection itself durable.
+
+- Durable host truth may remember service identity, endpoint references,
+  negotiated scopes, and reconnect prerequisites.
+- Durable host truth must not pretend an open socket, bearer session, lease, or
+  opaque client handle can survive suspension by definition.
+- `resumed` may continue using an external service only if wake-time checks
+  prove the existing connection state is still valid.
+- `rehydrated` must reconnect through a host-mediated path using durable truth
+  plus fresh policy checks.
+- If Guild cannot safely reconnect the service or rebind its policy-critical
+  state, it must fall back to `cold` or fail the wake rather than fake
+  continuity.
+
+## Invalid Snapshot And Cold-Start Rules
+
+Snapshots and serialized runtime state are acceleration aids, not a second
+source of truth.
+
+- Invalid, missing, incompatible, or policy-stale snapshots must never be
+  treated as proof that `resumed` is still safe.
+- A broken snapshot may still allow `rehydrated` if Guild can rebuild from
+  other durable host truth and artifacts without depending on the invalid data.
+- `cold` is the required safe fallback when direct resume is no longer valid
+  and no trusted rehydration input remains, but the durable session contract is
+  still satisfiable from host-owned truth plus immutable artifacts.
+- If the session's promised continuity depended on state that only ever lived in
+  rebuildable harness memory, Guild should fail the wake rather than pretend a
+  fresh `cold` materialization preserved it.
 
 ## Explicit Constraints
 

@@ -72,6 +72,16 @@ The lifecycle guardrail is equally important:
   than stranding it in a transient state
 - `failed` stops automatic wake logic, while `terminated` is terminal
 
+The persistence guardrail is now equally explicit:
+
+- host-owned durable session truth is the canonical continuity contract
+- rebuildable harness state is replaceable implementation detail even when it
+  is serialized for faster wake paths
+- snapshots, live connections, and runtime-local caches are rebuild aids, not
+  authoritative session identity or continuity truth
+- cold-start is a safe fallback only when the promised session continuity can
+  still be satisfied from durable host truth plus immutable artifacts
+
 ## 2. High-Level Component Model
 
 A practical Guild implementation contains the following subsystems:
@@ -184,6 +194,48 @@ In the current repository this logical model is now split more explicitly into:
 - `EvidenceRecord` plus `EvidenceRef` for host-owned per-emission metadata and guest-visible handles
 - distinct manifest schema, skill API, and guest ABI version axes
 - implementation-language package metadata such as Cargo package version is build and distribution metadata for a crate, not Guild execution identity
+
+### 3.5 Session durability boundary
+
+The future session broker should preserve one explicit line between canonical
+durable session truth and rebuildable harness state.
+
+Canonical durable session truth should include:
+
+- host-minted `SessionId` and the current durable lifecycle state
+- admission-relevant caller intent, correlation data, and policy input
+- granted capability envelope or enough durable policy state to recompute it
+  safely
+- references to required artifacts, runtime class, and harness identity mapping
+- receipt lineage, evidence refs, and host-owned audit metadata
+- any service reconnect descriptors or rebinding requirements the host expects
+  to satisfy on wake
+
+Rebuildable harness state should include:
+
+- sandbox, process, container, VM, and placement-local identity
+- in-memory heap, temp directories, caches, and open file descriptors
+- live sockets, active external-service sessions, leases, and opaque runtime
+  handles
+- snapshots or serialized runtime state that only accelerate one wake path
+
+Broker behavior should follow that boundary:
+
+- `resumed` may reuse preserved runtime-local state only after wake-time checks
+  prove that reuse remains safe
+- `rehydrated` must rebuild from durable host truth, durable artifacts, and any
+  validated serialized state; invalid snapshots are discarded rather than
+  treated as canonical continuity
+- `cold` carries forward only durable host truth and immutable artifacts into a
+  fresh materialization; it is the safe fallback when no trusted resume or
+  rehydration path remains
+- if an external service cannot be safely reconnected or re-authorized, Guild
+  must rehydrate, cold-start, or fail the wake rather than pretend the prior
+  connection survived
+
+This boundary keeps receipts honest: the host can explain which continuity came
+from durable truth, which parts were rebuilt, and why a wake fell back to
+`cold` instead of claiming a stronger resume than the system could prove.
 
 ## 4. Reference Execution Flow
 
