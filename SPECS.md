@@ -69,6 +69,16 @@ runner, and ABI:
 - any future session wake path MUST keep invoke-time admission distinct from
   wake-time reauthorization for secrets, mounts, network policy, and runtime
   placement
+- any future session lifecycle model MUST treat `pending-admission` and
+  `admitted` as transient attempt states, not durable rest states
+- any future denied wake against an existing session MUST return it to its
+  prior durable state rather than leaving it stranded in a transient state
+- any future `suspended` state MUST mean direct resume is still eligible after
+  wake-time checks, while `rehydration-required` MUST mean direct resume is no
+  longer a valid path
+- any future `failed` state MUST stop automatic wake logic unless and until
+  Guild defines an explicit host-owned reset path, and any future
+  `terminated` state MUST remain terminal
 
 ## 3. Non-Goals
 

@@ -60,6 +60,18 @@ before there is a full session runtime:
 - wake-time reuse is a separate host decision from invoke-time admission,
   especially for secrets, mounts, network policy, and runtime placement
 
+The lifecycle guardrail is equally important:
+
+- `pending-admission` and `admitted` are transient attempt states, not durable
+  rest states
+- `suspended` means a direct resume path is still eligible if wake-time checks
+  pass
+- `rehydration-required` means direct resume is already invalid and the broker
+  must rehydrate or cold-start after a fresh admitted attempt
+- a denied wake returns an existing session to its prior durable state rather
+  than stranding it in a transient state
+- `failed` stops automatic wake logic, while `terminated` is terminal
+
 ## 2. High-Level Component Model
 
 A practical Guild implementation contains the following subsystems:

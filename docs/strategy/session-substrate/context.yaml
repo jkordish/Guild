@@ -1,6 +1,6 @@
 thesis: "Guild is evolving into the admission controller, session broker, and receipt engine for isolated harness execution."
 current_phase: "M1 Session Vocabulary Freeze"
-current_focus: "Turn the docs-first direction into explicit design guardrails for Harness, host-minted session identity, and invoke-vs-wake admission boundaries."
+current_focus: "Turn the docs-first direction into exact lifecycle transition rules and durable-state boundaries above runtime materialization."
 core_abstractions:
   - session
   - harness
@@ -21,9 +21,9 @@ non_goals:
   - "Do not replace current skill manifests or WIT in this pass."
   - "Do not make sandbox lifecycle a user-facing primitive."
 next_tasks:
-  - "Define the exact session lifecycle transition rules that move between active, suspended, rehydration-required, failed, and terminated."
   - "Decide what durable session state is canonical versus explicitly rebuildable."
   - "Map current policy outcomes onto future session-aware admission outputs."
+  - "Define how session-level receipts aggregate over individual execution attempts."
   - "Decide whether receipt envelopes belong in guild-types yet."
 key_paths:
   - "AGENTS.md"

@@ -408,12 +408,19 @@ pub enum ExecutionMode {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionState {
+    /// Transient host state while one invoke or wake attempt is still under admission review.
     PendingAdmission,
+    /// Transient host state after allow, before a live materialization is confirmed.
     Admitted,
+    /// Durable state for a session with a currently live materialization.
     Active,
+    /// Durable quiescent state where direct resume is still an eligible wake path.
     Suspended,
+    /// Durable quiescent state where direct resume is no longer valid.
     RehydrationRequired,
+    /// Stop state for automatic wake logic until an explicit future reset path exists.
     Failed,
+    /// Terminal durable state; the same SessionId must not reactivate.
     Terminated,
 }
 
@@ -421,9 +428,13 @@ pub enum SessionState {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionMaterializationMode {
+    /// Reuse of an already-live materialization while the session stays active.
     Warm,
+    /// Direct continuation of a suspended session after wake-time checks pass.
     Resumed,
+    /// Rebuilt continuation from durable session state and artifacts.
     Rehydrated,
+    /// Fresh materialization chosen when no safe direct reuse path exists.
     Cold,
 }
 
@@ -2631,6 +2642,12 @@ mod tests {
 
         let policy = serde_json::to_string(&ResumePolicy::DisallowResume).unwrap();
         assert_eq!(policy, "\"disallow-resume\"");
+    }
+
+    #[test]
+    fn session_state_uses_kebab_case() {
+        let rendered = serde_json::to_string(&SessionState::RehydrationRequired).unwrap();
+        assert_eq!(rendered, "\"rehydration-required\"");
     }
 }
 
