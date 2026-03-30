@@ -6248,7 +6248,8 @@ fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
         "The current bounded progression after Guild Ops Starter is:",
         "docs-first next progression: `service-recovery review pack`",
         "secondary docs-first concept kept visible: `rollback verification pack`",
-        "first plausible later implementation candidate: `cache purge with evidence trail`",
+        "chosen first honest mutation demo target: `cache purge with evidence trail`",
+        "fallback mutation demo if the first target stalls: `rollback-and-annotate`",
     ] {
         assert!(
             normalized_epic_doc.contains(&normalize_whitespace(phrase)),
@@ -6293,6 +6294,8 @@ fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
         "service-recovery review pack",
         "rollback verification pack",
         "cache purge with evidence trail",
+        "chosen first honest mutation demo target",
+        "rollback-and-annotate` remains the fallback",
         "not a current starter-pack claim",
     ] {
         assert!(
@@ -6311,11 +6314,83 @@ fn starter_pack_progression_docs_stay_bounded_and_sequenced() {
         "service-recovery review pack",
         "rollback verification pack",
         "cache purge with evidence trail",
+        "chosen first honest mutation demo target",
+        "rollback-and-annotate` remains the fallback",
         "restart and notify remain future action steps",
     ] {
         assert!(
             normalized_ops_pack.contains(&normalize_whitespace(phrase)),
             "Guild Ops Starter README progression drifted: missing `{phrase}`"
+        );
+    }
+}
+
+#[test]
+fn mutation_demo_docs_choose_one_target_and_keep_apply_honest() {
+    let decision =
+        fs::read_to_string(repo_root().join("docs/first-honest-mutation-demo.md")).unwrap();
+    let normalized_decision = normalize_whitespace(&decision);
+    for phrase in [
+        "# First Honest Mutation Demo",
+        "apply mode remains globally gated until audit and approval paths exist",
+        "cache purge with evidence trail",
+        "rollback-and-annotate",
+        "restart-and-notify",
+        "Preferred target:",
+        "Fallback if the cache-specific path stalls:",
+        "every purge request must carry an explicit approval or policy decision",
+        "the request must require a caller-supplied idempotency key",
+        "only ambiguous transport or provider failures may be retried automatically",
+        "the durable receipt must record the requested mutation intent",
+    ] {
+        assert!(
+            normalized_decision.contains(&normalize_whitespace(phrase)),
+            "mutation demo decision doc drifted: missing `{phrase}`"
+        );
+    }
+
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+    for phrase in [
+        "### Current Docs-First Outcome",
+        "docs/first-honest-mutation-demo.md",
+        "it chooses `cache purge with evidence trail` as the first honest mutation-demo target",
+        "it keeps `rollback-and-annotate` as the fallback",
+        "- [x] Write the candidate comparison matrix.",
+        "- [x] Choose one preferred mutation demo and one fallback.",
+        "- [x] Define the approval and idempotency invariants for that demo.",
+        "- [x] Record the reasons broader actions remain deferred.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "mutation demo execution guide drifted: missing `{phrase}`"
+        );
+    }
+}
+
+#[test]
+fn umbrella_epic_guide_stays_synchronized_with_tracker_closeout() {
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+
+    for phrase in [
+        "## Issue #129: Portable Skill Receipts And Reference Playbooks Follow-On Program",
+        "- [x] Keep the child-issue list current in the roadmap epic doc and GitHub epic body.",
+        "- [x] Reclassify any child issue that broadens support without matching runtime proof.",
+        "- [x] Record deliberate deferrals instead of leaving them implied.",
+        "Do not let the umbrella drift into a generic workflow-engine, marketplace, or hosted-control-plane story.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide issue #129 closeout drifted: missing `{phrase}`"
         );
     }
 }
@@ -6526,6 +6601,108 @@ fn verification_matrix_docs_and_issue_stay_aligned() {
     assert!(
         normalized_examples_index.contains(&normalize_whitespace("../docs/verification-matrix.md"))
     );
+}
+
+#[test]
+fn replay_boundary_docs_and_issue_stay_aligned() {
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+
+    for phrase in [
+        "## Issue #138: Receipt-Chain And Replay-Oriented Explanation Follow-On",
+        "### Current Docs-First Outcome",
+        "docs/receipt-chain-and-replay-boundaries.md",
+        "it defines `replay-oriented explanation` as explanation from stored refs, not replay execution",
+        "it names the approval, idempotency, audit, and effect-capture prerequisites a true replay execution feature would still require",
+        "- [x] Write the current receipt-chain map from request to evidence.",
+        "- [x] Explain the current operator-facing meaning of “replay-oriented explanation.”",
+        "- [x] Define the prerequisites for any future replay execution semantics.",
+        "- [x] Add anti-goals forbidding early replay claims in docs or examples.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide issue #138 replay guidance drifted: missing `{phrase}`"
+        );
+    }
+
+    let doc = fs::read_to_string(repo_root().join("docs/receipt-chain-and-replay-boundaries.md"))
+        .unwrap();
+    let normalized_doc = normalize_whitespace(&doc);
+
+    for phrase in [
+        "# Receipt Chain And Replay Boundaries",
+        "## Current Receipt Chain",
+        "## Operator Meaning Of Replay-Oriented Explanation",
+        "## Current Durable Inputs That Make Explanation Honest",
+        "## What Future Replay Execution Would Still Require",
+        "## Anti-Goals",
+        "Guild can explain from stored refs today",
+        "Guild does not yet ship first-class replay execution",
+        "do not describe `guild why`, lineage views, or explain/report skills as replay execution",
+        "do not describe a future `guild replay` surface before approval, idempotency, audit, and effect semantics are real",
+    ] {
+        assert!(
+            normalized_doc.contains(&normalize_whitespace(phrase)),
+            "receipt-chain and replay doc drifted: missing `{phrase}`"
+        );
+    }
+
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(readme.contains("docs/receipt-chain-and-replay-boundaries.md"));
+}
+
+#[test]
+fn governance_boundaries_docs_and_issue_stay_aligned() {
+    let guide =
+        fs::read_to_string(repo_root().join(
+            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps-execution-guide.md",
+        ))
+        .unwrap();
+    let normalized_guide = normalize_whitespace(&guide);
+
+    for phrase in [
+        "## Issue #134: Private-Pack, Policy, And Governance Boundaries",
+        "### Current Docs-First Outcome",
+        "docs/team-governance-boundaries.md",
+        "it separates policy, audit, retention, and redaction into explicit buckets",
+        "it keeps private distribution anchored to current signed transport and target-root trust review instead of inventing a new pack type or hosted control plane",
+        "- [x] Write the governance problem statement in team-review terms.",
+        "- [x] Define the policy, audit, retention, and redaction buckets.",
+        "- [x] List the future runtime dependencies without committing to them as shipped work.",
+        "- [x] Record anti-goals for marketplace or control-plane drift.",
+    ] {
+        assert!(
+            normalized_guide.contains(&normalize_whitespace(phrase)),
+            "execution guide issue #134 governance guidance drifted: missing `{phrase}`"
+        );
+    }
+
+    let doc = fs::read_to_string(repo_root().join("docs/team-governance-boundaries.md")).unwrap();
+    let normalized_doc = normalize_whitespace(&doc);
+
+    for phrase in [
+        "# Team Governance Boundaries",
+        "## Governance Problem Statement",
+        "## Boundary Buckets",
+        "### Policy",
+        "### Audit",
+        "### Retention",
+        "### Redaction",
+        "## Future Runtime Dependencies, Planning-Only",
+        "## Private Distribution Boundary",
+        "## Anti-Goals",
+        "private visibility is a governance and distribution concern, not a reason to invent a second package contract",
+        "no hosted-control-plane promise by wording alone",
+    ] {
+        assert!(
+            normalized_doc.contains(&normalize_whitespace(phrase)),
+            "team-governance boundaries doc drifted: missing `{phrase}`"
+        );
+    }
 }
 
 #[test]

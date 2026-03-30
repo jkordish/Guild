@@ -32,6 +32,8 @@ story.
 > If you want the short daily-user model first, start with [`docs/how-guild-works.md`](docs/how-guild-works.md).
 > If you want one current end-to-end trust proof path, start with
 > [`docs/trust-proof-walkthrough.md`](docs/trust-proof-walkthrough.md).
+> If you want the current receipt-chain and replay boundary, use
+> [`docs/receipt-chain-and-replay-boundaries.md`](docs/receipt-chain-and-replay-boundaries.md).
 > If you want the current verification matrix and the exact meaning of
 > `experimental`, `curated`, and `verified`, use
 > [`docs/verification-matrix.md`](docs/verification-matrix.md).

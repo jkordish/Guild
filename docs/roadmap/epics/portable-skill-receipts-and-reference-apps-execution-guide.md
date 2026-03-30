@@ -46,9 +46,9 @@ planning, and governance in the order they become believable.
 
 ### Suggested Subtasks
 
-- [ ] Keep the child-issue list current in the roadmap epic doc and GitHub epic body.
-- [ ] Reclassify any child issue that broadens support without matching runtime proof.
-- [ ] Record deliberate deferrals instead of leaving them implied.
+- [x] Keep the child-issue list current in the roadmap epic doc and GitHub epic body.
+- [x] Reclassify any child issue that broadens support without matching runtime proof.
+- [x] Record deliberate deferrals instead of leaving them implied.
 
 ### Validation
 
@@ -79,15 +79,16 @@ Keep the current progression explicit:
 - real now: incident-casefile-first operational review over stored refs
 - docs-first next: `service-recovery review pack`
 - secondary docs-first concept kept visible: `rollback verification pack`
-- likely first mutation-demo candidate: `cache purge with evidence trail`
+- chosen first honest mutation demo target: `cache purge with evidence trail`
+- fallback mutation demo if the first target stalls: `rollback-and-annotate`
 - deferred until broader action support: certificate rotation, node remediation, and secret rotation flows
 
 ### Suggested Subtasks
 
-- [ ] Keep `incident-casefile` inputs explicit and read-only.
-- [ ] Keep README, examples, and quickstart docs aligned to the same starter flow.
-- [ ] Pin the starter wording in CLI/docs regressions.
-- [ ] Reconcile stale checklist items when the starter path makes prior planning obsolete.
+- [x] Keep `incident-casefile` inputs explicit and read-only.
+- [x] Keep README, examples, and quickstart docs aligned to the same starter flow.
+- [x] Pin the starter wording in CLI/docs regressions.
+- [x] Reconcile stale checklist items when the starter path makes prior planning obsolete.
 
 ### Validation
 
@@ -200,6 +201,21 @@ visible here without becoming implied commitments:
 3. Define the minimum approval, evidence, retry, and idempotency requirements before implementation begins.
 4. Keep the output docs-first until the runtime path is proven.
 
+### Current Docs-First Outcome
+
+The current bounded output for this issue is
+[`docs/first-honest-mutation-demo.md`](../../../docs/first-honest-mutation-demo.md).
+That note keeps the choice and boundary fail-closed:
+
+- it chooses `cache purge with evidence trail` as the first honest
+  mutation-demo target
+- it keeps `rollback-and-annotate` as the fallback if the cache-specific path
+  stalls
+- it writes one explicit approval, idempotency, evidence, retry, and audit bar
+  without implying that `apply` mode already ships
+- it keeps broader action stories such as `restart-and-notify`, cert renewal,
+  node remediation, and secret rotation explicitly deferred
+
 ### Candidate Ordering
 
 Use this ordering unless the support frontier changes materially:
@@ -214,10 +230,10 @@ broader support surface.
 
 ### Suggested Subtasks
 
-- [ ] Write the candidate comparison matrix.
-- [ ] Choose one preferred mutation demo and one fallback.
-- [ ] Define the approval and idempotency invariants for that demo.
-- [ ] Record the reasons broader actions remain deferred.
+- [x] Write the candidate comparison matrix.
+- [x] Choose one preferred mutation demo and one fallback.
+- [x] Define the approval and idempotency invariants for that demo.
+- [x] Record the reasons broader actions remain deferred.
 
 ### Validation
 
@@ -300,12 +316,27 @@ Keep the current label meanings narrow:
 3. Clarify which concerns belong to policy, which belong to audit, and which belong to retention/redaction.
 4. Keep each proposed future surface explicitly marked as planning-only until runtime work exists.
 
+### Current Docs-First Outcome
+
+The current bounded output for this issue is
+[`docs/team-governance-boundaries.md`](../../../docs/team-governance-boundaries.md).
+That note keeps the governance planning fail-closed:
+
+- it writes the governance problem in team-review terms instead of generic
+  platform rhetoric
+- it separates policy, audit, retention, and redaction into explicit buckets
+- it lists future runtime dependencies as planning-only prerequisites rather
+  than shipped capability
+- it keeps private distribution anchored to current signed transport and
+  target-root trust review instead of inventing a new pack type or hosted
+  control plane
+
 ### Suggested Subtasks
 
-- [ ] Write the governance problem statement in team-review terms.
-- [ ] Define the policy, audit, retention, and redaction buckets.
-- [ ] List the future runtime dependencies without committing to them as shipped work.
-- [ ] Record anti-goals for marketplace or control-plane drift.
+- [x] Write the governance problem statement in team-review terms.
+- [x] Define the policy, audit, retention, and redaction buckets.
+- [x] List the future runtime dependencies without committing to them as shipped work.
+- [x] Record anti-goals for marketplace or control-plane drift.
 
 ### Validation
 
@@ -460,8 +491,9 @@ Keep one secondary docs-first concept visible too:
 
 Keep the first plausible next implementation candidate explicit:
 
-- `cache purge with evidence trail` remains the leading mutation-demo candidate
-  once later work (`#132`) chooses the first honest apply-oriented slice.
+- `cache purge with evidence trail` is now the chosen first honest
+  mutation-demo target, and `rollback-and-annotate` remains the fallback if
+  the cache-specific path stalls once later apply-oriented work becomes real.
 
 ### Suggested Subtasks
 
@@ -491,12 +523,26 @@ Keep the first plausible next implementation candidate explicit:
 3. Describe what extra state, guarantees, or controls a true replay execution feature would require.
 4. Keep future replay work subordinate to mutation, policy, and audit readiness.
 
+### Current Docs-First Outcome
+
+The current bounded output for this issue is
+[`docs/receipt-chain-and-replay-boundaries.md`](../../../docs/receipt-chain-and-replay-boundaries.md).
+That note keeps replay language honest:
+
+- it maps today's receipt and evidence chain from request review through stored
+  execution and evidence refs
+- it defines `replay-oriented explanation` as explanation from stored refs,
+  not replay execution
+- it names the approval, idempotency, audit, and effect-capture prerequisites a
+  true replay execution feature would still require
+- it adds anti-goals that forbid early replay claims in docs and examples
+
 ### Suggested Subtasks
 
-- [ ] Write the current receipt-chain map from request to evidence.
-- [ ] Explain the current operator-facing meaning of “replay-oriented explanation.”
-- [ ] Define the prerequisites for any future replay execution semantics.
-- [ ] Add anti-goals forbidding early replay claims in docs or examples.
+- [x] Write the current receipt-chain map from request to evidence.
+- [x] Explain the current operator-facing meaning of “replay-oriented explanation.”
+- [x] Define the prerequisites for any future replay execution semantics.
+- [x] Add anti-goals forbidding early replay claims in docs or examples.
 
 ### Validation
 
