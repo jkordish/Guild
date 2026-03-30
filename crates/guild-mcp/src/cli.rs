@@ -3183,7 +3183,19 @@ fn run_doctor(
         }
     }
 
-    let selection = resolve_registry_root_selection(global, env_registry_root)?;
+    let selection = match resolve_registry_root_selection(global, env_registry_root) {
+        Ok(selection) => selection,
+        Err(error) if error.reason_code.as_deref() == Some("registry-root-default-unresolved") => {
+            let output = build_doctor_report_for_root_resolution_error(&error);
+            if json_output {
+                print_json(&output)?;
+            } else {
+                print_doctor_text(&output);
+            }
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
     let output = build_doctor_report(&selection);
     if json_output {
         print_json(&output)?;
@@ -3204,7 +3216,7 @@ fn build_doctor_report(selection: &RegistryRootSelection) -> DoctorCommandOutput
         root_check.registry.as_ref(),
         root_check.registry_error.as_ref(),
     );
-    let policy = inspect_doctor_policy(selection);
+    let policy = inspect_doctor_policy(selection, &root_check.output);
 
     let overall_status = doctor_overall_status([
         root_check.output.status,
@@ -3244,6 +3256,61 @@ fn build_doctor_report(selection: &RegistryRootSelection) -> DoctorCommandOutput
     }
 }
 
+fn build_doctor_report_for_root_resolution_error(error: &CliError) -> DoctorCommandOutput {
+    let root_summary = error
+        .detail
+        .as_deref()
+        .unwrap_or(error.summary.as_ref())
+        .to_owned();
+    let skipped_summary =
+        "checks were skipped because the default Guild root could not be resolved";
+
+    DoctorCommandOutput {
+        overall_status: DoctorStatus::Attention,
+        registry_root: DoctorRootOutput {
+            status: DoctorStatus::Attention,
+            selected_path: "~/.guild".into(),
+            source: RegistryRootSource::Default,
+            default_path: None,
+            canonical_path: None,
+            exists: false,
+            is_directory: None,
+            openable_read_only: false,
+            summary: format!("default Guild root could not be resolved: {root_summary}"),
+            error_code: error.reason_code.as_deref().map(str::to_owned),
+        },
+        state: DoctorStateCheckOutput {
+            status: DoctorStatus::Skipped,
+            summary: format!("state {skipped_summary}"),
+            error_code: None,
+            sample_limit: DEFAULT_DOCTOR_SAMPLE_LIMIT,
+            installed_skill_count: None,
+            recent_execution_sample_count: None,
+            recent_evidence_sample_count: None,
+            recent_object_sample_count: None,
+        },
+        trust: DoctorTrustCheckOutput {
+            status: DoctorStatus::Skipped,
+            summary: format!("trust {skipped_summary}"),
+            error_code: None,
+            trusted_publisher_count: None,
+            trust_tiers: BTreeMap::new(),
+            installed_verification_states: BTreeMap::new(),
+        },
+        policy: DoctorPolicyCheckOutput {
+            status: DoctorStatus::Skipped,
+            summary: format!("policy {skipped_summary}"),
+            error_code: None,
+            policy_path: "~/.guild/policy.json".into(),
+            configured: None,
+            default_profile: None,
+            profile_count: None,
+            binding_count: None,
+        },
+        next_steps: error.json_next_steps(),
+    }
+}
+
 fn inspect_doctor_root(selection: &RegistryRootSelection) -> DoctorRootCheck {
     let metadata = fs::metadata(&selection.path).ok();
     let selected_path = display_path(&selection.path);
@@ -3254,6 +3321,8 @@ fn inspect_doctor_root(selection: &RegistryRootSelection) -> DoctorRootCheck {
     let canonical_path = fs::canonicalize(&selection.path)
         .ok()
         .map(|path| path.display().to_string());
+    let is_directory = metadata.as_ref().map(std::fs::Metadata::is_dir);
+    let directory_is_openable = canonical_path.is_some() && is_directory == Some(true);
 
     match LocalRegistry::load_existing(&selection.path) {
         Ok(registry) => DoctorRootCheck {
@@ -3264,7 +3333,7 @@ fn inspect_doctor_root(selection: &RegistryRootSelection) -> DoctorRootCheck {
                 default_path,
                 canonical_path,
                 exists: metadata.is_some(),
-                is_directory: metadata.as_ref().map(std::fs::Metadata::is_dir),
+                is_directory,
                 openable_read_only: true,
                 summary: "selected Guild root is readable as-is".into(),
                 error_code: None,
@@ -3274,6 +3343,30 @@ fn inspect_doctor_root(selection: &RegistryRootSelection) -> DoctorRootCheck {
             next_steps: Vec::new(),
         },
         Err(error) => {
+            if directory_is_openable
+                && !doctor_root_error_is_root_access_failure(error.code.as_str())
+            {
+                return DoctorRootCheck {
+                    output: DoctorRootOutput {
+                        status: DoctorStatus::Ok,
+                        selected_path,
+                        source: selection.source,
+                        default_path,
+                        canonical_path,
+                        exists: metadata.is_some(),
+                        is_directory,
+                        openable_read_only: true,
+                        summary:
+                            "selected Guild root directory is readable; installed state checks may still report problems"
+                                .into(),
+                        error_code: None,
+                    },
+                    registry: None,
+                    registry_error: Some(error),
+                    next_steps: Vec::new(),
+                };
+            }
+
             let cli_error = if error.code == "registry-root-missing" {
                 missing_registry_root_error(&selection.path)
             } else {
@@ -3287,7 +3380,7 @@ fn inspect_doctor_root(selection: &RegistryRootSelection) -> DoctorRootCheck {
                     default_path,
                     canonical_path,
                     exists: metadata.is_some(),
-                    is_directory: metadata.as_ref().map(std::fs::Metadata::is_dir),
+                    is_directory,
                     openable_read_only: false,
                     summary: doctor_root_summary_from_error(&error),
                     error_code: Some(error.code.clone()),
@@ -3298,6 +3391,16 @@ fn inspect_doctor_root(selection: &RegistryRootSelection) -> DoctorRootCheck {
             }
         }
     }
+}
+
+fn doctor_root_error_is_root_access_failure(error_code: &str) -> bool {
+    matches!(
+        error_code,
+        "registry-root-missing"
+            | "registry-root-invalid"
+            | "registry-root-open-failed"
+            | "source-skill-not-installed"
+    )
 }
 
 fn inspect_doctor_state(
@@ -3483,16 +3586,23 @@ fn inspect_doctor_trust(
     }
 }
 
-fn inspect_doctor_policy(selection: &RegistryRootSelection) -> DoctorPolicyCheckOutput {
+fn inspect_doctor_policy(
+    selection: &RegistryRootSelection,
+    root_output: &DoctorRootOutput,
+) -> DoctorPolicyCheckOutput {
     let policy_path = selection.path.join("policy.json");
     let policy_path_display = display_path(&policy_path);
 
-    if !selection.path.exists() {
+    if !root_output.openable_read_only {
+        let summary = if root_output.error_code.as_deref() == Some("registry-root-missing") {
+            "policy checks were skipped because the selected Guild root does not exist yet".into()
+        } else {
+            "policy checks were skipped because the selected Guild root could not be opened read-only"
+                .into()
+        };
         return DoctorPolicyCheckOutput {
             status: DoctorStatus::Skipped,
-            summary:
-                "policy checks were skipped because the selected Guild root does not exist yet"
-                    .into(),
+            summary,
             error_code: None,
             policy_path: policy_path_display,
             configured: None,
@@ -5222,7 +5332,17 @@ fn resolve_registry_root_selection(
         });
     }
 
-    let path = paths::default_registry_root().map_err(|error| CliError::new(error.to_string()))?;
+    let path = paths::default_registry_root().map_err(|error| {
+        CliError::classified(
+            CliErrorCategory::RootSetup,
+            "default Guild root could not be resolved",
+        )
+        .with_reason_code("registry-root-default-unresolved")
+        .with_detail(error.to_string())
+        .with_next_steps(
+            "Next: set HOME so `~/.guild` can be resolved, or pass `--registry-root <path>` / set `GUILD_REGISTRY_ROOT` to use an explicit root",
+        )
+    })?;
     Ok(RegistryRootSelection {
         default_path: Some(path.clone()),
         path,

@@ -458,6 +458,17 @@ fn run_guild_with_home_and_cwd(args: &[&str], home_dir: &Path, current_dir: &Pat
         .unwrap()
 }
 
+fn run_guild_without_home(args: &[&str]) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guild"));
+    command.args(args);
+    command.env_remove("GUILD_REGISTRY_ROOT");
+    command.env_remove("HOME");
+    command.env_remove("USERPROFILE");
+    command.env_remove("HOMEDRIVE");
+    command.env_remove("HOMEPATH");
+    command.output().unwrap()
+}
+
 fn run_guild_success(args: &[&str], env_registry_root: Option<&Path>) -> String {
     let output = run_guild(args, env_registry_root);
     assert!(
@@ -714,6 +725,10 @@ fn write_installed_manifest(skill_dir: &Path, update: impl FnOnce(&mut SkillMani
         serde_json::to_vec_pretty(&manifest).unwrap(),
     )
     .unwrap();
+}
+
+fn only_installed_manifest_path(registry_root: &Path, namespace: &str, name: &str) -> PathBuf {
+    installed_skill_dir(registry_root, namespace, name).join("manifest.json")
 }
 
 fn duplicate_installed_hello_with_namespace(registry_root: &Path, namespace: &str) -> PathBuf {
@@ -5427,6 +5442,152 @@ fn doctor_json_reports_invalid_policy_file() {
     assert_eq!(
         doctor["policy"]["error_code"].as_str(),
         Some("policy-invalid"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn doctor_json_skips_policy_when_root_path_is_invalid() {
+    let temp = TempFixtureDir::new("guild-cli-doctor-root-invalid");
+    let registry_root = temp.path().join("not-a-directory");
+    fs::write(&registry_root, "not a directory").unwrap();
+
+    let stdout = run_guild_success(
+        &[
+            "--registry-root",
+            registry_root.to_str().unwrap(),
+            "doctor",
+            "--json",
+        ],
+        None,
+    );
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        doctor["overall_status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["openable_read_only"].as_bool(),
+        Some(false),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    assert!(doctor["policy"]["configured"].is_null(), "{stdout}");
+    assert!(
+        doctor["policy"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("selected Guild root could not be opened read-only"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn doctor_json_keeps_root_access_separate_from_corrupt_installed_state() {
+    let temp = TempFixtureDir::new("guild-cli-doctor-corrupt-installed-state");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let manifest_path = only_installed_manifest_path(&registry_root, "example", "hello-inspect");
+    fs::write(&manifest_path, "{ not-valid-json").unwrap();
+
+    let stdout = run_guild_success(&["doctor", "--json"], Some(&registry_root));
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        doctor["overall_status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["status"].as_str(),
+        Some("ok"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["openable_read_only"].as_bool(),
+        Some(true),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["state"]["status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["state"]["error_code"].as_str(),
+        Some("manifest-parse-failed"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn doctor_json_reports_default_root_resolution_failures_in_band() {
+    let output = run_guild_without_home(&["doctor", "--json"]);
+    assert!(
+        output.status.success(),
+        "guild doctor should report root-resolution failures in-band\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.trim().is_empty(), "{stderr}");
+
+    let doctor: Value = parse_json_stdout(&stdout);
+    assert_eq!(
+        doctor["overall_status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["source"].as_str(),
+        Some("default"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["error_code"].as_str(),
+        Some("registry-root-default-unresolved"),
+        "{stdout}"
+    );
+    assert!(
+        doctor["registry_root"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("could not resolve the current user's home directory"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["state"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["trust"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    let next_steps = doctor["next_steps"].as_array().unwrap();
+    assert!(
+        next_steps
+            .iter()
+            .any(|step| step.as_str().unwrap().contains("--registry-root <path>")),
         "{stdout}"
     );
 }
