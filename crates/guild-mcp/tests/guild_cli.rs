@@ -5593,6 +5593,49 @@ fn doctor_json_reports_default_root_resolution_failures_in_band() {
 }
 
 #[test]
+fn doctor_text_qualifies_next_steps_from_resolved_root_not_display_path() {
+    let temp = TempFixtureDir::new("guild-cli-doctor-default-root-normalized");
+    let home_dir = temp.path().join("home");
+    let registry_root = home_dir.join(".guild");
+    let identity_path = temp.path().join("publisher.json");
+    let trusted_record_path = registry_root
+        .join("trust")
+        .join("publishers")
+        .join("local.example.json");
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            registry_root.to_str().unwrap(),
+            "trust",
+            "add",
+            "--identity-file",
+            identity_path.to_str().unwrap(),
+        ],
+        None,
+    );
+    fs::write(&trusted_record_path, b"{not valid json").unwrap();
+
+    let nested_dir = home_dir.join("nested");
+    fs::create_dir_all(&nested_dir).unwrap();
+
+    let stdout = run_guild_success_with_home_and_cwd(
+        &["--registry-root", "../.guild", "doctor"],
+        &home_dir,
+        &nested_dir,
+    );
+
+    assert!(
+        stdout.contains(
+            "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild trust list`"
+        ),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("guild --registry-root"), "{stdout}");
+}
+
+#[test]
 fn invalid_help_topic_fails_closed() {
     let output = run_guild_failure_output(&["help", "unknown-topic"], None);
     let stderr = String::from_utf8(output.stderr).unwrap();

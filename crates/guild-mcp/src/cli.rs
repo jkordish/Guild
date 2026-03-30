@@ -1253,6 +1253,8 @@ struct DoctorCommandOutput {
     trust: DoctorTrustCheckOutput,
     policy: DoctorPolicyCheckOutput,
     next_steps: Vec<String>,
+    #[serde(skip_serializing)]
+    next_step_registry_root: PathBuf,
 }
 
 #[derive(Debug)]
@@ -3253,6 +3255,7 @@ fn build_doctor_report(selection: &RegistryRootSelection) -> DoctorCommandOutput
         trust,
         policy,
         next_steps,
+        next_step_registry_root: doctor_next_step_registry_root(selection),
     }
 }
 
@@ -3308,7 +3311,12 @@ fn build_doctor_report_for_root_resolution_error(error: &CliError) -> DoctorComm
             binding_count: None,
         },
         next_steps: error.json_next_steps(),
+        next_step_registry_root: PathBuf::from("~/.guild"),
     }
+}
+
+fn doctor_next_step_registry_root(selection: &RegistryRootSelection) -> PathBuf {
+    fs::canonicalize(&selection.path).unwrap_or_else(|_| selection.path.clone())
 }
 
 fn inspect_doctor_root(selection: &RegistryRootSelection) -> DoctorRootCheck {
@@ -3837,7 +3845,7 @@ fn print_doctor_text(output: &DoctorCommandOutput) {
                 "  {}",
                 qualify_next_steps_for_registry_root(
                     &format!("Next: {next_step}"),
-                    Path::new(&output.registry_root.selected_path),
+                    &output.next_step_registry_root,
                 )
             );
         }
