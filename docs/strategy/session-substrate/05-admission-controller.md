@@ -52,3 +52,39 @@ Wake-time:
 - whether secrets, mounts, or network policy must be reauthorized
 - whether the previous isolation posture is still acceptable
 - whether a warm resume is allowed or rehydration/cold-start is required
+
+## Boundary By Control Surface
+
+The invoke-time versus wake-time split should be explicit for the main
+host-owned control surfaces.
+
+- `artifact trust and executable identity`
+  - invoke-time: always checked before first materialization
+  - wake-time: rechecked when the wake path depends on rehydration, artifact
+    replacement, or a trust-state change
+- `secrets`
+  - invoke-time: check that the request is allowed to bind the named secret set
+  - wake-time: recheck lease freshness, rotation state, and whether reuse is
+    still allowed before handing the secret back to a resumed or rehydrated
+    materialization
+- `mounts`
+  - invoke-time: check requested mount classes, scopes, and path policy
+  - wake-time: recheck that the mount source still exists, still matches
+    policy, and is still safe to reconnect
+- `network policy`
+  - invoke-time: check the requested egress classes and destination policy
+  - wake-time: recheck any policy or credential state that could have changed
+    while the session was suspended
+- `runtime selection and isolation posture`
+  - invoke-time: choose the minimum acceptable runtime class or isolation
+    profile for the request
+  - wake-time: re-evaluate whether the previous runtime placement is still
+    acceptable or whether Guild must elevate isolation, rehydrate elsewhere, or
+    cold-start
+
+## Safe Default
+
+If Guild cannot prove that reuse is still safe at wake time, it should
+reauthorize, rehydrate, or cold-start. It should not silently inherit stale
+secret, mount, network, or placement assumptions from an earlier admission
+decision.

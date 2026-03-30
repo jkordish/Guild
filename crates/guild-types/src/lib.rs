@@ -30,6 +30,10 @@ pub fn mint_host_evidence_record_id() -> String {
 }
 
 /// Mint a host-owned durable session identifier.
+///
+/// The host, not the caller, owns canonical session identity. Callers may
+/// reference a prior session, but they do not define the durable `SessionId`
+/// value.
 #[must_use]
 pub fn mint_host_session_id() -> SessionId {
     SessionId::new(Uuid::now_v7().to_string())
@@ -47,6 +51,10 @@ pub fn host_now_utc() -> String {
         .expect("UTC timestamps format as RFC3339")
 }
 
+/// Host-owned durable session identifier.
+///
+/// `SessionId` names the durable session a caller addresses above any concrete
+/// sandbox, process, container, or VM instance.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SessionId(String);
 

@@ -1,6 +1,6 @@
 thesis: "Guild is evolving into the admission controller, session broker, and receipt engine for isolated harness execution."
 current_phase: "M1 Session Vocabulary Freeze"
-current_focus: "Codify the session-substrate direction across repo entrypoints and add minimal shared scaffolding."
+current_focus: "Turn the docs-first direction into explicit design guardrails for Harness, host-minted session identity, and invoke-vs-wake admission boundaries."
 core_abstractions:
   - session
   - harness
@@ -21,10 +21,10 @@ non_goals:
   - "Do not replace current skill manifests or WIT in this pass."
   - "Do not make sandbox lifecycle a user-facing primitive."
 next_tasks:
-  - "Retarget the project-positioning drift checker to the new direction."
-  - "Add shared session lifecycle types in guild-types."
-  - "Add interface-only SessionBroker and AdmissionController traits in guild-runner."
-  - "Decide how Harness relates to current skill packaging."
+  - "Define the exact session lifecycle transition rules that move between active, suspended, rehydration-required, failed, and terminated."
+  - "Decide what durable session state is canonical versus explicitly rebuildable."
+  - "Map current policy outcomes onto future session-aware admission outputs."
+  - "Decide whether receipt envelopes belong in guild-types yet."
 key_paths:
   - "AGENTS.md"
   - "README.md"
@@ -40,7 +40,7 @@ decision_records:
   - "docs/adr/0019-thin-guild-cli.md"
   - "docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md"
 open_questions:
-  - "What stable identifier should a durable session use?"
   - "Which state must survive resume versus rehydration?"
-  - "How should Harness relate to current skill manifests?"
   - "Which checks rerun at wake time?"
+  - "How should current skill packaging map to a future typed Harness contract?"
+  - "When should session identity become a first-class persisted record instead of a shared type and doc rule?"

@@ -49,6 +49,17 @@ The key layering rule is now explicit:
 - the active inspect projection boundary is centralized in the runner
 - MCP transport authorization remains separate from Guild runtime capability grants
 
+The session-substrate direction adds three architecture guardrails now, even
+before there is a full session runtime:
+
+- `Harness` is first-class architecture vocabulary, but it remains docs-first
+  until one stable package boundary exists across manifest, registry, runner,
+  and transport identity
+- canonical durable session identity is host-minted and host-owned above any
+  concrete runtime materialization
+- wake-time reuse is a separate host decision from invoke-time admission,
+  especially for secrets, mounts, network policy, and runtime placement
+
 ## 2. High-Level Component Model
 
 A practical Guild implementation contains the following subsystems:

@@ -51,6 +51,25 @@ This is the central claim of Guild:
 
 AI skills should be treated like real software units with identity, runtime constraints, receipts, and evidence, not as informal prompt-era behavior.
 
+### 2.1 Session-Substrate Guardrails
+
+The current normative execution unit in this specification is still the skill.
+The session-substrate direction adds guardrails for future evolution; it does
+not make sessions or harnesses normative here by prose alone.
+
+Until a stable broader package boundary exists across manifest, registry,
+runner, and ABI:
+
+- Guild MUST NOT introduce a normative `Harness` manifest field or guest ABI
+  surface just to mirror the strategic vocabulary
+- Guild MUST treat `Harness` as explanatory product language above the current
+  skill and resolved-artifact contract
+- any future canonical durable session identifier MUST be host-minted and
+  host-owned rather than caller-chosen
+- any future session wake path MUST keep invoke-time admission distinct from
+  wake-time reauthorization for secrets, mounts, network policy, and runtime
+  placement
+
 ## 3. Non-Goals
 
 Guild does not try to solve the following directly:

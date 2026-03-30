@@ -6,6 +6,25 @@ A session is a durable host-owned identity that persists above any individual
 runtime instance. Runtime identity is replaceable. Session identity is the
 stable thing a caller addresses.
 
+## Canonical Session Identity Rule
+
+Guild mints the canonical durable session identifier on the host side. Callers
+may name an intent, correlation key, or prior session reference, but they do
+not define the canonical durable `SessionId`.
+
+That rule keeps persistence ownership explicit:
+
+- the host owns session identity minting
+- the host owns the durable session record keyed by that identity
+- the host owns the mapping from that session to resolved harness or artifact
+  identity
+- the host owns the mapping from that session to any current runtime
+  materialization
+
+Sandbox IDs, process IDs, container IDs, VM IDs, and snapshot handles are all
+replaceable implementation details. They are never the canonical session
+identity.
+
 ## Execution Modes
 
 - `warm`: the target session is already materialized and can continue in-place
