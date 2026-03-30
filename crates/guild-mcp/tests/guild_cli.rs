@@ -5625,6 +5625,44 @@ fn doctor_json_reports_default_root_resolution_failures_in_band() {
 }
 
 #[test]
+fn doctor_json_skips_trust_checks_for_non_registry_directories() {
+    let source_dir = hello_source_dir();
+    let stdout = run_guild_success(
+        &[
+            "--registry-root",
+            source_dir.to_str().unwrap(),
+            "doctor",
+            "--json",
+        ],
+        None,
+    );
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        doctor["registry_root"]["status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["error_code"].as_str(),
+        Some("source-skill-not-installed"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["trust"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    assert!(
+        doctor["trust"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("selected Guild root could not be opened read-only"),
+        "{stdout}"
+    );
+}
+
+#[test]
 fn doctor_text_qualifies_next_steps_from_resolved_root_not_display_path() {
     let temp = TempFixtureDir::new("guild-cli-doctor-default-root-normalized");
     let home_dir = temp.path().join("home");

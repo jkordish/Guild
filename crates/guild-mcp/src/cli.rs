@@ -3215,6 +3215,7 @@ fn build_doctor_report(selection: &RegistryRootSelection) -> DoctorCommandOutput
     );
     let trust = inspect_doctor_trust(
         selection,
+        &root_check.output,
         root_check.registry.as_ref(),
         root_check.registry_error.as_ref(),
     );
@@ -3516,9 +3517,16 @@ fn inspect_doctor_state(
 
 fn inspect_doctor_trust(
     selection: &RegistryRootSelection,
+    root_output: &DoctorRootOutput,
     registry: Option<&LocalRegistry>,
     registry_error: Option<&RegistryError>,
 ) -> DoctorTrustCheckOutput {
+    if !root_output.openable_read_only {
+        return doctor_trust_skipped_output(
+            root_output.error_code.as_deref() == Some("registry-root-missing"),
+        );
+    }
+
     match LocalRegistry::list_trusted_publishers(&selection.path) {
         Ok(publishers) => {
             let mut trust_tiers = BTreeMap::new();
@@ -3558,23 +3566,10 @@ fn inspect_doctor_trust(
             }
         }
         Err(error) if error.code == "registry-root-missing" => {
-            let summary = if matches!(
+            doctor_trust_skipped_output(matches!(
                 registry_error.map(|entry| entry.code.as_str()),
                 Some("registry-root-missing")
-            ) {
-                "trust checks were skipped because the selected Guild root does not exist yet"
-                    .to_owned()
-            } else {
-                "trust checks were skipped because the selected Guild root could not be opened read-only".to_owned()
-            };
-            DoctorTrustCheckOutput {
-                status: DoctorStatus::Skipped,
-                summary,
-                error_code: None,
-                trusted_publisher_count: None,
-                trust_tiers: BTreeMap::new(),
-                installed_verification_states: BTreeMap::new(),
-            }
+            ))
         }
         Err(error) => DoctorTrustCheckOutput {
             status: DoctorStatus::Attention,
@@ -3591,6 +3586,22 @@ fn inspect_doctor_trust(
             trust_tiers: BTreeMap::new(),
             installed_verification_states: BTreeMap::new(),
         },
+    }
+}
+
+fn doctor_trust_skipped_output(root_missing: bool) -> DoctorTrustCheckOutput {
+    let summary = if root_missing {
+        "trust checks were skipped because the selected Guild root does not exist yet"
+    } else {
+        "trust checks were skipped because the selected Guild root could not be opened read-only"
+    };
+    DoctorTrustCheckOutput {
+        status: DoctorStatus::Skipped,
+        summary: summary.to_owned(),
+        error_code: None,
+        trusted_publisher_count: None,
+        trust_tiers: BTreeMap::new(),
+        installed_verification_states: BTreeMap::new(),
     }
 }
 
