@@ -7,9 +7,11 @@ If you want one current end-to-end operator trust story before the broader
 proof suites, start with
 [`trust-proof-walkthrough.md`](trust-proof-walkthrough.md).
 
-For the current project framing and first-reference-application thesis, see
-[`project-positioning.md`](project-positioning.md). That doc also carries the
-canonical operator-facing vocabulary and capability language for this phase.
+For the current long-term direction, see
+[`strategy/session-substrate/00-umbrella-epic.md`](strategy/session-substrate/00-umbrella-epic.md).
+For the bridge from the prior framing to the current direction, see
+[`project-positioning.md`](project-positioning.md).
+This page still describes the current shipped verification and proof surface.
 
 The source-of-truth declaration lives in `SPECS.md` section "Source Of Truth".
 For the frozen runtime-contract surfaces in this milestone, use `SPECS.md` section "Contract Surface v1 (core)" rather than treating this testing guide as a parallel source.
