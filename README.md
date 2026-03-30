@@ -15,17 +15,28 @@ Guild Ops Starter is the first operator starter set in the repo. It is a
 repo-local release slice built on that trust chain, not the whole product
 story.
 
+## Current Direction
+
+Guild is evolving into the admission controller, session broker, and receipt
+engine for isolated harness execution.
+
+Calls target a durable session. The platform resumes if possible, rehydrates if
+necessary, and cold-starts if forced. The product abstraction is the session,
+not the sandbox. Harness is the new first-class abstraction.
+
+That is the direction, not a claim that session lifecycle already ships today.
+The current live repo still exposes a skill-first, inspect-first trust chain
+with durable execution and evidence records.
+
 > Status: pre-alpha.
 >
-> For the current project framing, start with
-> [`docs/project-positioning.md`](docs/project-positioning.md). That doc now
-> carries the canonical operator-facing vocabulary and capability language for
-> this phase. For the current playbook-facing explanation of how those terms
-> map onto today’s skill-driven runtime, use
-> [`docs/how-guild-works.md`](docs/how-guild-works.md). Current CLI help,
-> manifests, and `guild grants template` still use the live internal family
-> names; the positioning doc is the operator-facing approval vocabulary in this
-> phase.
+> For the current direction, start with [`AGENTS.md`](AGENTS.md),
+> [`docs/strategy/session-substrate/00-umbrella-epic.md`](docs/strategy/session-substrate/00-umbrella-epic.md),
+> and [`docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md`](docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md).
+> For the bridge from the prior framing to the new one, use
+> [`docs/project-positioning.md`](docs/project-positioning.md). For the current
+> shipped skill-first runtime explanation, use
+> [`docs/how-guild-works.md`](docs/how-guild-works.md).
 >
 > Use `guild` for local workflows, `guild mcp serve --stdio` for MCP integration, and the deeper docs for proof, benchmark, and contract details.
 >
@@ -548,7 +559,12 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 
 ## Canonical Docs
 
-- `docs/project-positioning.md` - current narrative, target audience, and language decisions for Guild
+- `AGENTS.md` - fast contributor orientation, glossary, current milestone, and next likely tasks
+- `docs/strategy/session-substrate/00-umbrella-epic.md` - umbrella epic for the session-substrate evolution
+- `docs/strategy/session-substrate/07-roadmap.md` - milestone sequence for the session-substrate evolution
+- `docs/strategy/session-substrate/tasks.md` - PR-sized backlog for the next phase
+- `docs/strategy/session-substrate/context.yaml` - compact machine-readable direction context for future agents
+- `docs/project-positioning.md` - compatibility bridge from the prior framing to the current direction
 - `docs/how-guild-works.md` - short operator model for identity, authority, receipts, evidence, and the main CLI surfaces
 - `docs/trust-proof-walkthrough.md` - current end-to-end operator trust proof over review, receipt, evidence, and explanation surfaces
 - `docs/mcp-agent-recipes.md` - task-shaped MCP recipes for agent users and integrators
@@ -559,8 +575,8 @@ If you need the full milestone-by-milestone detail, start with `docs/roadmap.md`
 - `SPECS.md` - normative contract and conformance language
 - `ARCHITECTURE.md` - practical system view and trust boundaries
 - `docs/adr/README.md` - decision log and ADR backlog
-- `AGENTS.md` - contributor guardrails for contract-first changes
+- `docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md` - pivot ADR for the new direction
 - `docs/roadmap.md` - ordered epics and build priorities
-- `docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md` - next-phase epic for turning the trust and receipt layer into operator-facing playbooks and starter sets
+- `docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md` - previous planning wave for the playbook/starter-set framing
 
 Compatibility wrappers remain at `docs/contracts.md` and `docs/architecture.md` so existing links keep working.

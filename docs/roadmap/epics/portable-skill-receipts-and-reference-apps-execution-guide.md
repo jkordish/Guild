@@ -4,6 +4,10 @@ This guide turns the open follow-on GitHub issue set for the next Guild phase
 into execution-ready planning. It is not a runtime contract source. Runtime,
 ABI, and security truth still live in [`SPECS.md`](../../../SPECS.md),
 [`ARCHITECTURE.md`](../../../ARCHITECTURE.md), Rust types, and WIT.
+The current long-term direction now lives in
+[`../../strategy/session-substrate/00-umbrella-epic.md`](../../strategy/session-substrate/00-umbrella-epic.md),
+while this guide remains the execution-ready record of the previous
+playbook/starter-set planning wave.
 
 Use this guide when writing issue bodies, sequencing work, or deciding whether
 a proposed change belongs in the current proven frontier or in a later phase.

@@ -15,7 +15,12 @@ support frontier by prose alone.
 Guild defines a local-first execution and artifact model for AI skills that
 makes that trust chain concrete.
 
-For current project framing and repository vocabulary, use [`docs/project-positioning.md`](docs/project-positioning.md). That document is explanatory and strategic; it does not override the normative contract in this specification.
+For current long-term direction and repository vocabulary, use
+[`docs/strategy/session-substrate/00-umbrella-epic.md`](docs/strategy/session-substrate/00-umbrella-epic.md)
+and ADR `0020`. [`docs/project-positioning.md`](docs/project-positioning.md)
+remains the compatibility bridge from the prior framing to the new one. Those
+documents are explanatory and strategic; they do not override the normative
+contract in this specification.
 For the current operator-facing playbook framing and playbook-to-skill
 translation, use [`docs/how-guild-works.md`](docs/how-guild-works.md). That
 document is explanatory only: playbooks are the target operator-facing

@@ -4,12 +4,12 @@ This document is the source of truth for Guild's public command and URI grammar 
 
 It is not the runtime-contract source of truth; see `SPECS.md` section "Source Of Truth".
 For the frozen runtime URI roots and support vocabulary in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
-For current project framing, see [`project-positioning.md`](project-positioning.md).
-`project-positioning.md` also carries the canonical operator-facing vocabulary
-and capability language for this phase.
+For the current long-term direction, see
+[`strategy/session-substrate/00-umbrella-epic.md`](strategy/session-substrate/00-umbrella-epic.md).
+For the bridge from the prior framing to the current direction, see
+[`project-positioning.md`](project-positioning.md).
 The current command surface still uses the live internal family names in help
-and `guild grants template`; the positioning doc is the docs and approval
-vocabulary in this phase, not a command rename.
+and `guild grants template`; the strategy docs do not rename the current CLI.
 
 ## Install And Run
 

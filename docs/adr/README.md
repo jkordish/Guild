@@ -4,10 +4,11 @@ ADRs record rationale and accepted decisions. They are not the current normative
 
 For how Guild behaves today, use `SPECS.md` and `ARCHITECTURE.md`.
 For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
-For the current project framing, use [`../project-positioning.md`](../project-positioning.md).
-`project-positioning.md` also carries the canonical operator-facing
-vocabulary and capability language for this phase.
-ADR `0001-guild-thesis.md` is historical rationale, not the current framing source.
+For the current long-term direction, use
+[`../strategy/session-substrate/00-umbrella-epic.md`](../strategy/session-substrate/00-umbrella-epic.md)
+and ADR `0020`. `project-positioning.md` remains a compatibility bridge for the
+prior framing. ADR `0001-guild-thesis.md` is historical rationale, not the
+current framing source.
 
 ## Current ADRs
 
@@ -30,6 +31,7 @@ ADR `0001-guild-thesis.md` is historical rationale, not the current framing sour
 - `0017-http-request-policy-family.md` - accepted per-family policy contract for bounded outbound HTTP authority in the active inspect slice
 - `0018-filesystem-policy-contract-not-yet-implemented.md` - accepted design-only guardrail ADR for future filesystem policy semantics without implying runtime support
 - `0019-thin-guild-cli.md` - accepted first-class `guild` CLI contract for local install, read-only grant templates, run, read, diagnostics, transport, trust, focused help topics, and MCP command workflows
+- `0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md` - accepted evolution from portable-skill/runtime-first framing toward session, harness, admission, and receipt language without discarding current shipped trust surfaces
 
 ## Backlog
 

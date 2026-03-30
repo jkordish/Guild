@@ -29,6 +29,12 @@ pub fn mint_host_evidence_record_id() -> String {
     Uuid::now_v7().to_string()
 }
 
+/// Mint a host-owned durable session identifier.
+#[must_use]
+pub fn mint_host_session_id() -> SessionId {
+    SessionId::new(Uuid::now_v7().to_string())
+}
+
 /// Return the current host UTC timestamp formatted as RFC 3339.
 ///
 /// # Panics
@@ -39,6 +45,55 @@ pub fn host_now_utc() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .expect("UTC timestamps format as RFC3339")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SessionId(String);
+
+impl SessionId {
+    #[must_use]
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Serialize for SessionId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self(String::deserialize(deserializer)?))
+    }
+}
+
+impl JsonSchema for SessionId {
+    fn schema_name() -> Cow<'static, str> {
+        "SessionId".into()
+    }
+
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        string_schema(Some("uuid"), Some("Host-owned durable session identifier."))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
@@ -339,6 +394,47 @@ pub enum ExecutionMode {
     Inspect,
     Plan,
     Apply,
+}
+
+/// Durable session lifecycle state tracked above any particular runtime instance.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionState {
+    PendingAdmission,
+    Admitted,
+    Active,
+    Suspended,
+    RehydrationRequired,
+    Failed,
+    Terminated,
+}
+
+/// Host-selected materialization outcome for a sessioned invocation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionMaterializationMode {
+    Warm,
+    Resumed,
+    Rehydrated,
+    Cold,
+}
+
+/// Future host-owned policy input controlling whether Guild should attempt a direct resume.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResumePolicy {
+    PreferResume,
+    RequireResume,
+    DisallowResume,
+}
+
+/// Future host-owned policy input controlling whether Guild may rebuild a session from durable state.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RehydratePolicy {
+    AllowRehydrate,
+    RequireRehydrate,
+    DisallowRehydrate,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -2506,6 +2602,27 @@ mod tests {
                 .and_then(serde_json::Value::as_bool),
             Some(true)
         );
+    }
+
+    #[test]
+    fn session_id_roundtrip_serializes_as_string() {
+        let session_id = SessionId::new("session-123");
+
+        let serialized = serde_json::to_value(&session_id).unwrap();
+        assert_eq!(serialized, serde_json::Value::String("session-123".into()));
+
+        let deserialized: SessionId = serde_json::from_value(serialized).unwrap();
+        assert_eq!(deserialized, session_id);
+        assert_eq!(deserialized.as_str(), "session-123");
+    }
+
+    #[test]
+    fn session_materialization_mode_uses_kebab_case() {
+        let rendered = serde_json::to_string(&SessionMaterializationMode::Rehydrated).unwrap();
+        assert_eq!(rendered, "\"rehydrated\"");
+
+        let policy = serde_json::to_string(&ResumePolicy::DisallowResume).unwrap();
+        assert_eq!(policy, "\"disallow-resume\"");
     }
 }
 
