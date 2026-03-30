@@ -458,6 +458,17 @@ fn run_guild_with_home_and_cwd(args: &[&str], home_dir: &Path, current_dir: &Pat
         .unwrap()
 }
 
+fn run_guild_without_home(args: &[&str]) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_guild"));
+    command.args(args);
+    command.env_remove("GUILD_REGISTRY_ROOT");
+    command.env_remove("HOME");
+    command.env_remove("USERPROFILE");
+    command.env_remove("HOMEDRIVE");
+    command.env_remove("HOMEPATH");
+    command.output().unwrap()
+}
+
 fn run_guild_success(args: &[&str], env_registry_root: Option<&Path>) -> String {
     let output = run_guild(args, env_registry_root);
     assert!(
@@ -714,6 +725,10 @@ fn write_installed_manifest(skill_dir: &Path, update: impl FnOnce(&mut SkillMani
         serde_json::to_vec_pretty(&manifest).unwrap(),
     )
     .unwrap();
+}
+
+fn only_installed_manifest_path(registry_root: &Path, namespace: &str, name: &str) -> PathBuf {
+    installed_skill_dir(registry_root, namespace, name).join("manifest.json")
 }
 
 fn duplicate_installed_hello_with_namespace(registry_root: &Path, namespace: &str) -> PathBuf {
@@ -5102,9 +5117,75 @@ fn top_level_help_is_grouped_and_points_to_topic_help() {
     assert!(stdout.contains("guild help preview"));
     assert!(stdout.contains("guild help grants"));
     assert!(stdout.contains("guild <command> --help"));
+    assert!(stdout.contains("doctor    Run Guild-scoped read-only diagnostics"));
     assert!(!stdout.contains("deferred:"));
     assert!(!stdout.contains("inspect path"));
     assert!(!stdout.contains("dogfood"));
+}
+
+#[test]
+fn top_level_help_inventory_matches_canonical_docs() {
+    let help = run_guild_success(&["--help"], None);
+    for phrase in [
+        "Daily use:",
+        "grants    Print read-only grant templates",
+        "doctor    Run Guild-scoped read-only diagnostics",
+        "Install and publish:",
+        "trust     Manage local trust records",
+        "Setup and integration:",
+        "mcp       Start the Guild MCP stdio server",
+        "codex     Run deterministic Codex smoke helpers",
+    ] {
+        assert!(
+            help.contains(phrase),
+            "top-level help inventory drifted: missing `{phrase}`"
+        );
+    }
+
+    let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    assert!(readme.contains(
+        "- daily use: `guild show`, `guild grants ...`, `guild run`, `guild ls`, `guild get`, `guild why`, `guild verify`, `guild doctor`"
+    ));
+    assert!(readme.contains(
+        "- install and publish: `guild install`, `guild export`, `guild import`, `guild push`, `guild pull`, `guild trust ...`"
+    ));
+    assert!(
+        readme
+            .contains("- setup and integration: `guild init`, `guild mcp ...`, `guild codex ...`")
+    );
+
+    let command_language =
+        fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
+    for phrase in [
+        "### Daily Use",
+        "- `guild grants ...`",
+        "- `guild doctor`",
+        "### Install And Publish",
+        "- `guild trust ...`",
+        "### Setup And Integration",
+        "- `guild init`",
+        "- `guild mcp ...`",
+        "- `guild codex ...`",
+    ] {
+        assert!(
+            command_language.contains(phrase),
+            "docs/command-language.md inventory drifted: missing `{phrase}`"
+        );
+    }
+
+    let adr = fs::read_to_string(repo_root().join("docs/adr/0019-thin-guild-cli.md")).unwrap();
+    for phrase in [
+        "- `guild grants ...`",
+        "- `guild doctor`",
+        "- `guild trust ...`",
+        "- `guild mcp ...`",
+        "- `guild codex ...`",
+    ] {
+        assert!(
+            adr.contains(phrase),
+            "docs/adr/0019-thin-guild-cli.md inventory drifted: missing `{phrase}`"
+        );
+    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -5214,10 +5295,10 @@ fn shared_help_topics_are_available() {
     assert!(roots.contains("`root/setup` means Guild could not open"));
 
     let doctor = run_guild_success(&["help", "doctor"], None);
-    assert!(doctor.contains("Diagnostic command direction"));
+    assert!(doctor.contains("Guild-scoped diagnostics"));
     assert!(doctor.contains("guild doctor"));
-    assert!(doctor.contains("not implemented yet"));
     assert!(doctor.contains("read-only Guild-scoped diagnostic command"));
+    assert!(doctor.contains("Current checks stay tied to real Guild state"));
     assert!(doctor.contains("selected Guild root resolution"));
     assert!(doctor.contains("local trust-store state relevant to guild verify and guild trust"));
     assert!(doctor.contains("no hidden bootstrap or repair side effects"));
@@ -5246,6 +5327,382 @@ fn shared_help_topics_are_available() {
     assert!(grants.contains("evidence:inspect"));
     assert!(grants.contains("presentation-layer prototype only"));
     assert!(grants.contains("This helper is read-only."));
+}
+
+#[test]
+fn doctor_reports_missing_root_without_creating_it() {
+    let temp = TempFixtureDir::new("guild-cli-doctor-missing");
+    let registry_root = temp.path().join("missing-root");
+    assert!(!registry_root.exists());
+
+    let output = run_guild_success_output(
+        &["--registry-root", registry_root.to_str().unwrap(), "doctor"],
+        None,
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(stderr.trim().is_empty(), "{stderr}");
+    assert!(stdout.contains("overall: attention"), "{stdout}");
+    assert!(stdout.contains("root: attention"), "{stdout}");
+    assert!(
+        stdout.contains("selected Guild root does not exist yet"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("state: skipped"), "{stdout}");
+    assert!(stdout.contains("trust: skipped"), "{stdout}");
+    assert!(stdout.contains("policy: skipped"), "{stdout}");
+    assert!(stdout.contains("guild --registry-root"), "{stdout}");
+    assert!(!registry_root.exists());
+}
+
+#[test]
+fn doctor_json_reports_readable_local_state() {
+    let temp = TempFixtureDir::new("guild-cli-doctor-json");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let _ = inspect_hello_with_cli(&registry_root, "Ada", "skill://example/hello-inspect@^0.1");
+
+    let stdout = run_guild_success(&["doctor", "--json"], Some(&registry_root));
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(doctor["overall_status"].as_str(), Some("ok"), "{stdout}");
+    assert_eq!(
+        doctor["registry_root"]["status"].as_str(),
+        Some("ok"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["openable_read_only"].as_bool(),
+        Some(true),
+        "{stdout}"
+    );
+    assert_eq!(doctor["state"]["status"].as_str(), Some("ok"), "{stdout}");
+    assert_eq!(
+        doctor["state"]["installed_skill_count"].as_u64(),
+        Some(1),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["state"]["recent_execution_sample_count"].as_u64(),
+        Some(1),
+        "{stdout}"
+    );
+    assert_eq!(doctor["trust"]["status"].as_str(), Some("ok"), "{stdout}");
+    assert_eq!(
+        doctor["trust"]["installed_verification_states"]["local-source"].as_u64(),
+        Some(1),
+        "{stdout}"
+    );
+    assert_eq!(doctor["policy"]["status"].as_str(), Some("ok"), "{stdout}");
+    assert_eq!(
+        doctor["policy"]["configured"].as_bool(),
+        Some(false),
+        "{stdout}"
+    );
+    assert!(
+        doctor["next_steps"]
+            .as_array()
+            .expect("doctor.next_steps should be an array")
+            .is_empty(),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn doctor_json_reports_invalid_policy_file() {
+    let temp = TempFixtureDir::new("guild-cli-doctor-policy-invalid");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    fs::write(
+        registry_root.join("policy.json"),
+        serde_json::to_vec_pretty(&json!({
+            "format_version": "guild-local-policy-v2",
+            "default_profile": "",
+            "profiles": [],
+            "bindings": []
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let stdout = run_guild_success(&["doctor", "--json"], Some(&registry_root));
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        doctor["overall_status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["error_code"].as_str(),
+        Some("policy-invalid"),
+        "{stdout}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn doctor_json_reports_broken_policy_symlinks_as_attention() {
+    use std::os::unix::fs::symlink;
+
+    let temp = TempFixtureDir::new("guild-cli-doctor-policy-broken-symlink");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+
+    let missing_target = temp.path().join("missing-policy.json");
+    symlink(&missing_target, registry_root.join("policy.json")).unwrap();
+
+    let stdout = run_guild_success(&["doctor", "--json"], Some(&registry_root));
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        doctor["overall_status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["error_code"].as_str(),
+        Some("policy-read-failed"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn doctor_json_skips_policy_when_root_path_is_invalid() {
+    let temp = TempFixtureDir::new("guild-cli-doctor-root-invalid");
+    let registry_root = temp.path().join("not-a-directory");
+    fs::write(&registry_root, "not a directory").unwrap();
+
+    let stdout = run_guild_success(
+        &[
+            "--registry-root",
+            registry_root.to_str().unwrap(),
+            "doctor",
+            "--json",
+        ],
+        None,
+    );
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        doctor["overall_status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["openable_read_only"].as_bool(),
+        Some(false),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    assert!(doctor["policy"]["configured"].is_null(), "{stdout}");
+    assert!(
+        doctor["policy"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("selected Guild root could not be opened read-only"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn doctor_json_keeps_root_access_separate_from_corrupt_installed_state() {
+    let temp = TempFixtureDir::new("guild-cli-doctor-corrupt-installed-state");
+    let registry_root = temp.path().join("registry");
+    install_with_cli(&registry_root);
+    let manifest_path = only_installed_manifest_path(&registry_root, "example", "hello-inspect");
+    fs::write(&manifest_path, "{ not-valid-json").unwrap();
+
+    let stdout = run_guild_success(&["doctor", "--json"], Some(&registry_root));
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        doctor["overall_status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["status"].as_str(),
+        Some("ok"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["openable_read_only"].as_bool(),
+        Some(true),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["state"]["status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["state"]["error_code"].as_str(),
+        Some("manifest-parse-failed"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn doctor_json_reports_default_root_resolution_failures_in_band() {
+    let output = run_guild_without_home(&["doctor", "--json"]);
+    assert!(
+        output.status.success(),
+        "guild doctor should report root-resolution failures in-band\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.trim().is_empty(), "{stderr}");
+
+    let doctor: Value = parse_json_stdout(&stdout);
+    assert_eq!(
+        doctor["overall_status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["source"].as_str(),
+        Some("default"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["error_code"].as_str(),
+        Some("registry-root-default-unresolved"),
+        "{stdout}"
+    );
+    assert!(
+        doctor["registry_root"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("could not resolve the current user's home directory"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["state"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["trust"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["policy"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    let next_steps = doctor["next_steps"].as_array().unwrap();
+    assert!(
+        next_steps
+            .iter()
+            .any(|step| step.as_str().unwrap().contains("--registry-root <path>")),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn doctor_json_skips_trust_checks_for_non_registry_directories() {
+    let source_dir = hello_source_dir();
+    let stdout = run_guild_success(
+        &[
+            "--registry-root",
+            source_dir.to_str().unwrap(),
+            "doctor",
+            "--json",
+        ],
+        None,
+    );
+    let doctor: Value = parse_json_stdout(&stdout);
+
+    assert_eq!(
+        doctor["registry_root"]["status"].as_str(),
+        Some("attention"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["registry_root"]["error_code"].as_str(),
+        Some("source-skill-not-installed"),
+        "{stdout}"
+    );
+    assert_eq!(
+        doctor["trust"]["status"].as_str(),
+        Some("skipped"),
+        "{stdout}"
+    );
+    assert!(
+        doctor["trust"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("selected Guild root could not be opened read-only"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn doctor_text_qualifies_next_steps_from_resolved_root_not_display_path() {
+    let temp = TempFixtureDir::new("guild-cli-doctor-default-root-normalized");
+    let home_dir = temp.path().join("home");
+    let registry_root = home_dir.join(".guild");
+    let identity_path = temp.path().join("publisher.json");
+    let trusted_record_path = registry_root
+        .join("trust")
+        .join("publishers")
+        .join("local.example.json");
+
+    generate_identity_with_cli(&identity_path);
+    let _ = run_guild_success(
+        &[
+            "--registry-root",
+            registry_root.to_str().unwrap(),
+            "trust",
+            "add",
+            "--identity-file",
+            identity_path.to_str().unwrap(),
+        ],
+        None,
+    );
+    fs::write(&trusted_record_path, b"{not valid json").unwrap();
+
+    let nested_dir = home_dir.join("nested");
+    fs::create_dir_all(&nested_dir).unwrap();
+
+    let stdout = run_guild_success_with_home_and_cwd(
+        &["--registry-root", "../.guild", "doctor"],
+        &home_dir,
+        &nested_dir,
+    );
+
+    assert!(
+        stdout.contains(
+            "Next: fix or remove the broken local trust record under the selected Guild root, then rerun `guild trust list`"
+        ),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("guild --registry-root"), "{stdout}");
 }
 
 #[test]
@@ -6144,6 +6601,35 @@ fn user_facing_docs_use_installed_guild_cli_after_install() {
 }
 
 #[test]
+fn thin_cli_adr_tracks_shipped_diagnostics_and_help_topics() {
+    let adr = fs::read_to_string(repo_root().join("docs/adr/0019-thin-guild-cli.md")).unwrap();
+    let normalized_adr = normalize_whitespace(&adr);
+    assert!(adr.contains("- `guild grants ...`"));
+    assert!(adr.contains("- `guild doctor`"));
+    assert!(adr.contains("- `guild mcp ...`"));
+    assert!(adr.contains("guild help [refs|inspect|trust|roots|doctor|preview|grants]"));
+    assert!(normalized_adr.contains(&normalize_whitespace(
+        "`guild grants template` is a read-only grant-authoring helper over the currently active executable families and does not widen runtime support claims"
+    )));
+    assert!(normalized_adr.contains(&normalize_whitespace(
+        "`guild mcp serve --stdio` launches the current stdio MCP server without widening the MCP surface, while `guild mcp ...` remains the shipped parent command group in top-level inventories"
+    )));
+    assert!(normalized_adr.contains(&normalize_whitespace(
+        "`guild doctor` reads the selected local root, trust store, and local `policy.json` surface without mutation or hidden repair"
+    )));
+    assert!(normalized_adr.contains(&normalize_whitespace(
+        "`guild help <topic>` stays a wording/preview surface over shipped operator semantics and does not imply broader runtime support than the real commands already provide"
+    )));
+
+    let adr_index = fs::read_to_string(repo_root().join("docs/adr/README.md")).unwrap();
+    assert!(
+        adr_index.contains(
+            "read-only grant templates, run, read, diagnostics, transport, trust, focused help topics, and MCP command workflows"
+        )
+    );
+}
+
+#[test]
 fn follow_on_program_tracking_stays_rebased() {
     let config = fs::read_to_string(repo_root().join(".github/ISSUE_TEMPLATE/config.yml")).unwrap();
     assert!(config.contains("Guild Follow-On Program"));
@@ -6776,18 +7262,53 @@ fn example_transport_docs_keep_install_review_layered_on_preview_and_verify() {
 #[test]
 fn journey_docs_stay_centered_on_user_workflows() {
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
+    let normalized_readme = normalize_whitespace(&readme);
     assert!(readme.contains("## User Journeys"));
+    assert!(readme.contains(
+        "- daily use: `guild show`, `guild grants ...`, `guild run`, `guild ls`, `guild get`, `guild why`, `guild verify`, `guild doctor`"
+    ));
+    assert!(
+        readme
+            .contains("- setup and integration: `guild init`, `guild mcp ...`, `guild codex ...`")
+    );
     assert!(readme.contains("Compatible operator flow in today's CLI"));
     assert!(readme.contains("Install and run a skill"));
     assert!(readme.contains("Explain what happened"));
     assert!(readme.contains("Verify trust state and move installed state"));
     assert!(readme.contains("Debug failures and compare runs"));
     assert!(readme.contains("docs/guild-ops-starter-quickstart.md"));
+    assert!(readme.contains("guild help refs"));
     assert!(readme.contains("guild help inspect"));
+    assert!(readme.contains("guild help trust"));
+    assert!(readme.contains("guild help roots"));
+    assert!(readme.contains("guild help doctor"));
+    assert!(readme.contains("guild help preview"));
+    assert!(readme.contains("guild help grants"));
+    assert!(normalized_readme.contains(&normalize_whitespace(
+        "Use `guild help inspect` when you want the shipped inspect-first preview wording for today's `show`/`why`/`get`/`ls` inspection surfaces versus the target `admit -> exec -> inspect -> replay` flow."
+    )));
+    assert!(normalized_readme.contains(&normalize_whitespace(
+        "Use `guild help doctor` when you want the shipped read-only diagnostics wording for the selected Guild root and the current local state that the daily CLI depends on."
+    )));
+    assert!(normalized_readme.contains(&normalize_whitespace(
+        "Use `guild help preview` when you want the shipped preflight wording for risky `import` and `pull` flows before any state change."
+    )));
     assert!(readme.contains("guild why -v"));
     assert!(readme.contains("guild why --lineage"));
     assert!(readme.contains("guild ls evidence --limit 5"));
     assert!(readme.contains("guild grants template"));
+    assert!(normalized_readme.contains(&normalize_whitespace(
+        "Use `guild help refs` when you want the shipped ref-shape wording for canonical skill refs, Guild resource refs, and the source/install/resolved identity layers."
+    )));
+    assert!(normalized_readme.contains(&normalize_whitespace(
+        "Use `guild help trust` when you want the shipped trust-review wording for the preview/import-or-pull/verify loop and the local trust-store maintenance surface."
+    )));
+    assert!(normalized_readme.contains(&normalize_whitespace(
+        "Use `guild help roots` when you want the shipped root-resolution wording for `--registry-root`, `GUILD_REGISTRY_ROOT`, `~/.guild`, and the `root/setup` failure label."
+    )));
+    assert!(normalized_readme.contains(&normalize_whitespace(
+        "Use `guild help grants` when you want the shipped read-only grant-authoring wording for the current active executable families."
+    )));
     assert!(
         readme.contains("`ls`, `why`, and `get` together are today's concrete inspect surfaces")
     );
@@ -6801,7 +7322,34 @@ fn journey_docs_stay_centered_on_user_workflows() {
     let normalized_command_language = normalize_whitespace(&command_language);
     assert!(command_language.contains("## Target Operator Flow"));
     assert!(command_language.contains("Use the target verbs in planning and migration language"));
+    assert!(command_language.contains("guild help refs"));
     assert!(command_language.contains("guild help inspect"));
+    assert!(command_language.contains("guild help trust"));
+    assert!(command_language.contains("guild help roots"));
+    assert!(command_language.contains("guild help doctor"));
+    assert!(command_language.contains("guild help preview"));
+    assert!(command_language.contains("guild help grants"));
+    assert!(normalized_command_language.contains(&normalize_whitespace(
+        "`guild help inspect` is the shipped inspect-first preview help topic for today's `show`/`why`/`get`/`ls` inspection surfaces versus the target `admit -> exec -> inspect -> replay` flow."
+    )));
+    assert!(normalized_command_language.contains(&normalize_whitespace(
+        "`guild help doctor` is the shipped read-only diagnostics help topic for the selected Guild root and the current local state that the daily CLI depends on."
+    )));
+    assert!(normalized_command_language.contains(&normalize_whitespace(
+        "`guild help preview` is the shipped preflight help topic for risky `import` and `pull` flows before any state change."
+    )));
+    assert!(normalized_command_language.contains(&normalize_whitespace(
+        "`guild help refs` is the shipped ref-shape help topic for canonical skill refs, Guild resource refs, and the source/install/resolved identity layers."
+    )));
+    assert!(normalized_command_language.contains(&normalize_whitespace(
+        "`guild help trust` is the shipped trust-review help topic for the preview/import-or-pull/verify loop and the local trust-store maintenance surface."
+    )));
+    assert!(normalized_command_language.contains(&normalize_whitespace(
+        "`guild help roots` is the shipped root-resolution help topic for `--registry-root`, `GUILD_REGISTRY_ROOT`, `~/.guild`, and the `root/setup` failure boundary."
+    )));
+    assert!(normalized_command_language.contains(&normalize_whitespace(
+        "`guild help grants` is the shipped read-only grant-authoring help topic for the current active executable families."
+    )));
     assert!(command_language.contains("### Command Mapping"));
     assert!(
         command_language.contains("| Today Surface | Target Stage | Status | Migration Notes |")
@@ -6811,10 +7359,13 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(command_language.contains("Conceptual target flow:"));
     assert!(command_language.contains("### Journey Map"));
     assert!(command_language.contains("Compatible operator flow in today's CLI"));
+    assert!(command_language.contains("- `guild grants ...`"));
+    assert!(command_language.contains("- `guild mcp ...`"));
     assert!(command_language.contains("Install and run a skill"));
     assert!(command_language.contains("Explain what happened"));
     assert!(command_language.contains("Verify trust state and move installed state"));
     assert!(command_language.contains("Debug failures and compare runs"));
+    assert!(command_language.contains("- `guild doctor`"));
     assert!(
         command_language
             .contains("`ls`, `why`, and `get` together are today's concrete inspect surfaces")
@@ -6911,6 +7462,7 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(explain_http_readme.contains("candidate HTTP request"));
 
     let how_it_works = fs::read_to_string(repo_root().join("docs/how-guild-works.md")).unwrap();
+    let normalized_how_it_works = normalize_whitespace(&how_it_works);
     assert!(how_it_works.contains("## Output Modes"));
     assert!(how_it_works.contains("## Trust Review"));
     assert!(how_it_works.contains("guild trust list"));
@@ -6925,10 +7477,39 @@ fn journey_docs_stay_centered_on_user_workflows() {
     assert!(how_it_works.contains("low-noise follow-up hints such as `Next: ...`"));
     assert!(how_it_works.contains("use `--json` for structured machine-readable output"));
     assert!(how_it_works.contains("use `--porcelain` for stable one-line machine-readable output"));
+    assert!(how_it_works.contains("guild help refs"));
     assert!(how_it_works.contains("guild help inspect"));
+    assert!(how_it_works.contains("guild help trust"));
+    assert!(how_it_works.contains("guild help roots"));
     assert!(how_it_works.contains("guild help doctor"));
     assert!(how_it_works.contains("guild help preview"));
     assert!(how_it_works.contains("guild help grants"));
+    assert!(
+        how_it_works
+            .contains("`guild grants`: print read-only grant templates for the active families")
+    );
+    assert!(normalized_how_it_works.contains(&normalize_whitespace(
+        "`guild help refs` defines the shipped canonical skill/resource ref forms plus the source, installed, and resolved identity layers"
+    )));
+    assert!(normalized_how_it_works.contains(&normalize_whitespace(
+        "`guild help trust` defines the shipped installed verification review loop and local trust-store maintenance surface"
+    )));
+    assert!(normalized_how_it_works.contains(&normalize_whitespace(
+        "`guild help roots` defines the shipped root-resolution order and the `root/setup` boundary for selected local roots"
+    )));
+    assert!(how_it_works.contains(
+        "`guild help grants` defines the shipped read-only grant-authoring template surface for the active executable families"
+    ));
+    assert!(how_it_works.contains("presentation-only"));
+    assert!(
+        how_it_works.contains(
+            "`guild doctor`: run read-only Guild-scoped diagnostics for the selected root"
+        )
+    );
+    assert!(how_it_works.contains("guild doctor --json"));
+    assert!(how_it_works.contains(
+        "`guild doctor --json` is the read-only preflight when you want the selected root, local state, trust store, and policy surface summarized before or after other local work"
+    ));
     assert!(how_it_works.contains("docs/mirroring-and-promotion.md"));
     assert!(how_it_works.contains("guild why -v"));
     assert!(how_it_works.contains("guild why --lineage"));
@@ -7149,6 +7730,24 @@ fn testing_guide_tracks_discovery_first_mcp_stdio_proof() {
         !testing.contains("`resources/list_changed`"),
         "docs/testing.md should not teach unshipped resources/list_changed expectations"
     );
+}
+
+#[test]
+fn testing_guide_tracks_guild_doctor_smoke_surface() {
+    let testing = fs::read_to_string(repo_root().join("docs/testing.md")).unwrap();
+    let normalized_testing = normalize_whitespace(&testing);
+    for phrase in [
+        "guild doctor",
+        "guild doctor --json",
+        "`guild doctor` should stay read-only in that smoke path:",
+        "selected Guild root, sampled installed and persisted state, trust-store health",
+        "without creating or repairing anything",
+    ] {
+        assert!(
+            normalized_testing.contains(&normalize_whitespace(phrase)),
+            "docs/testing.md is missing guild doctor smoke wording: {phrase}"
+        );
+    }
 }
 
 #[test]

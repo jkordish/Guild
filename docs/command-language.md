@@ -37,6 +37,26 @@ The default help is task-oriented:
 - `guild help grants`
 - `guild <command> --help`
 
+`guild help inspect` is the shipped inspect-first preview help topic for
+today's `show`/`why`/`get`/`ls` inspection surfaces versus the target
+`admit -> exec -> inspect -> replay` flow.
+`guild help doctor` is the shipped read-only diagnostics help topic for the
+selected Guild root and the current local state that the daily CLI depends on.
+`guild help preview` is the shipped preflight help topic for risky `import` and
+`pull` flows before any state change.
+`guild help refs` is the shipped ref-shape help topic for canonical skill refs,
+Guild resource refs, and the source/install/resolved identity layers.
+`guild help trust` is the shipped trust-review help topic for the
+preview/import-or-pull/verify loop and the local trust-store maintenance
+surface.
+`guild help roots` is the shipped root-resolution help topic for
+`--registry-root`, `GUILD_REGISTRY_ROOT`, `~/.guild`, and the `root/setup`
+failure boundary.
+`guild help grants` is the shipped read-only grant-authoring help topic for the
+current active executable families. It also keeps the operator-facing
+capability renderings explicitly presentation-only instead of widening runtime
+support claims.
+
 ## Target Operator Flow
 
 Guild's target operator journey is:
@@ -124,12 +144,13 @@ Guild's first-class local verbs today are:
 ### Daily Use
 
 - `guild show`
-- `guild grants template`
+- `guild grants ...`
 - `guild run`
 - `guild ls`
 - `guild get`
 - `guild why`
 - `guild verify`
+- `guild doctor`
 
 ### Install And Publish
 
@@ -144,7 +165,7 @@ Guild's first-class local verbs today are:
 
 - `guild init`
 - `guild codex ...`
-- `guild mcp serve --stdio`
+- `guild mcp ...`
 
 Legacy aliases remain supported for compatibility:
 
@@ -245,12 +266,11 @@ There is no cwd-local `.guild/` fallback.
 
 `guild init` is the explicit root-creation workflow. Read-only commands do not initialize a missing root. Write-oriented commands may create the selected root when they are already doing real work.
 
-## Diagnostic Direction
+## Diagnostics
 
-The chosen first read-only diagnostic command direction is `guild doctor`.
-This is a contract-direction decision, not a shipped command yet.
+`guild doctor` is the first read-only diagnostic command for the selected Guild root.
 
-Initial scope:
+Current scope:
 
 - selected Guild root resolution and whether the root can be opened read-only
 - installed and persisted state needed by the daily CLI under the selected root

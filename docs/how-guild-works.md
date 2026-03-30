@@ -125,13 +125,14 @@ The main daily commands each answer a different question:
 
 - `guild ls`: list installed skills and other objects in the current root
 - `guild show`: what is installed or what stored object am I looking at?
-- `guild grants template`: print read-only grant templates for the active families
+- `guild grants`: print read-only grant templates for the active families
 - `guild run`: execute one installed skill locally
 - `guild why`: explain one persisted execution record, point to nearby stored refs when present, summarize requested-versus-granted authority, and summarize stored authority observations
 - `guild get`: read one Guild resource directly
 - `guild verify`: show installed trust and verification state for a skill
+- `guild doctor`: run read-only Guild-scoped diagnostics for the selected root
 
-The `guild grants` command group, `guild ls`, `guild show`, `guild why`, `guild get`, and `guild verify` are read-only surfaces.
+The `guild grants` command group, `guild ls`, `guild show`, `guild why`, `guild get`, `guild verify`, and `guild doctor` are read-only surfaces.
 `guild run` is the execution surface.
 
 ## Output Modes
@@ -160,6 +161,7 @@ still exits nonzero.
 
 ```bash
 guild init
+guild doctor --json
 guild install examples/skills/hello-inspect
 guild show -v skill://example/hello-inspect@^0.1
 guild grants template emit-evidence
@@ -176,6 +178,7 @@ guild verify skill://example/hello-inspect@^0.1
 What that flow tells you:
 
 - the source directory becomes installed executable state through `guild install`
+- `guild doctor --json` is the read-only preflight when you want the selected root, local state, trust store, and policy surface summarized before or after other local work
 - `guild show -v` explains the identity path before you run anything
 - `guild show -vv` explains why the requested ref resolved to the selected digest
 - `guild grants template` is the read-only starting point when you need current active-family grant JSON before a run
@@ -224,15 +227,20 @@ Trust-store maintenance stays local and explicit:
 - `guild trust show <publisher-id>` inspects one reviewed publisher record under the selected local root
 - `guild trust remove <publisher-id>` removes one local trust record when a publisher should no longer be trusted
 
-## Planned Help Topics
+## Help Topics
 
-One inspect-first preview is now shipped, and two future-facing directions are
-fixed even where the commands or flags themselves are not implemented yet:
+One inspect-first preview is now shipped, `guild doctor` now lands as the first
+read-only diagnostic command, and one future-facing preflight direction stays
+fixed while the rest of the surface remains explicit:
 
+- `guild help refs` defines the shipped canonical skill/resource ref forms plus the source, installed, and resolved identity layers
+- `guild help trust` defines the shipped installed verification review loop and local trust-store maintenance surface
+- `guild help roots` defines the shipped root-resolution order and the `root/setup` boundary for selected local roots
 - `guild help inspect` previews the target inspect-first operator surface while keeping today's `guild show`, `guild why`, `guild get`, and `guild ls` explicit
-- `guild help doctor` defines the first read-only diagnostic command direction
+- `guild help doctor` defines the shipped read-only diagnostic surface for the selected Guild root
 - `guild help preview` defines the first read-only preflight direction for risky
   `import` and `pull` flows
+- `guild help grants` defines the shipped read-only grant-authoring template surface for the active executable families and keeps the operator-facing capability renderings explicitly presentation-only
 
 ## Where To Go Next
 

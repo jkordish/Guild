@@ -106,9 +106,9 @@ Repo-local proof commands and lower-level developer helpers live in
 
 Top-level commands are grouped around daily use, distribution, and setup:
 
-- daily use: `guild show`, `guild grants template`, `guild run`, `guild ls`, `guild get`, `guild why`, `guild verify`
+- daily use: `guild show`, `guild grants ...`, `guild run`, `guild ls`, `guild get`, `guild why`, `guild verify`, `guild doctor`
 - install and publish: `guild install`, `guild export`, `guild import`, `guild push`, `guild pull`, `guild trust ...`
-- setup and integration: `guild init`, `guild mcp serve --stdio`, `guild codex ...`
+- setup and integration: `guild init`, `guild mcp ...`, `guild codex ...`
 
 Legacy aliases remain available for existing scripts:
 
@@ -125,6 +125,28 @@ The CLI now also ships focused help topics:
 - `guild help doctor`
 - `guild help preview`
 - `guild help grants`
+
+Use `guild help inspect` when you want the shipped inspect-first preview
+wording for today's `show`/`why`/`get`/`ls` inspection surfaces versus the
+target `admit -> exec -> inspect -> replay` flow.
+Use `guild help doctor` when you want the shipped read-only diagnostics wording
+for the selected Guild root and the current local state that the daily CLI
+depends on.
+Use `guild help preview` when you want the shipped preflight wording for risky
+`import` and `pull` flows before any state change.
+Use `guild help refs` when you want the shipped ref-shape wording for canonical
+skill refs, Guild resource refs, and the source/install/resolved identity
+layers.
+Use `guild help trust` when you want the shipped trust-review wording for the
+preview/import-or-pull/verify loop and the local trust-store maintenance
+surface.
+Use `guild help roots` when you want the shipped root-resolution wording for
+`--registry-root`, `GUILD_REGISTRY_ROOT`, `~/.guild`, and the `root/setup`
+failure label.
+Use `guild help grants` when you want the shipped read-only grant-authoring
+wording for the current active executable families. That help topic also keeps
+the operator-facing capability renderings explicitly presentation-only rather
+than widening runtime support claims.
 
 Version note: the current workspace Cargo packages, including the `guild` CLI crate, are `0.1.1`. The checked-in example Guild skill manifests still resolve as `0.1.0` / `@^0.1`, and the OCI transport examples intentionally keep those manifest-driven tags. Cargo package version and Guild skill identity are separate axes.
 
@@ -175,12 +197,11 @@ Guild chooses a local root in this order:
 
 There is no cwd-local `.guild/` fallback. `guild init` is the explicit root-creation workflow, and read-only commands do not silently create a missing root.
 
-## Diagnostic Direction
+## Diagnostics
 
-The chosen future read-only diagnostic command is `guild doctor`.
-It is not implemented yet as a first-class command, but the direction is now fixed so later implementation does not have to re-decide the product surface.
+`guild doctor` is the first read-only Guild-scoped diagnostic command.
 
-Its first checks should stay tied to real Guild state:
+Its first checks stay tied to real Guild state:
 
 - selected Guild root resolution and whether the root can be opened read-only
 - installed and persisted state needed by the daily CLI under that root

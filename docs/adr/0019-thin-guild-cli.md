@@ -33,19 +33,22 @@ The stable v1 command surface is:
 
 - `guild init`
 - `guild show`
+- `guild grants ...`
 - `guild run`
 - `guild ls`
 - `guild get`
 - `guild why`
 - `guild verify`
+- `guild doctor`
 - `guild install`
 - `guild export`
 - `guild import`
 - `guild push`
 - `guild pull`
 - `guild trust ...`
+- `guild help [refs|inspect|trust|roots|doctor|preview|grants]`
 - `guild codex ...`
-- `guild mcp serve --stdio`
+- `guild mcp ...`
 
 The canonical public URI families are:
 
@@ -56,14 +59,17 @@ The canonical public URI families are:
 The CLI is intentionally thin rather than a second runtime layer:
 
 - `guild show` is a non-executing summary surface over installed skills and stored Guild refs
+- `guild grants template` is a read-only grant-authoring helper over the currently active executable families and does not widen runtime support claims
 - `guild run` delegates to the same execution path used by `guild.inspect`
 - `guild get` delegates to the same resource backend used by MCP `resources/read` and guest `read-resource`
 - `guild why` reads one persisted execution record directly from host-owned durable state
 - `guild verify` summarizes installed trust and verification state for skill refs only
+- `guild doctor` reads the selected local root, trust store, and local `policy.json` surface without mutation or hidden repair
 - install/export/import/push/pull delegate to the current registry and installer behavior
+- `guild help <topic>` stays a wording/preview surface over shipped operator semantics and does not imply broader runtime support than the real commands already provide
 - `guild init` creates the selected local root and may explicitly fold in local setup tasks such as Codex config writes without inventing a second state model
 - `guild codex` delegates to the existing Codex bootstrap/config/scenario/smoke helpers without creating a second server model
-- `guild mcp serve --stdio` launches the current stdio MCP server without widening the MCP surface
+- `guild mcp serve --stdio` launches the current stdio MCP server without widening the MCP surface, while `guild mcp ...` remains the shipped parent command group in top-level inventories
 
 Legacy aliases remain supported for backward compatibility:
 

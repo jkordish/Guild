@@ -249,6 +249,10 @@ export GUILD_REGISTRY_ROOT=target/dev-local-registry/cli-local
 
 guild install examples/skills/hello-inspect
 
+guild doctor
+
+guild doctor --json
+
 guild show skill://example/hello-inspect@^0.1
 
 guild run \
@@ -266,6 +270,10 @@ guild verify skill://example/hello-inspect@^0.1
 
 guild mcp serve --stdio
 ```
+
+`guild doctor` should stay read-only in that smoke path: it reports the selected
+Guild root, sampled installed and persisted state, trust-store health, and any
+local `policy.json` parse problem without creating or repairing anything.
 
 Starter-pack smoke:
 
