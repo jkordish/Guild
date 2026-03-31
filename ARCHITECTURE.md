@@ -53,8 +53,16 @@ The session-substrate direction adds three architecture guardrails now, even
 before there is a full session runtime:
 
 - `Harness` is first-class architecture vocabulary, but it remains docs-first
-  until one stable package boundary exists across manifest, registry, runner,
-  and transport identity
+  for now; the current real package boundary is still the skill manifest plus
+  resolved installed artifact state rather than a shared Rust contract
+- a shared Rust `Harness` type is justified only after one stable package
+  boundary exists across manifest, registry, runner, and transport identity,
+  the mapping from current skill packaging to future harness identity is
+  explicit, and the admission-relevant fields are concrete enough to type
+  without placeholder maps
+- if a helper Rust type appears before a manifest or WIT contract exists, it
+  must stay non-normative and non-behavioral rather than becoming an implicit
+  new packaging or policy boundary
 - canonical durable session identity is host-minted and host-owned above any
   concrete runtime materialization
 - wake-time reuse is a separate host decision from invoke-time admission,

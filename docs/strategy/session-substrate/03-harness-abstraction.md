@@ -13,15 +13,19 @@ that packages:
 - the tool and capability envelope
 - runtime configuration that matters to admission or rehydration
 
-## Current Repo Decision
+## Repo-Wide Decision
 
-In this phase, Harness remains a docs-first product abstraction.
+In this phase, Harness remains a docs-first product abstraction and does not
+get a shared Rust type yet.
 
 Guild does not add a normative `Harness` Rust type, manifest field, or WIT
-surface yet. The current executable packaging boundary is still the skill
-manifest plus resolved installed artifact state. That is the real contract the
-repository can prove today, so this pass does not pretend there is already a
-stable harness package contract.
+surface in this pass. The current executable packaging boundary is still the
+skill manifest plus resolved installed artifact state. That is the real
+contract the repository can prove today, so the repo-wide answer for now is:
+Harness is first-class product and architecture vocabulary, but it is not yet a
+separate typed package contract.
+
+## Trigger For A Shared Type Later
 
 Guild should only introduce a typed or manifest-level Harness contract after
 all of the following are true:
@@ -34,6 +38,12 @@ all of the following are true:
   explicit
 - the new contract does not widen the current execution or ABI support frontier
   by prose alone
+
+Until that trigger is met, the repository should not add `HarnessId`,
+`HarnessSpec`, or similar shared Rust types just to mirror strategy language.
+If a helper type ever appears before a manifest or WIT contract exists, it
+must remain explanatory only and must not define behavior, execution identity,
+or policy semantics on its own.
 
 ## Relation To Existing Concepts
 
@@ -64,6 +74,8 @@ Until that future contract exists:
 
 - skills remain the normative executable unit
 - resolved installed artifacts remain the concrete transport identity
+- receipts and runtime wiring continue to record resolved executable identity
+  rather than inventing a separate harness identifier
 - harness is the product and architecture term for the broader isolated
   execution abstraction above those current packaging details
 

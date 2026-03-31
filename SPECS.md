@@ -60,10 +60,24 @@ not make sessions or harnesses normative here by prose alone.
 Until a stable broader package boundary exists across manifest, registry,
 runner, and ABI:
 
+- Guild MUST keep `Harness` as docs-first explanatory vocabulary in the
+  current phase; the real executable packaging boundary remains the skill
+  manifest plus resolved installed artifact state
 - Guild MUST NOT introduce a normative `Harness` manifest field or guest ABI
   surface just to mirror the strategic vocabulary
+- Guild MUST NOT introduce a normative shared Rust `Harness` type yet, because
+  the repository has not frozen one stable package boundary across manifest,
+  registry, runner, and transport identity
 - Guild MUST treat `Harness` as explanatory product language above the current
   skill and resolved-artifact contract
+- Guild MUST NOT introduce even a small shared Rust `Harness` type as a real
+  contract until the mapping from current skill packaging to future harness
+  identity is explicit and the admission-relevant fields are precise enough to
+  type without placeholder blobs
+- if the repository adds a helper `Harness` type before that threshold, it
+  MUST remain non-normative and non-behavioral; it MUST NOT redefine
+  manifests, execution identity, policy decisions, receipts, or guest ABI
+  semantics
 - any future canonical durable session identifier MUST be host-minted and
   host-owned rather than caller-chosen
 - any future session wake path MUST keep invoke-time admission distinct from
