@@ -189,6 +189,11 @@ const REQUIRED_LINKS: &[(&str, &[&str])] = &[
 
 pub fn check() -> Result<()> {
     let documents = load_documents()?;
+    let base = repo_root();
+
+    for (path, document) in &documents {
+        validate_markdown_links(&base.join(path), path, document)?;
+    }
 
     for (path, snippets) in REQUIRED_SNIPPETS {
         let document = document(&documents, path)?;
@@ -204,6 +209,25 @@ pub fn check() -> Result<()> {
         let document = document(&documents, path)?;
         for link in *links {
             ensure_link_exists(path, document, link)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_markdown_links(
+    document: &Path,
+    document_path: &str,
+    document_text: &str,
+) -> Result<()> {
+    for link in extract_markdown_links(document_text) {
+        let Some(target) = resolve_local_markdown_link(document, &link) else {
+            continue;
+        };
+        if !target.exists() {
+            bail!(
+                "direction check: markdown link `{link}` in `{document_path}` does not resolve to a real file",
+            );
         }
     }
 
@@ -316,9 +340,14 @@ fn normalize_whitespace(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{extract_markdown_links, markdown_link_destination, resolve_local_markdown_link};
+    use super::{
+        extract_markdown_links, markdown_link_destination, resolve_local_markdown_link,
+        validate_markdown_links,
+    };
 
     #[test]
     fn extract_markdown_links_reads_inline_destinations() {
@@ -363,5 +392,35 @@ mod tests {
         assert!(resolve_local_markdown_link(document, "https://example.com").is_none());
         assert!(resolve_local_markdown_link(document, "#fragment").is_none());
         assert!(resolve_local_markdown_link(document, "mailto:test@example.com").is_none());
+    }
+
+    #[test]
+    fn validate_markdown_links_rejects_broken_non_required_links() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("guild-project-positioning-{unique}"));
+        let docs_dir = root.join("docs");
+        fs::create_dir_all(&docs_dir).unwrap();
+
+        let document_path = docs_dir.join("project-positioning.md");
+        fs::write(&document_path, "See [broken](missing.md) for more.").unwrap();
+
+        let result = validate_markdown_links(
+            &document_path,
+            document_path.strip_prefix(&root).unwrap().to_str().unwrap(),
+            &fs::read_to_string(&document_path).unwrap(),
+        );
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("does not resolve to a real file")
+        );
+
+        fs::remove_dir_all(&root).unwrap();
     }
 }
