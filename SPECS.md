@@ -55,7 +55,9 @@ AI skills should be treated like real software units with identity, runtime cons
 
 The current normative execution unit in this specification is still the skill.
 The session-substrate direction adds guardrails for future evolution; it does
-not make sessions or harnesses normative here by prose alone.
+not make sessions or harnesses normative here by prose alone. One session rule
+is already canonical in this phase: Guild mints the durable `SessionId` on the
+host, and the host owns the durable session record keyed by that identifier.
 
 Until a stable broader package boundary exists across manifest, registry,
 runner, and ABI:
@@ -78,8 +80,11 @@ runner, and ABI:
   MUST remain non-normative and non-behavioral; it MUST NOT redefine
   manifests, execution identity, policy decisions, receipts, or guest ABI
   semantics
-- any future canonical durable session identifier MUST be host-minted and
-  host-owned rather than caller-chosen
+- the canonical durable session identifier MUST be host-minted and host-owned
+  rather than caller-chosen
+- callers MAY reference a prior session, correlation key, or requested intent,
+  but they MUST NOT define the canonical durable `SessionId` or the durable
+  host record keyed by it
 - any future session wake path MUST keep invoke-time admission distinct from
   wake-time reauthorization for secrets, mounts, network policy, and runtime
   placement

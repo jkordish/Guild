@@ -63,8 +63,8 @@ before there is a full session runtime:
 - if a helper Rust type appears before a manifest or WIT contract exists, it
   must stay non-normative and non-behavioral rather than becoming an implicit
   new packaging or policy boundary
-- canonical durable session identity is host-minted and host-owned above any
-  concrete runtime materialization
+- canonical durable session identity is the host-minted `SessionId`, owned and
+  persisted by the host above any concrete runtime materialization
 - wake-time reuse is a separate host decision from invoke-time admission,
   especially for secrets, mounts, network policy, and runtime placement
 
@@ -223,7 +223,8 @@ durable session truth and rebuildable harness state.
 
 Canonical durable session truth should include:
 
-- host-minted `SessionId` and the current durable lifecycle state
+- host-minted `SessionId` as the key for the durable session record, plus the
+  current durable lifecycle state
 - admission-relevant caller intent, correlation data, and policy input
 - granted capability envelope or enough durable policy state to recompute it
   safely
