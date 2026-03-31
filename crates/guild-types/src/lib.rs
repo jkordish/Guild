@@ -2515,6 +2515,11 @@ impl EvidenceRecord {
     }
 }
 
+/// Host-issued durable locator for one admitted execution attempt.
+///
+/// `ExecutionReceipt` remains attempt-scoped host truth. A future
+/// session-layer receipt may aggregate multiple execution receipts under one
+/// `SessionId`, but it must not replace or blur this single-attempt boundary.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ExecutionReceipt {
     pub execution_id: String,
@@ -2523,6 +2528,13 @@ pub struct ExecutionReceipt {
     pub status: ExecutionStatus,
 }
 
+/// Durable host-owned record describing one execution attempt and its outcome.
+///
+/// This remains the canonical attempt-local truth even after Guild grows a
+/// session-layer receipt. Session aggregation should retain ordered references
+/// to `ExecutionReceipt` and `ExecutionRecord` values rather than flattening
+/// attempt-local policy, provenance, termination, and evidence into one opaque
+/// summary.
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
 pub struct ExecutionRecord {
     pub receipt: ExecutionReceipt,
@@ -2833,6 +2845,7 @@ pub struct SkillError {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct ChildExecutionRecord {
+    /// Host-issued alias for one child execution attempt within a parent attempt.
     pub alias: String,
     pub execution_id: String,
     pub uri: String,

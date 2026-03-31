@@ -221,11 +221,17 @@ In the current repository this logical model is now split more explicitly into:
 
 - `CallerRequest` for caller intent and requested identity
 - `ResolvedExecutionEnvelope` for host-issued resolved execution input
-- `ExecutionRecord` and `ExecutionReceipt` for durable execution truth
+- `ExecutionRecord` and `ExecutionReceipt` for durable execution truth about
+  one execution attempt
 - `EvidenceBlobRecord` for content-addressed payload storage
 - `EvidenceRecord` plus `EvidenceRef` for host-owned per-emission metadata and guest-visible handles
 - distinct manifest schema, skill API, and guest ABI version axes
 - implementation-language package metadata such as Cargo package version is build and distribution metadata for a crate, not Guild execution identity
+
+The future session receipt layer should sit above that attempt-local truth: one
+durable `SessionId` may accumulate many execution-attempt receipts and records,
+but the aggregate session view must point back to those canonical attempt
+records instead of replacing them.
 
 ### 3.5 Session durability boundary
 

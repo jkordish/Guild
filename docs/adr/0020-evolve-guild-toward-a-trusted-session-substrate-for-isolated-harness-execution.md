@@ -55,6 +55,10 @@ abstraction.
 - A session-aware wake path in the live runtime
 - Session-level receipt aggregation beyond docs and small shared scaffolding
 
+When session-level receipt aggregation does arrive, it should sit above the
+current attempt-scoped execution receipts and records rather than replacing
+that durable attempt-local truth.
+
 ## Why This Is An Evolution, Not Random Thrash
 
 The existing Guild substrate already owns the right kinds of truth: host-issued
