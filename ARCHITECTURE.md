@@ -87,6 +87,9 @@ The lifecycle guardrail is equally important:
   rest states
 - `active` is the only durable state that implies a live materialization still
   exists
+- `pending-admission` and `admitted` stay intentionally ambiguous about live
+  materialization presence because they span both first materialization and
+  warm reuse attempts
 - `suspended` means a direct resume path is still eligible if wake-time checks
   pass
 - `rehydration-required` means direct resume is already invalid and the broker

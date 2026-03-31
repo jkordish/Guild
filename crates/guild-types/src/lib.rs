@@ -457,8 +457,14 @@ impl SessionState {
         matches!(self, Self::PendingAdmission | Self::Admitted)
     }
 
+    /// Whether this state alone proves a live materialization still exists.
+    ///
+    /// Transient attempt states intentionally return `false` here because the
+    /// same `pending-admission` or `admitted` value can appear on a first
+    /// materialization path with no live harness yet or on a warm reuse path
+    /// where the prior live materialization is still running.
     #[must_use]
-    pub const fn has_live_materialization(&self) -> bool {
+    pub const fn implies_live_materialization(&self) -> bool {
         matches!(self, Self::Active)
     }
 
@@ -2759,7 +2765,9 @@ mod tests {
     fn session_state_helpers_capture_lifecycle_invariants() {
         assert!(SessionState::PendingAdmission.is_transient_attempt_state());
         assert!(SessionState::Admitted.is_transient_attempt_state());
-        assert!(SessionState::Active.has_live_materialization());
+        assert!(SessionState::Active.implies_live_materialization());
+        assert!(!SessionState::PendingAdmission.implies_live_materialization());
+        assert!(!SessionState::Admitted.implies_live_materialization());
         assert!(SessionState::Suspended.allows_direct_resume());
         assert!(!SessionState::RehydrationRequired.allows_direct_resume());
         assert!(SessionState::Failed.blocks_automatic_wake());

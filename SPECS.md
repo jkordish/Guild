@@ -96,6 +96,9 @@ runner, and ABI:
   materialization currently exists
 - `suspended`, `rehydration-required`, `failed`, and `terminated` MUST all
   imply that no live materialization currently exists
+- `pending-admission` and `admitted` MUST remain ambiguous about whether a live
+  materialization currently exists, because those transient states are shared
+  by both first materialization and warm reuse paths
 - any future `suspended` state MUST mean direct resume is still eligible after
   wake-time checks, while `rehydration-required` MUST mean direct resume is no
   longer a valid path

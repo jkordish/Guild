@@ -75,6 +75,10 @@ State meanings:
 - `pending-admission` and `admitted` are attempt-local only. If an attempt
   stops, denies, or reroutes, Guild must resolve back into a durable state in
   the same receipt lineage instead of persisting a transient rest state.
+- `pending-admission` and `admitted` do not by themselves prove whether a live
+  materialization currently exists. First invoke uses those states before any
+  harness exists, while warm reuse may pass through them while a prior live
+  materialization is still running.
 - `warm`, `resumed`, `rehydrated`, and `cold` are materialization outcomes for
   successful admitted attempts. They are not durable session states.
 
