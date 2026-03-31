@@ -85,10 +85,18 @@ The lifecycle guardrail is equally important:
 
 - `pending-admission` and `admitted` are transient attempt states, not durable
   rest states
+- `active` is the only durable state that implies a live materialization still
+  exists
 - `suspended` means a direct resume path is still eligible if wake-time checks
   pass
 - `rehydration-required` means direct resume is already invalid and the broker
   must rehydrate or cold-start after a fresh admitted attempt
+- `resumed` may only come from `suspended`; once a session is
+  `rehydration-required`, the next successful continuation can only be
+  `rehydrated` or `cold`
+- if a wake against `suspended` disproves direct resume, Guild first records
+  `rehydration-required` as the durable truth instead of silently collapsing
+  that same attempt into a different continuity claim
 - a denied wake returns an existing session to its prior durable state rather
   than stranding it in a transient state
 - `failed` stops automatic wake logic, while `terminated` is terminal

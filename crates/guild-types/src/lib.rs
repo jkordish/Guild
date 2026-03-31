@@ -431,15 +431,46 @@ pub enum SessionState {
     /// Transient host state after allow, before a live materialization is confirmed.
     Admitted,
     /// Durable state for a session with a currently live materialization.
+    ///
+    /// This is the only durable lifecycle state that implies a live
+    /// materialization still exists.
     Active,
     /// Durable quiescent state where direct resume is still an eligible wake path.
+    ///
+    /// This is the only durable wake source that may later succeed with the
+    /// `resumed` materialization mode.
     Suspended,
     /// Durable quiescent state where direct resume is no longer valid.
+    ///
+    /// Successful continuation from this state may only become `rehydrated` or
+    /// `cold`; it must never report `resumed`.
     RehydrationRequired,
     /// Stop state for automatic wake logic until an explicit future reset path exists.
     Failed,
     /// Terminal durable state; the same SessionId must not reactivate.
     Terminated,
+}
+
+impl SessionState {
+    #[must_use]
+    pub const fn is_transient_attempt_state(&self) -> bool {
+        matches!(self, Self::PendingAdmission | Self::Admitted)
+    }
+
+    #[must_use]
+    pub const fn has_live_materialization(&self) -> bool {
+        matches!(self, Self::Active)
+    }
+
+    #[must_use]
+    pub const fn allows_direct_resume(&self) -> bool {
+        matches!(self, Self::Suspended)
+    }
+
+    #[must_use]
+    pub const fn blocks_automatic_wake(&self) -> bool {
+        matches!(self, Self::Failed | Self::Terminated)
+    }
 }
 
 /// Host-selected materialization outcome for a sessioned invocation.
@@ -2722,6 +2753,17 @@ mod tests {
     fn session_state_uses_kebab_case() {
         let rendered = serde_json::to_string(&SessionState::RehydrationRequired).unwrap();
         assert_eq!(rendered, "\"rehydration-required\"");
+    }
+
+    #[test]
+    fn session_state_helpers_capture_lifecycle_invariants() {
+        assert!(SessionState::PendingAdmission.is_transient_attempt_state());
+        assert!(SessionState::Admitted.is_transient_attempt_state());
+        assert!(SessionState::Active.has_live_materialization());
+        assert!(SessionState::Suspended.allows_direct_resume());
+        assert!(!SessionState::RehydrationRequired.allows_direct_resume());
+        assert!(SessionState::Failed.blocks_automatic_wake());
+        assert!(SessionState::Terminated.blocks_automatic_wake());
     }
 
     #[test]

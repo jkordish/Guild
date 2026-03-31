@@ -61,52 +61,73 @@ State meanings:
 - `terminated`: the session lifecycle is closed. The same `SessionId` must not
   reactivate.
 
+## Lifecycle Invariants
+
+- `active` is the only durable state that implies a live materialization
+  exists.
+- `suspended`, `rehydration-required`, `failed`, and `terminated` all imply
+  that no live materialization currently exists.
+- `suspended` is the only durable wake source that may later succeed with the
+  `resumed` execution mode.
+- `rehydration-required` is proof that direct resume is already invalid for the
+  current session lineage. A later successful activation from this state may
+  end only as `rehydrated` or `cold`, never `resumed`.
+- `pending-admission` and `admitted` are attempt-local only. If an attempt
+  stops, denies, or reroutes, Guild must resolve back into a durable state in
+  the same receipt lineage instead of persisting a transient rest state.
+- `warm`, `resumed`, `rehydrated`, and `cold` are materialization outcomes for
+  successful admitted attempts. They are not durable session states.
+
 ## Canonical Transition Rules
 
 There is no durable "admitted but idle" rest state. `pending-admission` and
 `admitted` exist only while Guild evaluates or materializes one attempt.
 
-- first invoke for a session: `pending-admission` -> `admitted` -> `active`
-  on success, typically with `cold`
-- deny before first activation: `pending-admission` -> `terminated`; Guild may
-  still persist the denial receipt, but it must not leave a resumable session
-- active reuse on a live materialization: `active` -> `pending-admission` ->
-  `admitted` -> `active` with `warm`
-- clean park, disconnect, or host suspension: `active` -> `suspended`
-- invalidated or missing live materialization with durable session truth still
-  intact: `active` -> `rehydration-required`
-- terminal completion or explicit close: `active` -> `terminated`,
-  `suspended` -> `terminated`, or `rehydration-required` -> `terminated`
-- unrecoverable continuation failure: `active` -> `failed`,
-  `admitted` -> `failed`, or `rehydration-required` -> `failed`
+### First invoke and already-active invoke paths
 
-Wake-specific rules:
+| Source durable state | Trigger | Attempt path | Result | Notes |
+| --- | --- | --- | --- | --- |
+| no existing durable session | first invoke admitted | `pending-admission` -> `admitted` -> `active` | `active` with `cold` | First materialization of a new durable session |
+| no existing durable session | first invoke denied | `pending-admission` -> `terminated` | `terminated` | Guild may still persist the denial receipt, but it must not leave a resumable durable session behind |
+| `active` | invoke served by an already-live materialization | `active` -> `pending-admission` -> `admitted` -> `active` | `active` with `warm` | This is invoke-time admission, not wake-time reuse |
+| `active` | clean park, disconnect, or host suspension | `active` -> `suspended` | `suspended` | Direct resume remains eligible until wake-time checks prove otherwise |
+| `active` | live materialization is missing, invalidated, or otherwise no longer safe to reuse while durable truth still exists | `active` -> `rehydration-required` | `rehydration-required` | Direct resume is already off the table at this point |
+| `active`, `suspended`, or `rehydration-required` | terminal completion or explicit close | `source` -> `terminated` | `terminated` | Terminal durable close |
+| `active`, `admitted`, or `rehydration-required` | unrecoverable continuation failure | `source` -> `failed` | `failed` | Automatic wake stops here until a future explicit host-owned reset path exists |
 
-- suspended wake request:
-  `suspended` -> `pending-admission` while Guild reruns wake-time checks
-- successful direct resume:
-  `pending-admission` -> `admitted` -> `active` with `resumed`
-- wake denial against an existing suspended session:
-  `pending-admission` -> `suspended` after recording the denial receipt
-- wake-time proof that direct resume is no longer safe:
-  `pending-admission` -> `rehydration-required`; Guild must not quietly pretend
-  the session is still resumable
-- rehydration-required wake request:
-  `rehydration-required` -> `pending-admission`
-- successful rehydration:
-  `pending-admission` -> `admitted` -> `active` with `rehydrated`
-- successful fresh materialization after resume and rehydrate were ruled out:
-  `pending-admission` -> `admitted` -> `active` with `cold`
-- wake denial against an existing rehydration-required session:
-  `pending-admission` -> `rehydration-required`
+### Wake from `suspended`
 
-Stop-state rules:
+| Source durable state | Trigger | Attempt path | Result | Notes |
+| --- | --- | --- | --- | --- |
+| `suspended` | wake begins | `suspended` -> `pending-admission` | `pending-admission` | Guild reruns wake-time admission before any reuse claim |
+| `pending-admission` (from `suspended`) | wake-time checks pass and direct resume remains allowed | `pending-admission` -> `admitted` -> `active` | `active` with `resumed` | Only `suspended` may reach `resumed` |
+| `pending-admission` (from `suspended`) | wake denied | `pending-admission` -> `suspended` | `suspended` | Denial restores the prior durable state after the denial receipt is recorded |
+| `pending-admission` (from `suspended`) | wake-time checks prove direct resume is no longer safe | `pending-admission` -> `rehydration-required` | `rehydration-required` | Guild must not quietly collapse this into same-attempt `cold`; the durable state first records that direct resume is invalid |
 
+### Wake from `rehydration-required`
+
+| Source durable state | Trigger | Attempt path | Result | Notes |
+| --- | --- | --- | --- | --- |
+| `rehydration-required` | wake begins | `rehydration-required` -> `pending-admission` | `pending-admission` | Fresh wake attempt against an already-non-resumable session |
+| `pending-admission` (from `rehydration-required`) | rehydration admitted and succeeds | `pending-admission` -> `admitted` -> `active` | `active` with `rehydrated` | Rebuild from durable truth and compatible artifacts/state |
+| `pending-admission` (from `rehydration-required`) | rehydration is unavailable but durable truth plus immutable artifacts still support a safe fresh materialization | `pending-admission` -> `admitted` -> `active` | `active` with `cold` | `cold` is the safe fallback after resume is already ruled out |
+| `pending-admission` (from `rehydration-required`) | wake denied | `pending-admission` -> `rehydration-required` | `rehydration-required` | Denial restores the prior durable state |
+
+### Disallowed shortcuts
+
+- `suspended` must not jump straight to `active` with `cold` in the same wake
+  attempt that disproves direct resume. Guild first records
+  `rehydration-required`, then retries from that durable state on a later
+  attempt.
+- `rehydration-required` must never land in `active` with `resumed`.
 - `failed` is not a normal wake source. Any future recovery from `failed` must
   be an explicit host-owned reset path, not an implicit resume or rehydrate
   branch.
 - `terminated` is terminal. Guild must not transition a terminated session back
-  into `pending-admission`, `admitted`, or `active`.
+  into `pending-admission`, `admitted`, `active`, `suspended`, or
+  `rehydration-required`.
+- A denied attempt must never strand the session in `pending-admission` or
+  `admitted`.
 
 ## Persistence Tiers
 

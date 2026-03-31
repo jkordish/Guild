@@ -92,12 +92,26 @@ runner, and ABI:
   `admitted` as transient attempt states, not durable rest states
 - any future denied wake against an existing session MUST return it to its
   prior durable state rather than leaving it stranded in a transient state
+- `active` MUST be the only durable session state that implies a live
+  materialization currently exists
+- `suspended`, `rehydration-required`, `failed`, and `terminated` MUST all
+  imply that no live materialization currently exists
 - any future `suspended` state MUST mean direct resume is still eligible after
   wake-time checks, while `rehydration-required` MUST mean direct resume is no
   longer a valid path
+- any future successful `resumed` outcome MUST originate from `suspended` and
+  land in `active`
+- if wake-time checks against `suspended` prove direct resume is no longer
+  safe, Guild MUST transition the durable session to `rehydration-required`
+  before any later `rehydrated` or `cold` continuation; it MUST NOT silently
+  pretend the same attempt was still a valid direct resume
+- any future successful continuation from `rehydration-required` MUST land in
+  `active` with either `rehydrated` or `cold`; it MUST NOT report `resumed`
 - any future `failed` state MUST stop automatic wake logic unless and until
   Guild defines an explicit host-owned reset path, and any future
   `terminated` state MUST remain terminal
+- any future denied first invoke MAY persist a denial receipt, but it MUST NOT
+  leave behind a resumable durable session record
 - any future invoke attempt MUST evaluate requested intent, executable
   identity/trust, requested capabilities, and minimum acceptable isolation
   posture before first materialization of that attempt
