@@ -36,7 +36,7 @@ pub fn mint_host_evidence_record_id() -> String {
 /// value.
 #[must_use]
 pub fn mint_host_session_id() -> SessionId {
-    SessionId::new(Uuid::now_v7().to_string())
+    SessionId::from_uuid(Uuid::now_v7())
 }
 
 /// Return the current host UTC timestamp formatted as RFC 3339.
@@ -60,8 +60,17 @@ pub struct SessionId(String);
 
 impl SessionId {
     #[must_use]
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value.to_string())
+    }
+
+    /// Parse and normalize a durable session identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `input` is not a valid UUID string.
+    pub fn parse(input: &str) -> Result<Self, uuid::Error> {
+        Uuid::parse_str(input).map(Self::from_uuid)
     }
 
     #[must_use]
@@ -90,7 +99,9 @@ impl<'de> Deserialize<'de> for SessionId {
     where
         D: Deserializer<'de>,
     {
-        Ok(Self(String::deserialize(deserializer)?))
+        let raw = String::deserialize(deserializer)?;
+        Self::parse(&raw)
+            .map_err(|error| D::Error::custom(format!("invalid session UUID `{raw}`: {error}")))
     }
 }
 
@@ -2665,14 +2676,30 @@ mod tests {
 
     #[test]
     fn session_id_roundtrip_serializes_as_string() {
-        let session_id = SessionId::new("session-123");
+        let session_id =
+            SessionId::parse("018f6d95-6c89-7f36-b5e1-804e0d3d4c41").expect("valid uuid");
 
         let serialized = serde_json::to_value(&session_id).unwrap();
-        assert_eq!(serialized, serde_json::Value::String("session-123".into()));
+        assert_eq!(
+            serialized,
+            serde_json::Value::String("018f6d95-6c89-7f36-b5e1-804e0d3d4c41".into())
+        );
 
         let deserialized: SessionId = serde_json::from_value(serialized).unwrap();
         assert_eq!(deserialized, session_id);
-        assert_eq!(deserialized.as_str(), "session-123");
+        assert_eq!(
+            deserialized.as_str(),
+            "018f6d95-6c89-7f36-b5e1-804e0d3d4c41"
+        );
+    }
+
+    #[test]
+    fn session_id_deserialization_rejects_non_uuid_strings() {
+        let error =
+            serde_json::from_value::<SessionId>(serde_json::Value::String("session-123".into()))
+                .unwrap_err();
+
+        assert!(error.to_string().contains("UUID"));
     }
 
     #[test]

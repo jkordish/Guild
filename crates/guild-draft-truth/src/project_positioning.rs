@@ -201,8 +201,9 @@ pub fn check() -> Result<()> {
     }
 
     for (path, links) in REQUIRED_LINKS {
+        let document = document(&documents, path)?;
         for link in *links {
-            ensure_link_exists(path, link)?;
+            ensure_link_exists(path, document, link)?;
         }
     }
 
@@ -237,11 +238,20 @@ fn document<'a>(documents: &'a BTreeMap<String, String>, relative_path: &str) ->
         .with_context(|| format!("direction check is missing loaded document `{relative_path}`"))
 }
 
-fn ensure_link_exists(document_path: &str, link: &str) -> Result<()> {
+fn ensure_link_exists(document_path: &str, document_text: &str, link: &str) -> Result<()> {
     let base = repo_root();
     let document = base.join(document_path);
-    let resolved = resolve_relative_link(&document, link)
+    let resolved = resolve_local_markdown_link(&document, link)
         .with_context(|| format!("failed to resolve `{link}` from `{document_path}`"))?;
+
+    let link_present = extract_markdown_links(document_text)
+        .into_iter()
+        .filter_map(|candidate| resolve_local_markdown_link(&document, &candidate))
+        .any(|candidate| candidate == resolved);
+
+    if !link_present {
+        bail!("direction check: link `{link}` is missing from `{document_path}`");
+    }
 
     if !resolved.is_file() {
         bail!(
@@ -252,18 +262,106 @@ fn ensure_link_exists(document_path: &str, link: &str) -> Result<()> {
     Ok(())
 }
 
-fn resolve_relative_link(document_path: &Path, link: &str) -> Result<PathBuf> {
-    let target = link
-        .split('#')
-        .next()
-        .filter(|segment| !segment.is_empty())
-        .context("link target was empty")?;
-    let parent = document_path
-        .parent()
-        .with_context(|| format!("{} has no parent directory", document_path.display()))?;
-    Ok(parent.join(target))
+fn extract_markdown_links(text: &str) -> Vec<String> {
+    let mut links = Vec::new();
+    let mut remaining = text;
+
+    while let Some(start) = remaining.find("](") {
+        let after_marker = &remaining[start + 2..];
+        let Some(end) = after_marker.find(')') else {
+            break;
+        };
+        links.push(after_marker[..end].to_owned());
+        remaining = &after_marker[end + 1..];
+    }
+
+    links
+}
+
+fn resolve_local_markdown_link(document_path: &Path, link: &str) -> Option<PathBuf> {
+    let destination = markdown_link_destination(link)?;
+    if destination.starts_with('#')
+        || destination.starts_with("mailto:")
+        || destination.contains("://")
+    {
+        return None;
+    }
+
+    let path_part = destination.split('#').next().unwrap_or(destination);
+    if path_part.is_empty() {
+        return None;
+    }
+
+    let parent = document_path.parent()?;
+    Some(parent.join(path_part))
+}
+
+fn markdown_link_destination(link: &str) -> Option<&str> {
+    let trimmed = link.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(rest) = trimmed.strip_prefix('<') {
+        let destination = rest.split('>').next().unwrap_or(rest).trim();
+        return (!destination.is_empty()).then_some(destination);
+    }
+
+    trimmed.split_whitespace().next()
 }
 
 fn normalize_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{extract_markdown_links, markdown_link_destination, resolve_local_markdown_link};
+
+    #[test]
+    fn extract_markdown_links_reads_inline_destinations() {
+        let text = "See [umbrella](docs/strategy/session-substrate/00-umbrella-epic.md) and [roadmap](docs/roadmap.md).";
+        let links = extract_markdown_links(text);
+        assert_eq!(
+            links,
+            vec![
+                "docs/strategy/session-substrate/00-umbrella-epic.md",
+                "docs/roadmap.md"
+            ]
+        );
+    }
+
+    #[test]
+    fn markdown_link_destination_strips_optional_titles() {
+        assert_eq!(
+            markdown_link_destination(r#"project-positioning.md "Project framing""#),
+            Some("project-positioning.md")
+        );
+        assert_eq!(
+            markdown_link_destination(r#"project-positioning.md#boundary "Project framing""#),
+            Some("project-positioning.md#boundary")
+        );
+    }
+
+    #[test]
+    fn resolve_local_markdown_link_resolves_relative_targets() {
+        let document = Path::new("/tmp/repo/docs/project-positioning.md");
+        let resolved =
+            resolve_local_markdown_link(document, "strategy/session-substrate/00-umbrella-epic.md")
+                .unwrap();
+        assert_eq!(
+            resolved,
+            Path::new("/tmp/repo/docs/strategy/session-substrate/00-umbrella-epic.md")
+        );
+    }
+
+    #[test]
+    fn resolve_local_markdown_link_ignores_external_targets() {
+        let document = Path::new("/tmp/repo/README.md");
+        assert!(resolve_local_markdown_link(document, "https://example.com").is_none());
+        assert!(resolve_local_markdown_link(document, "#fragment").is_none());
+        assert!(resolve_local_markdown_link(document, "mailto:test@example.com").is_none());
+    }
 }

@@ -32,6 +32,8 @@ with durable execution and evidence records.
 >
 > For the current direction, start with [`AGENTS.md`](AGENTS.md),
 > [`docs/strategy/session-substrate/00-umbrella-epic.md`](docs/strategy/session-substrate/00-umbrella-epic.md),
+> [`docs/strategy/session-substrate/07-roadmap.md`](docs/strategy/session-substrate/07-roadmap.md),
+> [`docs/strategy/session-substrate/tasks.md`](docs/strategy/session-substrate/tasks.md),
 > and [`docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md`](docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md).
 > For the bridge from the prior framing to the new one, use
 > [`docs/project-positioning.md`](docs/project-positioning.md). For the current
