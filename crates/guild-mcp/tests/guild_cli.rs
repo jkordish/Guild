@@ -7983,32 +7983,44 @@ fn trust_policy_glossary_stays_canonical_across_help_and_docs() {
 }
 
 #[test]
-fn project_positioning_keeps_language_and_capability_guidance_canonical() {
+fn session_substrate_direction_stays_visible_in_repo_entrypoints() {
     let positioning = fs::read_to_string(repo_root().join("docs/project-positioning.md")).unwrap();
-    assert!(positioning.contains("## Canonical Operator Vocabulary"));
-    assert!(positioning.contains("## Terms To Avoid As Primary Framing"));
-    assert!(positioning.contains("## Operator-Facing Capability Vocabulary"));
-    assert!(
-        positioning.contains("Guild lets ops, platform, and security teams run trusted playbooks")
-    );
-    assert!(positioning.contains("The taxonomy is docs and approval vocabulary in this phase"));
-    assert!(
-        positioning
-            .contains("Current operator-facing examples that map cleanly to the live repo truth")
-    );
-    assert!(positioning.contains("Docs-first target names that are useful for planning"));
-    assert!(positioning.contains("| **Experimental** |"));
-    assert!(positioning.contains("| **Curated** |"));
-    assert!(positioning.contains("| **Verified** |"));
+    assert!(positioning.contains("compatibility bridge"));
+    assert!(positioning.contains("session, not the sandbox"));
+    assert!(positioning.contains("What Ships Today"));
 
     let readme = fs::read_to_string(repo_root().join("README.md")).unwrap();
-    assert!(readme.contains("docs/project-positioning.md"));
-    assert!(readme.contains("canonical operator-facing vocabulary and capability language"));
+    assert!(readme.contains("## Current Direction"));
+    assert!(readme.contains("docs/strategy/session-substrate/00-umbrella-epic.md"));
+    assert!(readme.contains("AGENTS.md"));
+    assert!(readme.contains(
+        "docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md"
+    ));
+
+    let agents = fs::read_to_string(repo_root().join("AGENTS.md")).unwrap();
+    assert!(agents.contains("trusted session substrate for isolated harness execution"));
+    assert!(agents.contains("session broker"));
+    assert!(agents.contains("harness"));
+
+    let umbrella =
+        fs::read_to_string(repo_root().join("docs/strategy/session-substrate/00-umbrella-epic.md"))
+            .unwrap();
+    assert!(umbrella.contains("trusted session substrate for isolated harness execution"));
+    assert!(umbrella.contains("The product abstraction is the session, not the sandbox"));
+
+    let context =
+        fs::read_to_string(repo_root().join("docs/strategy/session-substrate/context.yaml"))
+            .unwrap();
+    assert!(context.contains("thesis:"));
+    assert!(context.contains("core_abstractions:"));
+    assert!(context.contains("open_questions:"));
 
     let command_language =
         fs::read_to_string(repo_root().join("docs/command-language.md")).unwrap();
-    assert!(command_language.contains("project-positioning.md"));
-    assert!(command_language.contains("canonical operator-facing vocabulary"));
+    assert!(command_language.contains("strategy/session-substrate/00-umbrella-epic.md"));
+
+    let testing = fs::read_to_string(repo_root().join("docs/testing.md")).unwrap();
+    assert!(testing.contains("strategy/session-substrate/00-umbrella-epic.md"));
 }
 
 #[test]

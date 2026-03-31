@@ -57,10 +57,16 @@ mod bindings {
 }
 mod inspect_projection;
 mod live_proof;
+mod session;
 
+pub use guild_types::AdmissionDisposition;
 pub use live_proof::{
     LiveProofCandidateTrial, LiveProofComparatorProfile, LiveProofEnvelope, LiveProofFamilyStatus,
     LiveProofOutcome, LiveProofScenarioResult, LiveProofSupport,
+};
+pub use session::{
+    AdmissionController, SessionAdmission, SessionAdmissionRequest, SessionBroker,
+    SessionBrokerError, SessionWakeOutcome, SessionWakeRequest,
 };
 
 const INSPECT_WORLD_ENTRYPOINT: &str = "guild-skill-inspect-v1";

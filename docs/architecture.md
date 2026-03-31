@@ -8,6 +8,7 @@ If this file ever disagrees with those sources, those sources win.
 
 Read next:
 
+- [`strategy/session-substrate/00-umbrella-epic.md`](strategy/session-substrate/00-umbrella-epic.md)
 - [`project-positioning.md`](project-positioning.md)
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 - [`../SPECS.md`](../SPECS.md)

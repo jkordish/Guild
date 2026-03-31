@@ -2,6 +2,18 @@
 
 ## Summary
 
+Guild now has an explicit next-direction strategy stack under
+`docs/strategy/session-substrate/` and a matching repo-wide orientation
+update. The repo's long-term north star is no longer described primarily as a
+portable-skill/runtime story. It is now described as an evolution toward a
+trusted session substrate for isolated harness execution: an admission
+controller, session broker, and receipt engine for durable sessions. The pass
+kept the shipped truth explicit: the live runtime is still skill-first and
+inspect-first today. It added ADR 0020, a machine-readable direction file, a
+concise replacement `AGENTS.md`, updated README/roadmap/bridge docs, and
+minimal shared session/admission scaffolding without adding fake lifecycle
+machinery.
+
 Guild now has a real local inspect-only trust and receipt layer for portable skills, not just a contract sketch.
 
 Current repo framing is now frozen in [`docs/project-positioning.md`](docs/project-positioning.md): Guild creates portable, capability-bounded skill artifacts and a trust layer for how they are admitted, executed, and evidenced. Guild Ops Starter is the first reference application built on that layer, not the whole product thesis.

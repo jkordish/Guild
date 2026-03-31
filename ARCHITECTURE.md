@@ -6,9 +6,12 @@ Audience: implementers, maintainers, reviewers, security and platform engineers
 
 This document is explanatory architecture, not the primary runtime-contract source of truth. For normative runtime ownership, use `SPECS.md` section "Source Of Truth", `wit/guild-skill-v1.wit`, and the core Rust runtime/types.
 For the frozen core runtime-contract surfaces in this milestone, see `SPECS.md` section "Contract Surface v1 (core)".
-For the current project framing and vocabulary freeze, see [`docs/project-positioning.md`](docs/project-positioning.md).
-For the current operator-facing playbook surface and playbook-to-skill
-composition story, see [`docs/how-guild-works.md`](docs/how-guild-works.md).
+For the current long-term direction, see
+[`docs/strategy/session-substrate/00-umbrella-epic.md`](docs/strategy/session-substrate/00-umbrella-epic.md)
+and ADR `0020`. For the bridge from the prior framing to the new one, see
+[`docs/project-positioning.md`](docs/project-positioning.md). For the current
+shipped skill-first operator surface, see
+[`docs/how-guild-works.md`](docs/how-guild-works.md).
 That surface is explanatory; the architecture below still describes how Guild
 executes skills today.
 
@@ -45,6 +48,60 @@ The key layering rule is now explicit:
 - translation between those layers is explicit and host-owned
 - the active inspect projection boundary is centralized in the runner
 - MCP transport authorization remains separate from Guild runtime capability grants
+
+The session-substrate direction adds three architecture guardrails now, even
+before there is a full session runtime:
+
+- `Harness` is first-class architecture vocabulary, but it remains docs-first
+  for now; the current real package boundary is still the skill manifest plus
+  resolved installed artifact state rather than a shared Rust contract
+- a shared Rust `Harness` type is justified only after one stable package
+  boundary exists across manifest, registry, runner, and transport identity,
+  the mapping from current skill packaging to future harness identity is
+  explicit, and the admission-relevant fields are concrete enough to type
+  without placeholder maps
+- if a helper Rust type appears before a manifest or WIT contract exists, it
+  must stay non-normative and non-behavioral rather than becoming an implicit
+  new packaging or policy boundary
+- canonical durable session identity is host-minted and host-owned above any
+  concrete runtime materialization
+- wake-time reuse is a separate host decision from invoke-time admission,
+  especially for secrets, mounts, network policy, and runtime placement
+
+The admission-model guardrail is explicit too:
+
+- today's durable `PolicyDecision` remains the concrete attempt-local policy
+  record
+- future session-aware admission may add the broader host-owned routing outputs
+  `allow`, `deny`, `ask-human`, and `elevate-isolation` above that attempt
+  record
+- current `allowed` and `reduced` still mean "proceed under the final envelope"
+  and therefore project conservatively to future `allow`
+- current `rejected` projects to future `deny`
+- `ask-human` and `elevate-isolation` are extensions above the live policy
+  model, not alternate names for today's `reduced`
+
+The lifecycle guardrail is equally important:
+
+- `pending-admission` and `admitted` are transient attempt states, not durable
+  rest states
+- `suspended` means a direct resume path is still eligible if wake-time checks
+  pass
+- `rehydration-required` means direct resume is already invalid and the broker
+  must rehydrate or cold-start after a fresh admitted attempt
+- a denied wake returns an existing session to its prior durable state rather
+  than stranding it in a transient state
+- `failed` stops automatic wake logic, while `terminated` is terminal
+
+The persistence guardrail is now equally explicit:
+
+- host-owned durable session truth is the canonical continuity contract
+- rebuildable harness state is replaceable implementation detail even when it
+  is serialized for faster wake paths
+- snapshots, live connections, and runtime-local caches are rebuild aids, not
+  authoritative session identity or continuity truth
+- cold-start is a safe fallback only when the promised session continuity can
+  still be satisfied from durable host truth plus immutable artifacts
 
 ## 2. High-Level Component Model
 
@@ -158,6 +215,48 @@ In the current repository this logical model is now split more explicitly into:
 - `EvidenceRecord` plus `EvidenceRef` for host-owned per-emission metadata and guest-visible handles
 - distinct manifest schema, skill API, and guest ABI version axes
 - implementation-language package metadata such as Cargo package version is build and distribution metadata for a crate, not Guild execution identity
+
+### 3.5 Session durability boundary
+
+The future session broker should preserve one explicit line between canonical
+durable session truth and rebuildable harness state.
+
+Canonical durable session truth should include:
+
+- host-minted `SessionId` and the current durable lifecycle state
+- admission-relevant caller intent, correlation data, and policy input
+- granted capability envelope or enough durable policy state to recompute it
+  safely
+- references to required artifacts, runtime class, and harness identity mapping
+- receipt lineage, evidence refs, and host-owned audit metadata
+- any service reconnect descriptors or rebinding requirements the host expects
+  to satisfy on wake
+
+Rebuildable harness state should include:
+
+- sandbox, process, container, VM, and placement-local identity
+- in-memory heap, temp directories, caches, and open file descriptors
+- live sockets, active external-service sessions, leases, and opaque runtime
+  handles
+- snapshots or serialized runtime state that only accelerate one wake path
+
+Broker behavior should follow that boundary:
+
+- `resumed` may reuse preserved runtime-local state only after wake-time checks
+  prove that reuse remains safe
+- `rehydrated` must rebuild from durable host truth, durable artifacts, and any
+  validated serialized state; invalid snapshots are discarded rather than
+  treated as canonical continuity
+- `cold` carries forward only durable host truth and immutable artifacts into a
+  fresh materialization; it is the safe fallback when no trusted resume or
+  rehydration path remains
+- if an external service cannot be safely reconnected or re-authorized, Guild
+  must rehydrate, cold-start, or fail the wake rather than pretend the prior
+  connection survived
+
+This boundary keeps receipts honest: the host can explain which continuity came
+from durable truth, which parts were rebuilt, and why a wake fell back to
+`cold` instead of claiming a stronger resume than the system could prove.
 
 ## 4. Reference Execution Flow
 

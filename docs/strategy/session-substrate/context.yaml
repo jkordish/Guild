@@ -1,0 +1,46 @@
+thesis: "Guild is evolving into the admission controller, session broker, and receipt engine for isolated harness execution."
+current_phase: "M1 Session Vocabulary Freeze"
+current_focus: "Turn the docs-first direction into exact lifecycle transition rules and durable-state boundaries above runtime materialization."
+core_abstractions:
+  - session
+  - harness
+  - admission_controller
+  - session_broker
+  - receipt_engine
+glossary:
+  capability: "Host-mediated authority granted to a harnessed session."
+  harness: "The isolated execution abstraction Guild admits, brokers, and receipts."
+  session: "The durable host-owned unit callers address above any runtime instance."
+  admission_controller: "The policy boundary that decides allow, deny, ask-human, or stricter isolation."
+  session_broker: "The host-owned component that resumes, rehydrates, or cold-starts a session."
+  receipt: "The durable host-owned record of admission, execution, evidence, and outcome."
+  rehydration: "Rebuilding a valid session materialization from durable session state and artifacts."
+  execution_mode: "The session materialization outcome: warm, resumed, rehydrated, or cold."
+non_goals:
+  - "Do not claim durable session resume already ships."
+  - "Do not replace current skill manifests or WIT in this pass."
+  - "Do not make sandbox lifecycle a user-facing primitive."
+next_tasks:
+  - "Decide what durable session state is canonical versus explicitly rebuildable."
+  - "Map current policy outcomes onto future session-aware admission outputs."
+  - "Define how session-level receipts aggregate over individual execution attempts."
+  - "Decide whether receipt envelopes belong in guild-types yet."
+key_paths:
+  - "AGENTS.md"
+  - "README.md"
+  - "docs/project-positioning.md"
+  - "docs/strategy/session-substrate/00-umbrella-epic.md"
+  - "docs/strategy/session-substrate/07-roadmap.md"
+  - "docs/strategy/session-substrate/tasks.md"
+  - "docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md"
+  - "crates/guild-types/src/lib.rs"
+  - "crates/guild-runner/src/lib.rs"
+decision_records:
+  - "docs/adr/0001-guild-thesis.md"
+  - "docs/adr/0019-thin-guild-cli.md"
+  - "docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md"
+open_questions:
+  - "Which state must survive resume versus rehydration?"
+  - "Which checks rerun at wake time?"
+  - "How should current skill packaging map to a future typed Harness contract?"
+  - "When should session identity become a first-class persisted record instead of a shared type and doc rule?"

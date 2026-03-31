@@ -29,6 +29,16 @@ pub fn mint_host_evidence_record_id() -> String {
     Uuid::now_v7().to_string()
 }
 
+/// Mint a host-owned durable session identifier.
+///
+/// The host, not the caller, owns canonical session identity. Callers may
+/// reference a prior session, but they do not define the durable `SessionId`
+/// value.
+#[must_use]
+pub fn mint_host_session_id() -> SessionId {
+    SessionId::from_uuid(Uuid::now_v7())
+}
+
 /// Return the current host UTC timestamp formatted as RFC 3339.
 ///
 /// # Panics
@@ -39,6 +49,70 @@ pub fn host_now_utc() -> String {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .expect("UTC timestamps format as RFC3339")
+}
+
+/// Host-owned durable session identifier.
+///
+/// `SessionId` names the durable session a caller addresses above any concrete
+/// sandbox, process, container, or VM instance.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SessionId(String);
+
+impl SessionId {
+    #[must_use]
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value.to_string())
+    }
+
+    /// Parse and normalize a durable session identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `input` is not a valid UUID string.
+    pub fn parse(input: &str) -> Result<Self, uuid::Error> {
+        Uuid::parse_str(input).map(Self::from_uuid)
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl Serialize for SessionId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::parse(&raw)
+            .map_err(|error| D::Error::custom(format!("invalid session UUID `{raw}`: {error}")))
+    }
+}
+
+impl JsonSchema for SessionId {
+    fn schema_name() -> Cow<'static, str> {
+        "SessionId".into()
+    }
+
+    fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
+        string_schema(Some("uuid"), Some("Host-owned durable session identifier."))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
@@ -339,6 +413,75 @@ pub enum ExecutionMode {
     Inspect,
     Plan,
     Apply,
+}
+
+/// Durable session lifecycle state tracked above any particular runtime instance.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionState {
+    /// Transient host state while one invoke or wake attempt is still under admission review.
+    PendingAdmission,
+    /// Transient host state after allow, before a live materialization is confirmed.
+    Admitted,
+    /// Durable state for a session with a currently live materialization.
+    Active,
+    /// Durable quiescent state where direct resume is still an eligible wake path.
+    Suspended,
+    /// Durable quiescent state where direct resume is no longer valid.
+    RehydrationRequired,
+    /// Stop state for automatic wake logic until an explicit future reset path exists.
+    Failed,
+    /// Terminal durable state; the same SessionId must not reactivate.
+    Terminated,
+}
+
+/// Host-selected materialization outcome for a sessioned invocation.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionMaterializationMode {
+    /// Reuse of an already-live materialization while the session stays active.
+    Warm,
+    /// Direct continuation of a suspended session after wake-time checks pass.
+    Resumed,
+    /// Rebuilt continuation from durable session state and artifacts.
+    Rehydrated,
+    /// Fresh materialization chosen when no safe direct reuse path exists.
+    Cold,
+}
+
+/// Future host-owned invoke or wake routing outcome above one concrete attempt.
+///
+/// This extends today's attempt-local `PolicyDecisionOutcome` model without
+/// replacing it. `PolicyDecision` remains the durable record of what the host
+/// finally allowed for a specific attempt. A future session-aware admission
+/// controller may emit the broader routing result here before Guild either
+/// denies, escalates, chooses a stricter isolation posture, or proceeds to a
+/// concrete attempt with a final `PolicyDecision`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum AdmissionDisposition {
+    Allow,
+    Deny,
+    AskHuman,
+    ElevateIsolation,
+}
+
+/// Future host-owned policy input controlling whether Guild should attempt a direct resume.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResumePolicy {
+    PreferResume,
+    RequireResume,
+    DisallowResume,
+}
+
+/// Future host-owned policy input controlling whether Guild may rebuild a session from durable state.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum RehydratePolicy {
+    AllowRehydrate,
+    RequireRehydrate,
+    DisallowRehydrate,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -1949,6 +2092,29 @@ pub enum PolicyDecisionOutcome {
     Rejected,
 }
 
+impl PolicyDecisionOutcome {
+    /// Project today's live attempt outcome onto the broader future admission surface.
+    ///
+    /// Current live policy evaluation only distinguishes:
+    ///
+    /// - `allowed`
+    /// - `reduced`
+    /// - `rejected`
+    ///
+    /// Both `allowed` and `reduced` still mean Guild may proceed with the
+    /// concrete attempt under the final granted envelope, so they conservatively
+    /// map to `AdmissionDisposition::Allow`. The future `ask-human` and
+    /// `elevate-isolation` outcomes are extensions above the current live policy
+    /// model rather than alternate names for `reduced`.
+    #[must_use]
+    pub const fn as_admission_disposition(&self) -> AdmissionDisposition {
+        match self {
+            Self::Allowed | Self::Reduced => AdmissionDisposition::Allow,
+            Self::Rejected => AdmissionDisposition::Deny,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct PolicyDecision {
     pub outcome: PolicyDecisionOutcome,
@@ -2505,6 +2671,71 @@ mod tests {
                 .get("authority_observations_recorded")
                 .and_then(serde_json::Value::as_bool),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn session_id_roundtrip_serializes_as_string() {
+        let session_id =
+            SessionId::parse("018f6d95-6c89-7f36-b5e1-804e0d3d4c41").expect("valid uuid");
+
+        let serialized = serde_json::to_value(&session_id).unwrap();
+        assert_eq!(
+            serialized,
+            serde_json::Value::String("018f6d95-6c89-7f36-b5e1-804e0d3d4c41".into())
+        );
+
+        let deserialized: SessionId = serde_json::from_value(serialized).unwrap();
+        assert_eq!(deserialized, session_id);
+        assert_eq!(
+            deserialized.as_str(),
+            "018f6d95-6c89-7f36-b5e1-804e0d3d4c41"
+        );
+    }
+
+    #[test]
+    fn session_id_deserialization_rejects_non_uuid_strings() {
+        let error =
+            serde_json::from_value::<SessionId>(serde_json::Value::String("session-123".into()))
+                .unwrap_err();
+
+        assert!(error.to_string().contains("UUID"));
+    }
+
+    #[test]
+    fn session_materialization_mode_uses_kebab_case() {
+        let rendered = serde_json::to_string(&SessionMaterializationMode::Rehydrated).unwrap();
+        assert_eq!(rendered, "\"rehydrated\"");
+
+        let policy = serde_json::to_string(&ResumePolicy::DisallowResume).unwrap();
+        assert_eq!(policy, "\"disallow-resume\"");
+    }
+
+    #[test]
+    fn session_state_uses_kebab_case() {
+        let rendered = serde_json::to_string(&SessionState::RehydrationRequired).unwrap();
+        assert_eq!(rendered, "\"rehydration-required\"");
+    }
+
+    #[test]
+    fn admission_disposition_uses_kebab_case() {
+        let rendered = serde_json::to_string(&AdmissionDisposition::AskHuman).unwrap();
+        assert_eq!(rendered, "\"ask-human\"");
+    }
+
+    #[test]
+    fn current_policy_outcomes_project_conservatively_to_future_admission() {
+        assert_eq!(
+            PolicyDecisionOutcome::Allowed.as_admission_disposition(),
+            AdmissionDisposition::Allow
+        );
+        assert_eq!(
+            PolicyDecisionOutcome::Reduced.as_admission_disposition(),
+            AdmissionDisposition::Allow
+        );
+        assert_eq!(
+            PolicyDecisionOutcome::Rejected.as_admission_disposition(),
+            AdmissionDisposition::Deny
         );
     }
 }

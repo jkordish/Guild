@@ -1,7 +1,10 @@
 # Portable Skill Receipts And Reference Apps
 
-This epic is a planning document. It is not a runtime-contract source. Current
-repo framing lives in [`../../project-positioning.md`](../../project-positioning.md).
+This epic is a planning document. It is not a runtime-contract source. The
+current long-term direction now lives in
+[`../../strategy/session-substrate/00-umbrella-epic.md`](../../strategy/session-substrate/00-umbrella-epic.md).
+The prior framing bridge lives in
+[`../../project-positioning.md`](../../project-positioning.md).
 Normative runtime ownership remains in [`../../../SPECS.md`](../../../SPECS.md),
 [`../../../wit/guild-skill-v1.wit`](../../../wit/guild-skill-v1.wit), and the
 core Rust runtime/types.

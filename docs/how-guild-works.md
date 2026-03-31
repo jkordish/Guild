@@ -3,17 +3,20 @@
 This page is the short daily-user model for Guild.
 
 It is not the normative contract source. Use `SPECS.md` when you need the exact runtime contract, and use `ARCHITECTURE.md` when you need the fuller implementation view.
-For the current project framing, see [`project-positioning.md`](project-positioning.md).
+For the bridge from the prior framing to the current direction, see
+[`project-positioning.md`](project-positioning.md).
 For one current end-to-end trust proof path, use
 [`trust-proof-walkthrough.md`](trust-proof-walkthrough.md).
-`docs/project-positioning.md` now also carries the canonical operator-facing
-vocabulary and capability language used by this page.
+This page still explains the current shipped skill-first runtime slice.
 
 ## The Short Version
 
 Guild is being built around an operator flow: understand what a workflow is
 allowed to do, run it under explicit host-owned authority, and inspect the
 receipts and evidence afterward.
+
+For the current long-term direction, see
+[`strategy/session-substrate/00-umbrella-epic.md`](strategy/session-substrate/00-umbrella-epic.md).
 
 On today's live path, that trust chain is: admission -> bounded execution ->
 receipt -> evidence -> replay-oriented explanation.

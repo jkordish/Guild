@@ -15,7 +15,12 @@ support frontier by prose alone.
 Guild defines a local-first execution and artifact model for AI skills that
 makes that trust chain concrete.
 
-For current project framing and repository vocabulary, use [`docs/project-positioning.md`](docs/project-positioning.md). That document is explanatory and strategic; it does not override the normative contract in this specification.
+For current long-term direction and repository vocabulary, use
+[`docs/strategy/session-substrate/00-umbrella-epic.md`](docs/strategy/session-substrate/00-umbrella-epic.md)
+and ADR `0020`. [`docs/project-positioning.md`](docs/project-positioning.md)
+remains the compatibility bridge from the prior framing to the new one. Those
+documents are explanatory and strategic; they do not override the normative
+contract in this specification.
 For the current operator-facing playbook framing and playbook-to-skill
 translation, use [`docs/how-guild-works.md`](docs/how-guild-works.md). That
 document is explanatory only: playbooks are the target operator-facing
@@ -45,6 +50,74 @@ A Guild-conformant system MUST turn a user or system request for a skill into a 
 This is the central claim of Guild:
 
 AI skills should be treated like real software units with identity, runtime constraints, receipts, and evidence, not as informal prompt-era behavior.
+
+### 2.1 Session-Substrate Guardrails
+
+The current normative execution unit in this specification is still the skill.
+The session-substrate direction adds guardrails for future evolution; it does
+not make sessions or harnesses normative here by prose alone.
+
+Until a stable broader package boundary exists across manifest, registry,
+runner, and ABI:
+
+- Guild MUST keep `Harness` as docs-first explanatory vocabulary in the
+  current phase; the real executable packaging boundary remains the skill
+  manifest plus resolved installed artifact state
+- Guild MUST NOT introduce a normative `Harness` manifest field or guest ABI
+  surface just to mirror the strategic vocabulary
+- Guild MUST NOT introduce a normative shared Rust `Harness` type yet, because
+  the repository has not frozen one stable package boundary across manifest,
+  registry, runner, and transport identity
+- Guild MUST treat `Harness` as explanatory product language above the current
+  skill and resolved-artifact contract
+- Guild MUST NOT introduce even a small shared Rust `Harness` type as a real
+  contract until the mapping from current skill packaging to future harness
+  identity is explicit and the admission-relevant fields are precise enough to
+  type without placeholder blobs
+- if the repository adds a helper `Harness` type before that threshold, it
+  MUST remain non-normative and non-behavioral; it MUST NOT redefine
+  manifests, execution identity, policy decisions, receipts, or guest ABI
+  semantics
+- any future canonical durable session identifier MUST be host-minted and
+  host-owned rather than caller-chosen
+- any future session wake path MUST keep invoke-time admission distinct from
+  wake-time reauthorization for secrets, mounts, network policy, and runtime
+  placement
+- any future session lifecycle model MUST treat `pending-admission` and
+  `admitted` as transient attempt states, not durable rest states
+- any future denied wake against an existing session MUST return it to its
+  prior durable state rather than leaving it stranded in a transient state
+- any future `suspended` state MUST mean direct resume is still eligible after
+  wake-time checks, while `rehydration-required` MUST mean direct resume is no
+  longer a valid path
+- any future `failed` state MUST stop automatic wake logic unless and until
+  Guild defines an explicit host-owned reset path, and any future
+  `terminated` state MUST remain terminal
+- any future invoke attempt MUST evaluate requested intent, executable
+  identity/trust, requested capabilities, and minimum acceptable isolation
+  posture before first materialization of that attempt
+- any future invoke served by an already-live session and yielding `warm` is
+  still an invoke-time admission path, not a wake path
+- any future wake attempt MUST treat prior durable session state and stored
+  admission context as policy input, not as proof that continuity is still safe
+- any future wake-time admission MUST rerun freshness or validity checks for
+  secrets, mounts, network policy, and runtime placement before allowing direct
+  resume or reconnecting prior live handles
+- any future session-aware admission output MUST wrap today's attempt-local
+  `PolicyDecision` model rather than silently redefining it
+- current `PolicyDecision` outcomes `allowed` and `reduced` project
+  conservatively to future `allow`, while current `rejected` projects to future
+  `deny`
+- any future `ask-human` or `elevate-isolation` output MUST remain a host-owned
+  pre-attempt routing result that resolves to a final attempt-local
+  `PolicyDecision` before guest execution begins
+- any future wake path MAY reuse prior artifact trust only when executable
+  identity, compatibility assumptions, and trust state remain valid; otherwise
+  Guild MUST re-resolve, reauthorize, rehydrate, cold-start, escalate, or deny
+- if wake-time checks cannot re-prove a prior secret, mount, network, or
+  placement assumption, Guild MUST narrow or recompute the envelope, ask-human,
+  elevate isolation, rehydrate, cold-start, or deny; it MUST NOT silently
+  inherit stale assumptions from an earlier admission decision
 
 ## 3. Non-Goals
 

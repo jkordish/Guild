@@ -1,9 +1,7 @@
 # Roadmap
 
-Guild is sequenced as a small set of ordered epics. The labels below keep the existing phase order, but the outcome comes first.
-Current framing and guardrails live in [`project-positioning.md`](project-positioning.md).
-Canonical operator-facing vocabulary and capability language now live in
-[`project-positioning.md`](project-positioning.md).
+Guild is sequenced as a small set of ordered epics. The labels below keep the
+existing phase order, but the outcome comes first.
 
 The first five epics built the contract, execution, trust, and evidence
 surfaces. The next narrative wave turns that existing trust chain into
@@ -11,6 +9,12 @@ operator-facing playbooks, capability review, receipts, and evidence rather
 than describing Guild primarily as runtime plumbing.
 
 ## Epic 1: Define The Contract Surface
+
+For the current long-term direction, see
+[`strategy/session-substrate/00-umbrella-epic.md`](strategy/session-substrate/00-umbrella-epic.md)
+and [`strategy/session-substrate/07-roadmap.md`](strategy/session-substrate/07-roadmap.md).
+[`project-positioning.md`](project-positioning.md) remains the compatibility
+bridge from the prior framing to the new one.
 
 Current mapping: Phase 0
 
@@ -72,17 +76,19 @@ Outcome: support mutation without pretending retries, approval, or audit are opt
 - bounded retries
 - clearer effect semantics
 
-## Next Phase
+## Current Milestone
 
-The next planning anchor after `P2-project-refocus-and-message-freeze` is
-[`portable-skill-receipts-and-reference-apps.md`](roadmap/epics/portable-skill-receipts-and-reference-apps.md).
+The current planning anchor is the session-substrate evolution:
 
-Outcome: turn the existing trust and receipt layer into operator-facing
-playbooks, starter sets, and capability review instead of widening Guild back
-into a generic runtime story.
+- umbrella epic:
+  [`strategy/session-substrate/00-umbrella-epic.md`](strategy/session-substrate/00-umbrella-epic.md)
+- north star:
+  [`strategy/session-substrate/01-north-star.md`](strategy/session-substrate/01-north-star.md)
+- milestone roadmap:
+  [`strategy/session-substrate/07-roadmap.md`](strategy/session-substrate/07-roadmap.md)
+- backlog:
+  [`strategy/session-substrate/tasks.md`](strategy/session-substrate/tasks.md)
 
-- operator-first onboarding and trust review
-- playbook-first docs and examples on top of the current skill surfaces
-- receipt-first execution, evidence, and bounded-query views
-- bounded starter-set and reference-playbook reports on current proven surfaces
-- drift guards that keep the project thesis and anti-thesis stable
+The prior playbook/starter-set wave remains useful historical context and still
+describes parts of the current shipped slice, but it is no longer the primary
+long-term planning center.

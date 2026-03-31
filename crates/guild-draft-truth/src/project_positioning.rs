@@ -5,384 +5,291 @@ use anyhow::{Context, Result, bail};
 
 use crate::util::{read_to_string, repo_root};
 
-const POSITIONING_DOC: &str = "docs/project-positioning.md";
-const EPIC_DOC: &str = "docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md";
-const MIRRORING_DOC: &str = "docs/mirroring-and-promotion.md";
-const VERIFICATION_MATRIX_DOC: &str = "docs/verification-matrix.md";
-const AUTHORING_GUARDRAILS_DOC: &str = "docs/authoring-layer-guardrails.md";
-
-const CHECKED_DOCS: &[&str] = &[
+const REQUIRED_DOCS: &[&str] = &[
+    "AGENTS.md",
     "README.md",
     "ARCHITECTURE.md",
     "SPECS.md",
-    "docs/testing.md",
-    "docs/command-language.md",
+    "docs/project-positioning.md",
     "docs/how-guild-works.md",
-    MIRRORING_DOC,
-    VERIFICATION_MATRIX_DOC,
-    AUTHORING_GUARDRAILS_DOC,
+    "docs/command-language.md",
+    "docs/testing.md",
+    "docs/roadmap.md",
     "docs/contracts.md",
     "docs/architecture.md",
     "docs/adr/README.md",
-    "docs/roadmap.md",
-    POSITIONING_DOC,
-    EPIC_DOC,
-    "examples/README.md",
-    "examples/skills/guild-ops-starter/README.md",
+    "docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md",
+    "docs/strategy/session-substrate/00-umbrella-epic.md",
+    "docs/strategy/session-substrate/01-north-star.md",
+    "docs/strategy/session-substrate/07-roadmap.md",
+    "docs/strategy/session-substrate/tasks.md",
+    "docs/strategy/session-substrate/context.yaml",
 ];
 
-const POSITIONING_MARKERS: &[&str] = &[
-    "## Project Thesis",
-    "## Product Thesis",
-    "## First Operator Starter Set Thesis",
-    "## Preferred Core Terms",
-    "## Terms To Avoid As Primary Framing",
-    "## Sane Defaults",
-    "## Sane Assumptions",
-    "## Sane Expectations",
-    "## Sane Implementations",
-    "## Boundary",
-];
-
-const POSITIONING_PHRASES: &[&str] = &[
-    "Guild is trusted operational automation for engineering teams.",
-    "The playbook is the application. The trust chain is the product.",
-    "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain. It uses receipts and evidence to summarize incidents, compare runs, explain evidence, and generate bounded operational reports without pretending it is the whole product.",
-];
-
-const REQUIRED_RAW_SNIPPETS: &[(&str, &[&str])] = &[
+const REQUIRED_SNIPPETS: &[(&str, &[&str])] = &[
+    (
+        "AGENTS.md",
+        &[
+            "trusted session substrate for isolated harness execution",
+            "session broker",
+            "harness",
+            "Current Milestone",
+            "Next Likely Tasks",
+        ],
+    ),
     (
         "README.md",
         &[
-            "docs/project-positioning.md",
-            "docs/roadmap/epics/portable-skill-receipts-and-reference-apps.md",
-            "docs/mirroring-and-promotion.md",
-            "docs/verification-matrix.md",
-            "docs/authoring-layer-guardrails.md",
+            "## Current Direction",
+            "admission controller, session broker, and receipt engine for isolated harness execution",
+            "The product abstraction is the session,",
+            "The current live repo still exposes a skill-first, inspect-first trust chain",
         ],
     ),
-    ("ARCHITECTURE.md", &["docs/project-positioning.md"]),
-    ("SPECS.md", &["docs/project-positioning.md"]),
     (
-        "docs/testing.md",
+        "docs/project-positioning.md",
         &[
-            "project-positioning.md",
-            "cargo run -q -p xtask -- project-positioning check",
-            "mirroring-and-promotion.md",
+            "compatibility bridge",
+            "session, not the sandbox",
+            "What Ships Today",
         ],
     ),
     (
-        "docs/command-language.md",
-        &["project-positioning.md", "verification-matrix.md"],
-    ),
-    (
-        "docs/how-guild-works.md",
-        &["project-positioning.md", "verification-matrix.md"],
-    ),
-    (
-        MIRRORING_DOC,
+        "docs/strategy/session-substrate/00-umbrella-epic.md",
         &[
-            "../README.md",
-            "command-language.md",
-            "testing.md",
-            "verification-matrix.md",
+            "admission controller, session broker, and receipt engine for isolated harness execution",
+            "The product abstraction is the session, not the sandbox",
+            "done enough for v1",
         ],
     ),
     (
-        VERIFICATION_MATRIX_DOC,
+        "docs/strategy/session-substrate/01-north-star.md",
         &[
-            "project-positioning.md",
-            "portable-skill-receipts-and-reference-apps-execution-guide.md",
-            "mirroring-and-promotion.md",
-            "../README.md",
-            "how-guild-works.md",
+            "trusted session substrate for isolated harness execution",
+            "Session is the product abstraction",
+            "Sandbox lifecycle is internal",
         ],
     ),
     (
-        AUTHORING_GUARDRAILS_DOC,
+        "docs/strategy/session-substrate/07-roadmap.md",
         &[
-            "../SPECS.md",
-            "../wit/guild-skill-v1.wit",
-            "../ARCHITECTURE.md",
-            "project-positioning.md",
-            "portable-skill-receipts-and-reference-apps-execution-guide.md",
+            "M1 Session Vocabulary Freeze",
+            "M2 Shared Contract Scaffolding",
+            "M3 Harness Contract Design",
         ],
     ),
-    ("docs/contracts.md", &["project-positioning.md"]),
-    ("docs/architecture.md", &["project-positioning.md"]),
-    ("docs/adr/README.md", &["../project-positioning.md"]),
+    (
+        "docs/strategy/session-substrate/tasks.md",
+        &[
+            "Replace the current project-positioning drift guard with session-substrate checks",
+            "Add shared session lifecycle types",
+            "Add runner trait seams for session coordination",
+        ],
+    ),
+    (
+        "docs/strategy/session-substrate/context.yaml",
+        &[
+            "thesis:",
+            "current_phase:",
+            "core_abstractions:",
+            "open_questions:",
+        ],
+    ),
+    (
+        "docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md",
+        &[
+            "What Stays",
+            "What Changes",
+            "What Is Deferred",
+            "Why This Is An Evolution, Not Random Thrash",
+        ],
+    ),
     (
         "docs/roadmap.md",
         &[
-            "project-positioning.md",
-            "roadmap/epics/portable-skill-receipts-and-reference-apps.md",
+            "strategy/session-substrate/00-umbrella-epic.md",
+            "strategy/session-substrate/07-roadmap.md",
+            "Current Milestone",
         ],
     ),
-    (
-        POSITIONING_DOC,
-        &["roadmap/epics/portable-skill-receipts-and-reference-apps.md"],
-    ),
-    (EPIC_DOC, &["../../project-positioning.md"]),
-    (
-        "examples/README.md",
-        &[
-            "../docs/project-positioning.md",
-            "../docs/verification-matrix.md",
-        ],
-    ),
-    (
-        "examples/skills/guild-ops-starter/README.md",
-        &["repo-local release slice"],
-    ),
-];
-
-const REQUIRED_NORMALIZED_SNIPPETS: &[(&str, &[&str])] = &[
-    (POSITIONING_DOC, POSITIONING_PHRASES),
-    (
-        "README.md",
-        &[
-            "Guild is trusted operational automation for engineering teams.",
-            "Today, the repo exposes that model through portable skills, bounded capabilities, durable execution and evidence records, and stable Guild refs.",
-            "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain, not the whole product story.",
-            "bounded live-proof coverage for specific `read-resource`, `http-request`, `invoke-skill`, `emit-evidence`, and `log-write` slices",
-            "Any future curated install view should stay layered on those existing trust and compatibility surfaces rather than introducing a new pack type or marketplace contract.",
-            "Those installed-state terms are current trust signals, not higher-level pack or starter-set labels by themselves.",
-        ],
-    ),
+    ("docs/adr/README.md", &["ADR `0020`", "session-substrate"]),
     (
         "docs/how-guild-works.md",
         &[
-            "Those installed-state terms are current trust signals, not higher-level starter-set or curated-view labels by themselves.",
-            "Use [`verification-matrix.md`](verification-matrix.md) for the current `experimental` / `curated` / `verified` bar.",
+            "strategy/session-substrate/00-umbrella-epic.md",
+            "This page still explains the current shipped skill-first runtime slice.",
         ],
     ),
     (
         "docs/command-language.md",
         &[
-            "Those installed-state terms are current trust signals, not higher-level pack or starter-set labels by themselves.",
-            "Use [`verification-matrix.md`](verification-matrix.md) for the current labeling bar.",
+            "strategy/session-substrate/00-umbrella-epic.md",
+            "The current command surface still uses the live internal family names",
         ],
     ),
     (
         "docs/testing.md",
         &[
-            "That smoke path is the current install-review surface for transported state: preview first, then `guild verify -v <skill-ref>` after the real install if you want the installed-state verification explanation.",
-            "That guide now keeps the same boundary explicit: `--preview` before admission, `guild verify -v` after install, and any future curated install view as a layer over the current trust and compatibility surfaces rather than a new pack contract.",
-        ],
-    ),
-    (
-        MIRRORING_DOC,
-        &[
-            "Today the install surface for reviewed transported state is still the existing `preview` plus `verify -v` loop, not a separate package browser or pack contract.",
-            "`guild verify -v <skill-ref>` remains the first installed-state explanation path after import or pull",
-            "If Guild later gains a more curated install view, it should stay a presentation layer over those existing surfaces and their host-owned truth:",
-            "`verified-import` remains an installed-state classification there, not a whole-pack label by itself.",
-            "That later presentation must not become a new pack type, a second metadata contract, or a bypass around target-root trust review.",
-            "It also must not drift into marketplace or hosted-control-plane language while the current repo still ships a local-first trust and transport model.",
-        ],
-    ),
-    (
-        VERIFICATION_MATRIX_DOC,
-        &[
-            "This page defines the first honest labeling story for future curated install views, starter sets, and reference playbooks built on Guild's current trust signals.",
-            "Treat `verified-import` as an installed-state fact for one skill in one target root, not as a whole-asset guarantee by itself.",
-            "## Current Signal Inventory",
-            "## Current Verification Matrix",
-            "## Label Semantics",
-            "## Promotion Bar",
-            "## What Does Not Qualify As `Verified` Yet",
-            "Any asset that is merely `verified-import`.",
-        ],
-    ),
-    (
-        AUTHORING_GUARDRAILS_DOC,
-        &[
-            "The short rule is simple: ergonomic authoring can exist, but runtime truth stays contracts-first.",
-            "Docs are not one undifferentiated class.",
-            "`SPECS.md` is the normative human-facing contract,",
-            "runtime-consumed contract surfaces,",
-            "Current default classification for candidate authoring metadata is narrow:",
-            "If a field changes runtime behavior, it must compile down into current manifest, WIT, or Rust truth that the runtime already validates.",
-            "If a field cannot compile down exactly, the authoring layer should fail closed instead of inventing hidden semantics.",
-            "Do not let `SKILL.md` or future YAML authoring inputs become runtime truth by inertia.",
-            "a new `v1alpha1` contract surface",
-            "runtime support for authoring metadata that competes with Rust, manifests, WIT, or `SPECS.md`",
-            "without ambiguity about what the runtime actually trusts.",
-        ],
-    ),
-    (
-        EPIC_DOC,
-        &[
-            "Guild is trusted operational automation for engineering teams.",
-            "The playbook is the application. The trust chain is the product.",
-            "one honest verification matrix that keeps `experimental`, `curated`, and `verified` tied to current trust signals instead of future scoring ideas",
-            "eight `http-request`, two `invoke-skill`, and one exact `emit-evidence` checked slices, plus proof-only `log-write`",
-            "Guild Ops Starter clearly reads as the first operator starter set and a repo-local release slice, not the whole product thesis",
-            "The current bounded progression after Guild Ops Starter is:",
-            "docs-first next progression: `service-recovery review pack`",
-        ],
-    ),
-    (
-        "examples/skills/guild-ops-starter/README.md",
-        &[
-            "Guild Ops Starter is the first operator starter set in the repo. It is a repo-local release slice built on that trust chain, not the whole product story.",
-            "The next believable progression after this starter is a docs-first `service-recovery review pack`.",
-        ],
-    ),
-    (
-        "examples/README.md",
-        &[
-            "The next believable progression after Guild Ops Starter is a docs-first `service-recovery review pack`.",
-            "For the current `experimental` / `curated` / `verified` labeling bar on future curated views, starter sets, and reference playbooks, use",
+            "strategy/session-substrate/00-umbrella-epic.md",
+            "cargo run -q -p xtask -- project-positioning check",
         ],
     ),
 ];
 
-const INTRO_FORBIDDEN_PHRASES: &[(&str, usize, &[&str])] = &[
-    ("README.md", 12, &["runtime and control plane"]),
-    ("ARCHITECTURE.md", 20, &["skill execution fabric"]),
-    ("docs/how-guild-works.md", 8, &["platform contract"]),
+const REQUIRED_LINKS: &[(&str, &[&str])] = &[
     (
-        "examples/skills/guild-ops-starter/README.md",
-        10,
-        &["starter pack"],
+        "README.md",
+        &[
+            "AGENTS.md",
+            "docs/strategy/session-substrate/00-umbrella-epic.md",
+            "docs/strategy/session-substrate/07-roadmap.md",
+            "docs/strategy/session-substrate/tasks.md",
+            "docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md",
+        ],
+    ),
+    (
+        "docs/project-positioning.md",
+        &[
+            "strategy/session-substrate/00-umbrella-epic.md",
+            "strategy/session-substrate/01-north-star.md",
+            "strategy/session-substrate/07-roadmap.md",
+            "strategy/session-substrate/tasks.md",
+            "adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md",
+        ],
+    ),
+    (
+        "docs/roadmap.md",
+        &[
+            "strategy/session-substrate/00-umbrella-epic.md",
+            "strategy/session-substrate/07-roadmap.md",
+            "strategy/session-substrate/tasks.md",
+        ],
+    ),
+    (
+        "docs/contracts.md",
+        &["strategy/session-substrate/00-umbrella-epic.md"],
+    ),
+    (
+        "docs/architecture.md",
+        &["strategy/session-substrate/00-umbrella-epic.md"],
+    ),
+    (
+        "docs/how-guild-works.md",
+        &["strategy/session-substrate/00-umbrella-epic.md"],
+    ),
+    (
+        "docs/command-language.md",
+        &["strategy/session-substrate/00-umbrella-epic.md"],
+    ),
+    (
+        "docs/testing.md",
+        &["strategy/session-substrate/00-umbrella-epic.md"],
     ),
 ];
 
 pub fn check() -> Result<()> {
     let documents = load_documents()?;
+    let base = repo_root();
 
-    let positioning = document(&documents, POSITIONING_DOC)?;
-    ensure_contains_all_raw(positioning, POSITIONING_MARKERS)?;
-    ensure_contains_all_normalized(positioning, POSITIONING_PHRASES)?;
-
-    for (document_path, required_snippets) in REQUIRED_RAW_SNIPPETS {
-        let document = document(&documents, document_path)?;
-        ensure_contains_all_raw(document, required_snippets)?;
+    for (path, document) in &documents {
+        validate_markdown_links(&base.join(path), path, document)?;
     }
 
-    for (document_path, required_snippets) in REQUIRED_NORMALIZED_SNIPPETS {
-        let document = document(&documents, document_path)?;
-        ensure_contains_all_normalized(document, required_snippets)?;
+    for (path, snippets) in REQUIRED_SNIPPETS {
+        let document = document(&documents, path)?;
+        let normalized = normalize_whitespace(document);
+        for snippet in *snippets {
+            if !normalized.contains(&normalize_whitespace(snippet)) {
+                bail!("direction check: `{path}` is missing required snippet `{snippet}`");
+            }
+        }
     }
 
-    for (document_path, max_lines, forbidden_phrases) in INTRO_FORBIDDEN_PHRASES {
-        let document = document(&documents, document_path)?;
-        ensure_intro_excludes(document, *max_lines, forbidden_phrases)?;
+    for (path, links) in REQUIRED_LINKS {
+        let document = document(&documents, path)?;
+        for link in *links {
+            ensure_link_exists(path, document, link)?;
+        }
     }
 
-    println!("project positioning validates cleanly.");
     Ok(())
 }
 
-struct LoadedDocument {
-    path: PathBuf,
-    text: String,
-    normalized_text: String,
-}
-
-fn load_documents() -> Result<BTreeMap<&'static str, LoadedDocument>> {
-    let mut documents = BTreeMap::new();
-    for relative_path in CHECKED_DOCS {
-        let path = repo_root().join(relative_path);
-        if !path.exists() {
-            bail!(
-                "required project-positioning document `{relative_path}` is missing at {}",
-                path.display()
-            );
-        }
-        let text = read_to_string(&path)?;
-        validate_markdown_links(&path, &text)?;
-        documents.insert(
-            *relative_path,
-            LoadedDocument {
-                path,
-                normalized_text: normalize_whitespace(&text),
-                text,
-            },
-        );
-    }
-    Ok(documents)
-}
-
-fn document<'a>(
-    documents: &'a BTreeMap<&'static str, LoadedDocument>,
-    relative_path: &str,
-) -> Result<&'a LoadedDocument> {
-    documents.get(relative_path).with_context(|| {
-        format!("project-positioning check is missing loaded document `{relative_path}`")
-    })
-}
-
-fn ensure_contains_all_raw(document: &LoadedDocument, required_snippets: &[&str]) -> Result<()> {
-    for snippet in required_snippets {
-        if !document.text.contains(snippet) {
-            bail!(
-                "project-positioning document `{}` is missing required snippet `{snippet}`",
-                display_relative_path(document)
-            );
-        }
-    }
-    Ok(())
-}
-
-fn ensure_contains_all_normalized(
-    document: &LoadedDocument,
-    required_snippets: &[&str],
+fn validate_markdown_links(
+    document: &Path,
+    document_path: &str,
+    document_text: &str,
 ) -> Result<()> {
-    for snippet in required_snippets {
-        let normalized_snippet = normalize_whitespace(snippet);
-        if !document.normalized_text.contains(&normalized_snippet) {
-            bail!(
-                "project-positioning document `{}` is missing required wording `{snippet}`",
-                display_relative_path(document)
-            );
-        }
-    }
-    Ok(())
-}
-
-fn ensure_intro_excludes(
-    document: &LoadedDocument,
-    max_lines: usize,
-    forbidden_phrases: &[&str],
-) -> Result<()> {
-    let intro = document
-        .text
-        .lines()
-        .take(max_lines)
-        .collect::<Vec<_>>()
-        .join("\n");
-    let normalized_intro = normalize_whitespace(&intro).to_lowercase();
-    for phrase in forbidden_phrases {
-        if normalized_intro.contains(&normalize_whitespace(phrase).to_lowercase()) {
-            bail!(
-                "project-positioning intro drifted in `{}`: found forbidden phrase `{phrase}` in the first {max_lines} lines",
-                display_relative_path(document)
-            );
-        }
-    }
-    Ok(())
-}
-
-fn validate_markdown_links(document_path: &Path, text: &str) -> Result<()> {
-    for link in extract_markdown_links(text) {
-        let Some(target) = resolve_local_markdown_link(document_path, &link) else {
+    for link in extract_markdown_links(document_text) {
+        let Some(target) = resolve_local_markdown_link(document, &link) else {
             continue;
         };
         if !target.exists() {
             bail!(
-                "project-positioning markdown link `{link}` in {} does not resolve to a real file",
-                document_path.display()
+                "direction check: markdown link `{link}` in `{document_path}` does not resolve to a real file",
             );
         }
     }
+
+    Ok(())
+}
+
+fn load_documents() -> Result<BTreeMap<String, String>> {
+    let root = repo_root();
+    let mut documents = BTreeMap::new();
+
+    for relative_path in REQUIRED_DOCS {
+        let path = root.join(relative_path);
+        if !path.is_file() {
+            bail!(
+                "required direction document `{relative_path}` is missing at {}",
+                path.display()
+            );
+        }
+
+        let contents = read_to_string(&path)
+            .with_context(|| format!("failed to load direction document `{relative_path}`"))?;
+        documents.insert((*relative_path).into(), contents);
+    }
+
+    Ok(documents)
+}
+
+fn document<'a>(documents: &'a BTreeMap<String, String>, relative_path: &str) -> Result<&'a str> {
+    documents
+        .get(relative_path)
+        .map(String::as_str)
+        .with_context(|| format!("direction check is missing loaded document `{relative_path}`"))
+}
+
+fn ensure_link_exists(document_path: &str, document_text: &str, link: &str) -> Result<()> {
+    let base = repo_root();
+    let document = base.join(document_path);
+    let resolved = resolve_local_markdown_link(&document, link)
+        .with_context(|| format!("failed to resolve `{link}` from `{document_path}`"))?;
+
+    let link_present = extract_markdown_links(document_text)
+        .into_iter()
+        .filter_map(|candidate| resolve_local_markdown_link(&document, &candidate))
+        .any(|candidate| candidate == resolved);
+
+    if !link_present {
+        bail!("direction check: link `{link}` is missing from `{document_path}`");
+    }
+
+    if !resolved.is_file() {
+        bail!(
+            "direction check: link `{link}` in `{document_path}` does not resolve to a real file",
+        );
+    }
+
     Ok(())
 }
 
 fn extract_markdown_links(text: &str) -> Vec<String> {
     let mut links = Vec::new();
     let mut remaining = text;
+
     while let Some(start) = remaining.find("](") {
         let after_marker = &remaining[start + 2..];
         let Some(end) = after_marker.find(')') else {
@@ -391,6 +298,7 @@ fn extract_markdown_links(text: &str) -> Vec<String> {
         links.push(after_marker[..end].to_owned());
         remaining = &after_marker[end + 1..];
     }
+
     links
 }
 
@@ -402,16 +310,14 @@ fn resolve_local_markdown_link(document_path: &Path, link: &str) -> Option<PathB
     {
         return None;
     }
+
     let path_part = destination.split('#').next().unwrap_or(destination);
     if path_part.is_empty() {
         return None;
     }
-    Some(
-        document_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(path_part),
-    )
+
+    let parent = document_path.parent()?;
+    Some(parent.join(path_part))
 }
 
 fn markdown_link_destination(link: &str) -> Option<&str> {
@@ -419,31 +325,42 @@ fn markdown_link_destination(link: &str) -> Option<&str> {
     if trimmed.is_empty() {
         return None;
     }
+
     if let Some(rest) = trimmed.strip_prefix('<') {
         let destination = rest.split('>').next().unwrap_or(rest).trim();
         return (!destination.is_empty()).then_some(destination);
     }
+
     trimmed.split_whitespace().next()
 }
 
-fn normalize_whitespace(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn display_relative_path(document: &LoadedDocument) -> String {
-    document
-        .path
-        .strip_prefix(repo_root())
-        .unwrap_or(&document.path)
-        .display()
-        .to_string()
+fn normalize_whitespace(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{markdown_link_destination, resolve_local_markdown_link};
+    use super::{
+        extract_markdown_links, markdown_link_destination, resolve_local_markdown_link,
+        validate_markdown_links,
+    };
+
+    #[test]
+    fn extract_markdown_links_reads_inline_destinations() {
+        let text = "See [umbrella](docs/strategy/session-substrate/00-umbrella-epic.md) and [roadmap](docs/roadmap.md).";
+        let links = extract_markdown_links(text);
+        assert_eq!(
+            links,
+            vec![
+                "docs/strategy/session-substrate/00-umbrella-epic.md",
+                "docs/roadmap.md"
+            ]
+        );
+    }
 
     #[test]
     fn markdown_link_destination_strips_optional_titles() {
@@ -458,21 +375,52 @@ mod tests {
     }
 
     #[test]
-    fn markdown_link_destination_supports_angle_bracket_destinations() {
+    fn resolve_local_markdown_link_resolves_relative_targets() {
+        let document = Path::new("/tmp/repo/docs/project-positioning.md");
+        let resolved =
+            resolve_local_markdown_link(document, "strategy/session-substrate/00-umbrella-epic.md")
+                .unwrap();
         assert_eq!(
-            markdown_link_destination(r#"<project-positioning.md#boundary> "Project framing""#),
-            Some("project-positioning.md#boundary")
+            resolved,
+            Path::new("/tmp/repo/docs/strategy/session-substrate/00-umbrella-epic.md")
         );
     }
 
     #[test]
-    fn resolve_local_markdown_link_uses_only_the_destination_path() {
-        let resolved = resolve_local_markdown_link(
-            Path::new("docs/roadmap.md"),
-            r#"project-positioning.md "Project framing""#,
-        )
-        .expect("titled local links should resolve");
+    fn resolve_local_markdown_link_ignores_external_targets() {
+        let document = Path::new("/tmp/repo/README.md");
+        assert!(resolve_local_markdown_link(document, "https://example.com").is_none());
+        assert!(resolve_local_markdown_link(document, "#fragment").is_none());
+        assert!(resolve_local_markdown_link(document, "mailto:test@example.com").is_none());
+    }
 
-        assert_eq!(resolved, Path::new("docs").join("project-positioning.md"));
+    #[test]
+    fn validate_markdown_links_rejects_broken_non_required_links() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("guild-project-positioning-{unique}"));
+        let docs_dir = root.join("docs");
+        fs::create_dir_all(&docs_dir).unwrap();
+
+        let document_path = docs_dir.join("project-positioning.md");
+        fs::write(&document_path, "See [broken](missing.md) for more.").unwrap();
+
+        let result = validate_markdown_links(
+            &document_path,
+            document_path.strip_prefix(&root).unwrap().to_str().unwrap(),
+            &fs::read_to_string(&document_path).unwrap(),
+        );
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("does not resolve to a real file")
+        );
+
+        fs::remove_dir_all(&root).unwrap();
     }
 }
