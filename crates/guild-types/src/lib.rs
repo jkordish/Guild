@@ -135,13 +135,34 @@ impl JsonSchema for SessionId {
 /// request shapes and must not be read as proof that a real wake path already
 /// ships today.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case", tag = "kind")]
+#[serde(rename_all = "kebab-case", tag = "kind", deny_unknown_fields)]
 pub enum SessionTarget {
     /// Ask the host to create work against a fresh durable session lineage.
     New,
     /// Target an existing host-owned durable session.
     Existing { session_id: SessionId },
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionCallerRequestProjectionError {
+    message: String,
+}
+
+impl SessionCallerRequestProjectionError {
+    fn existing_session_target() -> Self {
+        Self {
+            message: "cannot project `session = existing` into the current execution-only CallerRequest shape".into(),
+        }
+    }
+}
+
+impl fmt::Display for SessionCallerRequestProjectionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for SessionCallerRequestProjectionError {}
 
 impl SessionTarget {
     #[must_use]
@@ -1842,6 +1863,7 @@ pub struct CallerRequest {
 /// first shared session-targeted request vocabulary before any real wake or
 /// broker implementation ships.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct SessionCallerRequest {
     pub request_id: String,
     pub session: SessionTarget,
@@ -1857,9 +1879,21 @@ pub struct SessionCallerRequest {
 }
 
 impl SessionCallerRequest {
-    #[must_use]
-    pub fn as_execution_request(&self) -> CallerRequest {
-        CallerRequest {
+    /// Project this request into the current execution-only request shape.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the request targets an existing durable session,
+    /// because the current `CallerRequest` contract has nowhere to carry that
+    /// host-owned `SessionId` without silently erasing intent.
+    pub fn as_execution_request(
+        &self,
+    ) -> Result<CallerRequest, SessionCallerRequestProjectionError> {
+        if self.session.existing_session_id().is_some() {
+            return Err(SessionCallerRequestProjectionError::existing_session_target());
+        }
+
+        Ok(CallerRequest {
             request_id: self.request_id.clone(),
             skill: self.skill.clone(),
             tenant_id: self.tenant_id.clone(),
@@ -1870,7 +1904,7 @@ impl SessionCallerRequest {
             requested_capabilities: self.requested_capabilities.clone(),
             idempotency_key: self.idempotency_key.clone(),
             trace_id: self.trace_id.clone(),
-        }
+        })
     }
 }
 
@@ -2960,7 +2994,7 @@ mod tests {
             trace_id: "trace-1".into(),
         };
 
-        let projected = request.as_execution_request();
+        let projected = request.as_execution_request().unwrap();
         assert_eq!(projected.request_id, "req-1");
         assert_eq!(projected.skill.key.namespace, "example");
         assert_eq!(projected.skill.key.name, "hello-inspect");
@@ -2970,6 +3004,82 @@ mod tests {
         assert_eq!(projected.input, serde_json::json!({ "hello": "world" }));
         assert_eq!(projected.idempotency_key.as_deref(), Some("idem-1"));
         assert_eq!(projected.trace_id, "trace-1");
+    }
+
+    #[test]
+    fn session_target_rejects_unknown_runtime_local_fields() {
+        let error = serde_json::from_value::<SessionTarget>(serde_json::json!({
+            "kind": "existing",
+            "session_id": "018f6d95-6c89-7f36-b5e1-804e0d3d4c41",
+            "sandbox_id": "sandbox-123"
+        }))
+        .unwrap_err();
+
+        assert!(error.to_string().contains("unknown field"));
+        assert!(error.to_string().contains("sandbox_id"));
+    }
+
+    #[test]
+    fn session_caller_request_rejects_unknown_top_level_runtime_local_fields() {
+        let error = serde_json::from_value::<SessionCallerRequest>(serde_json::json!({
+            "request_id": "req-1",
+            "session": { "kind": "new" },
+            "skill": {
+                "key": { "namespace": "example", "name": "hello-inspect" },
+                "version_req": "^1"
+            },
+            "tenant_id": "tenant-1",
+            "actor_id": "actor-1",
+            "mode": "inspect",
+            "input": { "hello": "world" },
+            "budget": {
+                "max_millis": 10000,
+                "max_memory_bytes": 67108864,
+                "max_output_bytes": 524288,
+                "max_network_requests": 8,
+                "max_child_executions": 4
+            },
+            "requested_capabilities": { "grants": [] },
+            "idempotency_key": null,
+            "trace_id": "trace-1",
+            "process_id": 42
+        }))
+        .unwrap_err();
+
+        assert!(error.to_string().contains("unknown field"));
+        assert!(error.to_string().contains("process_id"));
+    }
+
+    #[test]
+    fn session_caller_request_refuses_to_project_existing_session_target() {
+        let request = SessionCallerRequest {
+            request_id: "req-1".into(),
+            session: SessionTarget::existing(
+                SessionId::parse("018f6d95-6c89-7f36-b5e1-804e0d3d4c41").unwrap(),
+            ),
+            skill: RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect".into(),
+                },
+                version_req: VersionRequirement::parse("^1").unwrap(),
+            },
+            tenant_id: "tenant-1".into(),
+            actor_id: "actor-1".into(),
+            mode: ExecutionMode::Inspect,
+            input: serde_json::json!({ "hello": "world" }),
+            budget: Budget::default(),
+            requested_capabilities: CapabilityGrantSet { grants: Vec::new() },
+            idempotency_key: Some("idem-1".into()),
+            trace_id: "trace-1".into(),
+        };
+
+        let error = request.as_execution_request().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("cannot project `session = existing`")
+        );
     }
 }
 
