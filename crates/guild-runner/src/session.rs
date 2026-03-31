@@ -44,9 +44,20 @@ pub struct SessionWakeRequest {
 /// Host-selected outcome for waking or materializing a session.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionWakeOutcome {
+    /// Durable identity whose lifecycle the broker just resolved.
     pub session_id: SessionId,
+    /// Durable state after the wake or materialization attempt resolves.
+    ///
+    /// Successful continuation paths should report `Active`. Denied attempts
+    /// should report the restored prior durable state, and stop-state outcomes
+    /// should report `Failed` or `Terminated`.
     pub state: SessionState,
-    pub materialization_mode: SessionMaterializationMode,
+    /// Materialization mode only when Guild actually activates the session.
+    ///
+    /// This is `None` for outcomes such as denied wake attempts that restore a
+    /// prior durable state or stop-state results that do not materialize
+    /// anything.
+    pub materialization_mode: Option<SessionMaterializationMode>,
 }
 
 /// Host-owned error for future session broker operations.
