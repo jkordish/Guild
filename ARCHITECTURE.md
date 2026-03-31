@@ -267,9 +267,9 @@ The carry-forward contract needs to stay explicit by asset class:
 | Stable canonical continuity anchors such as `SessionId`, artifact refs, harness identity mapping, and durable policy context | carried forward unchanged | carried forward unchanged | carried forward unchanged |
 | Mutable host wake metadata such as current durable lifecycle state, receipt lineage, evidence refs, and audit metadata | persists durably but advances to record the resumed continuation | persists durably but advances to record the rehydrated continuation | persists durably but advances to record the cold continuation |
 | Host-promised durable session data | remains durable truth and may still be present in the resumed materialization | used as rebuild input for the next materialization | preserved only as durable truth, not as runtime-local continuity |
-| Runtime-local memory, caches, temp dirs, file descriptors | may continue only if wake-time checks re-prove the same materialization | treated as lost unless separately promoted into durable host truth | lost |
+| Runtime-local memory, caches, temp directories, file descriptors | may continue only if wake-time checks re-prove the same materialization | treated as lost unless separately promoted into durable host truth | lost |
 | Live sockets, bearer sessions, service leases, opaque handles | may continue only if wake-time checks prove the exact live state is still valid | lost as live state and reconnected through durable descriptors plus fresh checks | lost as live state and reconnected from scratch or failed |
-| Snapshots or serialized runtime state | never proof that direct resume is safe | validated rebuild input only | not treated as continuity truth |
+| Snapshots or serialized runtime state | never treated as proof that direct resume is safe | validated rebuild input only | not treated as continuity truth |
 | Placement-local identity or affinity | may continue only if the same placement still passes wake-time checks | rebound or reacquired during rebuild | rebound or reacquired from scratch |
 
 Broker behavior should follow that boundary:
