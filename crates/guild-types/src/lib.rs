@@ -122,6 +122,52 @@ impl JsonSchema for SessionId {
     }
 }
 
+/// Caller-facing targeting mode for future session-oriented requests.
+///
+/// This shape distinguishes between creating work against a fresh durable
+/// session lineage and targeting an already-issued host-owned `SessionId`.
+/// It is intentionally session-centric: callers either target an existing
+/// durable session or express new-session intent, but they do not name
+/// runtime-local process, sandbox, container, or VM identities.
+///
+/// The current live runtime still executes skill-first `CallerRequest` values.
+/// `SessionTarget` is additive shared vocabulary for future session-oriented
+/// request shapes and must not be read as proof that a real wake path already
+/// ships today.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case", tag = "kind")]
+pub enum SessionTarget {
+    /// Ask the host to create work against a fresh durable session lineage.
+    New,
+    /// Target an existing host-owned durable session.
+    Existing { session_id: SessionId },
+}
+
+impl SessionTarget {
+    #[must_use]
+    pub fn new_session() -> Self {
+        Self::New
+    }
+
+    #[must_use]
+    pub fn existing(session_id: SessionId) -> Self {
+        Self::Existing { session_id }
+    }
+
+    #[must_use]
+    pub fn existing_session_id(&self) -> Option<&SessionId> {
+        match self {
+            Self::New => None,
+            Self::Existing { session_id } => Some(session_id),
+        }
+    }
+
+    #[must_use]
+    pub fn requests_new_session(&self) -> bool {
+        matches!(self, Self::New)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub struct SkillKey {
     pub namespace: String,
@@ -1781,6 +1827,53 @@ pub struct CallerRequest {
     pub trace_id: String,
 }
 
+/// Future caller-facing request shape for session-targeted execution intent.
+///
+/// This shape layers a session target above today's execution-oriented caller
+/// request contract. It lets callers express either:
+///
+/// - new-session intent, or
+/// - explicit targeting of an existing durable `SessionId`
+///
+/// without leaking runtime-local identity into the product surface.
+///
+/// The live runtime continues to admit and execute `CallerRequest` directly in
+/// the current skill-first path. `SessionCallerRequest` exists to freeze the
+/// first shared session-targeted request vocabulary before any real wake or
+/// broker implementation ships.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct SessionCallerRequest {
+    pub request_id: String,
+    pub session: SessionTarget,
+    pub skill: RequestedSkillRef,
+    pub tenant_id: String,
+    pub actor_id: String,
+    pub mode: ExecutionMode,
+    pub input: Value,
+    pub budget: Budget,
+    pub requested_capabilities: CapabilityGrantSet,
+    pub idempotency_key: Option<String>,
+    pub trace_id: String,
+}
+
+impl SessionCallerRequest {
+    #[must_use]
+    pub fn as_execution_request(&self) -> CallerRequest {
+        CallerRequest {
+            request_id: self.request_id.clone(),
+            skill: self.skill.clone(),
+            tenant_id: self.tenant_id.clone(),
+            actor_id: self.actor_id.clone(),
+            mode: self.mode.clone(),
+            input: self.input.clone(),
+            budget: self.budget.clone(),
+            requested_capabilities: self.requested_capabilities.clone(),
+            idempotency_key: self.idempotency_key.clone(),
+            trace_id: self.trace_id.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum LocalPolicyFormatVersion {
@@ -2813,6 +2906,70 @@ mod tests {
             PolicyDecisionOutcome::Rejected.as_admission_disposition(),
             AdmissionDisposition::Deny
         );
+    }
+
+    #[test]
+    fn session_target_roundtrips_existing_and_new_session_intent() {
+        let new_target = SessionTarget::new_session();
+        let existing_target = SessionTarget::existing(
+            SessionId::parse("018f6d95-6c89-7f36-b5e1-804e0d3d4c41").expect("valid uuid"),
+        );
+
+        let new_value = serde_json::to_value(&new_target).unwrap();
+        assert_eq!(new_value, serde_json::json!({ "kind": "new" }));
+        assert!(new_target.requests_new_session());
+        assert!(new_target.existing_session_id().is_none());
+
+        let existing_value = serde_json::to_value(&existing_target).unwrap();
+        assert_eq!(
+            existing_value,
+            serde_json::json!({
+                "kind": "existing",
+                "session_id": "018f6d95-6c89-7f36-b5e1-804e0d3d4c41"
+            })
+        );
+        assert!(!existing_target.requests_new_session());
+        assert_eq!(
+            existing_target
+                .existing_session_id()
+                .expect("existing session id")
+                .as_str(),
+            "018f6d95-6c89-7f36-b5e1-804e0d3d4c41"
+        );
+    }
+
+    #[test]
+    fn session_caller_request_projects_back_to_current_execution_request_shape() {
+        let request = SessionCallerRequest {
+            request_id: "req-1".into(),
+            session: SessionTarget::new_session(),
+            skill: RequestedSkillRef {
+                key: SkillKey {
+                    namespace: "example".into(),
+                    name: "hello-inspect".into(),
+                },
+                version_req: VersionRequirement::parse("^1").unwrap(),
+            },
+            tenant_id: "tenant-1".into(),
+            actor_id: "actor-1".into(),
+            mode: ExecutionMode::Inspect,
+            input: serde_json::json!({ "hello": "world" }),
+            budget: Budget::default(),
+            requested_capabilities: CapabilityGrantSet { grants: Vec::new() },
+            idempotency_key: Some("idem-1".into()),
+            trace_id: "trace-1".into(),
+        };
+
+        let projected = request.as_execution_request();
+        assert_eq!(projected.request_id, "req-1");
+        assert_eq!(projected.skill.key.namespace, "example");
+        assert_eq!(projected.skill.key.name, "hello-inspect");
+        assert_eq!(projected.tenant_id, "tenant-1");
+        assert_eq!(projected.actor_id, "actor-1");
+        assert_eq!(projected.mode, ExecutionMode::Inspect);
+        assert_eq!(projected.input, serde_json::json!({ "hello": "world" }));
+        assert_eq!(projected.idempotency_key.as_deref(), Some("idem-1"));
+        assert_eq!(projected.trace_id, "trace-1");
     }
 }
 

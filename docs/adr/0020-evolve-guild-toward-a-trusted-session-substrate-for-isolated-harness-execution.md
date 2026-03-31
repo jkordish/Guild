@@ -74,3 +74,8 @@ Portable skills remain useful. They are just no longer the whole product story.
 The new framing raises the abstraction to the durable session while preserving
 the trust chain and the existing packaging/capability ideas that made the
 current slice honest.
+
+The same layering rule applies to future caller request shapes: a
+session-targeted request surface should sit above today's execution-oriented
+requests instead of pretending that runtime-local identity or a real wake path
+already belongs in the public contract.

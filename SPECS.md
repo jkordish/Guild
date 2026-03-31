@@ -471,6 +471,22 @@ Guild operates as a five-stage pipeline:
 4. Execute: guest runs inside the constrained runtime boundary.
 5. Persist and Inspect: host persists execution and evidence artifacts and later supports inspection or explanation.
 
+The current live request contract is still the execution-oriented
+`CallerRequest`: the caller submits `RequestedSkillRef` plus inputs for one
+attempt.
+
+For the future session substrate, the first additive caller-facing
+session-targeted request shape is:
+
+- `session = new`: request work against a fresh durable session lineage
+- `session = existing { session_id }`: target an already-issued host-owned
+  durable session
+
+That session-targeted request shape is shared vocabulary only in this phase. It
+does not prove that the live runtime already ships a real wake path, and it
+must not accept runtime-local identity such as process IDs, sandbox IDs,
+container IDs, VM handles, or snapshot handles.
+
 ## 8. Boundary Layering
 
 Guild freezes the guest and host contract boundary as follows:

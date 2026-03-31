@@ -108,6 +108,21 @@ Wake-time admission should never silently inherit the previous attempt's
 secrets, mounts, network access, or runtime placement just because the same
 `SessionId` is being targeted.
 
+## First Session-Targeted Admission Input
+
+The first shared session-targeted caller shape should make session targeting
+explicit before admission begins:
+
+- `session = new` means the caller is asking the host to create work against a
+  fresh durable session lineage
+- `session = existing { session_id }` means the caller is explicitly targeting
+  an already-issued host-owned durable session
+
+That shape is intentionally higher-level than wake implementation details.
+Admission may use it to choose invoke-time versus wake-time reasoning, but the
+request itself must not accept runtime-local identity such as sandbox IDs,
+process IDs, container IDs, VM handles, or snapshot handles.
+
 ## Relation To Key Controls
 
 - `capabilities`: define the allowed authority envelope

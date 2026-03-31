@@ -36,7 +36,26 @@
 - `M6` depends on `M5`, because session-level receipts need concrete admission
   and materialization outcomes to record.
 
+## Status Snapshot
+
+- `M1` through `M6` are now frozen in repo truth.
+- Shared session vocabulary, contract scaffolding, lifecycle rules,
+  admission-bridge vocabulary, and the session-receipt boundary are all landed.
+- No post-`M6` milestone is accepted yet; the next step is to choose one
+  bounded follow-on slice that stays honest about the still skill-first live
+  runtime.
+
 ## Immediate Focus
 
-The next implementable focus after this pass is `M2 Shared Contract
-Scaffolding`, followed by the design-heavy `M3 Harness Contract Design`.
+The `M1` through `M6` design freeze is complete. The next planning pass should
+choose the first post-`M6` follow-on slice that turns the remaining design
+questions into bounded work without widening runtime claims by prose alone.
+
+Likely candidates:
+
+- specify the minimum `SessionBroker` persistence and re-proof contract needed
+  for a real wake path
+- define explicit recovery and reset semantics for `failed` and terminal
+  session lineages
+- decide when a session-layer receipt becomes concrete enough for a shared
+  persisted type

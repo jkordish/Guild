@@ -1,5 +1,12 @@
 # Session Substrate Backlog
 
+This file is now the completed sequencing record for the `M1` through `M6`
+session-substrate freeze. Items `1` through `16` landed on `2026-03-31` and
+remain here as the dependency-ordered history of that pass.
+
+The next issue-creation pass should start from a fresh post-`M6` follow-on
+list rather than reopen these completed tasks.
+
 ## 1. Freeze repo entrypoints on the session-substrate thesis
 
 Intent: make the new direction visible from the first files contributors read.
@@ -149,3 +156,58 @@ Likely file touchpoints: `.agents/skills/guild-direction/SKILL.md`, `AGENTS.md`
 
 Acceptance notes: skill is short, points at the right files, and does not
 duplicate the long-form docs.
+
+## Post-M6 Follow-On Candidates
+
+## 17. Define the first session-targeted request shape
+
+Tracking issue: `#175`
+
+Intent: clarify how callers target an existing session or request a new one
+above today's execution-oriented requests.
+
+Likely file touchpoints: `SPECS.md`, `ARCHITECTURE.md`,
+`docs/strategy/session-substrate/04-session-substrate.md`,
+`crates/guild-types/src/lib.rs`
+
+Acceptance notes: repo records one host-owned request shape for existing
+session targeting versus new-session intent without leaking runtime identity or
+pretending the live runtime already ships a session wake path.
+
+## 18. Specify minimum SessionBroker persistence and re-proof inputs
+
+Intent: define the smallest honest contract a future `SessionBroker` must own
+before Guild can claim a real wake path.
+
+Likely file touchpoints: `crates/guild-runner/src/session.rs`,
+`docs/strategy/session-substrate/04-session-substrate.md`,
+`docs/strategy/session-substrate/05-admission-controller.md`,
+`ARCHITECTURE.md`
+
+Acceptance notes: repo records the minimum broker-owned persisted facts,
+artifact references, and wake-time proofs needed before a broker can claim
+`warm`, `resumed`, or `rehydrated` instead of defaulting to `cold`.
+
+## 19. Define recovery and reset semantics for failed or terminated sessions
+
+Intent: close the gap between today's documented stop states and any future
+host-owned recovery path.
+
+Likely file touchpoints: `docs/strategy/session-substrate/04-session-substrate.md`,
+`SPECS.md`, `ARCHITECTURE.md`
+
+Acceptance notes: repo records whether a future reset creates a successor
+session, reuses durable lineage, or stays explicitly unsupported for
+`failed` and `terminated`.
+
+## 20. Decide when a session receipt becomes a concrete shared contract
+
+Intent: avoid introducing a shared session receipt type before Guild has one
+real persisted aggregate shape to model.
+
+Likely file touchpoints: `docs/strategy/session-substrate/06-receipt-engine.md`,
+`crates/guild-types/src/lib.rs`, `SPECS.md`
+
+Acceptance notes: repo records the exact trigger for replacing the current
+docs-only session receipt view with a concrete persisted session-level receipt
+contract.

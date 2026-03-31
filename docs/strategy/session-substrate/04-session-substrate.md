@@ -25,6 +25,34 @@ Sandbox IDs, process IDs, container IDs, VM IDs, and snapshot handles are all
 replaceable implementation details. They are never the canonical session
 identity.
 
+## First Session-Targeted Request Shape
+
+The first shared session-targeted caller shape should sit above today's
+execution-oriented `CallerRequest`, not replace it.
+
+That first additive request shape is:
+
+- `session = new`: caller requests work against a fresh durable session
+  lineage, with the host later minting the canonical `SessionId`
+- `session = existing { session_id }`: caller explicitly targets an already
+  host-owned durable session by `SessionId`
+
+The request remains session-centric:
+
+- callers may target a durable `SessionId`
+- callers do not provide process IDs, sandbox IDs, container IDs, VM handles,
+  snapshot IDs, or any other runtime-local identity
+- callers still provide requested skill intent, inputs, capability requests,
+  and correlation fields as they do today
+
+This first request shape is intentionally additive and conservative:
+
+- today's live runtime still executes skill-first `CallerRequest` values
+- the session-targeted shape freezes shared vocabulary before a real wake path
+  exists
+- future wake or broker work may project a session-targeted request into one or
+  more attempt-local execution requests, but it must not blur those layers
+
 ## Execution Modes
 
 - `warm`: the target session is already materialized and can continue in-place
