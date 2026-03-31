@@ -1,3 +1,8 @@
+---
+name: guild-direction
+description: Quick orientation to Guild's current session-substrate strategy, guardrails, and first-read docs.
+---
+
 # Guild Direction
 
 Use this skill when you need a quick orientation to Guild's current strategy.
