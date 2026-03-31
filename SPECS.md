@@ -913,6 +913,15 @@ A top-level execution SHOULD return a host-issued receipt suitable for locating 
 
 Receipts SHOULD expose the host-issued durable execution URI rather than a caller-chosen identifier.
 
+The current `ExecutionReceipt` contract is attempt-scoped: it names one durable
+execution attempt and locates the corresponding `ExecutionRecord`.
+
+Any future session-layer receipt MUST be an aggregate host-owned view keyed by
+durable session identity that links to ordered execution-attempt receipts or
+records. It MUST NOT replace attempt-local `ExecutionReceipt` or
+`ExecutionRecord` truth, and it MUST preserve the ability to inspect one
+concrete attempt without reconstructing that truth from a session summary.
+
 ### 13.5 Composite executions
 
 If composite skills are supported, child skill calls MUST create child execution attempts with durable parent-child linkage.
@@ -949,6 +958,11 @@ A minimally useful `ExecutionRecord` MUST contain:
 The start and terminal timestamps in durable execution records MUST be host-stamped rather than guest-authored placeholders.
 
 Implementations MAY include richer diagnostics, logs, structured outputs, lineage edges, or timing breakdowns.
+
+`ExecutionRecord` remains a single-attempt durable record even if Guild later
+adds session-level receipt aggregation. Session aggregation MUST preserve
+attempt-local policy outcome, provenance, termination detail, and evidence
+linkage rather than flattening them into an undifferentiated session summary.
 
 ## 16. Evidence Model
 
