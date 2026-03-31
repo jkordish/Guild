@@ -60,6 +60,19 @@ before there is a full session runtime:
 - wake-time reuse is a separate host decision from invoke-time admission,
   especially for secrets, mounts, network policy, and runtime placement
 
+The admission-model guardrail is explicit too:
+
+- today's durable `PolicyDecision` remains the concrete attempt-local policy
+  record
+- future session-aware admission may add the broader host-owned routing outputs
+  `allow`, `deny`, `ask-human`, and `elevate-isolation` above that attempt
+  record
+- current `allowed` and `reduced` still mean "proceed under the final envelope"
+  and therefore project conservatively to future `allow`
+- current `rejected` projects to future `deny`
+- `ask-human` and `elevate-isolation` are extensions above the live policy
+  model, not alternate names for today's `reduced`
+
 The lifecycle guardrail is equally important:
 
 - `pending-admission` and `admitted` are transient attempt states, not durable

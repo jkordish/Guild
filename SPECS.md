@@ -79,6 +79,31 @@ runner, and ABI:
 - any future `failed` state MUST stop automatic wake logic unless and until
   Guild defines an explicit host-owned reset path, and any future
   `terminated` state MUST remain terminal
+- any future invoke attempt MUST evaluate requested intent, executable
+  identity/trust, requested capabilities, and minimum acceptable isolation
+  posture before first materialization of that attempt
+- any future invoke served by an already-live session and yielding `warm` is
+  still an invoke-time admission path, not a wake path
+- any future wake attempt MUST treat prior durable session state and stored
+  admission context as policy input, not as proof that continuity is still safe
+- any future wake-time admission MUST rerun freshness or validity checks for
+  secrets, mounts, network policy, and runtime placement before allowing direct
+  resume or reconnecting prior live handles
+- any future session-aware admission output MUST wrap today's attempt-local
+  `PolicyDecision` model rather than silently redefining it
+- current `PolicyDecision` outcomes `allowed` and `reduced` project
+  conservatively to future `allow`, while current `rejected` projects to future
+  `deny`
+- any future `ask-human` or `elevate-isolation` output MUST remain a host-owned
+  pre-attempt routing result that resolves to a final attempt-local
+  `PolicyDecision` before guest execution begins
+- any future wake path MAY reuse prior artifact trust only when executable
+  identity, compatibility assumptions, and trust state remain valid; otherwise
+  Guild MUST re-resolve, reauthorize, rehydrate, cold-start, escalate, or deny
+- if wake-time checks cannot re-prove a prior secret, mount, network, or
+  placement assumption, Guild MUST narrow or recompute the envelope, ask-human,
+  elevate isolation, rehydrate, cold-start, or deny; it MUST NOT silently
+  inherit stale assumptions from an earlier admission decision
 
 ## 3. Non-Goals
 

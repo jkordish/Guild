@@ -7,18 +7,9 @@
 use std::fmt;
 
 use guild_types::{
-    CapabilityGrantSet, RehydratePolicy, ResumePolicy, SessionId, SessionMaterializationMode,
-    SessionState,
+    AdmissionDisposition, CapabilityGrantSet, RehydratePolicy, ResumePolicy, SessionId,
+    SessionMaterializationMode, SessionState,
 };
-
-/// Host-owned disposition returned by future session-aware admission.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AdmissionDisposition {
-    Allow,
-    Deny,
-    AskHuman,
-    ElevateIsolation,
-}
 
 /// Minimal request envelope for future session-aware admission decisions.
 #[derive(Debug, Clone, PartialEq)]

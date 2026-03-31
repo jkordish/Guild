@@ -438,6 +438,23 @@ pub enum SessionMaterializationMode {
     Cold,
 }
 
+/// Future host-owned invoke or wake routing outcome above one concrete attempt.
+///
+/// This extends today's attempt-local `PolicyDecisionOutcome` model without
+/// replacing it. `PolicyDecision` remains the durable record of what the host
+/// finally allowed for a specific attempt. A future session-aware admission
+/// controller may emit the broader routing result here before Guild either
+/// denies, escalates, chooses a stricter isolation posture, or proceeds to a
+/// concrete attempt with a final `PolicyDecision`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum AdmissionDisposition {
+    Allow,
+    Deny,
+    AskHuman,
+    ElevateIsolation,
+}
+
 /// Future host-owned policy input controlling whether Guild should attempt a direct resume.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -2064,6 +2081,29 @@ pub enum PolicyDecisionOutcome {
     Rejected,
 }
 
+impl PolicyDecisionOutcome {
+    /// Project today's live attempt outcome onto the broader future admission surface.
+    ///
+    /// Current live policy evaluation only distinguishes:
+    ///
+    /// - `allowed`
+    /// - `reduced`
+    /// - `rejected`
+    ///
+    /// Both `allowed` and `reduced` still mean Guild may proceed with the
+    /// concrete attempt under the final granted envelope, so they conservatively
+    /// map to `AdmissionDisposition::Allow`. The future `ask-human` and
+    /// `elevate-isolation` outcomes are extensions above the current live policy
+    /// model rather than alternate names for `reduced`.
+    #[must_use]
+    pub const fn as_admission_disposition(&self) -> AdmissionDisposition {
+        match self {
+            Self::Allowed | Self::Reduced => AdmissionDisposition::Allow,
+            Self::Rejected => AdmissionDisposition::Deny,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct PolicyDecision {
     pub outcome: PolicyDecisionOutcome,
@@ -2648,6 +2688,28 @@ mod tests {
     fn session_state_uses_kebab_case() {
         let rendered = serde_json::to_string(&SessionState::RehydrationRequired).unwrap();
         assert_eq!(rendered, "\"rehydration-required\"");
+    }
+
+    #[test]
+    fn admission_disposition_uses_kebab_case() {
+        let rendered = serde_json::to_string(&AdmissionDisposition::AskHuman).unwrap();
+        assert_eq!(rendered, "\"ask-human\"");
+    }
+
+    #[test]
+    fn current_policy_outcomes_project_conservatively_to_future_admission() {
+        assert_eq!(
+            PolicyDecisionOutcome::Allowed.as_admission_disposition(),
+            AdmissionDisposition::Allow
+        );
+        assert_eq!(
+            PolicyDecisionOutcome::Reduced.as_admission_disposition(),
+            AdmissionDisposition::Allow
+        );
+        assert_eq!(
+            PolicyDecisionOutcome::Rejected.as_admission_disposition(),
+            AdmissionDisposition::Deny
+        );
     }
 }
 
