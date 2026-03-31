@@ -149,15 +149,24 @@ Canonical durable host truth is the minimum continuity contract across
 
 Canonical durable host truth:
 
-- session identity and current durable lifecycle state
+- durable session identity plus host-owned references that stay the continuity
+  anchor across wake paths
 - admission-relevant requested intent and caller correlation data
 - granted capability envelope or enough policy input to recompute it safely
 - references to required artifacts, runtime class, and harness identity mapping
-- receipt lineage, evidence refs, and host-owned audit metadata
+- current durable lifecycle state as host metadata that advances on each wake
+- receipt lineage, evidence refs, and host-owned audit metadata as durable host
+  history that appends on each continuation
 - explicit durable session data the host promised to preserve above one runtime
   instance
 - reconnect descriptors and rebinding requirements for external services when
   Guild expects a later wake to re-establish them
+
+Canonical durable host truth therefore includes both stable continuity anchors
+and mutable host-owned metadata. `SessionId`, artifact references, and durable
+policy context persist across attempts, while current lifecycle state and
+receipt/evidence lineage are durably preserved precisely by evolving on each
+admitted continuation.
 
 Rebuildable harness state:
 
@@ -172,13 +181,34 @@ Snapshot blobs are not canonical session truth. They may help one wake path,
 but the durable session contract must still be explainable without pretending a
 snapshot handle is the real session.
 
+## Survival Matrix By Asset Class
+
+| Asset or continuity claim | `resumed` | `rehydrated` | `cold` |
+| --- | --- | --- | --- |
+| Stable canonical continuity anchors such as `SessionId`, artifact refs, harness identity mapping, and durable policy context | Carry forward unchanged as canonical host truth | Carry forward unchanged as canonical host truth | Carry forward unchanged as canonical host truth |
+| Mutable host wake metadata such as current durable lifecycle state, receipt lineage, evidence refs, and audit metadata | Persists durably but advances to record the newly resumed continuation | Persists durably but advances to record the newly rehydrated continuation | Persists durably but advances to record the newly cold-started continuation |
+| Explicit durable session data the host promised to preserve above one runtime instance | Remains valid durable truth and may also still be present in the resumed materialization | Remains valid durable truth and becomes rebuild input for the next materialization | Remains valid durable truth only; it does not imply any runtime-local continuation by itself |
+| In-memory heap, temp directories, runtime-local caches, and open file descriptors | May continue only if wake-time checks prove the same materialization is still valid and policy-safe | Treated as lost unless their contents were separately promoted into durable host truth; any needed state is rebuilt | Lost; a fresh materialization starts without claiming continuity of these runtime-local details |
+| Live sockets, bearer sessions, leases, and opaque external-service handles | May continue only if wake-time checks prove the exact live connection state is still valid | Lost as live state; reconnect happens through a host-mediated path using durable reconnect descriptors plus fresh checks | Lost as live state; Guild must reconnect from durable truth or fail rather than pretend the old handle survived |
+| Snapshot blobs or serialized runtime state | Never treated as proof that direct resume is safe; they are optional accelerators at most | May be used only as validated rebuild input after compatibility and policy checks pass | Never treated as continuity truth; Guild either ignores them or uses them only to decide that `cold` is the safer path |
+| Placement-local identity, node affinity, host leases, and runtime-specific placement assumptions | May continue only if wake-time checks re-prove the same placement is still acceptable | Rebound or reacquired as part of rebuilding the materialization | Rebound or reacquired from scratch; no placement continuity is implied |
+
+This matrix is intentionally asymmetric:
+
+- `resumed` is the only path that may preserve runtime-local continuity, and
+  even then only after fresh wake-time proof.
+- `rehydrated` and `cold` both preserve durable host truth, but they differ in
+  whether validated serialized state can participate in the rebuild.
+- `cold` is honest precisely because it refuses to claim runtime-local
+  continuity it cannot actually prove.
+
 ## Survival Rules By Execution Mode
 
 | Execution mode | Must already survive before Guild chooses the path | What Guild may reuse | What Guild must treat as lost, rebuilt, or freshly proven |
 | --- | --- | --- | --- |
 | `resumed` | Canonical durable host truth and a still-valid suspended materialization | Preserved runtime-local memory, process state, and active service sessions only if wake-time checks prove they remain safe | Any stale secret, mount, network, placement, or external-service assumption that wake-time checks cannot re-prove |
 | `rehydrated` | Canonical durable host truth, durable artifacts, and any explicitly persisted session data needed to rebuild the harness | Validated serialized runtime state or snapshot content as rebuild input only after compatibility checks pass | Prior live handles, sockets, placement-specific state, and any runtime-local data that was never promoted into durable host truth |
-| `cold` | Canonical durable host truth plus immutable artifacts needed for a fresh materialization | The same `SessionId`, durable receipts, durable evidence refs, and immutable packaged artifacts | All runtime-local continuity, including snapshots, live connections, and caches, unless that continuity was separately captured as durable host truth |
+| `cold` | Canonical durable host truth plus immutable artifacts needed for a fresh materialization | The same `SessionId`, prior durable receipt/evidence lineage, and immutable packaged artifacts, while appending new wake metadata for the fresh materialization | All runtime-local continuity, including snapshots, live connections, and caches, unless that continuity was separately captured as durable host truth |
 
 ## External Service Reconnect Boundary
 
@@ -196,6 +226,8 @@ later wake, but that does not make the live connection itself durable.
 - If Guild cannot safely reconnect the service or rebind its policy-critical
   state, it must fall back to `cold` or fail the wake rather than fake
   continuity.
+- `cold` must reconnect from durable host truth alone or fail; it must not
+  inherit confidence from a prior live handle or half-valid reconnect attempt.
 
 ## Invalid Snapshot And Cold-Start Rules
 
@@ -209,6 +241,9 @@ source of truth.
 - `cold` is the required safe fallback when direct resume is no longer valid
   and no trusted rehydration input remains, but the durable session contract is
   still satisfiable from host-owned truth plus immutable artifacts.
+- `cold` must not silently absorb partially trusted serialized state. If Guild
+  cannot say which continuity came from durable host truth versus which state
+  was discarded, it should fail the wake instead of overstating preservation.
 - If the session's promised continuity depended on state that only ever lived in
   rebuildable harness memory, Guild should fail the wake rather than pretend a
   fresh `cold` materialization preserved it.
