@@ -29,11 +29,11 @@ pub fn mint_host_evidence_record_id() -> String {
     Uuid::now_v7().to_string()
 }
 
-/// Mint a host-owned durable session identifier.
+/// Mint the canonical host-owned durable session identifier.
 ///
 /// The host, not the caller, owns canonical session identity. Callers may
 /// reference a prior session, but they do not define the durable `SessionId`
-/// value.
+/// value or the host-owned durable session record keyed by it.
 #[must_use]
 pub fn mint_host_session_id() -> SessionId {
     SessionId::from_uuid(Uuid::now_v7())
@@ -51,10 +51,12 @@ pub fn host_now_utc() -> String {
         .expect("UTC timestamps format as RFC3339")
 }
 
-/// Host-owned durable session identifier.
+/// Canonical host-owned durable session identifier.
 ///
 /// `SessionId` names the durable session a caller addresses above any concrete
-/// sandbox, process, container, or VM instance.
+/// sandbox, process, container, or VM instance. The host mints and persists
+/// this identifier as the key for the durable session record; callers may
+/// reference a session, but they do not choose its canonical identity.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SessionId(String);
 
@@ -111,7 +113,12 @@ impl JsonSchema for SessionId {
     }
 
     fn json_schema(_gen: &mut SchemaGenerator) -> Schema {
-        string_schema(Some("uuid"), Some("Host-owned durable session identifier."))
+        string_schema(
+            Some("uuid"),
+            Some(
+                "Canonical host-minted durable session identifier and key for the host-owned session record.",
+            ),
+        )
     }
 }
 
