@@ -23,6 +23,20 @@ record even after session aggregation exists.
 The receipt engine should build on the current host-owned execution and
 evidence record model and eventually aggregate it at the session layer.
 
+Guild should not add a shared `ReceiptEnvelope` type in `guild-types` yet.
+Today the only concrete durable receipt truth with a real runtime owner is the
+attempt-scoped `ExecutionReceipt` plus `ExecutionRecord` pair. A generic
+envelope would imply a stable persisted aggregate schema before Guild has
+frozen one concrete host-owned session receipt record shape, owner, and
+serialization boundary.
+
+Until that future session receipt becomes a real persisted contract, the
+session-layer aggregate stays docs-first and points back to canonical
+attempt-local receipts and records. When Guild eventually adds a shared
+session-layer receipt type, it should model that concrete persisted aggregate
+directly rather than introduce an abstract envelope that blurs session summary
+and attempt-local truth.
+
 Minimum future session-layer receipt contents:
 
 - session identifier

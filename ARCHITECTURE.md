@@ -233,6 +233,13 @@ durable `SessionId` may accumulate many execution-attempt receipts and records,
 but the aggregate session view must point back to those canonical attempt
 records instead of replacing them.
 
+Guild intentionally does not model a generic shared `ReceiptEnvelope` in
+`guild-types` yet. The live repo has canonical attempt-local receipt truth, but
+it has not frozen one concrete persisted session-layer receipt record shape or
+host owner to serialize. Shared receipt contracts therefore stop at
+`ExecutionReceipt` and `ExecutionRecord` until that session aggregate becomes a
+real persisted boundary rather than a docs-only summary.
+
 ### 3.5 Session durability boundary
 
 The future session broker should preserve one explicit line between canonical

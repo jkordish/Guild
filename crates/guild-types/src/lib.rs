@@ -2520,6 +2520,12 @@ impl EvidenceRecord {
 /// `ExecutionReceipt` remains attempt-scoped host truth. A future
 /// session-layer receipt may aggregate multiple execution receipts under one
 /// `SessionId`, but it must not replace or blur this single-attempt boundary.
+///
+/// There is intentionally no shared `ReceiptEnvelope` aggregate in
+/// `guild-types` yet. The repository has not frozen one concrete host-owned
+/// persisted session-layer receipt schema, so shared receipt contracts stop at
+/// the attempt-scoped receipt/record pair until that aggregate has a real
+/// runtime owner and serialization boundary.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ExecutionReceipt {
     pub execution_id: String,
@@ -2534,7 +2540,8 @@ pub struct ExecutionReceipt {
 /// session-layer receipt. Session aggregation should retain ordered references
 /// to `ExecutionReceipt` and `ExecutionRecord` values rather than flattening
 /// attempt-local policy, provenance, termination, and evidence into one opaque
-/// summary.
+/// summary. Shared receipt types intentionally stop here until Guild has one
+/// concrete persisted session-layer receipt contract to model directly.
 #[derive(Debug, Clone, Serialize, JsonSchema, PartialEq)]
 pub struct ExecutionRecord {
     pub receipt: ExecutionReceipt,
