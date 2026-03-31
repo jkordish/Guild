@@ -916,6 +916,11 @@ Receipts SHOULD expose the host-issued durable execution URI rather than a calle
 The current `ExecutionReceipt` contract is attempt-scoped: it names one durable
 execution attempt and locates the corresponding `ExecutionRecord`.
 
+`guild-types` MUST NOT grow a generic `ReceiptEnvelope` aggregate before Guild
+freezes one concrete host-owned persisted session-layer receipt schema. Until
+that exists, shared receipt contracts stop at attempt-scoped
+`ExecutionReceipt` and `ExecutionRecord` truth.
+
 Any future session-layer receipt MUST be an aggregate host-owned view keyed by
 durable session identity that links to ordered execution-attempt receipts or
 records. It MUST NOT replace attempt-local `ExecutionReceipt` or

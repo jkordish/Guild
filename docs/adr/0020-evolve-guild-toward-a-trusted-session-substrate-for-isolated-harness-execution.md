@@ -54,10 +54,14 @@ abstraction.
 - A stable harness manifest or WIT contract
 - A session-aware wake path in the live runtime
 - Session-level receipt aggregation beyond docs and small shared scaffolding
+- A generic shared receipt-envelope type before there is one concrete
+  host-owned persisted session receipt record to model
 
 When session-level receipt aggregation does arrive, it should sit above the
 current attempt-scoped execution receipts and records rather than replacing
-that durable attempt-local truth.
+that durable attempt-local truth. Any future shared session receipt type
+should model that concrete persisted aggregate directly rather than introduce
+an abstract envelope ahead of the real boundary.
 
 ## Why This Is An Evolution, Not Random Thrash
 
