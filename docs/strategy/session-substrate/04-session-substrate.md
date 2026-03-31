@@ -149,15 +149,24 @@ Canonical durable host truth is the minimum continuity contract across
 
 Canonical durable host truth:
 
-- session identity and current durable lifecycle state
+- durable session identity plus host-owned references that stay the continuity
+  anchor across wake paths
 - admission-relevant requested intent and caller correlation data
 - granted capability envelope or enough policy input to recompute it safely
 - references to required artifacts, runtime class, and harness identity mapping
-- receipt lineage, evidence refs, and host-owned audit metadata
+- current durable lifecycle state as host metadata that advances on each wake
+- receipt lineage, evidence refs, and host-owned audit metadata as durable host
+  history that appends on each continuation
 - explicit durable session data the host promised to preserve above one runtime
   instance
 - reconnect descriptors and rebinding requirements for external services when
   Guild expects a later wake to re-establish them
+
+Canonical durable host truth therefore includes both stable continuity anchors
+and mutable host-owned metadata. `SessionId`, artifact references, and durable
+policy context persist across attempts, while current lifecycle state and
+receipt/evidence lineage are durably preserved precisely by evolving on each
+admitted continuation.
 
 Rebuildable harness state:
 
@@ -176,7 +185,8 @@ snapshot handle is the real session.
 
 | Asset or continuity claim | `resumed` | `rehydrated` | `cold` |
 | --- | --- | --- | --- |
-| `SessionId`, durable lifecycle state, receipt lineage, evidence refs, artifact refs, and durable policy context | Carries forward unchanged as canonical host truth | Carries forward unchanged as canonical host truth | Carries forward unchanged as canonical host truth |
+| Stable canonical continuity anchors such as `SessionId`, artifact refs, harness identity mapping, and durable policy context | Carry forward unchanged as canonical host truth | Carry forward unchanged as canonical host truth | Carry forward unchanged as canonical host truth |
+| Mutable host wake metadata such as current durable lifecycle state, receipt lineage, evidence refs, and audit metadata | Persists durably but advances to record the newly resumed continuation | Persists durably but advances to record the newly rehydrated continuation | Persists durably but advances to record the newly cold-started continuation |
 | Explicit durable session data the host promised to preserve above one runtime instance | Remains valid durable truth and may also still be present in the resumed materialization | Remains valid durable truth and becomes rebuild input for the next materialization | Remains valid durable truth only; it does not imply any runtime-local continuation by itself |
 | In-memory heap, temp directories, runtime-local caches, and open file descriptors | May continue only if wake-time checks prove the same materialization is still valid and policy-safe | Treated as lost unless their contents were separately promoted into durable host truth; any needed state is rebuilt | Lost; a fresh materialization starts without claiming continuity of these runtime-local details |
 | Live sockets, bearer sessions, leases, and opaque external-service handles | May continue only if wake-time checks prove the exact live connection state is still valid | Lost as live state; reconnect happens through a host-mediated path using durable reconnect descriptors plus fresh checks | Lost as live state; Guild must reconnect from durable truth or fail rather than pretend the old handle survived |
@@ -198,7 +208,7 @@ This matrix is intentionally asymmetric:
 | --- | --- | --- | --- |
 | `resumed` | Canonical durable host truth and a still-valid suspended materialization | Preserved runtime-local memory, process state, and active service sessions only if wake-time checks prove they remain safe | Any stale secret, mount, network, placement, or external-service assumption that wake-time checks cannot re-prove |
 | `rehydrated` | Canonical durable host truth, durable artifacts, and any explicitly persisted session data needed to rebuild the harness | Validated serialized runtime state or snapshot content as rebuild input only after compatibility checks pass | Prior live handles, sockets, placement-specific state, and any runtime-local data that was never promoted into durable host truth |
-| `cold` | Canonical durable host truth plus immutable artifacts needed for a fresh materialization | The same `SessionId`, durable receipts, durable evidence refs, and immutable packaged artifacts | All runtime-local continuity, including snapshots, live connections, and caches, unless that continuity was separately captured as durable host truth |
+| `cold` | Canonical durable host truth plus immutable artifacts needed for a fresh materialization | The same `SessionId`, prior durable receipt/evidence lineage, and immutable packaged artifacts, while appending new wake metadata for the fresh materialization | All runtime-local continuity, including snapshots, live connections, and caches, unless that continuity was separately captured as durable host truth |
 
 ## External Service Reconnect Boundary
 

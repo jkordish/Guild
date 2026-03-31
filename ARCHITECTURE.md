@@ -235,14 +235,22 @@ durable session truth and rebuildable harness state.
 Canonical durable session truth should include:
 
 - host-minted `SessionId` as the key for the durable session record, plus the
-  current durable lifecycle state
+  durable references that stay the continuity anchor across wake paths
 - admission-relevant caller intent, correlation data, and policy input
 - granted capability envelope or enough durable policy state to recompute it
   safely
 - references to required artifacts, runtime class, and harness identity mapping
-- receipt lineage, evidence refs, and host-owned audit metadata
+- current durable lifecycle state as host metadata that advances on each wake
+- receipt lineage, evidence refs, and host-owned audit metadata as durable host
+  history that appends on each continuation
 - any service reconnect descriptors or rebinding requirements the host expects
   to satisfy on wake
+
+This means canonical durable session truth contains both stable continuity
+anchors and mutable host-owned wake metadata. `SessionId`, artifact references,
+and durable policy context persist across attempts, while lifecycle state and
+receipt/evidence history are durably preserved by advancing on each admitted
+continuation.
 
 Rebuildable harness state should include:
 
@@ -256,7 +264,8 @@ The carry-forward contract needs to stay explicit by asset class:
 
 | Asset class | `resumed` | `rehydrated` | `cold` |
 | --- | --- | --- | --- |
-| Canonical durable host truth | carried forward unchanged | carried forward unchanged | carried forward unchanged |
+| Stable canonical continuity anchors such as `SessionId`, artifact refs, harness identity mapping, and durable policy context | carried forward unchanged | carried forward unchanged | carried forward unchanged |
+| Mutable host wake metadata such as current durable lifecycle state, receipt lineage, evidence refs, and audit metadata | persists durably but advances to record the resumed continuation | persists durably but advances to record the rehydrated continuation | persists durably but advances to record the cold continuation |
 | Host-promised durable session data | remains durable truth and may still be present in the resumed materialization | used as rebuild input for the next materialization | preserved only as durable truth, not as runtime-local continuity |
 | Runtime-local memory, caches, temp dirs, file descriptors | may continue only if wake-time checks re-prove the same materialization | treated as lost unless separately promoted into durable host truth | lost |
 | Live sockets, bearer sessions, service leases, opaque handles | may continue only if wake-time checks prove the exact live state is still valid | lost as live state and reconnected through durable descriptors plus fresh checks | lost as live state and reconnected from scratch or failed |
