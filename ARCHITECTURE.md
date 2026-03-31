@@ -801,6 +801,7 @@ This is not bolt-on observability. It is the whole point. If the system cannot l
 Policy should be enforced at:
 
 - initial execution request
+- future session-targeted request admission
 - resource read
 - evidence write
 - child invocation
@@ -822,6 +823,20 @@ A policy decision may consider:
 - evidence identity
 - installed verification metadata
 - environment or root configuration
+
+For the session-substrate direction, the first caller-facing session-targeted
+request shape remains intentionally small and host-owned:
+
+- `session = new` means "create work against a fresh durable session lineage"
+- `session = existing { session_id }` means "target this already-issued
+  durable session"
+
+That request shape sits above today's execution-oriented `CallerRequest`
+instead of replacing it. The host may later project one session-targeted
+request into attempt-local execution requests, but the caller-facing product
+surface must stay session-centric and must not accept runtime-local identity
+such as sandbox IDs, process IDs, container IDs, VM handles, or snapshot
+handles.
 
 ### 14.3 Durable denials
 

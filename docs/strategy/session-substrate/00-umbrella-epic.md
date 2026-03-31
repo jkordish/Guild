@@ -105,11 +105,12 @@ without speculative lifecycle machinery.
 
 ## Top Open Questions
 
-- What stable identifier makes a session addressable across runtime restarts?
-- Which session state is durable host truth versus rebuildable harness state?
-- How should Harness relate to the current skill manifest and resolved skill
-  identity model?
-- When a session wakes, which policy checks rerun at wake time versus invoke
-  time?
-- Should receipts aggregate at the session layer, the execution-attempt layer,
-  or both?
+- Which broker-owned facts must exist before Guild can honestly claim a wake
+  path instead of falling back to `cold`?
+- What explicit recovery path, if any, may move a session out of `failed`
+  without reusing the same durable lineage incorrectly?
+- When does a session-layer receipt become concrete enough to model as a
+  durable shared type rather than a docs-only aggregate view?
+- How should the future broker-owned session surface coexist with today's
+  resolved skill refs and inspect-first execution model once wake logic
+  becomes real?

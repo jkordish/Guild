@@ -8,13 +8,13 @@ use std::fmt;
 
 use guild_types::{
     AdmissionDisposition, CapabilityGrantSet, RehydratePolicy, ResumePolicy, SessionId,
-    SessionMaterializationMode, SessionState,
+    SessionMaterializationMode, SessionState, SessionTarget,
 };
 
 /// Minimal request envelope for future session-aware admission decisions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionAdmissionRequest {
-    pub session_id: Option<SessionId>,
+    pub session: SessionTarget,
     pub requested_capabilities: CapabilityGrantSet,
     pub resume_policy: ResumePolicy,
     pub rehydrate_policy: RehydratePolicy,

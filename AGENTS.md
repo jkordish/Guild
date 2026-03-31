@@ -112,24 +112,28 @@ cargo test -p guild-runner --test live_proofs -- --nocapture
 
 ## Current Milestone
 
-`M1 Session Vocabulary Freeze`: codify the session-substrate direction across
-repo entrypoints, ADRs, drift guards, and minimal shared scaffolding.
+`Post-M6 Follow-On Planning`: the `M1` through `M6` session-substrate design
+freeze is complete, and the current repo focus is choosing the first bounded
+follow-on slice without widening shipped runtime claims by prose alone.
 
 ## Next Likely Tasks
 
-- Retarget the project-positioning drift checker to the new direction
-- Add shared session lifecycle types in `guild-types`
-- Add interface-only `AdmissionController` and `SessionBroker` traits in
-  `guild-runner`
-- Decide how Harness relates to current skill manifests and transport identity
-- Define what survives resume vs rehydration vs cold start
+- Specify the minimum broker-owned persistence and re-proof contract a future
+  `SessionBroker` must satisfy
+- Define the explicit host-owned recovery and reset story for sessions that
+  enter `failed` or `terminated`
+- Decide when a session-layer receipt becomes concrete enough for a shared
+  persisted contract instead of docs-only aggregation
+- Turn the remaining post-`M6` design questions into a fresh bounded issue
+  backlog
 
 ## Open Questions / Unresolved Bets
 
-- What stable identifier should a durable session use?
-- How should Harness relate to the current skill packaging model?
-- Which wake-time checks must rerun for secrets, mounts, and network policy?
-- Should receipts aggregate at the session layer, execution-attempt layer, or
-  both?
-- What should Guild persist as durable session state versus rebuildable harness
-  state?
+- Which broker-owned facts must exist before Guild can honestly claim a wake
+  path instead of falling back to `cold`?
+- What explicit recovery path, if any, may move a session out of `failed`
+  without reusing the same durable lineage incorrectly?
+- When does a session-layer receipt become concrete enough to model as a
+  durable shared type rather than a docs-only aggregate view?
+- How should a future session-targeted API coexist with today's resolved skill
+  refs and inspect-first execution model?

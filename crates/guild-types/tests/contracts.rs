@@ -13,8 +13,8 @@ use guild_types::{
     PRESENTATION_STATUS_PROOF_BACKED, PRESENTATION_STATUS_REFUSED, PRESENTATION_STATUS_UNLINKED,
     PRESENTATION_STATUS_UPPER_BOUND, PolicyDecision, PolicyDecisionOutcome, PolicyProfile,
     PolicyProfileBinding, PolicyReason, PolicyRule, PolicyRuleEffect, PolicyRuleTarget,
-    ReadResourceConstraints, ResolvedSkillRef, ResourceKind, SkillKey, SkillVersion,
-    VersionRequirement,
+    ReadResourceConstraints, ResolvedSkillRef, ResourceKind, SessionCallerRequest, SessionId,
+    SessionTarget, SkillKey, SkillVersion, VersionRequirement,
 };
 
 #[test]
@@ -67,6 +67,38 @@ fn execution_context_roundtrips_grants() {
     assert_eq!(
         encoded["granted_capabilities"]["grants"][0]["id"],
         "read-resource"
+    );
+}
+
+#[test]
+fn session_caller_request_makes_session_target_explicit() {
+    let request = SessionCallerRequest {
+        request_id: "req-1".into(),
+        session: SessionTarget::Existing {
+            session_id: SessionId::parse("018f6d95-6c89-7f36-b5e1-804e0d3d4c41").unwrap(),
+        },
+        skill: guild_types::RequestedSkillRef {
+            key: SkillKey {
+                namespace: "example".into(),
+                name: "hello-inspect".into(),
+            },
+            version_req: VersionRequirement::parse("^1").unwrap(),
+        },
+        tenant_id: "tenant-1".into(),
+        actor_id: "actor-1".into(),
+        mode: ExecutionMode::Inspect,
+        input: serde_json::json!({ "hello": "world" }),
+        budget: Budget::default(),
+        requested_capabilities: CapabilityGrantSet { grants: Vec::new() },
+        idempotency_key: None,
+        trace_id: "trace-1".into(),
+    };
+
+    let encoded = serde_json::to_value(&request).unwrap();
+    assert_eq!(encoded["session"]["kind"], "existing");
+    assert_eq!(
+        encoded["session"]["session_id"],
+        "018f6d95-6c89-7f36-b5e1-804e0d3d4c41"
     );
 }
 

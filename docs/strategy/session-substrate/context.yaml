@@ -1,6 +1,6 @@
 thesis: "Guild is evolving into the admission controller, session broker, and receipt engine for isolated harness execution."
-current_phase: "M1 Session Vocabulary Freeze"
-current_focus: "Turn the docs-first direction into exact lifecycle transition rules and durable-state boundaries above runtime materialization."
+current_phase: "Post-M6 follow-on planning"
+current_focus: "Choose the first bounded post-M6 slice that turns the remaining session-targeting, broker, reset, and receipt questions into work without widening live runtime claims."
 core_abstractions:
   - session
   - harness
@@ -21,10 +21,10 @@ non_goals:
   - "Do not replace current skill manifests or WIT in this pass."
   - "Do not make sandbox lifecycle a user-facing primitive."
 next_tasks:
-  - "Decide what durable session state is canonical versus explicitly rebuildable."
-  - "Map current policy outcomes onto future session-aware admission outputs."
-  - "Define how session-level receipts aggregate over individual execution attempts."
-  - "Decide whether receipt envelopes belong in guild-types yet."
+  - "Specify the minimum broker-owned persistence and re-proof contract needed for a real wake path."
+  - "Define the explicit recovery and reset semantics for failed or terminated session lineages."
+  - "Decide when a session-layer receipt becomes concrete enough for a shared persisted contract."
+  - "Turn the remaining post-M6 design questions into a fresh bounded issue backlog."
 key_paths:
   - "AGENTS.md"
   - "README.md"
@@ -40,7 +40,7 @@ decision_records:
   - "docs/adr/0019-thin-guild-cli.md"
   - "docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md"
 open_questions:
-  - "Which state must survive resume versus rehydration?"
-  - "Which checks rerun at wake time?"
-  - "How should current skill packaging map to a future typed Harness contract?"
-  - "When should session identity become a first-class persisted record instead of a shared type and doc rule?"
+  - "Which broker-owned facts must exist before Guild can honestly claim a wake path instead of falling back to cold?"
+  - "What explicit recovery path, if any, may move a session out of failed without reusing the same durable lineage incorrectly?"
+  - "When does a session-layer receipt become concrete enough to model as a durable shared type rather than a docs-only aggregate view?"
+  - "How should the broker-owned session surface coexist with today's resolved skill refs and inspect-first execution model once wake logic becomes real?"

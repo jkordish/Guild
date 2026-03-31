@@ -21,6 +21,8 @@ const REQUIRED_DOCS: &[&str] = &[
     "docs/adr/0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md",
     "docs/strategy/session-substrate/00-umbrella-epic.md",
     "docs/strategy/session-substrate/01-north-star.md",
+    "docs/strategy/session-substrate/04-session-substrate.md",
+    "docs/strategy/session-substrate/05-admission-controller.md",
     "docs/strategy/session-substrate/07-roadmap.md",
     "docs/strategy/session-substrate/tasks.md",
     "docs/strategy/session-substrate/context.yaml",
@@ -33,6 +35,7 @@ const REQUIRED_SNIPPETS: &[(&str, &[&str])] = &[
             "trusted session substrate for isolated harness execution",
             "session broker",
             "harness",
+            "Post-M6 Follow-On Planning",
             "Current Milestone",
             "Next Likely Tasks",
         ],
@@ -71,16 +74,34 @@ const REQUIRED_SNIPPETS: &[(&str, &[&str])] = &[
         ],
     ),
     (
+        "docs/strategy/session-substrate/04-session-substrate.md",
+        &[
+            "The first shared session-targeted caller shape should sit above today's",
+            "`session = new`",
+            "`session = existing { session_id }`",
+        ],
+    ),
+    (
+        "docs/strategy/session-substrate/05-admission-controller.md",
+        &[
+            "The first shared session-targeted caller shape should make session targeting",
+            "`session = new`",
+            "`session = existing { session_id }`",
+        ],
+    ),
+    (
         "docs/strategy/session-substrate/07-roadmap.md",
         &[
             "M1 Session Vocabulary Freeze",
             "M2 Shared Contract Scaffolding",
             "M3 Harness Contract Design",
+            "M1` through `M6` are now frozen in repo truth",
         ],
     ),
     (
         "docs/strategy/session-substrate/tasks.md",
         &[
+            "completed sequencing record for the `M1` through `M6` session-substrate freeze",
             "Replace the current project-positioning drift guard with session-substrate checks",
             "Add shared session lifecycle types",
             "Add runner trait seams for session coordination",
@@ -93,6 +114,7 @@ const REQUIRED_SNIPPETS: &[(&str, &[&str])] = &[
             "current_phase:",
             "core_abstractions:",
             "open_questions:",
+            "Post-M6 follow-on planning",
         ],
     ),
     (
