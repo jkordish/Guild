@@ -6,7 +6,7 @@ Guild should preserve two explicit receipt layers instead of collapsing them
 into one blob:
 
 - execution-attempt receipt: the canonical host-owned receipt and durable record
-  for one admitted execution attempt
+  for one concrete execution attempt outcome
 - session-layer receipt: a future host-owned aggregate view keyed by
   `SessionId` that points at ordered execution-attempt receipts and durable
   evidence lineage for that session

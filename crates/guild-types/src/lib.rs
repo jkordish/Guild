@@ -2515,7 +2515,7 @@ impl EvidenceRecord {
     }
 }
 
-/// Host-issued durable locator for one admitted execution attempt.
+/// Host-issued durable locator for one concrete execution attempt outcome.
 ///
 /// `ExecutionReceipt` remains attempt-scoped host truth. A future
 /// session-layer receipt may aggregate multiple execution receipts under one
@@ -2845,7 +2845,7 @@ pub struct SkillError {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct ChildExecutionRecord {
-    /// Host-issued alias for one child execution attempt within a parent attempt.
+    /// Dependency alias carried from the parent invocation into this child record.
     pub alias: String,
     pub execution_id: String,
     pub uri: String,
