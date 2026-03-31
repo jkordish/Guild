@@ -172,6 +172,26 @@ Snapshot blobs are not canonical session truth. They may help one wake path,
 but the durable session contract must still be explainable without pretending a
 snapshot handle is the real session.
 
+## Survival Matrix By Asset Class
+
+| Asset or continuity claim | `resumed` | `rehydrated` | `cold` |
+| --- | --- | --- | --- |
+| `SessionId`, durable lifecycle state, receipt lineage, evidence refs, artifact refs, and durable policy context | Carries forward unchanged as canonical host truth | Carries forward unchanged as canonical host truth | Carries forward unchanged as canonical host truth |
+| Explicit durable session data the host promised to preserve above one runtime instance | Remains valid durable truth and may also still be present in the resumed materialization | Remains valid durable truth and becomes rebuild input for the next materialization | Remains valid durable truth only; it does not imply any runtime-local continuation by itself |
+| In-memory heap, temp directories, runtime-local caches, and open file descriptors | May continue only if wake-time checks prove the same materialization is still valid and policy-safe | Treated as lost unless their contents were separately promoted into durable host truth; any needed state is rebuilt | Lost; a fresh materialization starts without claiming continuity of these runtime-local details |
+| Live sockets, bearer sessions, leases, and opaque external-service handles | May continue only if wake-time checks prove the exact live connection state is still valid | Lost as live state; reconnect happens through a host-mediated path using durable reconnect descriptors plus fresh checks | Lost as live state; Guild must reconnect from durable truth or fail rather than pretend the old handle survived |
+| Snapshot blobs or serialized runtime state | Never treated as proof that direct resume is safe; they are optional accelerators at most | May be used only as validated rebuild input after compatibility and policy checks pass | Never treated as continuity truth; Guild either ignores them or uses them only to decide that `cold` is the safer path |
+| Placement-local identity, node affinity, host leases, and runtime-specific placement assumptions | May continue only if wake-time checks re-prove the same placement is still acceptable | Rebound or reacquired as part of rebuilding the materialization | Rebound or reacquired from scratch; no placement continuity is implied |
+
+This matrix is intentionally asymmetric:
+
+- `resumed` is the only path that may preserve runtime-local continuity, and
+  even then only after fresh wake-time proof.
+- `rehydrated` and `cold` both preserve durable host truth, but they differ in
+  whether validated serialized state can participate in the rebuild.
+- `cold` is honest precisely because it refuses to claim runtime-local
+  continuity it cannot actually prove.
+
 ## Survival Rules By Execution Mode
 
 | Execution mode | Must already survive before Guild chooses the path | What Guild may reuse | What Guild must treat as lost, rebuilt, or freshly proven |
@@ -196,6 +216,8 @@ later wake, but that does not make the live connection itself durable.
 - If Guild cannot safely reconnect the service or rebind its policy-critical
   state, it must fall back to `cold` or fail the wake rather than fake
   continuity.
+- `cold` must reconnect from durable host truth alone or fail; it must not
+  inherit confidence from a prior live handle or half-valid reconnect attempt.
 
 ## Invalid Snapshot And Cold-Start Rules
 
@@ -209,6 +231,9 @@ source of truth.
 - `cold` is the required safe fallback when direct resume is no longer valid
   and no trusted rehydration input remains, but the durable session contract is
   still satisfiable from host-owned truth plus immutable artifacts.
+- `cold` must not silently absorb partially trusted serialized state. If Guild
+  cannot say which continuity came from durable host truth versus which state
+  was discarded, it should fail the wake instead of overstating preservation.
 - If the session's promised continuity depended on state that only ever lived in
   rebuildable harness memory, Guild should fail the wake rather than pretend a
   fresh `cold` materialization preserved it.

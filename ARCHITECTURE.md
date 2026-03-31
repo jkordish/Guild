@@ -252,6 +252,17 @@ Rebuildable harness state should include:
   handles
 - snapshots or serialized runtime state that only accelerate one wake path
 
+The carry-forward contract needs to stay explicit by asset class:
+
+| Asset class | `resumed` | `rehydrated` | `cold` |
+| --- | --- | --- | --- |
+| Canonical durable host truth | carried forward unchanged | carried forward unchanged | carried forward unchanged |
+| Host-promised durable session data | remains durable truth and may still be present in the resumed materialization | used as rebuild input for the next materialization | preserved only as durable truth, not as runtime-local continuity |
+| Runtime-local memory, caches, temp dirs, file descriptors | may continue only if wake-time checks re-prove the same materialization | treated as lost unless separately promoted into durable host truth | lost |
+| Live sockets, bearer sessions, service leases, opaque handles | may continue only if wake-time checks prove the exact live state is still valid | lost as live state and reconnected through durable descriptors plus fresh checks | lost as live state and reconnected from scratch or failed |
+| Snapshots or serialized runtime state | never proof that direct resume is safe | validated rebuild input only | not treated as continuity truth |
+| Placement-local identity or affinity | may continue only if the same placement still passes wake-time checks | rebound or reacquired during rebuild | rebound or reacquired from scratch |
+
 Broker behavior should follow that boundary:
 
 - `resumed` may reuse preserved runtime-local state only after wake-time checks
@@ -265,6 +276,9 @@ Broker behavior should follow that boundary:
 - if an external service cannot be safely reconnected or re-authorized, Guild
   must rehydrate, cold-start, or fail the wake rather than pretend the prior
   connection survived
+- if the promised continuity depended only on rebuildable harness state, Guild
+  must fail the wake rather than overstate what a `cold` materialization
+  preserved
 
 This boundary keeps receipts honest: the host can explain which continuity came
 from durable truth, which parts were rebuilt, and why a wake fell back to

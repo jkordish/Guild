@@ -140,6 +140,21 @@ runner, and ABI:
   placement assumption, Guild MUST narrow or recompute the envelope, ask-human,
   elevate isolation, rehydrate, cold-start, or deny; it MUST NOT silently
   inherit stale assumptions from an earlier admission decision
+- any future `resumed` continuation MAY reuse runtime-local memory, caches,
+  temp directories, placement-local identity, or live external-service sessions
+  only when wake-time checks re-prove that exact continuity as still valid
+- any future `rehydrated` continuation MUST treat prior live sockets, opaque
+  handles, leases, and placement-local state as lost; serialized runtime state
+  MAY participate only as validated rebuild input
+- any future `cold` continuation MUST carry forward only durable host truth and
+  immutable artifacts; it MUST NOT claim runtime-local continuity unless that
+  continuity was separately promoted into durable host truth
+- reconnect descriptors and rebinding requirements MAY be durable host truth,
+  but an open socket, bearer session, lease, or opaque client handle MUST NOT
+  be treated as durable host truth
+- if the session's promised continuity depends only on rebuildable harness
+  state, Guild MUST fail the wake rather than claim that a `cold`
+  materialization preserved continuity it could not actually prove
 
 ## 3. Non-Goals
 
