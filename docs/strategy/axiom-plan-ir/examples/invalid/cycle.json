@@ -1,0 +1,45 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "cyclic dependency",
+  "nodes": [
+    {
+      "id": "first",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "title": "First node in cycle"
+      },
+      "dependsOn": [
+        "second"
+      ],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "firstReport",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    },
+    {
+      "id": "second",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "title": "Second node in cycle"
+      },
+      "dependsOn": [
+        "first"
+      ],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "secondReport",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    }
+  ]
+}

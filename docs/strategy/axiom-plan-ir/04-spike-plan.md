@@ -1,6 +1,6 @@
 # Axiom Plan IR Spike Plan
 
-Status: docs-first, code-later.
+Status: docs-first, validator spike added.
 
 This spike should stay above Guild. It should prove whether Axiom Plan IR gives
 AI and human reviewers a clearer pre-admission surface before any crate, runtime
@@ -18,6 +18,11 @@ path, WIT contract, manifest field, or execution semantic changes are proposed.
 
 The docs-local schema and examples spike for step 2 is
 [`05-schema-and-examples.md`](05-schema-and-examples.md).
+
+The validator-only prototype for step 3 is
+[`06-validator-spike.md`](06-validator-spike.md). It remains exploratory and
+does not implement execution, Guild admission, authority grants, receipts,
+evidence, or lowering into Guild runs.
 
 ## Kill Criteria
 
