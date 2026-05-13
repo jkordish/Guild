@@ -3729,7 +3729,7 @@ fn http_replay_catalog_digest(entries: &[(String, HttpReplayFixture)]) -> String
 }
 
 fn sha256_bytes(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 fn http_method_fixture_label(method: &HttpMethod) -> &'static str {
@@ -5858,7 +5858,7 @@ fn parse_capability_denial_trap(error: &wasmtime::Error) -> Option<CapabilityDen
 fn hash_json(value: &Value) -> String {
     let mut buffer = String::new();
     write_canonical_json(value, &mut buffer);
-    format!("sha256:{:x}", Sha256::digest(buffer.as_bytes()))
+    format!("sha256:{}", hex::encode(Sha256::digest(buffer.as_bytes())))
 }
 
 fn write_canonical_json(value: &Value, output: &mut String) {

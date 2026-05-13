@@ -144,7 +144,7 @@ pub fn json_digest(value: &Value) -> Result<Value> {
     let digest = Sha256::digest(rendered.as_bytes());
     Ok(serde_json::json!({
         "algorithm": "sha256",
-        "value": format!("{digest:x}"),
+        "value": hex::encode(digest),
     }))
 }
 

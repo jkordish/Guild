@@ -2582,7 +2582,7 @@ fn stable_sorted_strings(values: Vec<String>) -> Vec<String> {
 
 fn sha256_json(value: &Value) -> String {
     let bytes = serde_json::to_vec(value).expect("JSON projection serializes");
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 fn build_replay_input_digest<A, R>(

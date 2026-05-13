@@ -230,7 +230,7 @@ fn expected_evidence_ref(
     input: &Value,
 ) -> EvidenceRef {
     let payload = serde_json::to_vec(&expected_evidence_payload(installed, input)).unwrap();
-    let digest_hex = format!("{:x}", Sha256::digest(&payload));
+    let digest_hex = hex::encode(Sha256::digest(&payload));
 
     EvidenceRef {
         uri,

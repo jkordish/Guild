@@ -1,12 +1,18 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result, bail};
+use jsonschema::Validator;
+use jsonschema::error::ValidationErrorKind;
+use jsonschema::paths::Location;
 use serde_json::Value;
 
 const AXIOM_ROOT: &str = "docs/strategy/axiom-plan-ir";
+const AXIOM_SCHEMA: &str = "docs/strategy/axiom-plan-ir/schema/axiom-plan-ir.schema.json";
 const USAGE: &str = "usage: cargo run -q -p xtask -- axiom-plan validate <path>\n       cargo run -q -p xtask -- axiom-plan validate-examples";
+static AXIOM_SCHEMA_VALIDATOR: OnceLock<std::result::Result<Validator, String>> = OnceLock::new();
 const FORBIDDEN_FIELDS: &[&str] = &[
     "executionId",
     "receipt",
@@ -77,7 +83,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
 }
 
 fn validate_examples() -> Result<()> {
-    let root = Path::new(AXIOM_ROOT);
+    let root = repo_root().join(AXIOM_ROOT);
     let valid_paths = example_paths(&root.join("examples/valid"))?;
     let invalid_paths = example_paths(&root.join("examples/invalid"))?;
     if valid_paths.is_empty() {
@@ -91,13 +97,13 @@ fn validate_examples() -> Result<()> {
     for path in &valid_paths {
         let diagnostics = validate_path(path)?;
         if diagnostics.is_empty() {
-            println!("PASS valid {}", path.display());
+            println!("PASS valid {}", display_path(path));
         } else {
-            println!("FAIL valid {}", path.display());
+            println!("FAIL valid {}", display_path(path));
             print_diagnostics(&diagnostics);
             failures.push(format!(
                 "{} should be valid but had {} diagnostic(s)",
-                path.display(),
+                display_path(path),
                 diagnostics.len()
             ));
         }
@@ -106,15 +112,51 @@ fn validate_examples() -> Result<()> {
     for path in &invalid_paths {
         let diagnostics = validate_path(path)?;
         if diagnostics.is_empty() {
-            println!("FAIL invalid {} unexpectedly passed", path.display());
-            failures.push(format!("{} should be invalid but passed", path.display()));
+            println!("FAIL invalid {} unexpectedly passed", display_path(path));
+            failures.push(format!(
+                "{} should be invalid but passed",
+                display_path(path)
+            ));
         } else {
             let codes = diagnostics
                 .iter()
                 .map(|diagnostic| diagnostic.code)
                 .collect::<Vec<_>>()
                 .join(", ");
-            println!("PASS invalid {} ({codes})", path.display());
+            if let Some(expected_codes) = expected_invalid_codes(path) {
+                let missing_codes = expected_codes
+                    .iter()
+                    .copied()
+                    .filter(|expected| {
+                        !diagnostics
+                            .iter()
+                            .any(|diagnostic| diagnostic.code == *expected)
+                    })
+                    .collect::<Vec<_>>();
+                if missing_codes.is_empty() {
+                    println!("PASS invalid {} ({codes})", display_path(path));
+                } else {
+                    println!(
+                        "FAIL invalid {} missing expected diagnostic code(s): {} ({codes})",
+                        display_path(path),
+                        missing_codes.join(", ")
+                    );
+                    failures.push(format!(
+                        "{} should include expected diagnostic code(s): {}",
+                        display_path(path),
+                        missing_codes.join(", ")
+                    ));
+                }
+            } else {
+                println!(
+                    "FAIL invalid {} has no expected diagnostic-code entry ({codes})",
+                    display_path(path)
+                );
+                failures.push(format!(
+                    "{} has no expected diagnostic-code entry",
+                    display_path(path)
+                ));
+            }
         }
     }
 
@@ -130,6 +172,20 @@ fn validate_examples() -> Result<()> {
             "Axiom Plan IR example validation failed:\n - {}",
             failures.join("\n - ")
         );
+    }
+}
+
+fn expected_invalid_codes(path: &Path) -> Option<&'static [&'static str]> {
+    let file_name = path.file_name()?.to_str()?;
+    match file_name {
+        "bad-reference.json" => Some(&["axiom.unknown_reference", "axiom.unsupported_reference"]),
+        "cycle.json" => Some(&["axiom.dependency_cycle"]),
+        "duplicate-node-id.json" => Some(&["axiom.duplicate_node_id"]),
+        "granted-authority-claim.json" => Some(&["axiom.forbidden_runtime_truth_field"]),
+        "malformed-skill-ref.json" => Some(&["axiom.malformed_skill_ref"]),
+        "missing-required-field.json" => Some(&["axiom.schema.missing_required_field"]),
+        "unknown-dependency.json" => Some(&["axiom.unknown_dependency"]),
+        _ => None,
     }
 }
 
@@ -160,10 +216,83 @@ fn validate_path(path: &Path) -> Result<Vec<Diagnostic>> {
             )]);
         }
     };
-    Ok(validate_value(&value))
+    validate_value(&value)
 }
 
-fn validate_value(value: &Value) -> Vec<Diagnostic> {
+fn validate_value(value: &Value) -> Result<Vec<Diagnostic>> {
+    let mut diagnostics = validate_schema(value)?;
+    diagnostics.extend(validate_semantics(value));
+    Ok(diagnostics)
+}
+
+fn validate_schema(value: &Value) -> Result<Vec<Diagnostic>> {
+    let validator = axiom_schema_validator()?;
+    Ok(validator
+        .iter_errors(value)
+        .map(|error| schema_diagnostic(&error))
+        .collect())
+}
+
+fn axiom_schema_validator() -> Result<&'static Validator> {
+    let validator = AXIOM_SCHEMA_VALIDATOR.get_or_init(|| {
+        let schema_path = repo_root().join(AXIOM_SCHEMA);
+        let text = fs::read_to_string(&schema_path)
+            .with_context(|| format!("failed to read {}", schema_path.display()))
+            .map_err(|error| format!("{error:#}"))?;
+        let schema = serde_json::from_str::<Value>(&text)
+            .with_context(|| format!("failed to parse {}", schema_path.display()))
+            .map_err(|error| format!("{error:#}"))?;
+        jsonschema::draft202012::options()
+            .build(&schema)
+            .with_context(|| format!("failed to compile {}", schema_path.display()))
+            .map_err(|error| format!("{error:#}"))
+    });
+    match validator {
+        Ok(validator) => Ok(validator),
+        Err(message) => bail!("{message}"),
+    }
+}
+
+fn schema_diagnostic(error: &jsonschema::ValidationError<'_>) -> Diagnostic {
+    let code = match error.kind() {
+        ValidationErrorKind::Required { .. } => "axiom.schema.missing_required_field",
+        ValidationErrorKind::AdditionalProperties { .. } => "axiom.schema.additional_property",
+        _ => "axiom.schema.invalid_shape",
+    };
+    let path = schema_error_path(error);
+    let keyword = error.kind().keyword();
+    Diagnostic::error(
+        path,
+        code,
+        format!("Schema validation failed ({keyword}): {error}"),
+    )
+}
+
+fn schema_error_path(error: &jsonschema::ValidationError<'_>) -> String {
+    let base_path = location_to_json_pointer(error.instance_path());
+    match error.kind() {
+        ValidationErrorKind::Required { property } => {
+            property.as_str().map_or(base_path.clone(), |property| {
+                join_json_pointer(&base_path, property)
+            })
+        }
+        ValidationErrorKind::AdditionalProperties { unexpected } if unexpected.len() == 1 => {
+            join_json_pointer(&base_path, &unexpected[0])
+        }
+        _ => base_path,
+    }
+}
+
+fn location_to_json_pointer(location: &Location) -> String {
+    let rendered = location.to_string();
+    if rendered.is_empty() {
+        "/".to_owned()
+    } else {
+        rendered
+    }
+}
+
+fn validate_semantics(value: &Value) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let Some(plan) = value.as_object() else {
         diagnostics.push(Diagnostic::error(
@@ -174,7 +303,7 @@ fn validate_value(value: &Value) -> Vec<Diagnostic> {
         return diagnostics;
     };
 
-    check_forbidden_fields(plan, "", &mut diagnostics);
+    check_forbidden_runtime_truth_fields(plan, &mut diagnostics);
     check_top_level(plan, &mut diagnostics);
 
     let Some(nodes) = plan.get("nodes").and_then(Value::as_array) else {
@@ -190,6 +319,19 @@ fn validate_value(value: &Value) -> Vec<Diagnostic> {
     check_node_references(nodes, &node_infos, &id_to_index, &mut diagnostics);
 
     diagnostics
+}
+
+fn repo_root() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("xtask manifest dir has a repository root parent")
+}
+
+fn display_path(path: &Path) -> String {
+    path.strip_prefix(repo_root())
+        .unwrap_or(path)
+        .display()
+        .to_string()
 }
 
 fn check_top_level(plan: &serde_json::Map<String, Value>, diagnostics: &mut Vec<Diagnostic>) {
@@ -273,8 +415,6 @@ fn collect_nodes(
             continue;
         };
 
-        check_forbidden_fields(node_object, &format!("/nodes/{index}"), diagnostics);
-
         let Some(id) = check_node_id(index, node_object, diagnostics) else {
             check_skill(index, node_object, diagnostics);
             check_requested_grants(index, node_object, diagnostics);
@@ -302,6 +442,65 @@ fn collect_nodes(
     (node_infos, id_to_index)
 }
 
+fn check_forbidden_runtime_truth_fields(
+    plan: &serde_json::Map<String, Value>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    check_forbidden_fields(plan, "", diagnostics);
+
+    let Some(nodes) = plan.get("nodes").and_then(Value::as_array) else {
+        return;
+    };
+    for (node_index, node) in nodes.iter().enumerate() {
+        let Some(node) = node.as_object() else {
+            continue;
+        };
+        let node_path = format!("/nodes/{node_index}");
+        check_forbidden_fields(node, &node_path, diagnostics);
+
+        if let Some(skill) = node.get("skill").and_then(Value::as_object) {
+            check_forbidden_fields(skill, &format!("{node_path}/skill"), diagnostics);
+        }
+        check_forbidden_object_array(
+            node.get("requestedGrants"),
+            &format!("{node_path}/requestedGrants"),
+            diagnostics,
+        );
+        check_forbidden_object_array(
+            node.get("expectedOutputs"),
+            &format!("{node_path}/expectedOutputs"),
+            diagnostics,
+        );
+        check_forbidden_object_array(
+            node.get("expectedEvidence"),
+            &format!("{node_path}/expectedEvidence"),
+            diagnostics,
+        );
+        if let Some(failure_behavior) = node.get("failureBehavior").and_then(Value::as_object) {
+            check_forbidden_fields(
+                failure_behavior,
+                &format!("{node_path}/failureBehavior"),
+                diagnostics,
+            );
+        }
+    }
+}
+
+fn check_forbidden_object_array(
+    value: Option<&Value>,
+    base_path: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let Some(items) = value.and_then(Value::as_array) else {
+        return;
+    };
+    for (index, item) in items.iter().enumerate() {
+        if let Some(object) = item.as_object() {
+            check_forbidden_fields(object, &format!("{base_path}/{index}"), diagnostics);
+        }
+    }
+}
+
 fn check_forbidden_fields(
     object: &serde_json::Map<String, Value>,
     base_path: &str,
@@ -311,7 +510,7 @@ fn check_forbidden_fields(
         if object.contains_key(*field) {
             diagnostics.push(Diagnostic::error(
                 format!("{base_path}/{field}"),
-                "axiom.forbidden_runtime_truth",
+                "axiom.forbidden_runtime_truth_field",
                 format!("Forbidden runtime-truth field: {field}"),
             ));
         }
@@ -329,7 +528,7 @@ fn check_node_id(
             diagnostics.push(Diagnostic::error(
                 format!("/nodes/{index}/id"),
                 "axiom.invalid_node_id",
-                format!("Node id must match ^[A-Za-z][A-Za-z0-9_-]*$: {id}"),
+                format!("Node id must match ^[a-zA-Z][a-zA-Z0-9_-]*$: {id}"),
             ));
             None
         }
@@ -563,8 +762,6 @@ fn check_requested_grants(
             ));
             continue;
         };
-        check_forbidden_fields(grant, &grant_path, diagnostics);
-
         match grant.get("family") {
             Some(Value::String(family)) if !family.trim().is_empty() => {}
             Some(_) => diagnostics.push(Diagnostic::error(
@@ -807,6 +1004,14 @@ fn escape_json_pointer_segment(segment: &str) -> String {
     segment.replace('~', "~0").replace('/', "~1")
 }
 
+fn join_json_pointer(base_path: &str, segment: &str) -> String {
+    if base_path == "/" {
+        format!("/{}", escape_json_pointer_segment(segment))
+    } else {
+        format!("{base_path}/{}", escape_json_pointer_segment(segment))
+    }
+}
+
 fn print_plan_result(path: &str, diagnostics: &[Diagnostic]) {
     if diagnostics.is_empty() {
         println!("valid: {path}");
@@ -830,6 +1035,10 @@ mod tests {
     use serde_json::json;
 
     use super::{Diagnostic, validate_value};
+
+    fn validate(plan: &serde_json::Value) -> Vec<Diagnostic> {
+        validate_value(plan).expect("Axiom Plan IR schema should compile")
+    }
 
     fn diagnostic_codes(diagnostics: &[Diagnostic]) -> Vec<&'static str> {
         diagnostics
@@ -873,7 +1082,17 @@ mod tests {
             )
         ]));
 
-        assert_eq!(validate_value(&plan), Vec::new());
+        assert_eq!(validate(&plan), Vec::new());
+    }
+
+    #[test]
+    fn accepts_minimal_node_contract() {
+        let plan = base_plan(json!([{
+            "id": "brief",
+            "skill": "skill://example/render-report@^0.1"
+        }]));
+
+        assert_eq!(validate(&plan), Vec::new());
     }
 
     #[test]
@@ -883,14 +1102,14 @@ mod tests {
             node("brief", json!([]), json!({}))
         ]));
 
-        assert!(diagnostic_codes(&validate_value(&plan)).contains(&"axiom.duplicate_node_id"));
+        assert!(diagnostic_codes(&validate(&plan)).contains(&"axiom.duplicate_node_id"));
     }
 
     #[test]
     fn rejects_unknown_dependencies() {
         let plan = base_plan(json!([node("brief", json!(["missing"]), json!({}))]));
 
-        assert!(diagnostic_codes(&validate_value(&plan)).contains(&"axiom.unknown_dependency"));
+        assert!(diagnostic_codes(&validate(&plan)).contains(&"axiom.unknown_dependency"));
     }
 
     #[test]
@@ -900,7 +1119,7 @@ mod tests {
             node("second", json!(["first"]), json!({}))
         ]));
 
-        assert!(diagnostic_codes(&validate_value(&plan)).contains(&"axiom.dependency_cycle"));
+        assert!(diagnostic_codes(&validate(&plan)).contains(&"axiom.dependency_cycle"));
     }
 
     #[test]
@@ -915,7 +1134,7 @@ mod tests {
             })
         )]));
 
-        let codes = diagnostic_codes(&validate_value(&plan));
+        let codes = diagnostic_codes(&validate(&plan));
         assert!(codes.contains(&"axiom.unknown_reference"));
         assert!(codes.contains(&"axiom.unsupported_reference"));
     }
@@ -935,7 +1154,7 @@ mod tests {
         }]));
 
         assert!(
-            diagnostic_codes(&validate_value(&plan)).contains(&"axiom.forbidden_runtime_truth")
+            diagnostic_codes(&validate(&plan)).contains(&"axiom.forbidden_runtime_truth_field")
         );
     }
 
@@ -952,7 +1171,7 @@ mod tests {
             "failureBehavior": "stopPlan"
         }]));
 
-        assert!(diagnostic_codes(&validate_value(&plan)).contains(&"axiom.malformed_skill_ref"));
+        assert!(diagnostic_codes(&validate(&plan)).contains(&"axiom.malformed_skill_ref"));
     }
 
     #[test]
@@ -973,8 +1192,47 @@ mod tests {
             "failureBehavior": "stopPlan"
         }]));
 
-        let codes = diagnostic_codes(&validate_value(&plan));
+        let codes = diagnostic_codes(&validate(&plan));
         assert!(codes.contains(&"axiom.invalid_requested_grant_family"));
         assert!(codes.contains(&"axiom.invalid_requested_grant_constraints"));
+    }
+
+    #[test]
+    fn maps_schema_required_failures_to_stable_code() {
+        let plan = base_plan(json!([{
+            "id": "brief"
+        }]));
+
+        let codes = diagnostic_codes(&validate(&plan));
+        assert!(codes.contains(&"axiom.schema.missing_required_field"));
+    }
+
+    #[test]
+    fn maps_schema_additional_properties_to_stable_code() {
+        let plan = base_plan(json!([{
+            "id": "brief",
+            "skill": "skill://example/render-report@^0.1",
+            "surprise": true
+        }]));
+
+        let codes = diagnostic_codes(&validate(&plan));
+        assert!(codes.contains(&"axiom.schema.additional_property"));
+    }
+
+    #[test]
+    fn does_not_police_forbidden_words_inside_skill_args_payload() {
+        let plan = base_plan(json!([{
+            "id": "brief",
+            "skill": "skill://example/render-report@^0.1",
+            "args": {
+                "grantedAuthority": {
+                    "note": "skill-owned payload, not Axiom runtime truth"
+                }
+            }
+        }]));
+
+        assert!(
+            !diagnostic_codes(&validate(&plan)).contains(&"axiom.forbidden_runtime_truth_field")
+        );
     }
 }

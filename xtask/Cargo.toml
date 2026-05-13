@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 guild-draft-truth = { path = "../crates/guild-draft-truth" }
+jsonschema.workspace = true
 serde_json.workspace = true
 
 [lints]

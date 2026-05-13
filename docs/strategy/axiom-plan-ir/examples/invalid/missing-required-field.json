@@ -1,0 +1,10 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "missing required field",
+  "nodes": [
+    {
+      "id": "renderReport"
+    }
+  ]
+}
