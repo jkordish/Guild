@@ -11,7 +11,9 @@ use serde_json::Value;
 
 const AXIOM_ROOT: &str = "docs/strategy/axiom-plan-ir";
 const AXIOM_SCHEMA: &str = "docs/strategy/axiom-plan-ir/schema/axiom-plan-ir.schema.json";
-const USAGE: &str = "usage: cargo run -q -p xtask -- axiom-plan validate <path>\n       cargo run -q -p xtask -- axiom-plan validate-examples";
+const USAGE: &str = "usage: cargo run -q -p xtask -- axiom-plan validate <path>\n       cargo run -q -p xtask -- axiom-plan validate-examples\n       cargo run -q -p xtask -- axiom-plan preview <path> [--json]";
+const PREVIEW_KIND: &str = "axiom.plan_preview";
+const PREVIEW_STATUS: &str = "preview_only";
 static AXIOM_SCHEMA_VALIDATOR: OnceLock<std::result::Result<Validator, String>> = OnceLock::new();
 const FORBIDDEN_FIELDS: &[&str] = &[
     "executionId",
@@ -20,6 +22,7 @@ const FORBIDDEN_FIELDS: &[&str] = &[
     "effectiveAuthority",
     "hostDecision",
     "runtimeStatus",
+    "evidenceProduced",
     "grants",
     "grantedGrants",
     "effectiveGrants",
@@ -51,6 +54,63 @@ struct NodeInfo {
     depends_on: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+enum PlanInput {
+    Valid(Value),
+    Invalid(Vec<Diagnostic>),
+}
+
+#[derive(Debug, Clone)]
+struct PlanPreview {
+    source_path: String,
+    plan_kind: String,
+    version: String,
+    name: String,
+    original_node_count: usize,
+    nodes: Vec<NodePreview>,
+    plan_trace: Vec<PlanTraceEntry>,
+    limitations: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct NodePreview {
+    ordinal: usize,
+    document_index: usize,
+    id: String,
+    skill: SkillPreview,
+    depends_on: Vec<String>,
+    args_as_declared: Option<Value>,
+    requested_grants: Vec<Value>,
+    expected_outputs: Vec<Value>,
+    expected_evidence: Vec<Value>,
+    failure_behavior: Option<String>,
+    request_preview: RequestPreview,
+    preview_trace: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SkillPreview {
+    requested: String,
+    digest: Option<String>,
+    resolved_metadata: Option<Value>,
+    object_form: bool,
+}
+
+#[derive(Debug, Clone)]
+struct RequestPreview {
+    status: &'static str,
+    summary: String,
+    args: &'static str,
+    authority: &'static str,
+    evidence: &'static str,
+}
+
+#[derive(Debug, Clone)]
+struct PlanTraceEntry {
+    node: String,
+    preview_trace: Vec<String>,
+}
+
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     let Some(command) = args.next() else {
         bail!("{USAGE}");
@@ -71,6 +131,23 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             } else {
                 bail!("axiom plan invalid: {} diagnostic(s)", diagnostics.len());
             }
+        }
+        "preview" => {
+            let Some(path) = args.next() else {
+                bail!("usage: cargo run -q -p xtask -- axiom-plan preview <path> [--json]");
+            };
+            let mut json_output = false;
+            for arg in args {
+                if arg == "--json" {
+                    if json_output {
+                        bail!("duplicate --json argument");
+                    }
+                    json_output = true;
+                } else {
+                    bail!("unexpected argument `{arg}`");
+                }
+            }
+            preview_path(Path::new(&path), &path, json_output)
         }
         "validate-examples" => {
             if args.next().is_some() {
@@ -204,19 +281,51 @@ fn example_paths(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn validate_path(path: &Path) -> Result<Vec<Diagnostic>> {
+    match read_validated_plan(path)? {
+        PlanInput::Valid(_) => Ok(Vec::new()),
+        PlanInput::Invalid(diagnostics) => Ok(diagnostics),
+    }
+}
+
+fn preview_path(path: &Path, input_path: &str, json_output: bool) -> Result<()> {
+    let preview = match read_validated_plan(path)? {
+        PlanInput::Valid(value) => build_plan_preview(&value, &display_path(path)),
+        PlanInput::Invalid(diagnostics) => {
+            print_plan_result(input_path, &diagnostics);
+            bail!("axiom plan invalid: {} diagnostic(s)", diagnostics.len());
+        }
+    };
+
+    if json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&preview_to_json(&preview))?
+        );
+    } else {
+        print!("{}", render_plan_preview(&preview)?);
+    }
+    Ok(())
+}
+
+fn read_validated_plan(path: &Path) -> Result<PlanInput> {
     let text =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let value = match serde_json::from_str::<Value>(&text) {
         Ok(value) => value,
         Err(error) => {
-            return Ok(vec![Diagnostic::error(
+            return Ok(PlanInput::Invalid(vec![Diagnostic::error(
                 "/",
                 "axiom.parse_error",
                 format!("Failed to parse JSON: {error}"),
-            )]);
+            )]));
         }
     };
-    validate_value(&value)
+    let diagnostics = validate_value(&value)?;
+    if diagnostics.is_empty() {
+        Ok(PlanInput::Valid(value))
+    } else {
+        Ok(PlanInput::Invalid(diagnostics))
+    }
 }
 
 fn validate_value(value: &Value) -> Result<Vec<Diagnostic>> {
@@ -1030,14 +1139,476 @@ fn print_diagnostics(diagnostics: &[Diagnostic]) {
     }
 }
 
+fn build_plan_preview(value: &Value, source_path: &str) -> PlanPreview {
+    let plan = value
+        .as_object()
+        .expect("validated Axiom Plan IR is an object");
+    let nodes = plan
+        .get("nodes")
+        .and_then(Value::as_array)
+        .expect("validated Axiom Plan IR has nodes");
+    let ordered_indexes = topologically_order_node_indexes(nodes);
+    let node_previews = ordered_indexes
+        .iter()
+        .enumerate()
+        .map(|(order_index, node_index)| {
+            build_node_preview(
+                order_index + 1,
+                *node_index,
+                nodes[*node_index]
+                    .as_object()
+                    .expect("validated Axiom Plan IR nodes are objects"),
+            )
+        })
+        .collect::<Vec<_>>();
+    let plan_trace = node_previews
+        .iter()
+        .map(|node| PlanTraceEntry {
+            node: node.id.clone(),
+            preview_trace: vec![
+                format!(
+                    "pre-admission requestPreview for `{}` would request `{}`",
+                    node.id, node.skill.requested
+                ),
+                "requested grants remain requested authority only; not admitted, not granted, not executed".to_owned(),
+                "expected evidence remains expectation only".to_owned(),
+            ],
+        })
+        .collect::<Vec<_>>();
+
+    PlanPreview {
+        source_path: source_path.to_owned(),
+        plan_kind: string_field(plan, "kind")
+            .unwrap_or("axiom.plan")
+            .to_owned(),
+        version: string_field(plan, "version").unwrap_or("1").to_owned(),
+        name: string_field(plan, "name").unwrap_or("<unnamed>").to_owned(),
+        original_node_count: nodes.len(),
+        nodes: node_previews,
+        plan_trace,
+        limitations: preview_limitations(),
+    }
+}
+
+fn build_node_preview(
+    ordinal: usize,
+    document_index: usize,
+    node: &serde_json::Map<String, Value>,
+) -> NodePreview {
+    let id = string_field(node, "id")
+        .unwrap_or("<missing-id>")
+        .to_owned();
+    let skill = skill_preview(node.get("skill"));
+    let requested_grants = value_array(node.get("requestedGrants"));
+    let expected_evidence = value_array(node.get("expectedEvidence"));
+    let request_preview = RequestPreview {
+        status: "pre-admission",
+        summary: format!(
+            "would request `{}` with args as declared; references are not evaluated by preview",
+            skill.requested
+        ),
+        args: "args as declared; references are not evaluated by preview",
+        authority: "would propose requested authority only; not admitted, not granted, not executed",
+        evidence: "expected evidence is expectation only",
+    };
+    let preview_trace = vec![
+        format!(
+            "pre-admission previewTrace for `{id}` would request `{}`",
+            skill.requested
+        ),
+        "args as declared; references are not evaluated by preview".to_owned(),
+        "requested grants are requested authority only; not granted".to_owned(),
+        if expected_evidence.is_empty() {
+            "expected evidence: none declared; expectation only".to_owned()
+        } else {
+            "expected evidence declarations are expectation only".to_owned()
+        },
+    ];
+
+    NodePreview {
+        ordinal,
+        document_index,
+        id,
+        skill,
+        depends_on: string_array(node.get("dependsOn")),
+        args_as_declared: node.get("args").cloned(),
+        requested_grants,
+        expected_outputs: value_array(node.get("expectedOutputs")),
+        expected_evidence,
+        failure_behavior: string_field(node, "failureBehavior").map(str::to_owned),
+        request_preview,
+        preview_trace,
+    }
+}
+
+fn topologically_order_node_indexes(nodes: &[Value]) -> Vec<usize> {
+    let id_to_index = nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| node_id_from_value(node).map(|id| (id.to_owned(), index)))
+        .collect::<HashMap<_, _>>();
+    let mut emitted = HashSet::new();
+    let mut ordered = Vec::with_capacity(nodes.len());
+
+    while ordered.len() < nodes.len() {
+        let mut progressed = false;
+        for (index, node) in nodes.iter().enumerate() {
+            if emitted.contains(&index) {
+                continue;
+            }
+            let dependencies_satisfied =
+                string_array(node.as_object().and_then(|object| object.get("dependsOn")))
+                    .iter()
+                    .all(|dependency| {
+                        id_to_index
+                            .get(dependency)
+                            .is_none_or(|dependency_index| emitted.contains(dependency_index))
+                    });
+            if dependencies_satisfied {
+                emitted.insert(index);
+                ordered.push(index);
+                progressed = true;
+            }
+        }
+        if !progressed {
+            ordered.extend((0..nodes.len()).filter(|index| !emitted.contains(index)));
+        }
+    }
+
+    ordered
+}
+
+fn node_id_from_value(node: &Value) -> Option<&str> {
+    node.as_object()
+        .and_then(|object| object.get("id"))
+        .and_then(Value::as_str)
+}
+
+fn skill_preview(skill: Option<&Value>) -> SkillPreview {
+    match skill {
+        Some(Value::String(requested)) => SkillPreview {
+            requested: requested.clone(),
+            digest: None,
+            resolved_metadata: None,
+            object_form: false,
+        },
+        Some(Value::Object(skill)) => SkillPreview {
+            requested: string_field(skill, "requested")
+                .unwrap_or("<missing-requested-skill>")
+                .to_owned(),
+            digest: string_field(skill, "digest").map(str::to_owned),
+            resolved_metadata: skill.get("resolved").cloned(),
+            object_form: true,
+        },
+        _ => SkillPreview {
+            requested: "<missing-skill>".to_owned(),
+            digest: None,
+            resolved_metadata: None,
+            object_form: false,
+        },
+    }
+}
+
+fn string_field<'a>(object: &'a serde_json::Map<String, Value>, field: &str) -> Option<&'a str> {
+    object.get(field).and_then(Value::as_str)
+}
+
+fn string_array(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn value_array(value: Option<&Value>) -> Vec<Value> {
+    value.and_then(Value::as_array).cloned().unwrap_or_default()
+}
+
+fn preview_limitations() -> Vec<String> {
+    vec![
+        "preview-only: pre-admission; not admitted, not granted, not executed.".to_owned(),
+        "Requested grants are requested authority only; Guild admission and policy remain canonical later.".to_owned(),
+        "Expected evidence is expectation only; preview does not persist evidence or create receipts.".to_owned(),
+        "Args are args as declared; references are not evaluated by preview.".to_owned(),
+        "Skill refs are not resolved; object-form skill metadata is not currently schema-admitted, and any resolved field shown by defensive rendering is plan-supplied metadata only, not Guild resolution, not verified by preview.".to_owned(),
+    ]
+}
+
+fn preview_to_json(preview: &PlanPreview) -> Value {
+    serde_json::json!({
+        "kind": PREVIEW_KIND,
+        "status": PREVIEW_STATUS,
+        "plan": {
+            "kind": preview.plan_kind,
+            "version": preview.version,
+            "name": preview.name,
+            "sourcePath": preview.source_path,
+            "nodeCount": preview.original_node_count
+        },
+        "nodes": preview
+            .nodes
+            .iter()
+            .map(node_preview_to_json)
+            .collect::<Vec<_>>(),
+        "planTrace": preview
+            .plan_trace
+            .iter()
+            .map(plan_trace_entry_to_json)
+            .collect::<Vec<_>>(),
+        "limitations": preview.limitations
+    })
+}
+
+fn node_preview_to_json(node: &NodePreview) -> Value {
+    serde_json::json!({
+        "id": node.id,
+        "ordinal": node.ordinal,
+        "documentIndex": node.document_index,
+        "skill": skill_preview_to_json(&node.skill),
+        "dependsOn": node.depends_on,
+        "argsAsDeclared": node.args_as_declared,
+        "argsStatus": "args as declared; references are not evaluated by preview",
+        "requestedGrants": {
+            "status": "requested authority only",
+            "items": node.requested_grants
+        },
+        "expectedOutputs": node.expected_outputs,
+        "expectedEvidence": {
+            "status": "expectation only",
+            "items": node.expected_evidence
+        },
+        "failureBehavior": node.failure_behavior,
+        "requestPreview": {
+            "status": node.request_preview.status,
+            "summary": node.request_preview.summary,
+            "args": node.request_preview.args,
+            "authority": node.request_preview.authority,
+            "evidence": node.request_preview.evidence
+        },
+        "previewTrace": node.preview_trace
+    })
+}
+
+fn skill_preview_to_json(skill: &SkillPreview) -> Value {
+    let mut skill_json = serde_json::Map::new();
+    skill_json.insert(
+        "requested".to_owned(),
+        Value::String(skill.requested.clone()),
+    );
+    if skill.object_form {
+        skill_json.insert(
+            "schemaStatus".to_owned(),
+            Value::String("object form is not currently schema-admitted".to_owned()),
+        );
+    } else {
+        skill_json.insert(
+            "schemaStatus".to_owned(),
+            Value::String("string-form skill ref is current schema-admitted form".to_owned()),
+        );
+    }
+    if let Some(digest) = &skill.digest {
+        skill_json.insert("digest".to_owned(), Value::String(digest.clone()));
+    }
+    if let Some(resolved_metadata) = &skill.resolved_metadata {
+        skill_json.insert(
+            "resolved".to_owned(),
+            serde_json::json!({
+                "status": "plan-supplied resolved metadata; pre-admission; not Guild resolution; not verified by preview",
+                "value": resolved_metadata
+            }),
+        );
+    }
+    Value::Object(skill_json)
+}
+
+fn plan_trace_entry_to_json(entry: &PlanTraceEntry) -> Value {
+    serde_json::json!({
+        "node": entry.node,
+        "previewTrace": entry.preview_trace
+    })
+}
+
+fn render_plan_preview(preview: &PlanPreview) -> Result<String> {
+    let mut output = String::new();
+    push_line(&mut output, "Axiom Plan Preview");
+    push_line(&mut output, format!("kind: {PREVIEW_KIND}"));
+    push_line(&mut output, format!("status: {PREVIEW_STATUS}"));
+    push_line(&mut output, format!("source: {}", preview.source_path));
+    push_line(&mut output, format!("plan: {}", preview.name));
+    push_line(&mut output, format!("plan kind: {}", preview.plan_kind));
+    push_line(&mut output, format!("version: {}", preview.version));
+    push_line(
+        &mut output,
+        format!("nodes: {}", preview.original_node_count),
+    );
+    push_line(&mut output, "");
+
+    push_line(&mut output, "ordered nodes:");
+    for node in &preview.nodes {
+        render_node_preview(&mut output, node)?;
+    }
+
+    push_line(&mut output, "planTrace:");
+    for entry in &preview.plan_trace {
+        push_line(&mut output, format!("  - node {}:", entry.node));
+        for trace in &entry.preview_trace {
+            push_line(&mut output, format!("    - {trace}"));
+        }
+    }
+    push_line(&mut output, "");
+
+    push_line(&mut output, "limitations:");
+    for limitation in &preview.limitations {
+        push_line(&mut output, format!("  - {limitation}"));
+    }
+
+    Ok(output)
+}
+
+fn render_node_preview(output: &mut String, node: &NodePreview) -> Result<()> {
+    push_line(
+        output,
+        format!(
+            "{}. {} (document index {})",
+            node.ordinal, node.id, node.document_index
+        ),
+    );
+    push_line(output, format!("  skill: {}", node.skill.requested));
+    if node.skill.object_form {
+        push_line(
+            output,
+            "  skill schema status: object form is not currently schema-admitted",
+        );
+    }
+    if let Some(digest) = &node.skill.digest {
+        push_line(output, format!("  skill digest: {digest}"));
+    }
+    if let Some(resolved_metadata) = &node.skill.resolved_metadata {
+        push_line(
+            output,
+            "  resolved: plan-supplied pre-admission metadata; not Guild resolution; not verified by preview",
+        );
+        push_json_block(output, resolved_metadata, 4)?;
+    }
+    if node.depends_on.is_empty() {
+        push_line(output, "  dependsOn: []");
+    } else {
+        push_line(
+            output,
+            format!("  dependsOn: {}", node.depends_on.join(", ")),
+        );
+    }
+
+    push_line(output, "  args as declared:");
+    if let Some(args) = &node.args_as_declared {
+        push_json_block(output, args, 4)?;
+    } else {
+        push_line(output, "    not declared");
+    }
+
+    render_value_list(
+        output,
+        "requested grants",
+        "requested authority only",
+        &node.requested_grants,
+    )?;
+    render_value_list(
+        output,
+        "expected outputs",
+        "planner expectation",
+        &node.expected_outputs,
+    )?;
+    render_value_list(
+        output,
+        "expected evidence",
+        "expectation only",
+        &node.expected_evidence,
+    )?;
+    push_line(
+        output,
+        format!(
+            "  failure behavior: {}",
+            node.failure_behavior.as_deref().unwrap_or("not declared")
+        ),
+    );
+    push_line(output, "  requestPreview:");
+    push_line(
+        output,
+        format!("    status: {}", node.request_preview.status),
+    );
+    push_line(
+        output,
+        format!("    summary: {}", node.request_preview.summary),
+    );
+    push_line(output, format!("    args: {}", node.request_preview.args));
+    push_line(
+        output,
+        format!("    authority: {}", node.request_preview.authority),
+    );
+    push_line(
+        output,
+        format!("    evidence: {}", node.request_preview.evidence),
+    );
+    push_line(output, "  previewTrace:");
+    for trace in &node.preview_trace {
+        push_line(output, format!("    - {trace}"));
+    }
+    push_line(output, "");
+    Ok(())
+}
+
+fn render_value_list(
+    output: &mut String,
+    label: &str,
+    status: &str,
+    items: &[Value],
+) -> Result<()> {
+    if items.is_empty() {
+        push_line(output, format!("  {label}: none ({status})"));
+        return Ok(());
+    }
+    push_line(output, format!("  {label} ({status}):"));
+    for item in items {
+        push_json_block(output, item, 4)?;
+    }
+    Ok(())
+}
+
+fn push_json_block(output: &mut String, value: &Value, indent: usize) -> Result<()> {
+    let indent_text = " ".repeat(indent);
+    let rendered = serde_json::to_string_pretty(value)?;
+    for line in rendered.lines() {
+        push_line(output, format!("{indent_text}{line}"));
+    }
+    Ok(())
+}
+
+fn push_line(output: &mut String, line: impl AsRef<str>) {
+    output.push_str(line.as_ref());
+    output.push('\n');
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::{Diagnostic, validate_value};
+    use super::{
+        Diagnostic, build_plan_preview, preview_to_json, render_plan_preview, validate_value,
+    };
 
     fn validate(plan: &serde_json::Value) -> Vec<Diagnostic> {
         validate_value(plan).expect("Axiom Plan IR schema should compile")
+    }
+
+    fn preview(plan: &serde_json::Value) -> super::PlanPreview {
+        assert_eq!(validate(plan), Vec::new());
+        build_plan_preview(plan, "test-plan.json")
     }
 
     fn diagnostic_codes(diagnostics: &[Diagnostic]) -> Vec<&'static str> {
@@ -1234,5 +1805,181 @@ mod tests {
         assert!(
             !diagnostic_codes(&validate(&plan)).contains(&"axiom.forbidden_runtime_truth_field")
         );
+    }
+
+    #[test]
+    fn valid_preview_succeeds() {
+        let plan = base_plan(json!([
+            node("draft", json!([]), json!({"title": "$input.title"})),
+            node(
+                "final",
+                json!(["draft"]),
+                json!({"source": "$draft.output"})
+            )
+        ]));
+
+        let preview = preview(&plan);
+
+        assert_eq!(preview.name, "test plan");
+        assert_eq!(preview.version, "1");
+        assert_eq!(preview.nodes.len(), 2);
+        assert_eq!(preview.nodes[0].id, "draft");
+        assert_eq!(preview.nodes[1].id, "final");
+    }
+
+    #[test]
+    fn invalid_preview_fails_before_rendering_and_preserves_diagnostics() {
+        let plan = base_plan(json!([{
+            "id": "brief"
+        }]));
+
+        let diagnostics = validate(&plan);
+
+        assert!(diagnostic_codes(&diagnostics).contains(&"axiom.schema.missing_required_field"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.path == "/nodes/0/skill")
+        );
+    }
+
+    #[test]
+    fn preview_orders_dependencies_before_dependents_with_stable_independent_order() {
+        let plan = base_plan(json!([
+            node("child", json!(["source"]), json!({})),
+            node("unrelated", json!([]), json!({})),
+            node("source", json!([]), json!({}))
+        ]));
+
+        let preview = preview(&plan);
+        let ordered_ids = preview
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(ordered_ids, vec!["unrelated", "source", "child"]);
+    }
+
+    #[test]
+    fn preview_includes_required_boundary_phrases() {
+        let plan = base_plan(json!([{
+            "id": "evidence",
+            "skill": "skill://example/emit-evidence-exact@^0.1",
+            "args": {
+                "message": "planned evidence payload"
+            },
+            "requestedGrants": [
+                {
+                    "family": "emit-evidence",
+                    "constraints": {
+                        "audiences": ["user"]
+                    }
+                }
+            ],
+            "expectedEvidence": [
+                {
+                    "kind": "summary"
+                }
+            ]
+        }]));
+        let rendered = render_plan_preview(&preview(&plan)).expect("preview renders");
+
+        for phrase in [
+            "pre-admission",
+            "not admitted",
+            "not granted",
+            "not executed",
+            "requested authority only",
+            "expectation only",
+            "args as declared",
+            "would request",
+            "would propose",
+        ] {
+            assert!(rendered.contains(phrase), "missing phrase: {phrase}");
+        }
+    }
+
+    #[test]
+    fn preview_avoids_positive_runtime_truth_phrases() {
+        let plan = base_plan(json!([node("brief", json!([]), json!({}))]));
+        let preview = preview(&plan);
+        let rendered = render_plan_preview(&preview).expect("preview renders");
+        let rendered_json =
+            serde_json::to_string_pretty(&preview_to_json(&preview)).expect("preview JSON renders");
+        let combined = format!("{rendered}\n{rendered_json}");
+
+        for phrase in [
+            "admitted by Guild",
+            "granted by Guild",
+            "executed by Guild",
+            "receipt created",
+            "evidence produced",
+            "resolved by Guild",
+        ] {
+            assert!(
+                !combined.contains(phrase),
+                "positive runtime-truth phrase leaked: {phrase}"
+            );
+        }
+    }
+
+    #[test]
+    fn json_preview_has_preview_shape_and_avoids_runtime_truth_fields() {
+        let plan = base_plan(json!([node("brief", json!([]), json!({}))]));
+        let rendered = preview_to_json(&preview(&plan));
+        let rendered_text =
+            serde_json::to_string_pretty(&rendered).expect("preview JSON should render");
+
+        assert_eq!(rendered["kind"], "axiom.plan_preview");
+        assert_eq!(rendered["status"], "preview_only");
+        assert!(rendered.get("plan").is_some());
+        assert!(rendered.get("nodes").is_some());
+        assert!(rendered.get("planTrace").is_some());
+        assert!(rendered.get("limitations").is_some());
+
+        for field in [
+            "\"executionId\"",
+            "\"receipt\"",
+            "\"grantedAuthority\"",
+            "\"effectiveAuthority\"",
+            "\"runtimeStatus\"",
+            "\"evidenceProduced\"",
+        ] {
+            assert!(
+                !rendered_text.contains(field),
+                "runtime-truth field leaked: {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn defensive_object_form_renderer_labels_resolved_as_plan_supplied_metadata() {
+        let plan = base_plan(json!([{
+            "id": "brief",
+            "skill": {
+                "requested": "skill://example/render-report@^0.1",
+                "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "resolved": {
+                    "name": "render-report",
+                    "version": "0.1.0"
+                }
+            },
+            "args": {}
+        }]));
+
+        let preview = build_plan_preview(&plan, "defensive-object-form.json");
+        let rendered = render_plan_preview(&preview).expect("preview renders");
+        let rendered_json =
+            serde_json::to_string_pretty(&preview_to_json(&preview)).expect("preview JSON renders");
+
+        assert!(rendered.contains("object form is not currently schema-admitted"));
+        assert!(rendered.contains("resolved: plan-supplied pre-admission metadata"));
+        assert!(rendered.contains("not Guild resolution"));
+        assert!(rendered.contains("not verified by preview"));
+        assert!(rendered_json.contains("\"resolved\""));
+        assert!(rendered_json.contains("plan-supplied resolved metadata"));
+        assert!(!rendered.contains("resolved by Guild"));
+        assert!(!rendered_json.contains("resolved by Guild"));
     }
 }
