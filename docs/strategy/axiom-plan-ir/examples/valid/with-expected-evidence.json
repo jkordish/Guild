@@ -1,0 +1,48 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "expected evidence declaration",
+  "nodes": [
+    {
+      "id": "emitSummaryEvidence",
+      "skill": "skill://example/emit-evidence-exact@^0.1",
+      "args": {
+        "message": "planned evidence payload"
+      },
+      "dependsOn": [],
+      "requestedGrants": [
+        {
+          "family": "emit-evidence",
+          "constraints": {
+            "audiences": [
+              "user"
+            ],
+            "redactions": [
+              "none"
+            ],
+            "maxBytes": 256
+          },
+          "purpose": "Ask Guild admission to consider one bounded evidence emission."
+        }
+      ],
+      "expectedOutputs": [
+        {
+          "name": "evidenceResult",
+          "kind": "json",
+          "schemaHint": {
+            "description": "Planner hint only; Guild owns real output and evidence refs."
+          }
+        }
+      ],
+      "expectedEvidence": [
+        {
+          "kind": "summary",
+          "audience": "user",
+          "refRoot": "guild://objects/records/",
+          "description": "A desired future evidence class, not a claim that a record already exists."
+        }
+      ],
+      "failureBehavior": "stopPlan"
+    }
+  ]
+}

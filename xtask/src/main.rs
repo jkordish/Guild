@@ -1,19 +1,24 @@
 #![warn(clippy::all, clippy::pedantic, clippy::cargo, clippy::perf)]
 #![allow(clippy::multiple_crate_versions)]
 
+mod axiom_plan;
+
 use anyhow::{Context, Result, bail};
 use guild_draft_truth::{
     ArtifactMode, TruthAction, run_patent_packet_check, run_project_positioning_check,
     run_truth_action,
 };
 
+const USAGE: &str = "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check\n       cargo run -p xtask -- project-positioning check\n       cargo run -p xtask -- axiom-plan validate <path>\n       cargo run -p xtask -- axiom-plan validate-examples";
+
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let Some(command) = args.next() else {
-        bail!(
-            "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check\n       cargo run -p xtask -- project-positioning check"
-        );
+        bail!("{USAGE}");
     };
+    if command == "axiom-plan" {
+        return axiom_plan::run(args);
+    }
     if command == "patent-packet" {
         let Some(mode_name) = args.next() else {
             bail!("usage: cargo run -p xtask -- patent-packet check");
@@ -45,14 +50,10 @@ fn main() -> Result<()> {
     }
 
     let Some(action_name) = args.next() else {
-        bail!(
-            "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check\n       cargo run -p xtask -- project-positioning check"
-        );
+        bail!("{USAGE}");
     };
     let Some(mode_name) = args.next() else {
-        bail!(
-            "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check\n       cargo run -p xtask -- project-positioning check"
-        );
+        bail!("{USAGE}");
     };
     if args.next().is_some() {
         bail!("unexpected extra arguments");

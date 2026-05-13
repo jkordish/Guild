@@ -1,0 +1,50 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "plan with shallow references",
+  "nodes": [
+    {
+      "id": "draftReport",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "title": "$input.title",
+        "sections": [
+          {
+            "heading": "Topic",
+            "body": "$input.topic"
+          }
+        ]
+      },
+      "dependsOn": [],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "draftMarkdown",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    },
+    {
+      "id": "renderFinal",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "source": "$draftReport.draftMarkdown",
+        "format": "markdown"
+      },
+      "dependsOn": [
+        "draftReport"
+      ],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "finalMarkdown",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    }
+  ]
+}

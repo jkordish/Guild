@@ -1,0 +1,50 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "basic two node plan",
+  "nodes": [
+    {
+      "id": "draftReport",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "title": "Daily execution summary",
+        "sections": [
+          {
+            "heading": "Inputs",
+            "body": "Summarize the planned input bundle."
+          }
+        ]
+      },
+      "dependsOn": [],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "draftMarkdown",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    },
+    {
+      "id": "renderFinal",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "sourceNode": "draftReport",
+        "format": "markdown"
+      },
+      "dependsOn": [
+        "draftReport"
+      ],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "finalMarkdown",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    }
+  ]
+}

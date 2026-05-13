@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Axiom Plan IR",
+  "description": "Exploratory pre-admission planning shape. Guild remains the source of admission, grants, execution identity, receipts, evidence persistence, and runtime truth.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "const": "axiom.plan"
+    },
+    "version": {
+      "const": "1"
+    },
+    "name": {
+      "$ref": "#/$defs/name"
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    }
+  },
+  "required": [
+    "kind",
+    "version",
+    "name",
+    "nodes"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "nodeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+    },
+    "skillRef": {
+      "type": "string",
+      "pattern": "^skill://[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[^\\s]+$"
+    },
+    "node": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "skill": {
+          "$ref": "#/$defs/skillRef"
+        },
+        "args": {
+          "$ref": "#/$defs/jsonObject"
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          },
+          "uniqueItems": true
+        },
+        "requestedGrants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/requestedGrant"
+          }
+        },
+        "expectedOutputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expectedOutput"
+          }
+        },
+        "expectedEvidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expectedEvidence"
+          }
+        },
+        "failureBehavior": {
+          "$ref": "#/$defs/failureBehavior"
+        }
+      },
+      "required": [
+        "id",
+        "skill",
+        "args",
+        "dependsOn",
+        "requestedGrants",
+        "expectedOutputs",
+        "expectedEvidence",
+        "failureBehavior"
+      ],
+      "additionalProperties": false
+    },
+    "requestedGrant": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "constraints": {
+          "$ref": "#/$defs/jsonObject"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "family",
+        "constraints"
+      ],
+      "additionalProperties": false
+    },
+    "expectedOutput": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "json",
+            "text",
+            "guildRef",
+            "object",
+            "unknown"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "shapeHint": {
+          "$ref": "#/$defs/jsonValue"
+        },
+        "schemaHint": {
+          "$ref": "#/$defs/jsonValue"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "expectedEvidence": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "audience": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "refRoot": {
+          "$ref": "#/$defs/guildRefRoot"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "guildRefRoot": {
+      "type": "string",
+      "enum": [
+        "guild://executions/",
+        "guild://objects/sha256/",
+        "guild://objects/records/",
+        "guild://queries/executions/"
+      ]
+    },
+    "failureBehavior": {
+      "type": "string",
+      "enum": [
+        "stopPlan",
+        "continuePlan",
+        "skipDependents"
+      ]
+    },
+    "jsonObject": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/jsonValue"
+      }
+    },
+    "jsonValue": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jsonValue"
+          }
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

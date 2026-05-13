@@ -1,0 +1,38 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "granted authority claim",
+  "nodes": [
+    {
+      "id": "explainExecution",
+      "skill": "skill://example/explain-execution@^0.1",
+      "args": {
+        "executionUri": "guild://executions/01J00000000000000000000000"
+      },
+      "dependsOn": [],
+      "requestedGrants": [
+        {
+          "family": "read-resource",
+          "constraints": {
+            "uriPrefixes": [
+              "guild://executions/"
+            ]
+          }
+        }
+      ],
+      "grantedAuthority": [
+        {
+          "family": "read-resource"
+        }
+      ],
+      "expectedOutputs": [
+        {
+          "name": "explanation",
+          "kind": "json"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    }
+  ]
+}

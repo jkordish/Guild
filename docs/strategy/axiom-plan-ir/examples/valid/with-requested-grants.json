@@ -1,0 +1,45 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "execution query summary with requested grants",
+  "nodes": [
+    {
+      "id": "summarizeRecentExecutions",
+      "skill": "skill://example/summarize-execution-query@^0.1",
+      "args": {
+        "queryUri": "guild://queries/executions/recent/5"
+      },
+      "dependsOn": [],
+      "requestedGrants": [
+        {
+          "family": "read-resource",
+          "constraints": {
+            "uriPrefixes": [
+              "guild://executions/",
+              "guild://queries/executions/"
+            ],
+            "resourceKinds": [
+              "execution",
+              "query"
+            ]
+          },
+          "purpose": "Ask Guild admission to consider bounded reads of persisted execution and query resources."
+        }
+      ],
+      "expectedOutputs": [
+        {
+          "name": "summary",
+          "kind": "json",
+          "shapeHint": {
+            "fields": [
+              "count",
+              "statuses"
+            ]
+          }
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    }
+  ]
+}

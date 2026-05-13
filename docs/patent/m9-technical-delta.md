@@ -26,7 +26,7 @@ Those stages are separate in the repo and should stay separate in any draft buil
 | `http-request` | `bounded` | `proof_backed` on eight replay-backed slices | `proof_linked` on eight replay-backed slices | Loopback IP `GET` and `HEAD`, explicit or default port; `localhost` `GET` and `HEAD`, explicit or default port with deterministic loopback-only resolution binding; no query; no redirects; one exercised request; deterministic comparator | Redirects, `https`, multiple requests, other hostname forms, and query or fragment components stay outside the measured envelope |
 | `invoke-skill` | `bounded` | `proof_backed` on two exact zero-authority slices | `proof_linked` on two exact zero-authority slices | One declared alias with either one exact child digest or that same alias exercised exactly twice in deterministic order, always on `guild-skill-inspect-v1` with deterministic child input, zero child authority, and zero nested child executions | Broader multi-child fan-out, recursion, child authority, broader resolution, and non-inspect child targets remain outside the measured envelope |
 | `log-write` | `supported` for proof only | `not_measured_on_real_path` for linkage | `not_measured_on_real_path` for linkage | One exact observed `info`-level slice through M4 plus M5 only | The checked benchmark does not claim real-path M6 or M7 linkage here |
-| `emit-evidence` | `not_proven` | `upper_bound_fallback` only in the checked unsupported slice | `unlinked` only in the checked unsupported slice | The checked benchmark covers replay-unavailable single-emission behavior as an unsupported slice | No proof-backed `emit-evidence` linkage is claimable now |
+| `emit-evidence` | `bounded` | `proof_backed` on one exact fixed-sink slice | `proof_linked` on one exact fixed-sink slice | One exact single-emission fixed local object-store slice with one exact payload and host-owned sink binding | Broader or legacy single-emission flows, dynamic sinks, multiple emissions, nondeterministic payloads, and host-side emission failures remain outside the measured envelope |
 
 ## Where Authority Narrows And Where It Does Not
 
@@ -34,7 +34,7 @@ Those stages are separate in the repo and should stay separate in any draft buil
 - The measured `http-request` proof-backed slices are already narrow fixtures. The proof is bounded and real, but the proven authority does not shrink further in those fixtures.
 - The measured `invoke-skill` slices are also already narrow. The proof result is `no_reduction`, not a broader minimization story.
 - The measured `log-write` slice is exact over an already narrow admitted level slice, but the checked real path stops at proof only.
-- `emit-evidence` remains `not_proven`, so the repo does not honestly narrow the authority beyond the admitted upper bound on the checked path.
+- `emit-evidence` is proof-backed only for one exact single-emission fixed local object-store slice; broader or legacy flows remain outside the proven envelope.
 
 ## Proof-Backed Issuance Versus Fallback Or Refusal
 
@@ -50,7 +50,7 @@ The measured unsupported slices are:
 
 ## Witness Linkage Versus Unlinked Witnesses
 
-- `read-resource`, the eight measured `http-request` slices, and the two measured `invoke-skill` slices produce proof-linked witnesses on the checked path.
+- `read-resource`, the eight measured `http-request` slices, the two measured `invoke-skill` slices, and the exact measured `emit-evidence` fixed-sink slice produce proof-linked witnesses on the checked path.
 - `log-write` is not currently measured as a proof-linked witness path on the real path.
 - The benchmarked unsupported slices still generate witnesses, but those witnesses are explicitly unlinked.
 - The checked negative-claim probes remain coverage-limited on every measured non-`log-write` slice, so the repo does not claim runtime-general absence checking.
@@ -84,6 +84,7 @@ The checked benchmark is slice-aware and keeps supported, unsupported, and fail-
 | `http-request-loopback-ip-head-default-port` | `0.019` | `7430.322` | `0.029` | `0.328` | `0.301` | `0.221` |
 | `invoke-skill-single-child-zero-authority` | `0.013` | `10363.662` | `0.025` | `0.272` | `0.247` | `0.204` |
 | `invoke-skill-two-child-same-alias-zero-authority` | `0.012` | `15389.453` | `0.038` | `0.306` | `0.256` | `0.183` |
+| `emit-evidence-single-emission-exact-local-object-store` | `0.016` | `4851.549` | `0.022` | `0.338` | `0.257` | `0.195` |
 | `log-write-observed-info-level` | `0.016` | `8934.525` | `n/a` | `n/a` | `n/a` | `n/a` |
 
 ### Unsupported Slices And Fail-Closed Walls
@@ -91,7 +92,7 @@ The checked benchmark is slice-aware and keeps supported, unsupported, and fail-
 | Slice or wall | Admission mean ms | Proof mean ms | Fallback token mean ms | Refusal mean ms |
 | --- | --- | --- | --- | --- |
 | `http-request-redirect-driven-execution` | `0.021` | `3701.789` | `0.025` | `4199.318` |
-| `emit-evidence-single-emission-replay-unavailable` | `0.014` | `3024.378` | `0.023` | `3522.523` |
+| `emit-evidence-single-emission-replay-unavailable` | `0.019` | `2975.605` | `0.020` | `3518.764` |
 | `http-request-no-replay-fixture` | `n/a` | `3742.373` | `n/a` | `n/a` |
 | `read-resource-query-root-shrink-unsupported` | `n/a` | `4200.051` | `n/a` | `n/a` |
 | `invoke-skill-child-authority-unsupported` | `n/a` | `5977.197` | `n/a` | `n/a` |

@@ -1,0 +1,26 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "bad reference",
+  "nodes": [
+    {
+      "id": "renderReport",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "missingNode": "$missingNode.output",
+        "unsupportedEnv": "$env.SECRET",
+        "unsupportedCall": "$renderReport.output()"
+      },
+      "dependsOn": [],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "report",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    }
+  ]
+}

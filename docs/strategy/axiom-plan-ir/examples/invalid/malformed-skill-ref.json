@@ -1,0 +1,24 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "malformed skill ref",
+  "nodes": [
+    {
+      "id": "explainExecution",
+      "skill": "example/explain-execution@^0.1",
+      "args": {
+        "executionUri": "guild://executions/01J00000000000000000000000"
+      },
+      "dependsOn": [],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "explanation",
+          "kind": "json"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    }
+  ]
+}

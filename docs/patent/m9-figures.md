@@ -79,7 +79,7 @@ flowchart TD
     A --> HTTP[http-request<br/>bounded proof-linked<br/>eight replay-backed slices only]
     A --> INV[invoke-skill<br/>bounded proof-linked<br/>exact single-child and exact two-child same-alias zero-authority only]
     A --> LOG[log-write<br/>exact proof-only<br/>info level only]
-    A --> EMIT[emit-evidence<br/>not_proven for live proof linkage]
+    A --> EMIT[emit-evidence<br/>bounded proof-linked<br/>exact single-emission fixed sink only]
     HTTP --> HTTPW[fail-closed walls<br/>redirects unsupported<br/>no replay unsupported]
     INV --> INVW[fail-closed walls<br/>broader multi-child beyond exact checked slice not proven<br/>child authority unsupported]
     RR --> RRW[fail-closed wall<br/>query-root shrink unsupported]
@@ -93,9 +93,10 @@ flowchart TD
     B --> RR[read-resource<br/>proof mean 6899.103 ms]
     B --> H1[http-request supported slices<br/>proof mean 7314.193-7635.972 ms]
     B --> INV[invoke-skill supported slices<br/>proof mean 10363.662 ms and 15389.453 ms]
+    B --> EMIT[emit-evidence exact supported slice<br/>proof mean 4851.549 ms]
     B --> LOG[log-write proof-only slice<br/>proof mean 8934.525 ms]
     B --> U1[redirect http-request unsupported slice<br/>proof mean 3701.789 ms]
-    B --> U3[emit-evidence unsupported slice<br/>proof mean 3024.378 ms]
+    B --> U3[emit-evidence unsupported slice<br/>proof mean 2975.605 ms]
     B --> W1[fail-closed walls<br/>3742.373 ms, 4200.051 ms, 5977.197 ms]
 ```
 
