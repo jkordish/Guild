@@ -2,14 +2,13 @@
 
 Status: docs fixtures only.
 
-These examples exercise the exploratory JSON Schema in
+These examples exercise the exploratory JSON Schema and docs-local validator in
 [`../schema/axiom-plan-ir.schema.json`](../schema/axiom-plan-ir.schema.json).
 They are not runtime fixtures, are not consumed by Guild, and do not prove that
 Axiom Plan IR is implemented.
 
 The valid examples show proposed pre-admission plan shapes. The invalid
-examples show boundary cases for either the JSON Schema or a future semantic
-validator.
+examples show boundary cases for JSON Schema and semantic validator checks.
 
 ## Valid Fixtures
 
@@ -21,18 +20,22 @@ validator.
 - [`valid/with-expected-evidence.json`](valid/with-expected-evidence.json) -
   one node declaring expected evidence. The declaration does not claim that any
   evidence record exists.
+- [`valid/with-references.json`](valid/with-references.json) - shallow
+  `$input.*` and dependency-accessible `$<nodeId>.*` references.
 
 ## Invalid Fixtures
 
-- [`invalid/duplicate-node-id.json`](invalid/duplicate-node-id.json) - future
-  semantic-validator failure. JSON Schema does not prove node ID uniqueness
-  across array items.
-- [`invalid/unknown-dependency.json`](invalid/unknown-dependency.json) - future
-  semantic-validator failure. JSON Schema does not resolve dependency
-  references.
+- [`invalid/duplicate-node-id.json`](invalid/duplicate-node-id.json) -
+  duplicate node ID semantic failure.
+- [`invalid/unknown-dependency.json`](invalid/unknown-dependency.json) -
+  dependency reference to a missing node.
 - [`invalid/malformed-skill-ref.json`](invalid/malformed-skill-ref.json) -
-  JSON Schema failure because the `skill` value does not match the exploratory
-  skill-ref regex.
+  malformed exploratory skill ref.
 - [`invalid/granted-authority-claim.json`](invalid/granted-authority-claim.json)
-  - JSON Schema failure because the node includes a forbidden runtime-authority
-  claim outside Axiom-owned vocabulary.
+  - forbidden runtime-authority claim outside Axiom-owned vocabulary.
+- [`invalid/cycle.json`](invalid/cycle.json) - dependency cycle semantic
+  failure.
+- [`invalid/bad-reference.json`](invalid/bad-reference.json) - unknown and
+  unsupported shallow reference forms.
+- [`invalid/missing-required-field.json`](invalid/missing-required-field.json)
+  - schema failure for a node missing required `skill`.

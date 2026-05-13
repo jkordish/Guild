@@ -12,13 +12,15 @@ Guild executes. Axiom plans.
 
 ## What It Checks
 
+- JSON Schema shape for the docs-local Axiom-owned vocabulary
 - top-level shape for `kind`, `version`, `name`, and non-empty `nodes`
 - duplicate node IDs and the exploratory node ID pattern
 - unknown dependencies and self-dependencies
 - dependency graph cycles
 - basic exploratory `skill://namespace/name@version-ish` string shape
-- forbidden runtime-truth claims at plan and node boundaries
-- shallow reference syntax for `$input.*` and dependency-accessible `$node.*`
+- forbidden runtime-truth claims at Axiom-owned planning boundaries
+- shallow reference syntax for `$input.*` and dependency-accessible
+  `$<nodeId>.*`
 - requested grant shape as requested authority only
 
 ## What It Does Not Check
@@ -32,6 +34,9 @@ Guild executes. Axiom plans.
 - receipt creation
 - real policy reduction
 - full Guild skill-ref grammar
+
+Skill-owned `args` are treated as payload. The forbidden runtime-truth traversal
+does not recursively police arbitrary nested `args` keys.
 
 ## Commands
 
@@ -48,21 +53,27 @@ cargo run -q -p xtask -- axiom-plan validate-examples
 ```
 
 The examples check expects every file in `examples/valid/` to pass and every
-file in `examples/invalid/` to fail. Diagnostics use stable fields internally:
-`code`, `severity`, `path`, and `message`. The prototype currently prints a
-readable text form; JSON output is future work.
+file in `examples/invalid/` to fail with its expected diagnostic code. Invalid
+fixtures may emit additional relevant diagnostics; the check fails only when an
+expected code is missing. Diagnostics use stable fields internally: `code`,
+`severity`, `path`, and `message`. The prototype currently prints a readable
+text form; JSON output is future work.
 
 ## Relationship To Schema
 
 The JSON Schema checks local shape for the docs-local Axiom vocabulary. The
-validator checks semantic graph constraints that JSON Schema does not express
-well, such as duplicate node IDs, unknown dependencies, cycles, and shallow
-reference roots.
+validator runs schema checks plus semantic graph constraints that JSON Schema
+does not express well, such as duplicate node IDs, unknown dependencies,
+cycles, and shallow reference roots.
 
 Neither the schema nor this validator creates Guild runtime truth. A valid
 Axiom plan is still only a reviewable planning artifact. Guild remains
 canonical for skill resolution, admission, grant narrowing, execution identity,
 receipts, evidence persistence, and inspect/explain truth.
+
+Axiom-owned planning objects are strict. Skill-owned `args` are flexible input
+payloads and are not an Axiom authority, receipt, evidence, or runtime-status
+surface.
 
 ## Promotion Criteria
 

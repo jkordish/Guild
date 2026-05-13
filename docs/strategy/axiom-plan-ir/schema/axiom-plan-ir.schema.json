@@ -38,7 +38,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 128,
-      "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
     },
     "skillRef": {
       "type": "string",
@@ -87,13 +87,7 @@
       },
       "required": [
         "id",
-        "skill",
-        "args",
-        "dependsOn",
-        "requestedGrants",
-        "expectedOutputs",
-        "expectedEvidence",
-        "failureBehavior"
+        "skill"
       ],
       "additionalProperties": false
     },
