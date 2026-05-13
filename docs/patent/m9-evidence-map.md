@@ -20,6 +20,7 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `benchmark_matrix.json.slices[http-request-loopback-ip-head-default-port]`
   - `benchmark_matrix.json.slices[invoke-skill-single-child-zero-authority]`
   - `benchmark_matrix.json.slices[invoke-skill-two-child-same-alias-zero-authority]`
+  - `benchmark_matrix.json.slices[emit-evidence-single-emission-exact-local-object-store]`
   - `benchmark_matrix.json.slices[http-request-redirect-driven-execution]`
   - `benchmark_matrix.json.slices[emit-evidence-single-emission-replay-unavailable]`
   - `benchmark_matrix.json.checked_fail_closed_walls[http-request-no-replay-fixture]`
@@ -43,10 +44,11 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_is_bounded_with_replay_for_head_default_port_shape`
   - `crates/guild-runner/tests/live_proofs.rs::invoke_skill_live_proof_is_bounded_for_single_zero_authority_child`
   - `crates/guild-runner/tests/live_proofs.rs::invoke_skill_live_proof_is_bounded_for_exact_two_child_same_alias_fan_out`
+  - `crates/guild-runner/tests/live_proofs.rs::emit_evidence_live_proof_supports_one_exact_single_sink_slice`
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_stays_not_proven_for_redirect_shape`
   - `crates/guild-runner/tests/live_proofs.rs::emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable`
 - Scenario and example anchors:
-  - `crates/guild-runner/examples/live_proof_scenarios.rs` scenarios `read-resource-bounded`, `http-request-bounded`, `http-request-default-port-bounded`, `http-request-localhost-bounded`, `http-request-localhost-default-port-bounded`, `http-request-localhost-head-bounded`, `http-request-localhost-head-default-port-bounded`, `http-request-head-bounded`, `http-request-head-default-port-bounded`, `invoke-skill-single-child-bounded`, `invoke-skill-multi-child-bounded`, `http-request-redirect-unsupported`, `emit-evidence-single-sink-replay-unavailable`
+  - `crates/guild-runner/examples/live_proof_scenarios.rs` scenarios `read-resource-bounded`, `http-request-bounded`, `http-request-default-port-bounded`, `http-request-localhost-bounded`, `http-request-localhost-default-port-bounded`, `http-request-localhost-head-bounded`, `http-request-localhost-head-default-port-bounded`, `http-request-head-bounded`, `http-request-head-default-port-bounded`, `invoke-skill-single-child-bounded`, `invoke-skill-multi-child-bounded`, `emit-evidence-exact-single-sink`, `http-request-redirect-unsupported`, `emit-evidence-single-sink-replay-unavailable`
 - Codepaths:
   - `crates/guild-runner/src/live_proof.rs`
   - `crates/guild-draft-truth/src/benchmark.rs`
@@ -66,6 +68,7 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `benchmark_matrix.json.slices[http-request-loopback-ip-head-default-port]`
   - `benchmark_matrix.json.slices[invoke-skill-single-child-zero-authority]`
   - `benchmark_matrix.json.slices[invoke-skill-two-child-same-alias-zero-authority]`
+  - `benchmark_matrix.json.slices[emit-evidence-single-emission-exact-local-object-store]`
   - `benchmark_matrix.json.slices[log-write-observed-info-level]`
 - Support-matrix evidence:
   - `family_support_matrix.json.families.read-resource.proven_slices[immutable-guild-execution-object-record-roots]`
@@ -79,6 +82,7 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `family_support_matrix.json.families.http-request.proven_slices[loopback-ip-head-default-port]`
   - `family_support_matrix.json.families.invoke-skill.proven_slices[single-child-zero-authority-inspect-child]`
   - `family_support_matrix.json.families.invoke-skill.proven_slices[two-child-same-alias-zero-authority-inspect-fan-out]`
+  - `family_support_matrix.json.families.emit-evidence.proven_slices[exact-single-emission-fixed-local-object-store]`
   - `family_support_matrix.json.families.log-write.proven_slices[observed-discrete-levels]`
 - Validating tests:
   - `crates/guild-runner/tests/live_proofs.rs`
@@ -89,6 +93,7 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
 ## c3-deterministic-replay-or-comparator-basis
 
 - Benchmark evidence:
+  - `benchmark_matrix.json.slices[emit-evidence-single-emission-exact-local-object-store]`
   - `benchmark_matrix.json.checked_fail_closed_walls[http-request-no-replay-fixture]`
   - `benchmark_matrix.json.checked_fail_closed_walls[read-resource-query-root-shrink-unsupported]`
   - `benchmark_matrix.json.checked_fail_closed_walls[invoke-skill-child-authority-unsupported]`
@@ -96,12 +101,14 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `family_support_matrix.json.families.http-request.layers.live_minimization_proof`
   - `family_support_matrix.json.families.invoke-skill.proven_slices[single-child-zero-authority-inspect-child]`
   - `family_support_matrix.json.families.invoke-skill.proven_slices[two-child-same-alias-zero-authority-inspect-fan-out]`
-  - `family_support_matrix.json.families.emit-evidence.not_proven_shapes[single-emission-local-object-store-replay-mismatch]`
+  - `family_support_matrix.json.families.emit-evidence.proven_slices[exact-single-emission-fixed-local-object-store]`
+  - `family_support_matrix.json.families.emit-evidence.not_proven_shapes[broader-or-legacy-single-emission-local-object-store]`
 - Validating tests:
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_stays_not_proven_without_replay`
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_stays_not_proven_for_unsupported_comparator`
   - `crates/guild-runner/tests/live_proofs.rs::invoke_skill_live_proof_stays_not_proven_for_child_authority`
   - `crates/guild-runner/tests/live_proofs.rs::invoke_skill_live_proof_stays_not_proven_for_unsupported_comparator`
+  - `crates/guild-runner/tests/live_proofs.rs::emit_evidence_live_proof_supports_one_exact_single_sink_slice`
   - `crates/guild-runner/tests/live_proofs.rs::emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable`
 - Scenario and example anchors:
   - `crates/guild-runner/examples/live_proof_scenarios.rs` scenarios `http-request-no-replay`, `read-resource-query-unsupported`, `invoke-skill-child-authority-unsupported`, `emit-evidence-single-sink-replay-unavailable`
@@ -112,6 +119,7 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
 
 - Benchmark evidence:
   - `benchmark_matrix.json.questions.issuance_modes`
+  - `benchmark_matrix.json.slices[emit-evidence-single-emission-exact-local-object-store]`
   - `benchmark_matrix.json.slices[http-request-redirect-driven-execution]`
   - `benchmark_matrix.json.slices[emit-evidence-single-emission-replay-unavailable]`
 - Support-matrix evidence:
@@ -122,6 +130,7 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `family_support_matrix.json.families.log-write.layers.plan_proof_token_linkage`
 - Validating tests:
   - `crates/guild-runner/tests/live_proofs.rs::http_request_live_proof_stays_not_proven_for_redirect_shape`
+  - `crates/guild-runner/tests/live_proofs.rs::emit_evidence_live_proof_supports_one_exact_single_sink_slice`
   - `crates/guild-runner/tests/live_proofs.rs::emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable`
 - Codepaths:
   - `crates/guild-draft-truth/src/benchmark.rs`
@@ -139,6 +148,7 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
   - `family_support_matrix.json.families.emit-evidence.layers.proof_witness_linkage`
   - `family_support_matrix.json.families.log-write.layers.proof_witness_linkage`
 - Validating tests:
+  - `crates/guild-runner/tests/live_proofs.rs::emit_evidence_live_proof_supports_one_exact_single_sink_slice`
   - `crates/guild-runner/tests/inspect_slice.rs::emitted_evidence_is_deduped_by_digest_and_resources_are_readable`
   - `crates/guild-runner/tests/inspect_slice.rs::emit_evidence_denials_are_host_owned_rejections`
   - `crates/guild-runner/tests/http_requests.rs::localhost_happy_path_records_resolution_binding`
@@ -208,9 +218,7 @@ The measured source set is [`benchmark_matrix.json`](../schemas/draft-v1/benchma
 ## c10-not-claimable-yet-surfaces
 
 - Boundary evidence:
-  - `family_support_matrix.json.families.emit-evidence.layers.live_minimization_proof = not_proven`
-  - `family_support_matrix.json.families.emit-evidence.layers.plan_proof_token_linkage = not_proven`
-  - `family_support_matrix.json.families.emit-evidence.layers.proof_witness_linkage = not_proven`
+  - `family_support_matrix.json.families.emit-evidence.not_proven_shapes[*]`
   - `family_support_matrix.json.families.invoke-skill.not_proven_shapes[*]`
   - `family_support_matrix.json.families.http-request.not_proven_shapes[*]`
 - Validating tests:

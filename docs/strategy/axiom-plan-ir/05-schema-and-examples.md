@@ -63,7 +63,8 @@ The only authority field is `requestedGrants`. The schema does not define
 Guild refs in the examples use the plural canonical roots only:
 
 - `guild://executions/...`
-- `guild://objects/...`
+- `guild://objects/sha256/...`
+- `guild://objects/records/...`
 - `guild://queries/executions/...`
 
 ## Schema Limits

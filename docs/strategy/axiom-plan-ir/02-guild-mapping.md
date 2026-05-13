@@ -15,7 +15,7 @@ host-mediated execution boundary.
 | Axiom policy precheck | Guild admission/policy input |
 | Axiom node execution | Guild execution record |
 | Axiom plan trace | Guild execution records, receipts, and evidence refs |
-| Axiom output refs | `guild://executions/...` and `guild://objects/...` refs |
+| Axiom output refs | `guild://executions/...`, `guild://objects/sha256/...`, and `guild://objects/records/...` refs |
 
 ## Canonical Guild Roots
 

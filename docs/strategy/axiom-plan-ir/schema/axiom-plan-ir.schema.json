@@ -187,7 +187,6 @@
       "type": "string",
       "enum": [
         "guild://executions/",
-        "guild://objects/",
         "guild://objects/sha256/",
         "guild://objects/records/",
         "guild://queries/executions/"

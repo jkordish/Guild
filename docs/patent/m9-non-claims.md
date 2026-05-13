@@ -19,7 +19,7 @@ This memo exists to prevent overclaiming. It is intentionally blunt.
 ## Specifically Excluded Family Surfaces
 
 - `emit-evidence`
-  The repo still marks live proof, plan -> proof -> token linkage, and proof -> witness linkage as `not_proven`.
+  Only one exact single-emission fixed local object-store slice is proof-linked. Broader or legacy single-emission flows, dynamic sinks, multiple emissions, nondeterministic payloads, and host-side emission failures remain outside the measured envelope.
 - `invoke-skill`
   Multi-child fan-out, recursion, child authority use, broader resolution, and non-inspect child targets remain outside the measured envelope.
 - `http-request`

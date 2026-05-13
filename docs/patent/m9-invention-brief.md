@@ -31,9 +31,9 @@ Guild does not claim runtime-general authority minimization. The measured novelt
 | --- | --- | --- |
 | `read-resource` | One bounded immutable-root slice with checked plan -> proof -> token -> witness linkage. | Query-resource shrink or broader resource shapes. |
 | `http-request` | Eight bounded deterministic replay-backed `http` slices: loopback IP `GET` and `HEAD` with explicit and default ports, plus `localhost` `GET` and `HEAD` with explicit and default ports when deterministic loopback-only resolution binding is present. | Redirects, `https`, other hostname forms, query or fragment components, and multiple requests. |
-| `invoke-skill` | One bounded exact single-child zero-authority inspect slice with checked plan -> proof -> token -> witness linkage. | Multi-child fan-out, recursion, child authority use, broader resolution, and non-inspect child targets. |
+| `invoke-skill` | Two bounded exact zero-authority inspect slices with checked plan -> proof -> token -> witness linkage: one exact single-child slice and one exact two-child same-alias slice. | Broader multi-child fan-out, recursion, child authority use, broader resolution, and non-inspect child targets. |
 | `log-write` | One exact observed `info`-level proof-only slice on the real path. | A checked real-path M6 or M7 linkage claim for `log-write`. |
-| `emit-evidence` | Canonical family vocabulary exists in admission, tokens, and witnesses. | Any live proof-backed `emit-evidence` linkage. The measured repo still marks this family `not_proven` for live proof. |
+| `emit-evidence` | One exact single-emission fixed local object-store slice with checked plan -> proof -> token -> witness linkage. | Broad `emit-evidence` live proof beyond the exact fixed-sink slice; those broader shapes remain `not_proven`. |
 
 ## Non-Goals And Non-Claims
 

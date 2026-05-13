@@ -514,7 +514,7 @@ pub enum SessionState {
     RehydrationRequired,
     /// Stop state for automatic wake logic until an explicit future reset path exists.
     Failed,
-    /// Terminal durable state; the same SessionId must not reactivate.
+    /// Terminal durable state; the same `SessionId` must not reactivate.
     Terminated,
 }
 
@@ -3034,8 +3034,8 @@ mod tests {
             "input": { "hello": "world" },
             "budget": {
                 "max_millis": 10000,
-                "max_memory_bytes": 67108864,
-                "max_output_bytes": 524288,
+                "max_memory_bytes": 67_108_864,
+                "max_output_bytes": 524_288,
                 "max_network_requests": 8,
                 "max_child_executions": 4
             },

@@ -127,7 +127,8 @@
       "http-request-loopback-ip-head-explicit-port",
       "http-request-loopback-ip-head-default-port",
       "invoke-skill-single-child-zero-authority",
-      "invoke-skill-two-child-same-alias-zero-authority"
+      "invoke-skill-two-child-same-alias-zero-authority",
+      "emit-evidence-single-emission-exact-local-object-store"
     ],
     "supported_proof_only_slice_ids": [
       "log-write-observed-info-level"
@@ -157,7 +158,8 @@
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
         "invoke-skill-single-child-zero-authority",
-        "invoke-skill-two-child-same-alias-zero-authority"
+        "invoke-skill-two-child-same-alias-zero-authority",
+        "emit-evidence-single-emission-exact-local-object-store"
       ],
       "proof_only_slice_ids": [],
       "unsupported_or_not_proven_slice_ids": [
@@ -192,7 +194,7 @@
           "family": "emit-evidence",
           "kind": "layer",
           "name": "live_minimization_proof",
-          "expected_status": "not_proven"
+          "expected_status": "bounded"
         },
         {
           "family": "log-write",
@@ -216,6 +218,7 @@
             "http_request_live_proof_is_bounded_with_replay_for_head_default_port_shape",
             "invoke_skill_live_proof_is_bounded_for_single_zero_authority_child",
             "invoke_skill_live_proof_is_bounded_for_exact_two_child_same_alias_fan_out",
+            "emit_evidence_live_proof_supports_one_exact_single_sink_slice",
             "http_request_live_proof_stays_not_proven_for_redirect_shape",
             "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable"
           ]
@@ -236,6 +239,7 @@
             "http-request-head-default-port-bounded",
             "invoke-skill-single-child-bounded",
             "invoke-skill-multi-child-bounded",
+            "emit-evidence-exact-single-sink",
             "http-request-redirect-unsupported",
             "emit-evidence-single-sink-replay-unavailable"
           ]
@@ -265,7 +269,8 @@
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
         "invoke-skill-single-child-zero-authority",
-        "invoke-skill-two-child-same-alias-zero-authority"
+        "invoke-skill-two-child-same-alias-zero-authority",
+        "emit-evidence-single-emission-exact-local-object-store"
       ],
       "proof_only_slice_ids": [
         "log-write-observed-info-level"
@@ -340,6 +345,12 @@
           "expected_status": "bounded_minimal"
         },
         {
+          "family": "emit-evidence",
+          "kind": "proven_slice",
+          "name": "exact-single-emission-fixed-local-object-store",
+          "expected_status": "exact_minimal"
+        },
+        {
           "family": "log-write",
           "kind": "proven_slice",
           "name": "observed-discrete-levels",
@@ -347,6 +358,12 @@
         }
       ],
       "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/live_proofs.rs",
+          "names": [
+            "emit_evidence_live_proof_supports_one_exact_single_sink_slice"
+          ]
+        },
         {
           "path": "crates/guild-runner/tests/composition.rs",
           "names": [
@@ -367,7 +384,9 @@
     {
       "id": "c3-deterministic-replay-or-comparator-basis",
       "status": "measured_supported_now",
-      "measured_supported_slice_ids": [],
+      "measured_supported_slice_ids": [
+        "emit-evidence-single-emission-exact-local-object-store"
+      ],
       "proof_only_slice_ids": [],
       "unsupported_or_not_proven_slice_ids": [
         "emit-evidence-single-emission-replay-unavailable"
@@ -398,8 +417,14 @@
         },
         {
           "family": "emit-evidence",
+          "kind": "proven_slice",
+          "name": "exact-single-emission-fixed-local-object-store",
+          "expected_status": "exact_minimal"
+        },
+        {
+          "family": "emit-evidence",
           "kind": "not_proven_shape",
-          "name": "single-emission-local-object-store-replay-mismatch"
+          "name": "broader-or-legacy-single-emission-local-object-store"
         }
       ],
       "test_refs": [
@@ -410,6 +435,7 @@
             "http_request_live_proof_stays_not_proven_for_unsupported_comparator",
             "invoke_skill_live_proof_stays_not_proven_for_child_authority",
             "invoke_skill_live_proof_stays_not_proven_for_unsupported_comparator",
+            "emit_evidence_live_proof_supports_one_exact_single_sink_slice",
             "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable"
           ]
         }
@@ -447,7 +473,8 @@
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
         "invoke-skill-single-child-zero-authority",
-        "invoke-skill-two-child-same-alias-zero-authority"
+        "invoke-skill-two-child-same-alias-zero-authority",
+        "emit-evidence-single-emission-exact-local-object-store"
       ],
       "proof_only_slice_ids": [],
       "unsupported_or_not_proven_slice_ids": [
@@ -478,7 +505,7 @@
           "family": "emit-evidence",
           "kind": "layer",
           "name": "plan_proof_token_linkage",
-          "expected_status": "not_proven"
+          "expected_status": "bounded"
         },
         {
           "family": "log-write",
@@ -492,6 +519,7 @@
           "path": "crates/guild-runner/tests/live_proofs.rs",
           "names": [
             "http_request_live_proof_stays_not_proven_for_redirect_shape",
+            "emit_evidence_live_proof_supports_one_exact_single_sink_slice",
             "emit_evidence_live_proof_stays_not_proven_for_single_sink_replay_unavailable"
           ]
         }
@@ -519,7 +547,8 @@
         "http-request-loopback-ip-head-explicit-port",
         "http-request-loopback-ip-head-default-port",
         "invoke-skill-single-child-zero-authority",
-        "invoke-skill-two-child-same-alias-zero-authority"
+        "invoke-skill-two-child-same-alias-zero-authority",
+        "emit-evidence-single-emission-exact-local-object-store"
       ],
       "proof_only_slice_ids": [],
       "unsupported_or_not_proven_slice_ids": [
@@ -550,7 +579,7 @@
           "family": "emit-evidence",
           "kind": "layer",
           "name": "proof_witness_linkage",
-          "expected_status": "not_proven"
+          "expected_status": "bounded"
         },
         {
           "family": "log-write",
@@ -560,6 +589,12 @@
         }
       ],
       "test_refs": [
+        {
+          "path": "crates/guild-runner/tests/live_proofs.rs",
+          "names": [
+            "emit_evidence_live_proof_supports_one_exact_single_sink_slice"
+          ]
+        },
         {
           "path": "crates/guild-runner/tests/inspect_slice.rs",
           "names": [
@@ -623,7 +658,7 @@
         {
           "family": "emit-evidence",
           "kind": "not_proven_shape",
-          "name": "single-emission-local-object-store-replay-mismatch"
+          "name": "broader-or-legacy-single-emission-local-object-store"
         }
       ],
       "test_refs": [
@@ -805,21 +840,8 @@
       "support_matrix_refs": [
         {
           "family": "emit-evidence",
-          "kind": "layer",
-          "name": "live_minimization_proof",
-          "expected_status": "not_proven"
-        },
-        {
-          "family": "emit-evidence",
-          "kind": "layer",
-          "name": "plan_proof_token_linkage",
-          "expected_status": "not_proven"
-        },
-        {
-          "family": "emit-evidence",
-          "kind": "layer",
-          "name": "proof_witness_linkage",
-          "expected_status": "not_proven"
+          "kind": "not_proven_shape",
+          "name": "broader-or-legacy-single-emission-local-object-store"
         },
         {
           "family": "invoke-skill",

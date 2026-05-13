@@ -7,9 +7,9 @@ Status: exploratory design note, not implemented.
 Guild executes; Axiom plans.
 
 Axiom Plan IR is an AI-facing graph language for planning compositions of
-Guild skills. It is a proposed pre-admission artifact that lets an AI, Codex,
-or another planning layer describe a reviewable skill composition before any
-Guild runtime boundary is crossed.
+Guild skills. It is a proposed pre-admission artifact that lets an AI or
+another planning layer describe a reviewable skill composition before any Guild
+runtime boundary is crossed.
 
 Axiom Plan IR is treated as a pre-admission planning artifact. It may describe requested skill refs, dependency edges, arguments, requested grants, expected outputs, and expected evidence, but Guild remains the only source of runtime admission, grant narrowing, execution identity, receipts, evidence persistence, and inspect/explain truth. Any Axiom plan trace is explanatory and subordinate to Guild durable records.
 
@@ -35,7 +35,7 @@ Guild execution safe, admitted, verified, or true on its own.
 ## Flow
 
 ```text
-AI/Codex -> Axiom Plan IR -> validator -> lowerer -> Guild
+AI/planner -> Axiom Plan IR -> validator -> lowerer -> Guild
 ```
 
 The validator would check graph shape, node IDs, dependency references, skill
