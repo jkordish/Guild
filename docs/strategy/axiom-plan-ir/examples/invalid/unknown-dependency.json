@@ -1,0 +1,26 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "unknown dependency",
+  "nodes": [
+    {
+      "id": "renderReport",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "title": "Report with missing dependency"
+      },
+      "dependsOn": [
+        "missingNode"
+      ],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "report",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "skipDependents"
+    }
+  ]
+}

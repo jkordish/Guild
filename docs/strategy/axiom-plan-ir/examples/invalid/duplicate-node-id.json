@@ -1,0 +1,41 @@
+{
+  "kind": "axiom.plan",
+  "version": "1",
+  "name": "duplicate node id",
+  "nodes": [
+    {
+      "id": "renderReport",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "title": "First report"
+      },
+      "dependsOn": [],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "firstReport",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    },
+    {
+      "id": "renderReport",
+      "skill": "skill://example/render-report@^0.1",
+      "args": {
+        "title": "Second report"
+      },
+      "dependsOn": [],
+      "requestedGrants": [],
+      "expectedOutputs": [
+        {
+          "name": "secondReport",
+          "kind": "text"
+        }
+      ],
+      "expectedEvidence": [],
+      "failureBehavior": "stopPlan"
+    }
+  ]
+}
