@@ -24,6 +24,12 @@ The validator-only prototype for step 3 is
 does not implement execution, Guild admission, authority grants, receipts,
 evidence, or lowering into Guild runs.
 
+The run-plan preview slice for step 4 is
+[`07-run-plan-preview.md`](07-run-plan-preview.md). It remains xtask-only and
+non-executing: it validates first, then renders pre-admission request previews
+and a plan trace without calling Guild runtime, registry, admission, receipt,
+evidence, WIT, or manifest paths.
+
 ## Kill Criteria
 
 - If Axiom duplicates Guild composite skill semantics, stop.
@@ -31,8 +37,9 @@ evidence, or lowering into Guild runs.
 - If Axiom requires widening Guild runtime contracts prematurely, stop.
 - If Axiom cannot remain docs/validator/lowerer above Guild, stop.
 
-Steps 2 and 3 have landed only as docs-local artifacts. Steps 4 through 7 remain
-future work.
+Steps 2 and 3 have landed only as docs-local artifacts. Step 4 has a
+preview-only xtask slice, not a real lowerer into Guild execution. Steps 5
+through 7 remain future work.
 
 ## Code-Later Constraints
 

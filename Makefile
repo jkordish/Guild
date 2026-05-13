@@ -1,4 +1,4 @@
-.PHONY: check test fmt fmt-check clippy draft-truth draft-truth-write draft-support-matrix draft-compatibility draft-benchmark patent-packet project-positioning axiom-plan verify
+.PHONY: check test fmt fmt-check clippy draft-truth draft-truth-write draft-support-matrix draft-compatibility draft-benchmark patent-packet project-positioning axiom-plan axiom-plan-preview verify
 
 check:
 	cargo check --workspace
@@ -38,5 +38,8 @@ project-positioning:
 
 axiom-plan:
 	cargo run -q -p xtask -- axiom-plan validate-examples
+
+axiom-plan-preview:
+	cargo run -q -p xtask -- axiom-plan preview docs/strategy/axiom-plan-ir/examples/valid/basic-two-node-plan.json
 
 verify: fmt-check test clippy draft-truth project-positioning

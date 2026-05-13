@@ -9,7 +9,7 @@ use guild_draft_truth::{
     run_truth_action,
 };
 
-const USAGE: &str = "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check\n       cargo run -p xtask -- project-positioning check\n       cargo run -p xtask -- axiom-plan validate <path>\n       cargo run -p xtask -- axiom-plan validate-examples";
+const USAGE: &str = "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check\n       cargo run -p xtask -- project-positioning check\n       cargo run -p xtask -- axiom-plan validate <path>\n       cargo run -p xtask -- axiom-plan validate-examples\n       cargo run -p xtask -- axiom-plan preview <path> [--json]";
 
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
