@@ -133,7 +133,7 @@ fn json_value(bytes: &[u8]) -> serde_json::Value {
 }
 
 fn sha256_digest(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 fn equivalent_curdir_path(path: &str) -> String {
@@ -347,7 +347,10 @@ fn query_result_from_resource(
 }
 
 fn sample_resolved_skill(name: &str, digest_seed: &str) -> ResolvedSkillRef {
-    let digest = format!("sha256:{:x}", Sha256::digest(digest_seed.as_bytes()));
+    let digest = format!(
+        "sha256:{}",
+        hex::encode(Sha256::digest(digest_seed.as_bytes()))
+    );
     ResolvedSkillRef {
         key: SkillKey {
             namespace: "example".into(),
@@ -359,7 +362,7 @@ fn sample_resolved_skill(name: &str, digest_seed: &str) -> ResolvedSkillRef {
 }
 
 fn sample_evidence_record(evidence_record_id: &str, execution_id: &str) -> EvidenceRecord {
-    let digest_hex = format!("{:x}", Sha256::digest(evidence_record_id.as_bytes()));
+    let digest_hex = hex::encode(Sha256::digest(evidence_record_id.as_bytes()));
     EvidenceRecord {
         uri: format!("guild://objects/records/{evidence_record_id}"),
         blob_uri: format!("guild://objects/sha256/{digest_hex}"),

@@ -12,6 +12,7 @@ publish = false
 anyhow.workspace = true
 guild-runner = { path = "../guild-runner" }
 guild-types = { path = "../guild-types" }
+hex.workspace = true
 hmac.workspace = true
 jsonschema.workspace = true
 serde.workspace = true

@@ -16,6 +16,7 @@ guild-manifest = { path = "../guild-manifest" }
 guild-registry = { path = "../guild-registry" }
 guild-sdk-rust = { path = "../guild-sdk-rust" }
 guild-types = { path = "../guild-types" }
+hex.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 schemars.workspace = true

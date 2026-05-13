@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use jsonschema::paths::Location;
-use jsonschema::{Resource, Validator};
+use jsonschema::{Registry, Resource, Validator};
 use serde_json::Value;
 use url::Url;
 
@@ -33,7 +33,7 @@ fn schema_names() -> [&'static str; 12] {
 fn validator_for_schema(schema_name: &str) -> Result<Validator> {
     let root_path = schema_path(schema_name);
     let root_schema = read_json(&root_path)?;
-    let mut options = jsonschema::draft202012::options();
+    let mut registry = Registry::new();
     for name in schema_names() {
         let path = schema_path(name);
         if !path.exists() {
@@ -43,11 +43,17 @@ fn validator_for_schema(schema_name: &str) -> Result<Validator> {
         let file_url = Url::from_file_path(&path)
             .expect("schema file path converts to file URL")
             .to_string();
-        options = options
-            .with_resource(name, Resource::from_contents(schema.clone()))
-            .with_resource(file_url, Resource::from_contents(schema));
+        registry = registry
+            .add(name, Resource::from_contents(schema.clone()))
+            .with_context(|| format!("failed to register schema resource {name}"))?
+            .add(file_url.as_str(), Resource::from_contents(schema))
+            .with_context(|| format!("failed to register schema resource {file_url}"))?;
     }
-    options
+    let registry = registry
+        .prepare()
+        .with_context(|| "failed to prepare schema registry")?;
+    jsonschema::draft202012::options()
+        .with_registry(&registry)
         .build(&root_schema)
         .with_context(|| format!("failed to compile {schema_name}"))
 }

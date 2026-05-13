@@ -28,7 +28,6 @@ use guild_types::{
     ResolvedSkillRef, ResourceReadResult, SkillCategory,
     local_object_store_evidence_sink_descriptor, mint_host_evidence_record_id,
 };
-use rand_core::OsRng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -388,7 +387,15 @@ impl LocalPublisherIdentity {
     ///
     /// Returns an error if local signing material cannot be generated.
     pub fn generate(publisher: PublisherRef) -> Result<Self, RegistryError> {
-        let signing_key = SigningKey::generate(&mut OsRng);
+        let mut secret_key = [0_u8; 32];
+        getrandom::fill(&mut secret_key).map_err(|error| {
+            RegistryError::new(
+                "publisher-identity-randomness-failed",
+                "failed to read system randomness for local publisher signing key",
+            )
+            .with_detail(error.to_string())
+        })?;
+        let signing_key = SigningKey::from_bytes(&secret_key);
         Ok(Self {
             publisher,
             scheme: SignatureScheme::Ed25519,
@@ -2803,7 +2810,7 @@ fn sha256_file(path: &Path) -> Result<String, RegistryError> {
 }
 
 fn sha256_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 fn default_trusted_publisher_trust_tier() -> LocalTrustTier {
