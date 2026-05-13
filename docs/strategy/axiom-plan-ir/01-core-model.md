@@ -1,6 +1,7 @@
 # Axiom Plan IR Core Model
 
-Status: proposed, non-normative, and not implemented.
+Status: proposed and non-normative; docs-local schema and validator spike exist,
+but there is no Guild runtime implementation.
 
 The concepts below describe an exploratory planning shape only. They do not
 change Guild manifests, Guild runtime contracts, guest ABI, admission policy,
@@ -90,7 +91,7 @@ schema spike narrows the fixture shape separately in
 
 The example asks to read one stored execution resource with a bounded
 `read-resource` request over `guild://executions/`. That request is only an
-input to Guild policy. A validator may reject malformed graph structure before
-lowering, but only Guild can resolve the skill, narrow or deny grants, execute
-the skill, mint execution identity, persist receipts, persist evidence, and
-explain what happened later.
+input to Guild policy. The docs-local validator rejects malformed fixture graph
+structure before any future lowering path, but only Guild can resolve the skill,
+narrow or deny grants, execute the skill, mint execution identity, persist
+receipts, persist evidence, and explain what happened later.

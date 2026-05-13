@@ -31,12 +31,16 @@ evidence, or lowering into Guild runs.
 - If Axiom requires widening Guild runtime contracts prematurely, stop.
 - If Axiom cannot remain docs/validator/lowerer above Guild, stop.
 
+Steps 2 and 3 have landed only as docs-local artifacts. Steps 4 through 7 remain
+future work.
+
 ## Code-Later Constraints
 
-A future validator should reject malformed graph structure and unknown planning
-shapes before lowering, but it should not make policy promises. A future lowerer
-should produce a non-executing Guild run plan for review, not a side-channel
-runtime. Any executing path must still be ordinary Guild execution.
+The current docs-local validator rejects malformed graph structure and unknown
+planning shapes before any future lowering path, but it does not make policy
+promises. A future lowerer should produce a non-executing Guild run plan for
+review, not a side-channel runtime. Any executing path must still be ordinary
+Guild execution.
 
-The first prototype, if any, should use example skills only and should treat
+Any future lowerer prototype should use example skills only and should treat
 every observed output, receipt, and evidence ref as Guild-owned durable truth.

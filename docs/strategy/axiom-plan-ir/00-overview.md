@@ -1,6 +1,7 @@
 # Axiom Plan IR Overview
 
-Status: exploratory design note, not implemented.
+Status: exploratory planning note; docs-local schema and validator spike exist,
+but there is no Guild runtime implementation.
 
 ## Boundary
 
@@ -38,12 +39,13 @@ Guild execution safe, admitted, verified, or true on its own.
 AI/planner -> Axiom Plan IR -> validator -> lowerer -> Guild
 ```
 
-The validator would check graph shape, node IDs, dependency references, skill
-reference syntax, and requested grant declarations. The lowerer would translate
-the accepted plan into a non-executing Guild run plan or a sequence of ordinary
-Guild requests for review. Guild would still perform resolution, admission,
-grant narrowing, execution, receipt persistence, evidence persistence, and
-later inspection.
+The docs-local validator checks graph shape, node IDs, dependency references,
+skill reference syntax, requested grant declarations, and forbidden runtime-truth
+claims at Axiom-owned planning boundaries. A future lowerer would translate the
+accepted plan into a non-executing Guild run plan or a sequence of ordinary Guild
+requests for review. Guild would still perform resolution, admission, grant
+narrowing, execution, receipt persistence, evidence persistence, and later
+inspection.
 
 ## What Axiom Does Not Own
 
