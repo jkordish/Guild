@@ -1,0 +1,17 @@
+{
+  "diagnostics": [
+    {
+      "code": "axiom.malformed_skill_ref",
+      "message": "Malformed exploratory skill ref: example/explain-execution@^0.1",
+      "path": "/nodes/0/skill",
+      "severity": "error"
+    },
+    {
+      "code": "axiom.schema.invalid_shape",
+      "message": "Schema validation failed (pattern): \"example/explain-execution@^0.1\" does not match \"^skill://[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[^[ \t\n\r\u000b\f\\u{a0}\\u{feff}\\u{2003}\\u{2029}]]+$\"",
+      "path": "/nodes/0/skill",
+      "severity": "error"
+    }
+  ],
+  "sourcePath": "docs/strategy/axiom-plan-ir/examples/invalid/malformed-skill-ref.json"
+}

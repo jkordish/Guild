@@ -1,0 +1,139 @@
+{
+  "kind": "axiom.plan_preview",
+  "limitations": [
+    "preview-only: pre-admission; not admitted, not granted, not executed.",
+    "no skill availability check",
+    "no Guild resolution",
+    "no Guild admission",
+    "no authority grant",
+    "no execution",
+    "no receipt creation",
+    "no evidence persistence",
+    "no full policy reduction",
+    "Requested grants are requested authority only; Guild admission and policy remain canonical later.",
+    "Expected evidence is expectation only.",
+    "Args are args as declared; references are not evaluated by preview.",
+    "Skill refs are not resolved; object-form skill metadata is not currently schema-admitted, and any resolved field shown by defensive rendering is plan-supplied metadata only, not Guild resolution, not verified by preview."
+  ],
+  "nodes": [
+    {
+      "argsAsDeclared": {
+        "sections": [
+          {
+            "body": "Summarize the planned input bundle.",
+            "heading": "Inputs"
+          }
+        ],
+        "title": "Daily execution summary"
+      },
+      "argsStatus": "args as declared; references are not evaluated by preview",
+      "dependsOn": [],
+      "documentIndex": 0,
+      "expectedEvidence": {
+        "items": [],
+        "status": "expectation only"
+      },
+      "expectedOutputs": [
+        {
+          "kind": "text",
+          "name": "draftMarkdown"
+        }
+      ],
+      "failureBehavior": "stopPlan",
+      "id": "draftReport",
+      "ordinal": 1,
+      "previewTrace": [
+        "pre-admission previewTrace for `draftReport` would request `skill://example/render-report@^0.1`",
+        "args as declared; references are not evaluated by preview",
+        "requested grants are requested authority only; not granted",
+        "expected evidence: none declared; expectation only"
+      ],
+      "requestPreview": {
+        "args": "args as declared; references are not evaluated by preview",
+        "authority": "would propose requested authority only; not admitted, not granted, not executed",
+        "evidence": "expected evidence is expectation only",
+        "status": "pre-admission",
+        "summary": "would request `skill://example/render-report@^0.1` with args as declared; references are not evaluated by preview"
+      },
+      "requestedGrants": {
+        "items": [],
+        "status": "requested authority only"
+      },
+      "skill": {
+        "requested": "skill://example/render-report@^0.1",
+        "schemaStatus": "string-form skill ref is current schema-admitted form"
+      }
+    },
+    {
+      "argsAsDeclared": {
+        "format": "markdown",
+        "sourceNode": "draftReport"
+      },
+      "argsStatus": "args as declared; references are not evaluated by preview",
+      "dependsOn": [
+        "draftReport"
+      ],
+      "documentIndex": 1,
+      "expectedEvidence": {
+        "items": [],
+        "status": "expectation only"
+      },
+      "expectedOutputs": [
+        {
+          "kind": "text",
+          "name": "finalMarkdown"
+        }
+      ],
+      "failureBehavior": "stopPlan",
+      "id": "renderFinal",
+      "ordinal": 2,
+      "previewTrace": [
+        "pre-admission previewTrace for `renderFinal` would request `skill://example/render-report@^0.1`",
+        "args as declared; references are not evaluated by preview",
+        "requested grants are requested authority only; not granted",
+        "expected evidence: none declared; expectation only"
+      ],
+      "requestPreview": {
+        "args": "args as declared; references are not evaluated by preview",
+        "authority": "would propose requested authority only; not admitted, not granted, not executed",
+        "evidence": "expected evidence is expectation only",
+        "status": "pre-admission",
+        "summary": "would request `skill://example/render-report@^0.1` with args as declared; references are not evaluated by preview"
+      },
+      "requestedGrants": {
+        "items": [],
+        "status": "requested authority only"
+      },
+      "skill": {
+        "requested": "skill://example/render-report@^0.1",
+        "schemaStatus": "string-form skill ref is current schema-admitted form"
+      }
+    }
+  ],
+  "plan": {
+    "kind": "axiom.plan",
+    "name": "basic two node plan",
+    "nodeCount": 2,
+    "sourcePath": "docs/strategy/axiom-plan-ir/examples/valid/basic-two-node-plan.json",
+    "version": "1"
+  },
+  "planTrace": [
+    {
+      "node": "draftReport",
+      "previewTrace": [
+        "pre-admission requestPreview for `draftReport` would request `skill://example/render-report@^0.1`",
+        "requested grants remain requested authority only; not admitted, not granted, not executed",
+        "expected evidence remains expectation only"
+      ]
+    },
+    {
+      "node": "renderFinal",
+      "previewTrace": [
+        "pre-admission requestPreview for `renderFinal` would request `skill://example/render-report@^0.1`",
+        "requested grants remain requested authority only; not admitted, not granted, not executed",
+        "expected evidence remains expectation only"
+      ]
+    }
+  ],
+  "status": "preview_only"
+}

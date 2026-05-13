@@ -30,6 +30,11 @@ non-executing: it validates first, then renders pre-admission request previews
 and a plan trace without calling Guild runtime, registry, admission, receipt,
 evidence, WIT, or manifest paths.
 
+The next hardening slice after run-plan preview is
+[`08-preview-goldens.md`](08-preview-goldens.md), which pins the preview and
+diagnostic output as docs-local goldens without promoting Axiom execution or
+touching Guild runtime contracts.
+
 ## Kill Criteria
 
 - If Axiom duplicates Guild composite skill semantics, stop.
