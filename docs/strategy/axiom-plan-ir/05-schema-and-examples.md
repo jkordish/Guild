@@ -93,6 +93,55 @@ belong to a future semantic validator or to Guild itself:
 The invalid fixtures therefore split into two groups: schema failures and
 future semantic-validator failures.
 
+## Validation Expectations
+
+When a JSON Schema validator is available, the three files under
+`examples/valid/` should pass the docs-local schema.
+
+Only these invalid fixtures should fail JSON Schema today:
+
+- `examples/invalid/malformed-skill-ref.json`
+- `examples/invalid/granted-authority-claim.json`
+
+These invalid fixtures are expected to pass JSON Schema today and fail only once
+a future semantic validator exists:
+
+- `examples/invalid/duplicate-node-id.json`
+- `examples/invalid/unknown-dependency.json`
+
+A local check can make that split explicit:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
+
+root = Path("docs/strategy/axiom-plan-ir")
+schema = json.loads((root / "schema/axiom-plan-ir.schema.json").read_text())
+validator = Draft202012Validator(schema)
+
+valid = sorted((root / "examples/valid").glob("*.json"))
+schema_invalid = [
+    root / "examples/invalid/malformed-skill-ref.json",
+    root / "examples/invalid/granted-authority-claim.json",
+]
+semantic_only = [
+    root / "examples/invalid/duplicate-node-id.json",
+    root / "examples/invalid/unknown-dependency.json",
+]
+
+for path in valid:
+    validator.validate(json.loads(path.read_text()))
+for path in schema_invalid:
+    errors = list(validator.iter_errors(json.loads(path.read_text())))
+    assert errors, f"{path} unexpectedly passed JSON Schema"
+for path in semantic_only:
+    validator.validate(json.loads(path.read_text()))
+PY
+```
+
 ## Valid Examples
 
 - [`examples/valid/basic-two-node-plan.json`](examples/valid/basic-two-node-plan.json)

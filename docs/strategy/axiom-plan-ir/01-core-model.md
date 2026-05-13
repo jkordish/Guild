@@ -32,59 +32,57 @@ cannot grant itself access.
 
 ## Example
 
-This `axiom.plan` shape is illustrative. It is not a schema and is not accepted
-by the current Guild runtime. The schema spike narrows the first fixture shape
-separately in [`05-schema-and-examples.md`](05-schema-and-examples.md).
+This `axiom.plan` shape follows the docs-local version-1 schema shape, but it is
+still only illustrative and is not accepted by the current Guild runtime. The
+schema spike narrows the fixture shape separately in
+[`05-schema-and-examples.md`](05-schema-and-examples.md).
 
 ```json
 {
   "kind": "axiom.plan",
-  "version": "0.1.0-exploratory",
-  "program_id": "plan://example/explain-one-execution",
+  "version": "1",
+  "name": "explain one execution",
   "nodes": [
     {
-      "id": "explain-subject",
+      "id": "explainSubject",
       "skill": "skill://example/explain-execution@^0.1",
       "args": {
-        "execution_uri": "guild://executions/<execution-id>",
-        "include_first_evidence": true
+        "executionUri": "guild://executions/<execution-id>",
+        "includeFirstEvidence": true
       },
-      "depends_on": [],
-      "requested_grants": [
+      "dependsOn": [],
+      "requestedGrants": [
         {
-          "id": "read-resource",
-          "access": "read",
+          "family": "read-resource",
           "constraints": {
-            "uri_prefixes": [
+            "uriPrefixes": [
               "guild://executions/"
             ],
-            "resource_kinds": [
+            "resourceKinds": [
               "execution"
             ]
-          }
+          },
+          "purpose": "Read one execution record for a future Guild explanation request."
         }
       ],
-      "expected_outputs": [
+      "expectedOutputs": [
         {
           "name": "explanation",
-          "kind": "json"
+          "kind": "json",
+          "description": "Planner expectation for a JSON explanation payload."
         }
       ],
-      "expected_evidence": [
+      "expectedEvidence": [
         {
           "kind": "execution-summary",
-          "audience": "user"
+          "audience": "user",
+          "refRoot": "guild://objects/records/",
+          "description": "Planner expectation only; not a claim that evidence exists."
         }
       ],
-      "failure_behavior": "stop-plan"
+      "failureBehavior": "stopPlan"
     }
-  ],
-  "edges": [],
-  "policy_precheck": {
-    "mode": "advisory",
-    "requires_guild_admission": true
-  },
-  "explanation": "Read one stored Guild execution record and request an inspectable explanation through Guild."
+  ]
 }
 ```
 
