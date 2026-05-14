@@ -1,0 +1,17 @@
+{
+  "diagnostics": [
+    {
+      "code": "axiom.forbidden_runtime_truth_field",
+      "message": "Forbidden runtime-truth field: grantedAuthority",
+      "path": "/nodes/0/grantedAuthority",
+      "severity": "error"
+    },
+    {
+      "code": "axiom.schema.additional_property",
+      "message": "Schema validation failed (additionalProperties): Additional properties are not allowed ('grantedAuthority' was unexpected)",
+      "path": "/nodes/0/grantedAuthority",
+      "severity": "error"
+    }
+  ],
+  "sourcePath": "docs/strategy/axiom-plan-ir/examples/invalid/granted-authority-claim.json"
+}

@@ -11,7 +11,8 @@ use serde_json::Value;
 
 const AXIOM_ROOT: &str = "docs/strategy/axiom-plan-ir";
 const AXIOM_SCHEMA: &str = "docs/strategy/axiom-plan-ir/schema/axiom-plan-ir.schema.json";
-const USAGE: &str = "usage: cargo run -q -p xtask -- axiom-plan validate <path>\n       cargo run -q -p xtask -- axiom-plan validate-examples\n       cargo run -q -p xtask -- axiom-plan preview <path> [--json]";
+const AXIOM_GOLDENS_ROOT: &str = "docs/strategy/axiom-plan-ir/goldens";
+const USAGE: &str = "usage: cargo run -q -p xtask -- axiom-plan validate <path>\n       cargo run -q -p xtask -- axiom-plan validate-examples\n       cargo run -q -p xtask -- axiom-plan preview <path> [--json]\n       cargo run -q -p xtask -- axiom-plan check-goldens [--update]";
 const PREVIEW_KIND: &str = "axiom.plan_preview";
 const PREVIEW_STATUS: &str = "preview_only";
 static AXIOM_SCHEMA_VALIDATOR: OnceLock<std::result::Result<Validator, String>> = OnceLock::new();
@@ -26,6 +27,53 @@ const FORBIDDEN_FIELDS: &[&str] = &[
     "grants",
     "grantedGrants",
     "effectiveGrants",
+];
+
+#[derive(Debug, Clone, Copy)]
+enum GoldenOutput {
+    HumanPreview,
+    JsonPreview,
+    Diagnostics,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GoldenCase {
+    source_path: &'static str,
+    golden_path: &'static str,
+    output: GoldenOutput,
+}
+
+const GOLDEN_CASES: &[GoldenCase] = &[
+    GoldenCase {
+        source_path: "docs/strategy/axiom-plan-ir/examples/valid/basic-two-node-plan.json",
+        golden_path: "docs/strategy/axiom-plan-ir/goldens/preview/basic-two-node.txt",
+        output: GoldenOutput::HumanPreview,
+    },
+    GoldenCase {
+        source_path: "docs/strategy/axiom-plan-ir/examples/valid/basic-two-node-plan.json",
+        golden_path: "docs/strategy/axiom-plan-ir/goldens/preview/basic-two-node.json",
+        output: GoldenOutput::JsonPreview,
+    },
+    GoldenCase {
+        source_path: "docs/strategy/axiom-plan-ir/examples/valid/with-requested-grants.json",
+        golden_path: "docs/strategy/axiom-plan-ir/goldens/preview/with-requested-grants.txt",
+        output: GoldenOutput::HumanPreview,
+    },
+    GoldenCase {
+        source_path: "docs/strategy/axiom-plan-ir/examples/valid/with-requested-grants.json",
+        golden_path: "docs/strategy/axiom-plan-ir/goldens/preview/with-requested-grants.json",
+        output: GoldenOutput::JsonPreview,
+    },
+    GoldenCase {
+        source_path: "docs/strategy/axiom-plan-ir/examples/invalid/malformed-skill-ref.json",
+        golden_path: "docs/strategy/axiom-plan-ir/goldens/diagnostics/malformed-skill-ref.json",
+        output: GoldenOutput::Diagnostics,
+    },
+    GoldenCase {
+        source_path: "docs/strategy/axiom-plan-ir/examples/invalid/granted-authority-claim.json",
+        golden_path: "docs/strategy/axiom-plan-ir/goldens/diagnostics/granted-authority-claim.json",
+        output: GoldenOutput::Diagnostics,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,6 +203,20 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             }
             validate_examples()
         }
+        "check-goldens" => {
+            let mut update = false;
+            for arg in args {
+                if arg == "--update" {
+                    if update {
+                        bail!("duplicate --update argument");
+                    }
+                    update = true;
+                } else {
+                    bail!("unexpected argument `{arg}`");
+                }
+            }
+            check_goldens(update)
+        }
         other => bail!("unknown axiom-plan command `{other}`"),
     }
 }
@@ -250,6 +312,154 @@ fn validate_examples() -> Result<()> {
             failures.join("\n - ")
         );
     }
+}
+
+fn check_goldens(update: bool) -> Result<()> {
+    let mut failures = Vec::new();
+    for case in GOLDEN_CASES {
+        let actual = render_golden_case(*case)?;
+        let golden_path = repo_root().join(case.golden_path);
+        if update {
+            write_golden_file(&golden_path, &actual)?;
+            println!("UPDATED {}", case.golden_path);
+            continue;
+        }
+
+        let expected = fs::read_to_string(&golden_path)
+            .with_context(|| format!("failed to read {}", golden_path.display()))?;
+        if let Some(mismatch) = golden_mismatch(case.golden_path, &expected, &actual) {
+            println!("FAIL {}", case.golden_path);
+            failures.push(mismatch);
+        } else {
+            println!("PASS {}", case.golden_path);
+        }
+    }
+
+    if failures.is_empty() {
+        let action = if update { "updated" } else { "passed" };
+        println!(
+            "Axiom Plan IR golden check completed: {} {action}.",
+            GOLDEN_CASES.len()
+        );
+        Ok(())
+    } else {
+        bail!(
+            "Axiom Plan IR golden check failed:\n - {}",
+            failures.join("\n - ")
+        );
+    }
+}
+
+fn render_golden_case(case: GoldenCase) -> Result<String> {
+    let source_path = repo_root().join(case.source_path);
+    match case.output {
+        GoldenOutput::HumanPreview => {
+            let preview = preview_for_golden(&source_path)?;
+            render_plan_preview(&preview).map(|rendered| normalize_golden_text(&rendered))
+        }
+        GoldenOutput::JsonPreview => {
+            let preview = preview_for_golden(&source_path)?;
+            json_golden(&preview_to_json(&preview))
+        }
+        GoldenOutput::Diagnostics => diagnostics_golden(&source_path),
+    }
+}
+
+fn preview_for_golden(path: &Path) -> Result<PlanPreview> {
+    match read_validated_plan(path)? {
+        PlanInput::Valid(value) => Ok(build_plan_preview(&value, &display_path(path))),
+        PlanInput::Invalid(diagnostics) => bail!(
+            "preview golden source {} is invalid: {} diagnostic(s)",
+            display_path(path),
+            diagnostics.len()
+        ),
+    }
+}
+
+fn diagnostics_golden(path: &Path) -> Result<String> {
+    let mut diagnostics = match read_validated_plan(path)? {
+        PlanInput::Valid(_) => bail!(
+            "diagnostic golden source {} unexpectedly validated",
+            display_path(path)
+        ),
+        PlanInput::Invalid(diagnostics) => diagnostics,
+    };
+    diagnostics.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.code.cmp(right.code))
+            .then_with(|| left.severity.cmp(right.severity))
+            .then_with(|| left.message.cmp(&right.message))
+    });
+
+    json_golden(&serde_json::json!({
+        "sourcePath": display_path(path),
+        "diagnostics": diagnostics
+            .iter()
+            .map(|diagnostic| {
+                serde_json::json!({
+                    "code": diagnostic.code,
+                    "severity": diagnostic.severity,
+                    "path": diagnostic.path,
+                    "message": stable_diagnostic_message(&diagnostic.message)
+                })
+            })
+            .collect::<Vec<_>>()
+    }))
+}
+
+fn stable_diagnostic_message(message: &str) -> String {
+    let mut rendered = String::new();
+    for char in message.chars() {
+        if char.is_ascii() {
+            rendered.push(char);
+        } else {
+            use std::fmt::Write as _;
+            write!(&mut rendered, "\\u{{{:x}}}", u32::from(char))
+                .expect("writing to String should not fail");
+        }
+    }
+    rendered
+}
+
+fn json_golden(value: &Value) -> Result<String> {
+    serde_json::to_string_pretty(value)
+        .map(|rendered| normalize_golden_text(&rendered))
+        .map_err(Into::into)
+}
+
+fn normalize_golden_text(text: &str) -> String {
+    let mut normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    if !normalized.ends_with('\n') {
+        normalized.push('\n');
+    }
+    normalized
+}
+
+fn golden_mismatch(golden_path: &str, expected: &str, actual: &str) -> Option<String> {
+    if normalize_golden_text(expected) == actual {
+        None
+    } else {
+        Some(format!(
+            "{golden_path} does not match generated output; rerun `cargo run -q -p xtask -- axiom-plan check-goldens --update`"
+        ))
+    }
+}
+
+fn write_golden_file(path: &Path, content: &str) -> Result<()> {
+    let goldens_root = repo_root().join(AXIOM_GOLDENS_ROOT);
+    if !path.starts_with(&goldens_root) {
+        bail!(
+            "refusing to update golden outside {}: {}",
+            AXIOM_GOLDENS_ROOT,
+            path.display()
+        );
+    }
+    let parent = path
+        .parent()
+        .with_context(|| format!("golden path has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
+    fs::write(path, content).with_context(|| format!("failed to write {}", path.display()))
 }
 
 fn expected_invalid_codes(path: &Path) -> Option<&'static [&'static str]> {
@@ -1333,8 +1543,16 @@ fn value_array(value: Option<&Value>) -> Vec<Value> {
 fn preview_limitations() -> Vec<String> {
     vec![
         "preview-only: pre-admission; not admitted, not granted, not executed.".to_owned(),
+        "no skill availability check".to_owned(),
+        "no Guild resolution".to_owned(),
+        "no Guild admission".to_owned(),
+        "no authority grant".to_owned(),
+        "no execution".to_owned(),
+        "no receipt creation".to_owned(),
+        "no evidence persistence".to_owned(),
+        "no full policy reduction".to_owned(),
         "Requested grants are requested authority only; Guild admission and policy remain canonical later.".to_owned(),
-        "Expected evidence is expectation only; preview does not persist evidence or create receipts.".to_owned(),
+        "Expected evidence is expectation only.".to_owned(),
         "Args are args as declared; references are not evaluated by preview.".to_owned(),
         "Skill refs are not resolved; object-form skill metadata is not currently schema-admitted, and any resolved field shown by defensive rendering is plan-supplied metadata only, not Guild resolution, not verified by preview.".to_owned(),
     ]
@@ -1599,7 +1817,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        Diagnostic, build_plan_preview, preview_to_json, render_plan_preview, validate_value,
+        Diagnostic, build_plan_preview, diagnostics_golden, golden_mismatch, preview_to_json,
+        render_plan_preview, repo_root, validate_value,
     };
 
     fn validate(plan: &serde_json::Value) -> Vec<Diagnostic> {
@@ -1616,6 +1835,43 @@ mod tests {
             .iter()
             .map(|diagnostic| diagnostic.code)
             .collect()
+    }
+
+    fn forbidden_runtime_truth_json_keys() -> &'static [&'static str] {
+        &[
+            "executionId",
+            "receipt",
+            "grantedAuthority",
+            "effectiveAuthority",
+            "hostDecision",
+            "runtimeStatus",
+            "evidenceProduced",
+            "grantedGrants",
+            "effectiveGrants",
+        ]
+    }
+
+    fn assert_no_forbidden_runtime_truth_json_keys(value: &serde_json::Value) {
+        match value {
+            serde_json::Value::Object(object) => {
+                for (key, nested) in object {
+                    assert!(
+                        !forbidden_runtime_truth_json_keys().contains(&key.as_str()),
+                        "runtime-truth JSON key leaked: {key}"
+                    );
+                    assert_no_forbidden_runtime_truth_json_keys(nested);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    assert_no_forbidden_runtime_truth_json_keys(item);
+                }
+            }
+            serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => {}
+        }
     }
 
     #[allow(clippy::needless_pass_by_value)]
@@ -1890,6 +2146,9 @@ mod tests {
             "not admitted",
             "not granted",
             "not executed",
+            "no Guild resolution",
+            "no receipt creation",
+            "no evidence persistence",
             "requested authority only",
             "expectation only",
             "args as declared",
@@ -1916,6 +2175,7 @@ mod tests {
             "receipt created",
             "evidence produced",
             "resolved by Guild",
+            "runtime journal",
         ] {
             assert!(
                 !combined.contains(phrase),
@@ -1938,19 +2198,30 @@ mod tests {
         assert!(rendered.get("planTrace").is_some());
         assert!(rendered.get("limitations").is_some());
 
-        for field in [
-            "\"executionId\"",
-            "\"receipt\"",
-            "\"grantedAuthority\"",
-            "\"effectiveAuthority\"",
-            "\"runtimeStatus\"",
-            "\"evidenceProduced\"",
+        assert_no_forbidden_runtime_truth_json_keys(&rendered);
+
+        for limitation in [
+            "no skill availability check",
+            "no Guild resolution",
+            "no Guild admission",
+            "no authority grant",
+            "no execution",
+            "no receipt creation",
+            "no evidence persistence",
+            "no full policy reduction",
         ] {
             assert!(
-                !rendered_text.contains(field),
-                "runtime-truth field leaked: {field}"
+                rendered["limitations"]
+                    .as_array()
+                    .expect("limitations should be an array")
+                    .iter()
+                    .any(|value| value == limitation),
+                "missing limitation: {limitation}"
             );
         }
+
+        assert!(rendered_text.contains("\"requestPreview\""));
+        assert!(rendered_text.contains("\"previewTrace\""));
     }
 
     #[test]
@@ -1981,5 +2252,60 @@ mod tests {
         assert!(rendered_json.contains("plan-supplied resolved metadata"));
         assert!(!rendered.contains("resolved by Guild"));
         assert!(!rendered_json.contains("resolved by Guild"));
+    }
+
+    #[test]
+    fn diagnostic_golden_normalization_keeps_stable_semantic_codes() {
+        let malformed = diagnostics_golden(
+            &repo_root()
+                .join("docs/strategy/axiom-plan-ir/examples/invalid/malformed-skill-ref.json"),
+        )
+        .expect("malformed diagnostic golden renders");
+        let malformed_json: serde_json::Value =
+            serde_json::from_str(&malformed).expect("malformed diagnostic golden is JSON");
+        let malformed_codes = malformed_json["diagnostics"]
+            .as_array()
+            .expect("diagnostics should be an array")
+            .iter()
+            .map(|diagnostic| {
+                diagnostic["code"]
+                    .as_str()
+                    .expect("diagnostic code should be a string")
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            malformed_json["sourcePath"],
+            "docs/strategy/axiom-plan-ir/examples/invalid/malformed-skill-ref.json"
+        );
+        assert!(malformed_codes.contains(&"axiom.schema.invalid_shape"));
+        assert!(malformed_codes.contains(&"axiom.malformed_skill_ref"));
+
+        let granted_authority = diagnostics_golden(
+            &repo_root()
+                .join("docs/strategy/axiom-plan-ir/examples/invalid/granted-authority-claim.json"),
+        )
+        .expect("granted-authority diagnostic golden renders");
+        let granted_authority_json: serde_json::Value =
+            serde_json::from_str(&granted_authority).expect("granted diagnostic golden is JSON");
+        let granted_authority_codes = granted_authority_json["diagnostics"]
+            .as_array()
+            .expect("diagnostics should be an array")
+            .iter()
+            .map(|diagnostic| {
+                diagnostic["code"]
+                    .as_str()
+                    .expect("diagnostic code should be a string")
+            })
+            .collect::<Vec<_>>();
+
+        assert!(granted_authority_codes.contains(&"axiom.schema.additional_property"));
+        assert!(granted_authority_codes.contains(&"axiom.forbidden_runtime_truth_field"));
+    }
+
+    #[test]
+    fn golden_mismatch_reports_comparison_failures() {
+        assert!(golden_mismatch("example.golden", "same\r\n", "same\n").is_none());
+        assert!(golden_mismatch("example.golden", "old\n", "new\n").is_some());
     }
 }

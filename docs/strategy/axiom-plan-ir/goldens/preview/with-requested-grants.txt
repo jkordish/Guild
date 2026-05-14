@@ -1,0 +1,77 @@
+Axiom Plan Preview
+kind: axiom.plan_preview
+status: preview_only
+source: docs/strategy/axiom-plan-ir/examples/valid/with-requested-grants.json
+plan: execution query summary with requested grants
+plan kind: axiom.plan
+version: 1
+nodes: 1
+
+ordered nodes:
+1. summarizeRecentExecutions (document index 0)
+  skill: skill://example/summarize-execution-query@^0.1
+  dependsOn: []
+  args as declared:
+    {
+      "queryUri": "guild://queries/executions/recent/5"
+    }
+  requested grants (requested authority only):
+    {
+      "constraints": {
+        "resourceKinds": [
+          "execution",
+          "query"
+        ],
+        "uriPrefixes": [
+          "guild://executions/",
+          "guild://queries/executions/"
+        ]
+      },
+      "family": "read-resource",
+      "purpose": "Ask Guild admission to consider bounded reads of persisted execution and query resources."
+    }
+  expected outputs (planner expectation):
+    {
+      "kind": "json",
+      "name": "summary",
+      "shapeHint": {
+        "fields": [
+          "count",
+          "statuses"
+        ]
+      }
+    }
+  expected evidence: none (expectation only)
+  failure behavior: stopPlan
+  requestPreview:
+    status: pre-admission
+    summary: would request `skill://example/summarize-execution-query@^0.1` with args as declared; references are not evaluated by preview
+    args: args as declared; references are not evaluated by preview
+    authority: would propose requested authority only; not admitted, not granted, not executed
+    evidence: expected evidence is expectation only
+  previewTrace:
+    - pre-admission previewTrace for `summarizeRecentExecutions` would request `skill://example/summarize-execution-query@^0.1`
+    - args as declared; references are not evaluated by preview
+    - requested grants are requested authority only; not granted
+    - expected evidence: none declared; expectation only
+
+planTrace:
+  - node summarizeRecentExecutions:
+    - pre-admission requestPreview for `summarizeRecentExecutions` would request `skill://example/summarize-execution-query@^0.1`
+    - requested grants remain requested authority only; not admitted, not granted, not executed
+    - expected evidence remains expectation only
+
+limitations:
+  - preview-only: pre-admission; not admitted, not granted, not executed.
+  - no skill availability check
+  - no Guild resolution
+  - no Guild admission
+  - no authority grant
+  - no execution
+  - no receipt creation
+  - no evidence persistence
+  - no full policy reduction
+  - Requested grants are requested authority only; Guild admission and policy remain canonical later.
+  - Expected evidence is expectation only.
+  - Args are args as declared; references are not evaluated by preview.
+  - Skill refs are not resolved; object-form skill metadata is not currently schema-admitted, and any resolved field shown by defensive rendering is plan-supplied metadata only, not Guild resolution, not verified by preview.

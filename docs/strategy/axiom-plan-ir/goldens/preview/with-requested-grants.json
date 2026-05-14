@@ -1,0 +1,101 @@
+{
+  "kind": "axiom.plan_preview",
+  "limitations": [
+    "preview-only: pre-admission; not admitted, not granted, not executed.",
+    "no skill availability check",
+    "no Guild resolution",
+    "no Guild admission",
+    "no authority grant",
+    "no execution",
+    "no receipt creation",
+    "no evidence persistence",
+    "no full policy reduction",
+    "Requested grants are requested authority only; Guild admission and policy remain canonical later.",
+    "Expected evidence is expectation only.",
+    "Args are args as declared; references are not evaluated by preview.",
+    "Skill refs are not resolved; object-form skill metadata is not currently schema-admitted, and any resolved field shown by defensive rendering is plan-supplied metadata only, not Guild resolution, not verified by preview."
+  ],
+  "nodes": [
+    {
+      "argsAsDeclared": {
+        "queryUri": "guild://queries/executions/recent/5"
+      },
+      "argsStatus": "args as declared; references are not evaluated by preview",
+      "dependsOn": [],
+      "documentIndex": 0,
+      "expectedEvidence": {
+        "items": [],
+        "status": "expectation only"
+      },
+      "expectedOutputs": [
+        {
+          "kind": "json",
+          "name": "summary",
+          "shapeHint": {
+            "fields": [
+              "count",
+              "statuses"
+            ]
+          }
+        }
+      ],
+      "failureBehavior": "stopPlan",
+      "id": "summarizeRecentExecutions",
+      "ordinal": 1,
+      "previewTrace": [
+        "pre-admission previewTrace for `summarizeRecentExecutions` would request `skill://example/summarize-execution-query@^0.1`",
+        "args as declared; references are not evaluated by preview",
+        "requested grants are requested authority only; not granted",
+        "expected evidence: none declared; expectation only"
+      ],
+      "requestPreview": {
+        "args": "args as declared; references are not evaluated by preview",
+        "authority": "would propose requested authority only; not admitted, not granted, not executed",
+        "evidence": "expected evidence is expectation only",
+        "status": "pre-admission",
+        "summary": "would request `skill://example/summarize-execution-query@^0.1` with args as declared; references are not evaluated by preview"
+      },
+      "requestedGrants": {
+        "items": [
+          {
+            "constraints": {
+              "resourceKinds": [
+                "execution",
+                "query"
+              ],
+              "uriPrefixes": [
+                "guild://executions/",
+                "guild://queries/executions/"
+              ]
+            },
+            "family": "read-resource",
+            "purpose": "Ask Guild admission to consider bounded reads of persisted execution and query resources."
+          }
+        ],
+        "status": "requested authority only"
+      },
+      "skill": {
+        "requested": "skill://example/summarize-execution-query@^0.1",
+        "schemaStatus": "string-form skill ref is current schema-admitted form"
+      }
+    }
+  ],
+  "plan": {
+    "kind": "axiom.plan",
+    "name": "execution query summary with requested grants",
+    "nodeCount": 1,
+    "sourcePath": "docs/strategy/axiom-plan-ir/examples/valid/with-requested-grants.json",
+    "version": "1"
+  },
+  "planTrace": [
+    {
+      "node": "summarizeRecentExecutions",
+      "previewTrace": [
+        "pre-admission requestPreview for `summarizeRecentExecutions` would request `skill://example/summarize-execution-query@^0.1`",
+        "requested grants remain requested authority only; not admitted, not granted, not executed",
+        "expected evidence remains expectation only"
+      ]
+    }
+  ],
+  "status": "preview_only"
+}

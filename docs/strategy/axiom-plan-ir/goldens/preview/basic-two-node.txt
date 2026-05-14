@@ -1,0 +1,95 @@
+Axiom Plan Preview
+kind: axiom.plan_preview
+status: preview_only
+source: docs/strategy/axiom-plan-ir/examples/valid/basic-two-node-plan.json
+plan: basic two node plan
+plan kind: axiom.plan
+version: 1
+nodes: 2
+
+ordered nodes:
+1. draftReport (document index 0)
+  skill: skill://example/render-report@^0.1
+  dependsOn: []
+  args as declared:
+    {
+      "sections": [
+        {
+          "body": "Summarize the planned input bundle.",
+          "heading": "Inputs"
+        }
+      ],
+      "title": "Daily execution summary"
+    }
+  requested grants: none (requested authority only)
+  expected outputs (planner expectation):
+    {
+      "kind": "text",
+      "name": "draftMarkdown"
+    }
+  expected evidence: none (expectation only)
+  failure behavior: stopPlan
+  requestPreview:
+    status: pre-admission
+    summary: would request `skill://example/render-report@^0.1` with args as declared; references are not evaluated by preview
+    args: args as declared; references are not evaluated by preview
+    authority: would propose requested authority only; not admitted, not granted, not executed
+    evidence: expected evidence is expectation only
+  previewTrace:
+    - pre-admission previewTrace for `draftReport` would request `skill://example/render-report@^0.1`
+    - args as declared; references are not evaluated by preview
+    - requested grants are requested authority only; not granted
+    - expected evidence: none declared; expectation only
+
+2. renderFinal (document index 1)
+  skill: skill://example/render-report@^0.1
+  dependsOn: draftReport
+  args as declared:
+    {
+      "format": "markdown",
+      "sourceNode": "draftReport"
+    }
+  requested grants: none (requested authority only)
+  expected outputs (planner expectation):
+    {
+      "kind": "text",
+      "name": "finalMarkdown"
+    }
+  expected evidence: none (expectation only)
+  failure behavior: stopPlan
+  requestPreview:
+    status: pre-admission
+    summary: would request `skill://example/render-report@^0.1` with args as declared; references are not evaluated by preview
+    args: args as declared; references are not evaluated by preview
+    authority: would propose requested authority only; not admitted, not granted, not executed
+    evidence: expected evidence is expectation only
+  previewTrace:
+    - pre-admission previewTrace for `renderFinal` would request `skill://example/render-report@^0.1`
+    - args as declared; references are not evaluated by preview
+    - requested grants are requested authority only; not granted
+    - expected evidence: none declared; expectation only
+
+planTrace:
+  - node draftReport:
+    - pre-admission requestPreview for `draftReport` would request `skill://example/render-report@^0.1`
+    - requested grants remain requested authority only; not admitted, not granted, not executed
+    - expected evidence remains expectation only
+  - node renderFinal:
+    - pre-admission requestPreview for `renderFinal` would request `skill://example/render-report@^0.1`
+    - requested grants remain requested authority only; not admitted, not granted, not executed
+    - expected evidence remains expectation only
+
+limitations:
+  - preview-only: pre-admission; not admitted, not granted, not executed.
+  - no skill availability check
+  - no Guild resolution
+  - no Guild admission
+  - no authority grant
+  - no execution
+  - no receipt creation
+  - no evidence persistence
+  - no full policy reduction
+  - Requested grants are requested authority only; Guild admission and policy remain canonical later.
+  - Expected evidence is expectation only.
+  - Args are args as declared; references are not evaluated by preview.
+  - Skill refs are not resolved; object-form skill metadata is not currently schema-admitted, and any resolved field shown by defensive rendering is plan-supplied metadata only, not Guild resolution, not verified by preview.
