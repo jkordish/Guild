@@ -32,6 +32,7 @@ current framing source.
 - `0018-filesystem-policy-contract-not-yet-implemented.md` - accepted design-only guardrail ADR for future filesystem policy semantics without implying runtime support
 - `0019-thin-guild-cli.md` - accepted first-class `guild` CLI contract for local install, read-only grant templates, run, read, diagnostics, transport, trust, focused help topics, and MCP command workflows
 - `0020-evolve-guild-toward-a-trusted-session-substrate-for-isolated-harness-execution.md` - accepted evolution from portable-skill/runtime-first framing toward session, harness, admission, and receipt language without discarding current shipped trust surfaces
+- `0021-adopt-the-effect-kernel-as-guilds-mutation-truth-boundary.md` - proposed adoption of the pure effect kernel as Guild's exact external-mutation, receipt, custody, and non-repeating recovery boundary
 
 ## Backlog
 
