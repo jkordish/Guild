@@ -24,7 +24,15 @@ use crate::{
 };
 
 const LEASE_DURATION_NANOS: u64 = 5_000_000_000;
+#[allow(
+    dead_code,
+    reason = "Task 6 keeps proof-less lifecycle application crate-private until replay lands"
+)]
 const PUBLICATION_TERMINAL_SLOTS: u64 = 3;
+#[allow(
+    dead_code,
+    reason = "Task 6 keeps proof-less lifecycle application crate-private until replay lands"
+)]
 const SEPARATION_TERMINAL_SLOTS: u64 = 2;
 
 /// Closed admission failures shared by authority and lease transitions.
@@ -568,6 +576,10 @@ enum EffectProtocol {
     Separation,
 }
 
+#[allow(
+    dead_code,
+    reason = "Task 6 stages lifecycle state for later proof-bearing replay APIs"
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Lifecycle {
     Reserved,
@@ -589,6 +601,10 @@ enum StoredReservation {
     },
 }
 
+#[allow(
+    dead_code,
+    reason = "Task 6 stages private transition facts for later proof-bearing replay APIs"
+)]
 #[derive(Debug, Clone)]
 struct EffectRecord {
     protocol: EffectProtocol,
@@ -599,10 +615,24 @@ struct EffectRecord {
     start_hold: BudgetHold,
     warrant_digest: Digest,
     warrant_expires_at: UnixNanoseconds,
+    warrant_revoked_at: Option<UnixNanoseconds>,
     separation_generation: Option<U64Decimal>,
 }
 
 /// Deterministic lease projection with private, atomically-updated protocol maps.
+///
+/// Proof-less lifecycle application is intentionally unavailable to external callers:
+///
+/// ```compile_fail
+/// use guild_effect_kernel::lease::LeaseProjection;
+/// let _prepare = LeaseProjection::mark_prepared;
+/// let _start = LeaseProjection::start;
+/// let _start_separation = LeaseProjection::start_separation;
+/// let _cancel = LeaseProjection::cancel;
+/// let _terminalize = LeaseProjection::terminalize;
+/// let _ordinary = LeaseProjection::admit_ordinary_events;
+/// let _with_head = LeaseProjection::with_head_sequence;
+/// ```
 #[derive(Debug, Clone)]
 pub struct LeaseProjection {
     installation_digest: Digest,
@@ -618,6 +648,10 @@ pub struct LeaseProjection {
     last_transition_time: Option<UnixNanoseconds>,
 }
 
+#[allow(
+    dead_code,
+    reason = "Task 6 stages proof-less transition application as crate-private for later replay"
+)]
 impl LeaseProjection {
     /// Initializes namespaced budget accounts from the immutable policy.
     ///
@@ -637,7 +671,7 @@ impl LeaseProjection {
     /// # Errors
     ///
     /// Returns a body error if the supplied policy is structurally invalid.
-    pub fn with_head_sequence(
+    pub(crate) fn with_head_sequence(
         graph: &BodyGraph,
         enrollment: &ValidatedBody<InstallationEnrollment>,
         policy: &ValidatedBody<AuthorityPolicy>,
@@ -818,13 +852,7 @@ impl LeaseProjection {
             reserved_at,
             expires_at,
         })?;
-        candidate.install_publication_reservation(
-            warrant,
-            &binding,
-            &lease,
-            effect_id.clone(),
-            fences,
-        );
+        candidate.install_publication_reservation(warrant, &binding, &lease, revoked_at);
         *self = candidate;
         Ok(ReservationMaterial {
             binding,
@@ -937,9 +965,8 @@ impl LeaseProjection {
             warrant,
             &binding,
             &lease,
-            effect_id.clone(),
-            fences,
             current_custody_generation,
+            revoked_at,
         );
         *self = candidate;
         Ok(ReservationMaterial {
@@ -950,12 +977,47 @@ impl LeaseProjection {
         })
     }
 
+    /// Monotonically incorporates graph-validated revocations for already reserved effects.
+    ///
+    /// This is a crate-owned replay seam until the anchored event projection is implemented.
+    /// Missing or older revocation snapshots never erase authority state already observed.
+    pub(crate) fn merge_authority_graph(
+        &mut self,
+        graph: &BodyGraph,
+    ) -> Result<(), AdmissionError> {
+        let mut candidate = self.clone();
+        for record in candidate.effects.values_mut() {
+            let (kind, observed) = match record.protocol {
+                EffectProtocol::Publication => (
+                    BodyKind::PublicationWarrant,
+                    graph.publication_revoked_at(&record.warrant_digest)?,
+                ),
+                EffectProtocol::Separation => (
+                    BodyKind::SeparationWarrant,
+                    graph.separation_revoked_at(&record.warrant_digest)?,
+                ),
+            };
+            graph
+                .require_kind(&record.warrant_digest, kind)
+                .map_err(|_| AdmissionError::AuthorityRefused)?;
+            if let Some(observed) = observed {
+                record.warrant_revoked_at = Some(
+                    record
+                        .warrant_revoked_at
+                        .map_or(observed, |current| current.min(observed)),
+                );
+            }
+        }
+        *self = candidate;
+        Ok(())
+    }
+
     /// Records the publication preparation event without releasing locks or holds.
     ///
     /// # Errors
     ///
     /// Rejects the wrong protocol/state, time regression, or unavailable sequence space.
-    pub fn mark_prepared(
+    pub(crate) fn mark_prepared(
         &mut self,
         effect_id: &EffectId,
         prepared_at: UnixNanoseconds,
@@ -988,25 +1050,18 @@ impl LeaseProjection {
     ///
     /// Rejects an expired lease, duplicate start, wrong state, time regression, budget mismatch,
     /// or sequence exhaustion. No state changes on failure.
-    pub fn start(
+    pub(crate) fn start(
         &mut self,
-        graph: &BodyGraph,
         effect_id: &EffectId,
         start_at: UnixNanoseconds,
     ) -> Result<(), AdmissionError> {
-        let record = self
-            .effects
-            .get(effect_id)
-            .ok_or(AdmissionError::AuthorityRefused)?;
-        let revoked_at = Self::resolve_start_authority(graph, record)?;
-        self.start_publication_resolved(effect_id, start_at, revoked_at)
+        self.start_publication_resolved(effect_id, start_at)
     }
 
     fn start_publication_resolved(
         &mut self,
         effect_id: &EffectId,
         start_at: UnixNanoseconds,
-        revoked_at: Option<UnixNanoseconds>,
     ) -> Result<(), AdmissionError> {
         let mut candidate = self.clone();
         ensure_nondecreasing_time(candidate.last_transition_time, start_at)?;
@@ -1021,7 +1076,7 @@ impl LeaseProjection {
         if record.lifecycle != Lifecycle::Prepared {
             return Err(AdmissionError::PreconditionRefused);
         }
-        Self::ensure_start_authorized(&record, start_at, revoked_at)?;
+        Self::ensure_start_authorized(&record, start_at)?;
         candidate.apply_start(effect_id, &record, start_at)?;
         *self = candidate;
         Ok(())
@@ -1033,19 +1088,13 @@ impl LeaseProjection {
     ///
     /// Rejects a changed/exhausted generation, expired lease, duplicate start, time regression,
     /// budget mismatch, or sequence exhaustion without changing state.
-    pub fn start_separation(
+    pub(crate) fn start_separation(
         &mut self,
-        graph: &BodyGraph,
         effect_id: &EffectId,
         current_custody_generation: U64Decimal,
         start_at: UnixNanoseconds,
     ) -> Result<(), AdmissionError> {
-        let record = self
-            .effects
-            .get(effect_id)
-            .ok_or(AdmissionError::AuthorityRefused)?;
-        let revoked_at = Self::resolve_start_authority(graph, record)?;
-        self.start_separation_resolved(effect_id, current_custody_generation, start_at, revoked_at)
+        self.start_separation_resolved(effect_id, current_custody_generation, start_at)
     }
 
     fn start_separation_resolved(
@@ -1053,7 +1102,6 @@ impl LeaseProjection {
         effect_id: &EffectId,
         current_custody_generation: U64Decimal,
         start_at: UnixNanoseconds,
-        revoked_at: Option<UnixNanoseconds>,
     ) -> Result<(), AdmissionError> {
         let mut candidate = self.clone();
         ensure_nondecreasing_time(candidate.last_transition_time, start_at)?;
@@ -1070,7 +1118,7 @@ impl LeaseProjection {
         if record.separation_generation != Some(current_custody_generation) {
             return Err(AdmissionError::PreconditionRefused);
         }
-        Self::ensure_start_authorized(&record, start_at, revoked_at)?;
+        Self::ensure_start_authorized(&record, start_at)?;
         candidate.apply_start(effect_id, &record, start_at)?;
         *self = candidate;
         Ok(())
@@ -1082,7 +1130,7 @@ impl LeaseProjection {
     ///
     /// Rejects non-cancellation vocabulary, a started/terminal effect, deadline cancellation
     /// before lease expiry, time regression, or invalid held state.
-    pub fn cancel(
+    pub(crate) fn cancel(
         &mut self,
         effect_id: &EffectId,
         reason: PreStartReason,
@@ -1133,7 +1181,7 @@ impl LeaseProjection {
     ///
     /// Rejects duplicate/non-started terminalization, illegal family event counts, time
     /// regression, or arithmetic exhaustion. One call can terminalize only this one effect.
-    pub fn terminalize(
+    pub(crate) fn terminalize(
         &mut self,
         effect_id: &EffectId,
         event_count: u64,
@@ -1177,7 +1225,7 @@ impl LeaseProjection {
     /// # Errors
     ///
     /// Returns sequence exhaustion or time regression without changing the projection.
-    pub fn admit_ordinary_events(
+    pub(crate) fn admit_ordinary_events(
         &mut self,
         event_count: u64,
         transition_at: UnixNanoseconds,
@@ -1228,35 +1276,17 @@ impl LeaseProjection {
         Ok(())
     }
 
-    fn resolve_start_authority(
-        graph: &BodyGraph,
-        record: &EffectRecord,
-    ) -> Result<Option<UnixNanoseconds>, AdmissionError> {
-        let (kind, revoked_at) = match record.protocol {
-            EffectProtocol::Publication => (
-                BodyKind::PublicationWarrant,
-                graph.publication_revoked_at(&record.warrant_digest)?,
-            ),
-            EffectProtocol::Separation => (
-                BodyKind::SeparationWarrant,
-                graph.separation_revoked_at(&record.warrant_digest)?,
-            ),
-        };
-        graph
-            .require_kind(&record.warrant_digest, kind)
-            .map_err(|_| AdmissionError::AuthorityRefused)?;
-        Ok(revoked_at)
-    }
-
     fn ensure_start_authorized(
         record: &EffectRecord,
         start_at: UnixNanoseconds,
-        revoked_at: Option<UnixNanoseconds>,
     ) -> Result<(), AdmissionError> {
         if !record.lease_is_live_at(start_at) || start_at >= record.warrant_expires_at {
             return Err(AdmissionError::WarrantExpired);
         }
-        if revoked_at.is_some_and(|revoked_at| start_at >= revoked_at) {
+        if record
+            .warrant_revoked_at
+            .is_some_and(|revoked_at| start_at >= revoked_at)
+        {
             return Err(AdmissionError::WarrantRevoked);
         }
         Ok(())
@@ -1387,9 +1417,10 @@ impl LeaseProjection {
         warrant: &ValidatedBody<PublicationWarrant>,
         binding: &ValidatedBody<IdempotencyBinding>,
         lease: &ValidatedBody<EffectLease>,
-        effect_id: EffectId,
-        fences: [ResourceFence; 2],
+        revoked_at: Option<UnixNanoseconds>,
     ) {
+        let effect_id = lease.payload().effect_id().clone();
+        let fences = lease.payload().resource_fences().clone();
         let binding_ref = BindingRef::publication(binding.reference().clone());
         self.install_common(
             warrant.payload().idempotency_key().clone(),
@@ -1412,6 +1443,7 @@ impl LeaseProjection {
                 start_hold: lease.payload().start_budget_hold.clone(),
                 warrant_digest: warrant.reference().digest().clone(),
                 warrant_expires_at: warrant.payload().expires_at(),
+                warrant_revoked_at: revoked_at,
                 separation_generation: None,
             },
         );
@@ -1422,10 +1454,11 @@ impl LeaseProjection {
         warrant: &ValidatedBody<SeparationWarrant>,
         binding: &ValidatedBody<SeparationBinding>,
         lease: &ValidatedBody<SeparationLease>,
-        effect_id: EffectId,
-        fences: [ResourceFence; 2],
         current_custody_generation: U64Decimal,
+        revoked_at: Option<UnixNanoseconds>,
     ) {
+        let effect_id = lease.payload().effect_id().clone();
+        let fences = lease.payload().resource_fences().clone();
         let binding_ref = BindingRef::separation(binding.reference().clone());
         self.install_common(
             warrant.payload().idempotency_key().clone(),
@@ -1448,6 +1481,7 @@ impl LeaseProjection {
                 start_hold: lease.payload().start_budget_hold.clone(),
                 warrant_digest: warrant.reference().digest().clone(),
                 warrant_expires_at: warrant.payload().expires_at(),
+                warrant_revoked_at: revoked_at,
                 separation_generation: Some(current_custody_generation),
             },
         );
@@ -1482,6 +1516,10 @@ impl LeaseProjection {
     }
 }
 
+#[allow(
+    dead_code,
+    reason = "Task 6 stages proof-less transition application as crate-private for later replay"
+)]
 impl EffectRecord {
     fn lease_is_live_at(&self, now: UnixNanoseconds) -> bool {
         match &self.material {
@@ -1772,10 +1810,16 @@ mod tests {
     use crate::{
         authority::BudgetCapacity,
         body::{
-            StaticArtifactPublishInputRef, StaticArtifactPublishPreconditionRef,
+            BodyBatch, BodyGraph, ExpectedState, LocalFileObservation, OptionalValue,
+            StaticArtifactPublishInput, StaticArtifactPublishInputRef,
+            StaticArtifactPublishPrecondition, StaticArtifactPublishPreconditionRef,
             StaticArtifactSeparationInputRef, StaticArtifactSeparationPreconditionRef,
+            validate_batch,
         },
-        scalar::{Hex256, Identifier, IncarnationId, SafeUInt},
+        scalar::{
+            ArtifactName, ByteLength, Hex256, Identifier, IncarnationId, LogicalAddress, RawDigest,
+            SafeUInt,
+        },
     };
 
     fn test_digest(byte: char) -> Digest {
@@ -1946,6 +1990,133 @@ mod tests {
         (warrant, approval)
     }
 
+    type PublicationGraphs = (
+        BodyGraph,
+        BodyGraph,
+        ValidatedBody<AuthorityPolicy>,
+        ValidatedBody<InstallationEnrollment>,
+        ValidatedBody<PublicationWarrant>,
+        ValidatedBody<PublicationApproval>,
+    );
+
+    type PublicationResources = (
+        ValidatedBody<LocalFileObservation>,
+        ValidatedBody<StaticArtifactPublishInput>,
+        ValidatedBody<StaticArtifactPublishPrecondition>,
+        [ResourceKey; 2],
+    );
+
+    fn publication_resources() -> PublicationResources {
+        let source_address = LogicalAddress::parse("local-file:///staging/unit").unwrap();
+        let target_address = LogicalAddress::parse("local-file:///active/unit").unwrap();
+        let source = validated_body(LocalFileObservation::present(
+            source_address.clone(),
+            Identifier::parse("witness").unwrap(),
+            UnixNanoseconds::parse("0").unwrap(),
+            ArtifactName::parse("unit").unwrap(),
+            RawDigest::parse(test_digest('2').as_str()).unwrap(),
+            ByteLength::from_u64(42),
+            IncarnationId::parse(test_digest('3').as_str()).unwrap(),
+            OptionalValue::absent(),
+        ))
+        .unwrap();
+        let input = validated_body(
+            StaticArtifactPublishInput::new(
+                ArtifactName::parse("unit").unwrap(),
+                source.reference().clone(),
+                target_address.clone(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let precondition = validated_body(StaticArtifactPublishPrecondition::new(
+            target_address.clone(),
+            ExpectedState::absent(),
+            OptionalValue::absent(),
+        ))
+        .unwrap();
+        let mut resources = [
+            derive_resource_key(&source_address).unwrap(),
+            derive_resource_key(&target_address).unwrap(),
+        ];
+        resources.sort();
+        (source, input, precondition, resources)
+    }
+
+    fn publication_graphs(expires_at: &str, revocation_at: Option<&str>) -> PublicationGraphs {
+        let (_, policy, enrollment) = authority_projection();
+        let (source, input, precondition, resources) = publication_resources();
+        let warrant = validated_body(
+            PublicationWarrant::new(
+                &enrollment,
+                &policy,
+                Identifier::parse("proposer").unwrap(),
+                input.reference().clone(),
+                precondition.reference().clone(),
+                IdempotencyKey::parse("publication-revocation-unit-0001").unwrap(),
+                resources,
+                budget_claim(),
+                budget_claim(),
+                UnixNanoseconds::parse("0").unwrap(),
+                UnixNanoseconds::parse(expires_at).unwrap(),
+                Hex256::parse(&"4".repeat(64)).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let approval = validated_body(
+            PublicationApproval::new(
+                &warrant,
+                &policy,
+                Identifier::parse("approver").unwrap(),
+                UnixNanoseconds::parse("500000000").unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let base_bodies = vec![
+            policy.clone().into_stored(),
+            enrollment.clone().into_stored(),
+            source.clone().into_stored(),
+            input.clone().into_stored(),
+            precondition.clone().into_stored(),
+            warrant.clone().into_stored(),
+            approval.clone().into_stored(),
+        ];
+        let graph_before = validate_batch(
+            &BodyGraph::empty(),
+            BodyBatch::new(base_bodies.clone()).unwrap(),
+        )
+        .unwrap();
+        let graph_authority = if let Some(revocation_at) = revocation_at {
+            let revocation = validated_body(
+                crate::authority::PublicationRevocation::new(
+                    &warrant,
+                    &approval,
+                    &policy,
+                    Identifier::parse("revoker").unwrap(),
+                    UnixNanoseconds::parse(revocation_at).unwrap(),
+                    Identifier::parse("operator-stop").unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            let mut revoked_bodies = base_bodies;
+            revoked_bodies.push(revocation.into_stored());
+            validate_batch(&BodyGraph::empty(), BodyBatch::new(revoked_bodies).unwrap()).unwrap()
+        } else {
+            graph_before.clone()
+        };
+        (
+            graph_before,
+            graph_authority,
+            policy,
+            enrollment,
+            warrant,
+            approval,
+        )
+    }
+
     #[test]
     fn first_fence_is_one_and_exhaustion_is_closed() {
         assert_eq!(checked_next_fence(None).unwrap().get(), 1);
@@ -2032,11 +2203,10 @@ mod tests {
         );
         assert_eq!(
             projection
-                .start_separation_resolved(
+                .start_separation(
                     material.effect_id(),
                     U64Decimal::from_u64(8),
                     UnixNanoseconds::parse("1500000000").unwrap(),
-                    None,
                 )
                 .unwrap_err(),
             AdmissionError::PreconditionRefused,
@@ -2050,22 +2220,25 @@ mod tests {
         );
         assert_eq!(
             projection
-                .start_separation_resolved(
+                .start_separation(
                     material.effect_id(),
                     U64Decimal::from_u64(7),
                     UnixNanoseconds::parse("3000000000").unwrap(),
-                    None,
                 )
                 .unwrap_err(),
             AdmissionError::WarrantExpired,
         );
+        projection
+            .effects
+            .get_mut(material.effect_id())
+            .unwrap()
+            .warrant_revoked_at = Some(UnixNanoseconds::parse("2000000000").unwrap());
         assert_eq!(
             projection
-                .start_separation_resolved(
+                .start_separation(
                     material.effect_id(),
                     U64Decimal::from_u64(7),
                     UnixNanoseconds::parse("2000000000").unwrap(),
-                    Some(UnixNanoseconds::parse("2000000000").unwrap()),
                 )
                 .unwrap_err(),
             AdmissionError::WarrantRevoked,
@@ -2076,6 +2249,363 @@ mod tests {
                 projection.terminal_sequence_reserve(),
             ),
             before,
+        );
+    }
+
+    #[test]
+    fn applied_revocation_is_owned_and_an_older_graph_cannot_erase_it() {
+        let (graph_before, graph_revoked, policy, enrollment, warrant, approval) =
+            publication_graphs("10000000000", Some("2000000000"));
+        let mut projection = LeaseProjection::new(&graph_before, &enrollment, &policy).unwrap();
+        let reservation = projection
+            .reserve_publication(
+                &graph_before,
+                &policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap();
+        projection
+            .mark_prepared(
+                reservation.effect_id(),
+                UnixNanoseconds::parse("1500000000").unwrap(),
+            )
+            .unwrap();
+
+        projection.merge_authority_graph(&graph_revoked).unwrap();
+        projection.merge_authority_graph(&graph_before).unwrap();
+        assert_eq!(
+            projection
+                .start(
+                    reservation.effect_id(),
+                    UnixNanoseconds::parse("2000000000").unwrap(),
+                )
+                .unwrap_err(),
+            AdmissionError::WarrantRevoked,
+        );
+
+        let mut preloaded = LeaseProjection::new(&graph_revoked, &enrollment, &policy).unwrap();
+        let preloaded_reservation = preloaded
+            .reserve_publication(
+                &graph_revoked,
+                &policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap();
+        preloaded
+            .mark_prepared(
+                preloaded_reservation.effect_id(),
+                UnixNanoseconds::parse("1500000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            preloaded
+                .start(
+                    preloaded_reservation.effect_id(),
+                    UnixNanoseconds::parse("2000000000").unwrap(),
+                )
+                .unwrap_err(),
+            AdmissionError::WarrantRevoked,
+        );
+    }
+
+    #[test]
+    fn publication_private_lifecycle_enforces_preparation_time_budgets_locks_and_reserve() {
+        let (graph, _, policy, enrollment, warrant, approval) =
+            publication_graphs("10000000000", None);
+        let mut projection = LeaseProjection::new(&graph, &enrollment, &policy).unwrap();
+        let reservation = projection
+            .reserve_publication(
+                &graph,
+                &policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            projection
+                .start(
+                    reservation.effect_id(),
+                    UnixNanoseconds::parse("2000000000").unwrap(),
+                )
+                .unwrap_err(),
+            AdmissionError::PreconditionRefused,
+        );
+        assert_eq!(
+            projection
+                .mark_prepared(
+                    reservation.effect_id(),
+                    UnixNanoseconds::parse("6000000000").unwrap(),
+                )
+                .unwrap_err(),
+            AdmissionError::WarrantExpired,
+        );
+        projection
+            .mark_prepared(
+                reservation.effect_id(),
+                UnixNanoseconds::parse("1500000000").unwrap(),
+            )
+            .unwrap();
+        projection
+            .start(
+                reservation.effect_id(),
+                UnixNanoseconds::parse("2000000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(projection.terminal_sequence_reserve().get(), 3);
+        for class in [BudgetClass::Reservation, BudgetClass::Start] {
+            let balance = projection
+                .budget_balance(class, &Identifier::parse("shared-budget").unwrap())
+                .unwrap();
+            assert_eq!(
+                (balance.available(), balance.held(), balance.consumed()),
+                (7, 0, 1),
+            );
+        }
+        for fence in reservation.lease().payload().resource_fences() {
+            assert_eq!(
+                projection
+                    .resource_lock(fence.resource_key())
+                    .unwrap()
+                    .effect_id(),
+                reservation.effect_id(),
+            );
+        }
+        let before_duplicate = (
+            projection.head_sequence(),
+            projection.terminal_sequence_reserve(),
+        );
+        assert!(
+            projection
+                .start(
+                    reservation.effect_id(),
+                    UnixNanoseconds::parse("2000000001").unwrap(),
+                )
+                .is_err()
+        );
+        assert_eq!(
+            (
+                projection.head_sequence(),
+                projection.terminal_sequence_reserve(),
+            ),
+            before_duplicate,
+        );
+        projection
+            .terminalize(
+                reservation.effect_id(),
+                2,
+                UnixNanoseconds::parse("3000000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(projection.terminal_sequence_reserve().get(), 0);
+        for fence in reservation.lease().payload().resource_fences() {
+            assert!(projection.resource_lock(fence.resource_key()).is_none());
+        }
+        for class in [BudgetClass::Reservation, BudgetClass::Start] {
+            let balance = projection
+                .budget_balance(class, &Identifier::parse("shared-budget").unwrap())
+                .unwrap();
+            assert_eq!(
+                (balance.available(), balance.held(), balance.consumed()),
+                (7, 0, 1),
+            );
+        }
+    }
+
+    #[test]
+    fn publication_start_uses_the_stored_warrant_expiry() {
+        let (graph, _, policy, enrollment, warrant, approval) =
+            publication_graphs("3000000000", None);
+        let mut projection = LeaseProjection::new(&graph, &enrollment, &policy).unwrap();
+        let reservation = projection
+            .reserve_publication(
+                &graph,
+                &policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap();
+        projection
+            .mark_prepared(
+                reservation.effect_id(),
+                UnixNanoseconds::parse("2000000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            projection
+                .start(
+                    reservation.effect_id(),
+                    UnixNanoseconds::parse("3000000000").unwrap(),
+                )
+                .unwrap_err(),
+            AdmissionError::WarrantExpired,
+        );
+    }
+
+    #[test]
+    fn private_cancellation_releases_holds_and_locks_but_keeps_permanent_state() {
+        let (graph, _, policy, enrollment, warrant, approval) =
+            publication_graphs("10000000000", None);
+        let mut deadline = LeaseProjection::new(&graph, &enrollment, &policy).unwrap();
+        let deadline_reservation = deadline
+            .reserve_publication(
+                &graph,
+                &policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap();
+        assert!(
+            deadline
+                .cancel(
+                    deadline_reservation.effect_id(),
+                    PreStartReason::ReservationDeadline,
+                    UnixNanoseconds::parse("5999999999").unwrap(),
+                )
+                .is_err()
+        );
+        assert_eq!(
+            deadline
+                .cancel(
+                    deadline_reservation.effect_id(),
+                    PreStartReason::ReservationDeadline,
+                    UnixNanoseconds::parse("6000000000").unwrap(),
+                )
+                .unwrap()
+                .result(),
+            PreStartResult::NotAttempted,
+        );
+
+        let mut prepared = LeaseProjection::new(&graph, &enrollment, &policy).unwrap();
+        let prepared_reservation = prepared
+            .reserve_publication(
+                &graph,
+                &policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap();
+        prepared
+            .mark_prepared(
+                prepared_reservation.effect_id(),
+                UnixNanoseconds::parse("1500000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            prepared
+                .cancel(
+                    prepared_reservation.effect_id(),
+                    PreStartReason::BudgetUnavailable,
+                    UnixNanoseconds::parse("1600000000").unwrap(),
+                )
+                .unwrap_err(),
+            AdmissionError::AuthorityRefused,
+        );
+        let outcome = prepared
+            .cancel(
+                prepared_reservation.effect_id(),
+                PreStartReason::PreconditionChanged,
+                UnixNanoseconds::parse("1600000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(outcome.result(), PreStartResult::PreparedOnly);
+        assert_eq!(
+            prepared.binding_effect(warrant.payload().idempotency_key()),
+            Some(prepared_reservation.effect_id()),
+        );
+        assert!(prepared.is_warrant_spent(warrant.reference().digest()));
+        for fence in prepared_reservation.lease().payload().resource_fences() {
+            assert!(prepared.resource_lock(fence.resource_key()).is_none());
+            assert_eq!(
+                prepared.resource_fence(fence.resource_key()).unwrap().get(),
+                1
+            );
+        }
+        for class in [BudgetClass::Reservation, BudgetClass::Start] {
+            let balance = prepared
+                .budget_balance(class, &Identifier::parse("shared-budget").unwrap())
+                .unwrap();
+            assert_eq!(
+                (balance.available(), balance.held(), balance.consumed()),
+                (8, 0, 0),
+            );
+        }
+    }
+
+    #[test]
+    fn private_sequence_reserve_and_zero_event_time_laws_are_closed() {
+        let (graph, _, policy, enrollment, warrant, approval) =
+            publication_graphs("10000000000", None);
+        let mut projection = LeaseProjection::with_head_sequence(
+            &graph,
+            &enrollment,
+            &policy,
+            U64Decimal::from_u64(u64::MAX - 6),
+        )
+        .unwrap();
+        let reservation = projection
+            .reserve_publication(
+                &graph,
+                &policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap();
+        projection
+            .mark_prepared(
+                reservation.effect_id(),
+                UnixNanoseconds::parse("1500000000").unwrap(),
+            )
+            .unwrap();
+        projection
+            .start(
+                reservation.effect_id(),
+                UnixNanoseconds::parse("2000000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(projection.terminal_sequence_reserve().get(), 3);
+        assert_eq!(projection.head_sequence().get(), u64::MAX - 3);
+        assert_eq!(
+            projection
+                .admit_ordinary_events(1, UnixNanoseconds::parse("2000000001").unwrap())
+                .unwrap_err(),
+            AdmissionError::SequenceExhausted,
+        );
+        projection
+            .terminalize(
+                reservation.effect_id(),
+                2,
+                UnixNanoseconds::parse("3000000000").unwrap(),
+            )
+            .unwrap();
+        projection
+            .admit_ordinary_events(1, UnixNanoseconds::parse("3000000001").unwrap())
+            .unwrap();
+        assert_eq!(projection.head_sequence().get(), u64::MAX);
+
+        let (mut time_projection, _, _) = authority_projection();
+        assert_eq!(
+            time_projection
+                .admit_ordinary_events(0, UnixNanoseconds::parse("100").unwrap())
+                .unwrap_err(),
+            AdmissionError::AuthorityRefused,
+        );
+        time_projection
+            .admit_ordinary_events(1, UnixNanoseconds::parse("99").unwrap())
+            .unwrap();
+        assert_eq!(
+            time_projection
+                .admit_ordinary_events(1, UnixNanoseconds::parse("98").unwrap())
+                .unwrap_err(),
+            AdmissionError::TimeRegression,
         );
     }
 
@@ -2118,18 +2648,16 @@ mod tests {
             )
             .unwrap();
         projection
-            .start_publication_resolved(
+            .start(
                 publication.effect_id(),
                 UnixNanoseconds::parse("1300000000").unwrap(),
-                None,
             )
             .unwrap();
         projection
-            .start_separation_resolved(
+            .start_separation(
                 separation.effect_id(),
                 U64Decimal::from_u64(7),
                 UnixNanoseconds::parse("1400000000").unwrap(),
-                None,
             )
             .unwrap();
         assert_eq!(projection.terminal_sequence_reserve().get(), 5);

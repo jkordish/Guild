@@ -2,6 +2,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::BTreeSet,
     fmt,
+    sync::Arc,
 };
 
 use serde::{
@@ -18,14 +19,14 @@ use sha2::{Digest as _, Sha256};
 use crate::scalar::{Digest, SafeUInt, ValidationError};
 
 /// Failures while decoding or encoding protocol-canonical JSON.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum CanonicalError {
     #[error("duplicate JSON member `{key}`")]
     DuplicateMember { key: String },
     #[error("JSON number is outside the canonical SafeUInt model")]
     Number,
     #[error("JSON decode failed: {0}")]
-    Decode(String),
+    Decode(#[source] Arc<serde_json::Error>),
     #[error("JCS encoding failed: {0}")]
     Encode(String),
     #[error("canonical digest was invalid: {0}")]
@@ -34,9 +35,31 @@ pub enum CanonicalError {
 
 impl From<serde_json::Error> for CanonicalError {
     fn from(error: serde_json::Error) -> Self {
-        Self::Decode(error.to_string())
+        Self::Decode(Arc::new(error))
     }
 }
+
+impl PartialEq for CanonicalError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::DuplicateMember { key: left }, Self::DuplicateMember { key: right }) => {
+                left == right
+            }
+            (Self::Number, Self::Number) => true,
+            (Self::Decode(left), Self::Decode(right)) => {
+                left.classify() == right.classify()
+                    && left.line() == right.line()
+                    && left.column() == right.column()
+                    && left.to_string() == right.to_string()
+            }
+            (Self::Encode(left), Self::Encode(right)) => left == right,
+            (Self::Digest(left), Self::Digest(right)) => left == right,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for CanonicalError {}
 
 /// Serializes a value using RFC 8785 after enforcing the protocol's SafeUInt-only number model.
 ///

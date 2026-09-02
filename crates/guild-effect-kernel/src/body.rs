@@ -1335,6 +1335,10 @@ impl BodyGraph {
         Ok(())
     }
 
+    #[allow(
+        dead_code,
+        reason = "Task 6 stages this graph proof seam for crate-private authority replay"
+    )]
     pub(crate) fn require_kind(
         &self,
         digest: &Digest,

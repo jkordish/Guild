@@ -13,10 +13,10 @@ use guild_effect_kernel::{
         StaticArtifactSeparationInput, StaticArtifactSeparationPrecondition, XattrValueRef,
         validate_batch, validated_body,
     },
-    canonical::{CanonicalError, canonical_bytes, canonical_digest},
+    canonical::{CanonicalError, canonical_bytes, canonical_digest, strict_from_slice},
     lease::{
-        AdmissionError, BudgetClass, LeaseProjection, PreStartReason, PreStartResult,
-        checked_next_generation, derive_effect_id, derive_resource_key,
+        AdmissionError, BudgetClass, LeaseProjection, PreStartReason, checked_next_generation,
+        derive_effect_id, derive_resource_key,
     },
     scalar::{
         ArtifactName, ByteLength, Digest, Hex256, IdempotencyKey, Identifier, IncarnationId,
@@ -714,61 +714,6 @@ fn revocation_is_effective_at_its_timestamp_and_requires_approval_order() {
 }
 
 #[test]
-fn publication_start_refuses_an_effective_post_reservation_revocation() {
-    let scenario = publication_scenario("start-revocation-test-0001");
-    let mut projection =
-        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
-    let material = projection
-        .reserve_publication(
-            &scenario.graph,
-            &scenario.policy,
-            &scenario.warrant,
-            &scenario.approval,
-            UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
-    projection
-        .mark_prepared(
-            material.effect_id(),
-            UnixNanoseconds::parse("1500000000").unwrap(),
-        )
-        .unwrap();
-
-    let revocation = validated_body(
-        PublicationRevocation::new(
-            &scenario.warrant,
-            &scenario.approval,
-            &scenario.policy,
-            Identifier::parse("revoker").unwrap(),
-            UnixNanoseconds::parse("2000000000").unwrap(),
-            Identifier::parse("operator-stop").unwrap(),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    let revoked_graph = graph_for_publication(
-        &scenario,
-        &scenario.enrollment,
-        &scenario.warrant,
-        &scenario.approval,
-        Some(&revocation),
-    );
-    let before = projection_values(&projection, &scenario);
-
-    assert_eq!(
-        projection
-            .start(
-                &revoked_graph,
-                material.effect_id(),
-                UnixNanoseconds::parse("2000000000").unwrap(),
-            )
-            .unwrap_err(),
-        AdmissionError::WarrantRevoked,
-    );
-    assert_eq!(projection_values(&projection, &scenario), before);
-}
-
-#[test]
 fn expiry_equality_refuses_before_any_reservation_state() {
     let scenario = publication_scenario("expiry-boundary-0001");
     let mut projection =
@@ -955,90 +900,6 @@ fn reservation_rejects_a_different_enrollment_under_the_same_policy() {
     );
 }
 
-#[test]
-fn publication_start_requires_preparation_and_live_warrant() {
-    let scenario = publication_scenario("start-boundary-test-0001");
-    let mut projection =
-        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
-    let material = projection
-        .reserve_publication(
-            &scenario.graph,
-            &scenario.policy,
-            &scenario.warrant,
-            &scenario.approval,
-            UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
-    assert_eq!(
-        projection
-            .start(
-                &scenario.graph,
-                material.effect_id(),
-                UnixNanoseconds::parse("2000000000").unwrap(),
-            )
-            .unwrap_err(),
-        AdmissionError::PreconditionRefused,
-    );
-    assert_eq!(
-        projection
-            .mark_prepared(
-                material.effect_id(),
-                UnixNanoseconds::parse("6000000000").unwrap(),
-            )
-            .unwrap_err(),
-        AdmissionError::WarrantExpired,
-    );
-}
-
-#[test]
-fn publication_start_refuses_after_warrant_expiry_even_while_lease_is_live() {
-    let scenario = publication_scenario("short-warrant-test-0001");
-    let mut body = serde_json::to_value(scenario.warrant.payload()).unwrap();
-    body["expiresAt"] = serde_json::json!("3000000000");
-    body["nonce"] = serde_json::json!("9".repeat(64));
-    let warrant =
-        validated_body(serde_json::from_value::<PublicationWarrant>(body).unwrap()).unwrap();
-    let approval = validated_body(
-        PublicationApproval::new(
-            &warrant,
-            &scenario.policy,
-            Identifier::parse("approver").unwrap(),
-            UnixNanoseconds::parse("500000000").unwrap(),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    let short_graph =
-        graph_for_publication(&scenario, &scenario.enrollment, &warrant, &approval, None);
-    let mut projection =
-        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
-    let material = projection
-        .reserve_publication(
-            &short_graph,
-            &scenario.policy,
-            &warrant,
-            &approval,
-            UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
-    projection
-        .mark_prepared(
-            material.effect_id(),
-            UnixNanoseconds::parse("2000000000").unwrap(),
-        )
-        .unwrap();
-    assert_eq!(
-        projection
-            .start(
-                &short_graph,
-                material.effect_id(),
-                UnixNanoseconds::parse("4000000000").unwrap(),
-            )
-            .unwrap_err(),
-        AdmissionError::WarrantExpired,
-    );
-}
-
 proptest! {
     #[test]
     fn duplicate_reservation_is_a_map_noop_and_changed_identity_conflicts(
@@ -1104,78 +965,7 @@ proptest! {
 }
 
 #[test]
-fn namespaced_budgets_hold_consume_and_never_replenish_on_terminal() {
-    let scenario = publication_scenario("budget-state-test-0001");
-    let mut projection =
-        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
-    let material = projection
-        .reserve_publication(
-            &scenario.graph,
-            &scenario.policy,
-            &scenario.warrant,
-            &scenario.approval,
-            UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
-    for class in [BudgetClass::Reservation, BudgetClass::Start] {
-        let held = projection
-            .budget_balance(class, &scenario.budget_key)
-            .unwrap();
-        assert_eq!((held.available(), held.held(), held.consumed()), (7, 1, 0));
-    }
-    projection
-        .mark_prepared(
-            material.effect_id(),
-            UnixNanoseconds::parse("1500000000").unwrap(),
-        )
-        .unwrap();
-    projection
-        .start(
-            &scenario.graph,
-            material.effect_id(),
-            UnixNanoseconds::parse("2000000000").unwrap(),
-        )
-        .unwrap();
-    for class in [BudgetClass::Reservation, BudgetClass::Start] {
-        let consumed = projection
-            .budget_balance(class, &scenario.budget_key)
-            .unwrap();
-        assert_eq!(
-            (consumed.available(), consumed.held(), consumed.consumed()),
-            (7, 0, 1)
-        );
-    }
-    let before_duplicate = projection_values(&projection, &scenario);
-    assert!(
-        projection
-            .start(
-                &scenario.graph,
-                material.effect_id(),
-                UnixNanoseconds::parse("2000000001").unwrap(),
-            )
-            .is_err()
-    );
-    assert_eq!(projection_values(&projection, &scenario), before_duplicate);
-    projection
-        .terminalize(
-            material.effect_id(),
-            2,
-            UnixNanoseconds::parse("3000000000").unwrap(),
-        )
-        .unwrap();
-    for class in [BudgetClass::Reservation, BudgetClass::Start] {
-        let terminal = projection
-            .budget_balance(class, &scenario.budget_key)
-            .unwrap();
-        assert_eq!(
-            (terminal.available(), terminal.held(), terminal.consumed()),
-            (7, 0, 1)
-        );
-    }
-}
-
-#[test]
-fn two_key_lock_conflict_is_atomic_and_locks_survive_start() {
+fn two_key_lock_conflict_is_atomic_while_reserved() {
     let scenario = publication_scenario("resource-lock-test-0001");
     let mut projection =
         LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
@@ -1186,19 +976,6 @@ fn two_key_lock_conflict_is_atomic_and_locks_survive_start() {
             &scenario.warrant,
             &scenario.approval,
             UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
-    projection
-        .mark_prepared(
-            first.effect_id(),
-            UnixNanoseconds::parse("1500000000").unwrap(),
-        )
-        .unwrap();
-    projection
-        .start(
-            &scenario.graph,
-            first.effect_id(),
-            UnixNanoseconds::parse("2000000000").unwrap(),
         )
         .unwrap();
     for key in &scenario.resource_keys {
@@ -1282,261 +1059,19 @@ fn two_key_lock_conflict_is_atomic_and_locks_survive_start() {
 }
 
 #[test]
-fn cancellation_releases_holds_and_locks_but_retains_binding_spend_and_fences() {
-    let scenario = publication_scenario("cancellation-test-0001");
-    let mut projection =
-        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
-    let material = projection
-        .reserve_publication(
-            &scenario.graph,
-            &scenario.policy,
-            &scenario.warrant,
-            &scenario.approval,
-            UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
-    let outcome = projection
-        .cancel(
-            material.effect_id(),
-            PreStartReason::RequestDisconnected,
-            UnixNanoseconds::parse("1500000000").unwrap(),
-        )
-        .unwrap();
-    assert_eq!(outcome.result(), PreStartResult::NotAttempted);
-    assert_eq!(outcome.reason(), PreStartReason::RequestDisconnected);
-    assert!(outcome.binding_digest().value().is_some());
-    assert_eq!(
-        projection.binding_effect(scenario.warrant.payload().idempotency_key()),
-        Some(material.effect_id())
-    );
-    assert!(projection.is_warrant_spent(scenario.warrant.reference().digest()));
-    for key in &scenario.resource_keys {
-        assert!(projection.resource_lock(key).is_none());
-        assert_eq!(projection.resource_fence(key).unwrap().get(), 1);
-    }
-    for class in [BudgetClass::Reservation, BudgetClass::Start] {
-        let balance = projection
-            .budget_balance(class, &scenario.budget_key)
-            .unwrap();
-        assert_eq!(
-            (balance.available(), balance.held(), balance.consumed()),
-            (8, 0, 0)
-        );
-    }
-    assert!(
-        projection
-            .cancel(
-                material.effect_id(),
-                PreStartReason::BudgetUnavailable,
-                UnixNanoseconds::parse("1500000001").unwrap(),
-            )
-            .is_err()
-    );
-
-    let before_repeat = projection_values(&projection, &scenario);
-    let existing = projection
-        .reserve_publication(
-            &scenario.graph,
-            &scenario.policy,
-            &scenario.warrant,
-            &scenario.approval,
-            UnixNanoseconds::parse("1500000002").unwrap(),
-        )
-        .unwrap();
-    assert!(existing.delta().is_empty());
-    assert_eq!(projection_values(&projection, &scenario), before_repeat);
-}
-
-#[test]
-fn cancellation_deadline_is_not_legal_before_lease_expiry() {
-    let scenario = publication_scenario("deadline-cancel-test-0001");
-    let mut projection =
-        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
-    let material = projection
-        .reserve_publication(
-            &scenario.graph,
-            &scenario.policy,
-            &scenario.warrant,
-            &scenario.approval,
-            UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
-    assert!(
-        projection
-            .cancel(
-                material.effect_id(),
-                PreStartReason::ReservationDeadline,
-                UnixNanoseconds::parse("5999999999").unwrap(),
-            )
-            .is_err()
-    );
-    assert!(
-        projection
-            .cancel(
-                material.effect_id(),
-                PreStartReason::ReservationDeadline,
-                UnixNanoseconds::parse("6000000000").unwrap(),
-            )
-            .is_ok()
-    );
-}
-
-#[test]
-fn prepared_cancellation_reports_prepared_only_and_releases_at_commit() {
-    let scenario = publication_scenario("prepared-cancel-test-0001");
-    let mut projection =
-        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
-    let material = projection
-        .reserve_publication(
-            &scenario.graph,
-            &scenario.policy,
-            &scenario.warrant,
-            &scenario.approval,
-            UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
-    projection
-        .mark_prepared(
-            material.effect_id(),
-            UnixNanoseconds::parse("1500000000").unwrap(),
-        )
-        .unwrap();
-    assert!(
-        scenario
-            .resource_keys
-            .iter()
-            .all(|key| projection.resource_lock(key).is_some())
-    );
-    let outcome = projection
-        .cancel(
-            material.effect_id(),
-            PreStartReason::PreconditionChanged,
-            UnixNanoseconds::parse("1600000000").unwrap(),
-        )
-        .unwrap();
-    assert_eq!(outcome.result(), PreStartResult::PreparedOnly);
-    assert!(
-        scenario
-            .resource_keys
-            .iter()
-            .all(|key| projection.resource_lock(key).is_none())
-    );
-}
-
-#[test]
-fn generation_and_event_sequence_exhaustion_are_closed() {
-    assert_eq!(checked_next_generation(None).unwrap().get(), 0);
-    assert_eq!(
-        checked_next_generation(Some(U64Decimal::from_u64(u64::MAX))),
-        Err(AdmissionError::CounterExhausted)
-    );
-
-    let scenario = publication_scenario("sequence-reserve-test-0001");
-    let mut projection = LeaseProjection::with_head_sequence(
-        &scenario.graph,
-        &scenario.enrollment,
-        &scenario.policy,
-        U64Decimal::from_u64(u64::MAX - 6),
-    )
-    .unwrap();
-    let material = projection
-        .reserve_publication(
-            &scenario.graph,
-            &scenario.policy,
-            &scenario.warrant,
-            &scenario.approval,
-            UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
-    projection
-        .mark_prepared(
-            material.effect_id(),
-            UnixNanoseconds::parse("1500000000").unwrap(),
-        )
-        .unwrap();
-    projection
-        .start(
-            &scenario.graph,
-            material.effect_id(),
-            UnixNanoseconds::parse("2000000000").unwrap(),
-        )
-        .unwrap();
-    assert_eq!(projection.terminal_sequence_reserve().get(), 3);
-    assert_eq!(projection.head_sequence().get(), u64::MAX - 3);
-    assert_eq!(
-        projection
-            .admit_ordinary_events(1, UnixNanoseconds::parse("2000000001").unwrap())
-            .unwrap_err(),
-        AdmissionError::SequenceExhausted
-    );
-    projection
-        .terminalize(
-            material.effect_id(),
-            2,
-            UnixNanoseconds::parse("3000000000").unwrap(),
-        )
-        .unwrap();
-    assert_eq!(projection.terminal_sequence_reserve().get(), 0);
-    assert_eq!(projection.head_sequence().get(), u64::MAX - 1);
-    projection
-        .admit_ordinary_events(1, UnixNanoseconds::parse("3000000001").unwrap())
-        .unwrap();
-    assert_eq!(projection.head_sequence().get(), u64::MAX);
-    assert_eq!(
-        projection
-            .admit_ordinary_events(1, UnixNanoseconds::parse("3000000002").unwrap())
-            .unwrap_err(),
-        AdmissionError::SequenceExhausted
-    );
-}
-
-#[test]
-fn transition_time_never_moves_backwards() {
-    let scenario = publication_scenario("time-regression-test-0001");
-    let mut projection =
-        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
-    projection
-        .admit_ordinary_events(1, UnixNanoseconds::parse("100").unwrap())
-        .unwrap();
-    assert_eq!(
-        projection
-            .admit_ordinary_events(1, UnixNanoseconds::parse("99").unwrap())
-            .unwrap_err(),
-        AdmissionError::TimeRegression
-    );
-}
-
-#[test]
-fn zero_ordinary_event_bundle_is_rejected_without_advancing_time() {
-    let scenario = publication_scenario("zero-event-test-0001");
-    let mut projection =
-        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
-
-    assert_eq!(
-        projection
-            .admit_ordinary_events(0, UnixNanoseconds::parse("100").unwrap())
-            .unwrap_err(),
-        AdmissionError::AuthorityRefused,
-    );
-    projection
-        .admit_ordinary_events(1, UnixNanoseconds::parse("99").unwrap())
-        .unwrap();
-    assert_eq!(projection.head_sequence().get(), 1);
-}
-
-#[test]
 fn admission_error_clone_preserves_the_exact_body_error_variant() {
-    let error = AdmissionError::Body(BodyError::Canonical(CanonicalError::Decode(
-        "invalid canonical member".to_owned(),
-    )));
+    let canonical = strict_from_slice::<serde_json::Value>(br#"{"#).unwrap_err();
+    assert!(matches!(canonical, CanonicalError::Decode(_)));
+    assert!(std::error::Error::source(&canonical).is_some());
+    let error = AdmissionError::Body(BodyError::Canonical(canonical));
     let cloned = error.clone();
 
     assert_eq!(cloned, error);
-    assert!(matches!(
-        cloned,
-        AdmissionError::Body(BodyError::Canonical(CanonicalError::Decode(message)))
-            if message == "invalid canonical member"
-    ));
+    let AdmissionError::Body(BodyError::Canonical(cloned_canonical)) = cloned else {
+        panic!("clone changed the nested canonical error variant");
+    };
+    assert!(matches!(cloned_canonical, CanonicalError::Decode(_)));
+    assert!(std::error::Error::source(&cloned_canonical).is_some());
 }
 
 #[test]
