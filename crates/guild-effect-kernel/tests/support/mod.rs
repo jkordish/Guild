@@ -6,9 +6,9 @@ use guild_effect_kernel::{
         PrincipalId, PublicationApproval, PublicationWarrant,
     },
     body::{
-        ExpectedState, LocalFileObservation, OptionalValue, SortedUnique,
+        BodyBatch, BodyGraph, ExpectedState, LocalFileObservation, OptionalValue, SortedUnique,
         StaticArtifactPublishInput, StaticArtifactPublishPrecondition, ValidatedBody,
-        validated_body,
+        validate_batch, validated_body,
     },
     lease::{AdmissionError, EffectLease, LeaseProjection, derive_resource_key},
     scalar::{
@@ -21,7 +21,9 @@ const ONE: &str = "sha256:111111111111111111111111111111111111111111111111111111
 const TWO: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
 pub struct AuthorityFixture {
+    graph: BodyGraph,
     policy: ValidatedBody<AuthorityPolicy>,
+    enrollment: ValidatedBody<InstallationEnrollment>,
     warrant: ValidatedBody<PublicationWarrant>,
 }
 
@@ -143,19 +145,43 @@ pub fn authority() -> AuthorityFixture {
         .unwrap(),
     )
     .unwrap();
-    AuthorityFixture { policy, warrant }
+    let graph = validate_batch(
+        &BodyGraph::empty(),
+        BodyBatch::new(vec![
+            policy.clone().into_stored(),
+            enrollment.clone().into_stored(),
+            source.into_stored(),
+            input.into_stored(),
+            precondition.into_stored(),
+            warrant.clone().into_stored(),
+        ])
+        .unwrap(),
+    )
+    .unwrap();
+    AuthorityFixture {
+        graph,
+        policy,
+        enrollment,
+        warrant,
+    }
 }
 
 pub fn publication_lease_at(reserved_at: &str) -> EffectLease {
     let fixtures = authority();
     let approval = fixtures.approve_as(fixtures.approver_id()).unwrap();
-    let mut projection = LeaseProjection::new(fixtures.policy.payload()).unwrap();
+    let graph = validate_batch(
+        &fixtures.graph,
+        BodyBatch::new(vec![approval.clone().into_stored()]).unwrap(),
+    )
+    .unwrap();
+    let mut projection =
+        LeaseProjection::new(&graph, &fixtures.enrollment, &fixtures.policy).unwrap();
     projection
         .reserve_publication(
+            &graph,
             &fixtures.policy,
             &fixtures.warrant,
             &approval,
-            None,
             UnixNanoseconds::parse(reserved_at).unwrap(),
         )
         .unwrap()

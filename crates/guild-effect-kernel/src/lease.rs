@@ -8,14 +8,14 @@ use serde_json::Value;
 use crate::{
     authority::{
         AuthorityPolicy, BudgetAmount, BudgetClaim, BudgetKey, EffectKind, Fence,
-        PublicationApproval, PublicationRevocation, PublicationWarrant, SeparationApproval,
-        SeparationRevocation, SeparationWarrant, ensure_nondecreasing_time,
+        InstallationEnrollment, PublicationApproval, PublicationWarrant, SeparationApproval,
+        SeparationWarrant, ensure_nondecreasing_time,
     },
     body::{
-        BodyError, BodySpec, EffectLeaseTag, IdempotencyBindingRef, IdempotencyBindingTag,
-        OptionalValue, ProtocolRef, PublicationWarrantRef, SeparationBindingRef,
-        SeparationBindingTag, SeparationLeaseTag, SeparationWarrantRef, SortedUnique, TypedEdge,
-        ValidatedBody, validated_body,
+        BodyError, BodyGraph, BodyKind, BodySpec, EffectLeaseTag, IdempotencyBindingRef,
+        IdempotencyBindingTag, OptionalValue, ProtocolRef, PublicationWarrantRef,
+        SeparationBindingRef, SeparationBindingTag, SeparationLeaseTag, SeparationWarrantRef,
+        SortedUnique, TypedEdge, ValidatedBody, validated_body,
     },
     canonical::{CanonicalError, canonical_digest},
     scalar::{
@@ -28,7 +28,7 @@ const PUBLICATION_TERMINAL_SLOTS: u64 = 3;
 const SEPARATION_TERMINAL_SLOTS: u64 = 2;
 
 /// Closed admission failures shared by authority and lease transitions.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AdmissionError {
     #[error("authority refused")]
     AuthorityRefused,
@@ -55,71 +55,6 @@ pub enum AdmissionError {
     #[error("body graph is invalid: {0}")]
     Body(#[from] BodyError),
 }
-
-impl Clone for AdmissionError {
-    fn clone(&self) -> Self {
-        match self {
-            Self::AuthorityRefused => Self::AuthorityRefused,
-            Self::WarrantExpired => Self::WarrantExpired,
-            Self::WarrantRevoked => Self::WarrantRevoked,
-            Self::WarrantSpent => Self::WarrantSpent,
-            Self::IdempotencyConflict => Self::IdempotencyConflict,
-            Self::ResourceConflict => Self::ResourceConflict,
-            Self::BudgetUnavailable => Self::BudgetUnavailable,
-            Self::CounterExhausted => Self::CounterExhausted,
-            Self::SequenceExhausted => Self::SequenceExhausted,
-            Self::PreconditionRefused => Self::PreconditionRefused,
-            Self::TimeRegression => Self::TimeRegression,
-            Self::Body(error) => Self::Body(clone_body_error(error)),
-        }
-    }
-}
-
-fn clone_body_error(error: &BodyError) -> BodyError {
-    match error {
-        BodyError::Local(message) => BodyError::Local(message.clone()),
-        BodyError::Canonical(_) => BodyError::Local(error.to_string()),
-        BodyError::KeyMismatch { key, computed } => BodyError::KeyMismatch {
-            key: key.clone(),
-            computed: computed.clone(),
-        },
-        BodyError::DigestCollision { digest } => BodyError::DigestCollision {
-            digest: digest.clone(),
-        },
-        BodyError::UnknownKind { kind } => BodyError::UnknownKind { kind: kind.clone() },
-        BodyError::PayloadModuleUnavailable { kind } => {
-            BodyError::PayloadModuleUnavailable { kind: *kind }
-        }
-        BodyError::MissingReference { source, target } => BodyError::MissingReference {
-            source: source.clone(),
-            target: target.clone(),
-        },
-        BodyError::WrongTargetKind {
-            source,
-            expected,
-            actual,
-        } => BodyError::WrongTargetKind {
-            source: *source,
-            expected: *expected,
-            actual: *actual,
-        },
-        BodyError::Cycle { digest } => BodyError::Cycle {
-            digest: digest.clone(),
-        },
-        BodyError::NonCanonicalSet => BodyError::NonCanonicalSet,
-    }
-}
-
-impl PartialEq for AdmissionError {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Body(left), Self::Body(right)) => left == right,
-            _ => std::mem::discriminant(self) == std::mem::discriminant(other),
-        }
-    }
-}
-
-impl Eq for AdmissionError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -662,12 +597,15 @@ struct EffectRecord {
     resource_fences: [ResourceFence; 2],
     reservation_hold: BudgetHold,
     start_hold: BudgetHold,
+    warrant_digest: Digest,
+    warrant_expires_at: UnixNanoseconds,
     separation_generation: Option<U64Decimal>,
 }
 
 /// Deterministic lease projection with private, atomically-updated protocol maps.
 #[derive(Debug, Clone)]
 pub struct LeaseProjection {
+    installation_digest: Digest,
     policy_digest: Digest,
     bindings: BTreeMap<IdempotencyKey, PermanentBinding>,
     spent_warrants: BTreeSet<Digest>,
@@ -686,8 +624,12 @@ impl LeaseProjection {
     /// # Errors
     ///
     /// Returns a body error if the supplied policy is structurally invalid.
-    pub fn new(policy: &AuthorityPolicy) -> Result<Self, AdmissionError> {
-        Self::with_head_sequence(policy, U64Decimal::from_u64(0))
+    pub fn new(
+        graph: &BodyGraph,
+        enrollment: &ValidatedBody<InstallationEnrollment>,
+        policy: &ValidatedBody<AuthorityPolicy>,
+    ) -> Result<Self, AdmissionError> {
+        Self::with_head_sequence(graph, enrollment, policy, U64Decimal::from_u64(0))
     }
 
     /// Initializes a replay projection at an explicit anchored sequence.
@@ -696,14 +638,23 @@ impl LeaseProjection {
     ///
     /// Returns a body error if the supplied policy is structurally invalid.
     pub fn with_head_sequence(
-        policy: &AuthorityPolicy,
+        graph: &BodyGraph,
+        enrollment: &ValidatedBody<InstallationEnrollment>,
+        policy: &ValidatedBody<AuthorityPolicy>,
         head_sequence: U64Decimal,
     ) -> Result<Self, AdmissionError> {
-        let policy_body = validated_body(policy.clone())?;
+        require_graph_body(graph, enrollment)?;
+        require_graph_body(graph, policy)?;
+        if enrollment.payload().policy_digest() != policy.reference() {
+            return Err(AdmissionError::AuthorityRefused);
+        }
         let mut budget_accounts = BTreeMap::new();
         for (class, budgets) in [
-            (BudgetClass::Reservation, policy.reservation_budgets()),
-            (BudgetClass::Start, policy.start_budgets()),
+            (
+                BudgetClass::Reservation,
+                policy.payload().reservation_budgets(),
+            ),
+            (BudgetClass::Start, policy.payload().start_budgets()),
         ] {
             for budget in budgets.as_slice() {
                 let capacity = budget.capacity().get();
@@ -719,7 +670,8 @@ impl LeaseProjection {
             }
         }
         Ok(Self {
-            policy_digest: policy_body.reference().digest().clone(),
+            installation_digest: enrollment.reference().digest().clone(),
+            policy_digest: policy.reference().digest().clone(),
             bindings: BTreeMap::new(),
             spent_warrants: BTreeSet::new(),
             budget_accounts,
@@ -784,11 +736,26 @@ impl LeaseProjection {
     /// resource, fence, time, sequence, or canonical body failure. No map changes on failure.
     pub fn reserve_publication(
         &mut self,
+        graph: &BodyGraph,
         policy: &ValidatedBody<AuthorityPolicy>,
         warrant: &ValidatedBody<PublicationWarrant>,
         approval: &ValidatedBody<PublicationApproval>,
-        revocation: Option<&PublicationRevocation>,
         reserved_at: UnixNanoseconds,
+    ) -> Result<ReservationMaterial<IdempotencyBinding, EffectLease>, AdmissionError> {
+        require_graph_body(graph, policy)?;
+        require_graph_body(graph, warrant)?;
+        require_graph_body(graph, approval)?;
+        let revoked_at = graph.publication_revoked_at(warrant.reference().digest())?;
+        self.reserve_publication_resolved(policy, warrant, approval, reserved_at, revoked_at)
+    }
+
+    fn reserve_publication_resolved(
+        &mut self,
+        policy: &ValidatedBody<AuthorityPolicy>,
+        warrant: &ValidatedBody<PublicationWarrant>,
+        approval: &ValidatedBody<PublicationApproval>,
+        reserved_at: UnixNanoseconds,
+        revoked_at: Option<UnixNanoseconds>,
     ) -> Result<ReservationMaterial<IdempotencyBinding, EffectLease>, AdmissionError> {
         let resources = SortedUnique::new(warrant.payload().resource_keys().to_vec())?;
         let effect_id = derive_effect_id(
@@ -824,7 +791,7 @@ impl LeaseProjection {
         if self.spent_warrants.contains(warrant.reference().digest()) {
             return Err(AdmissionError::WarrantSpent);
         }
-        validate_publication_authority(self, policy, warrant, approval, revocation, reserved_at)?;
+        validate_publication_authority(self, policy, warrant, approval, revoked_at, reserved_at)?;
 
         let mut candidate = self.clone();
         candidate.admit_ordinary_events_internal(1, reserved_at)?;
@@ -874,12 +841,35 @@ impl LeaseProjection {
     /// Uses the same fail-closed rules as publication with the separation namespace.
     pub fn reserve_separation(
         &mut self,
+        graph: &BodyGraph,
         policy: &ValidatedBody<AuthorityPolicy>,
         warrant: &ValidatedBody<SeparationWarrant>,
         approval: &ValidatedBody<SeparationApproval>,
-        revocation: Option<&SeparationRevocation>,
         current_custody_generation: U64Decimal,
         reserved_at: UnixNanoseconds,
+    ) -> Result<ReservationMaterial<SeparationBinding, SeparationLease>, AdmissionError> {
+        require_graph_body(graph, policy)?;
+        require_graph_body(graph, warrant)?;
+        require_graph_body(graph, approval)?;
+        let revoked_at = graph.separation_revoked_at(warrant.reference().digest())?;
+        self.reserve_separation_resolved(
+            policy,
+            warrant,
+            approval,
+            current_custody_generation,
+            reserved_at,
+            revoked_at,
+        )
+    }
+
+    fn reserve_separation_resolved(
+        &mut self,
+        policy: &ValidatedBody<AuthorityPolicy>,
+        warrant: &ValidatedBody<SeparationWarrant>,
+        approval: &ValidatedBody<SeparationApproval>,
+        current_custody_generation: U64Decimal,
+        reserved_at: UnixNanoseconds,
+        revoked_at: Option<UnixNanoseconds>,
     ) -> Result<ReservationMaterial<SeparationBinding, SeparationLease>, AdmissionError> {
         let resources = SortedUnique::new(warrant.payload().resource_keys().to_vec())?;
         let effect_id = derive_effect_id(
@@ -915,7 +905,7 @@ impl LeaseProjection {
         if self.spent_warrants.contains(warrant.reference().digest()) {
             return Err(AdmissionError::WarrantSpent);
         }
-        validate_separation_authority(self, policy, warrant, approval, revocation, reserved_at)?;
+        validate_separation_authority(self, policy, warrant, approval, revoked_at, reserved_at)?;
         checked_next_generation(Some(current_custody_generation))?;
 
         let mut candidate = self.clone();
@@ -979,6 +969,9 @@ impl LeaseProjection {
         {
             return Err(AdmissionError::AuthorityRefused);
         }
+        if !record.lease_is_live_at(prepared_at) || prepared_at >= record.warrant_expires_at {
+            return Err(AdmissionError::WarrantExpired);
+        }
         candidate.admit_ordinary_events_internal(1, prepared_at)?;
         candidate
             .effects
@@ -997,8 +990,23 @@ impl LeaseProjection {
     /// or sequence exhaustion. No state changes on failure.
     pub fn start(
         &mut self,
+        graph: &BodyGraph,
         effect_id: &EffectId,
         start_at: UnixNanoseconds,
+    ) -> Result<(), AdmissionError> {
+        let record = self
+            .effects
+            .get(effect_id)
+            .ok_or(AdmissionError::AuthorityRefused)?;
+        let revoked_at = Self::resolve_start_authority(graph, record)?;
+        self.start_publication_resolved(effect_id, start_at, revoked_at)
+    }
+
+    fn start_publication_resolved(
+        &mut self,
+        effect_id: &EffectId,
+        start_at: UnixNanoseconds,
+        revoked_at: Option<UnixNanoseconds>,
     ) -> Result<(), AdmissionError> {
         let mut candidate = self.clone();
         ensure_nondecreasing_time(candidate.last_transition_time, start_at)?;
@@ -1007,15 +1015,13 @@ impl LeaseProjection {
             .get(effect_id)
             .ok_or(AdmissionError::AuthorityRefused)?
             .clone();
-        let permitted = record.protocol == EffectProtocol::Publication
-            && matches!(record.lifecycle, Lifecycle::Reserved | Lifecycle::Prepared);
-        if !permitted || !record.lease_is_live_at(start_at) {
-            return if permitted {
-                Err(AdmissionError::WarrantExpired)
-            } else {
-                Err(AdmissionError::AuthorityRefused)
-            };
+        if record.protocol != EffectProtocol::Publication {
+            return Err(AdmissionError::AuthorityRefused);
         }
+        if record.lifecycle != Lifecycle::Prepared {
+            return Err(AdmissionError::PreconditionRefused);
+        }
+        Self::ensure_start_authorized(&record, start_at, revoked_at)?;
         candidate.apply_start(effect_id, &record, start_at)?;
         *self = candidate;
         Ok(())
@@ -1029,9 +1035,25 @@ impl LeaseProjection {
     /// budget mismatch, or sequence exhaustion without changing state.
     pub fn start_separation(
         &mut self,
+        graph: &BodyGraph,
         effect_id: &EffectId,
         current_custody_generation: U64Decimal,
         start_at: UnixNanoseconds,
+    ) -> Result<(), AdmissionError> {
+        let record = self
+            .effects
+            .get(effect_id)
+            .ok_or(AdmissionError::AuthorityRefused)?;
+        let revoked_at = Self::resolve_start_authority(graph, record)?;
+        self.start_separation_resolved(effect_id, current_custody_generation, start_at, revoked_at)
+    }
+
+    fn start_separation_resolved(
+        &mut self,
+        effect_id: &EffectId,
+        current_custody_generation: U64Decimal,
+        start_at: UnixNanoseconds,
+        revoked_at: Option<UnixNanoseconds>,
     ) -> Result<(), AdmissionError> {
         let mut candidate = self.clone();
         ensure_nondecreasing_time(candidate.last_transition_time, start_at)?;
@@ -1048,9 +1070,7 @@ impl LeaseProjection {
         if record.separation_generation != Some(current_custody_generation) {
             return Err(AdmissionError::PreconditionRefused);
         }
-        if !record.lease_is_live_at(start_at) {
-            return Err(AdmissionError::WarrantExpired);
-        }
+        Self::ensure_start_authorized(&record, start_at, revoked_at)?;
         candidate.apply_start(effect_id, &record, start_at)?;
         *self = candidate;
         Ok(())
@@ -1173,6 +1193,9 @@ impl LeaseProjection {
         event_count: u64,
         transition_at: UnixNanoseconds,
     ) -> Result<(), AdmissionError> {
+        if event_count == 0 {
+            return Err(AdmissionError::AuthorityRefused);
+        }
         ensure_nondecreasing_time(self.last_transition_time, transition_at)?;
         let needed = self
             .terminal_sequence_reserve
@@ -1201,6 +1224,40 @@ impl LeaseProjection {
         let remaining = U64Decimal::MAX - self.head_sequence.get();
         if remaining < needed {
             return Err(AdmissionError::SequenceExhausted);
+        }
+        Ok(())
+    }
+
+    fn resolve_start_authority(
+        graph: &BodyGraph,
+        record: &EffectRecord,
+    ) -> Result<Option<UnixNanoseconds>, AdmissionError> {
+        let (kind, revoked_at) = match record.protocol {
+            EffectProtocol::Publication => (
+                BodyKind::PublicationWarrant,
+                graph.publication_revoked_at(&record.warrant_digest)?,
+            ),
+            EffectProtocol::Separation => (
+                BodyKind::SeparationWarrant,
+                graph.separation_revoked_at(&record.warrant_digest)?,
+            ),
+        };
+        graph
+            .require_kind(&record.warrant_digest, kind)
+            .map_err(|_| AdmissionError::AuthorityRefused)?;
+        Ok(revoked_at)
+    }
+
+    fn ensure_start_authorized(
+        record: &EffectRecord,
+        start_at: UnixNanoseconds,
+        revoked_at: Option<UnixNanoseconds>,
+    ) -> Result<(), AdmissionError> {
+        if !record.lease_is_live_at(start_at) || start_at >= record.warrant_expires_at {
+            return Err(AdmissionError::WarrantExpired);
+        }
+        if revoked_at.is_some_and(|revoked_at| start_at >= revoked_at) {
+            return Err(AdmissionError::WarrantRevoked);
         }
         Ok(())
     }
@@ -1353,6 +1410,8 @@ impl LeaseProjection {
                 resource_fences: fences,
                 reservation_hold: lease.payload().reservation_budget_hold.clone(),
                 start_hold: lease.payload().start_budget_hold.clone(),
+                warrant_digest: warrant.reference().digest().clone(),
+                warrant_expires_at: warrant.payload().expires_at(),
                 separation_generation: None,
             },
         );
@@ -1387,6 +1446,8 @@ impl LeaseProjection {
                 resource_fences: fences,
                 reservation_hold: lease.payload().reservation_budget_hold.clone(),
                 start_hold: lease.payload().start_budget_hold.clone(),
+                warrant_digest: warrant.reference().digest().clone(),
+                warrant_expires_at: warrant.payload().expires_at(),
                 separation_generation: Some(current_custody_generation),
             },
         );
@@ -1460,10 +1521,11 @@ fn validate_publication_authority(
     policy: &ValidatedBody<AuthorityPolicy>,
     warrant: &ValidatedBody<PublicationWarrant>,
     approval: &ValidatedBody<PublicationApproval>,
-    revocation: Option<&PublicationRevocation>,
+    revoked_at: Option<UnixNanoseconds>,
     now: UnixNanoseconds,
 ) -> Result<(), AdmissionError> {
     if projection.policy_digest != *policy.reference().digest()
+        || projection.installation_digest != *warrant.payload().installation_digest().digest()
         || warrant.payload().policy_digest() != policy.reference()
         || approval.payload().warrant_digest() != warrant.reference()
         || !policy
@@ -1483,16 +1545,8 @@ fn validate_publication_authority(
     if now >= warrant.payload().expires_at() {
         return Err(AdmissionError::WarrantExpired);
     }
-    if let Some(revocation) = revocation {
-        if revocation.warrant_digest() != warrant.reference()
-            || !policy.payload().contains_revoker(revocation.revoker_id())
-            || revocation.revoked_at() < approval.payload().approved_at()
-        {
-            return Err(AdmissionError::AuthorityRefused);
-        }
-        if revocation.is_effective_at(now) {
-            return Err(AdmissionError::WarrantRevoked);
-        }
+    if revoked_at.is_some_and(|revoked_at| now >= revoked_at) {
+        return Err(AdmissionError::WarrantRevoked);
     }
     ensure_nondecreasing_time(projection.last_transition_time, now)
 }
@@ -1502,10 +1556,11 @@ fn validate_separation_authority(
     policy: &ValidatedBody<AuthorityPolicy>,
     warrant: &ValidatedBody<SeparationWarrant>,
     approval: &ValidatedBody<SeparationApproval>,
-    revocation: Option<&SeparationRevocation>,
+    revoked_at: Option<UnixNanoseconds>,
     now: UnixNanoseconds,
 ) -> Result<(), AdmissionError> {
     if projection.policy_digest != *policy.reference().digest()
+        || projection.installation_digest != *warrant.payload().installation_digest().digest()
         || warrant.payload().policy_digest() != policy.reference()
         || approval.payload().warrant_digest() != warrant.reference()
         || !policy
@@ -1525,16 +1580,8 @@ fn validate_separation_authority(
     if now >= warrant.payload().expires_at() {
         return Err(AdmissionError::WarrantExpired);
     }
-    if let Some(revocation) = revocation {
-        if revocation.warrant_digest() != warrant.reference()
-            || !policy.payload().contains_revoker(revocation.revoker_id())
-            || revocation.revoked_at() < approval.payload().approved_at()
-        {
-            return Err(AdmissionError::AuthorityRefused);
-        }
-        if revocation.is_effective_at(now) {
-            return Err(AdmissionError::WarrantRevoked);
-        }
+    if revoked_at.is_some_and(|revoked_at| now >= revoked_at) {
+        return Err(AdmissionError::WarrantRevoked);
     }
     ensure_nondecreasing_time(projection.last_transition_time, now)
 }
@@ -1544,6 +1591,15 @@ fn claim_to_hold(claim: &BudgetClaim) -> BudgetHold {
         key: claim.key().clone(),
         amount: claim.amount(),
     }
+}
+
+fn require_graph_body<P: BodySpec>(
+    graph: &BodyGraph,
+    body: &ValidatedBody<P>,
+) -> Result<(), AdmissionError> {
+    graph
+        .require_validated_body(body)
+        .map_err(|_| AdmissionError::AuthorityRefused)
 }
 
 fn checked_next_fence(current: Option<Fence>) -> Result<Fence, AdmissionError> {
@@ -1667,7 +1723,7 @@ struct SeparationLeaseWire {
 
 pub(crate) fn decode_idempotency_binding(body: Value) -> Result<IdempotencyBinding, BodyError> {
     let wire: IdempotencyBindingWire =
-        serde_json::from_value(body).map_err(CanonicalError::Decode)?;
+        serde_json::from_value(body).map_err(CanonicalError::from)?;
     Ok(IdempotencyBinding {
         idempotency_key: wire.idempotency_key,
         effect_id: wire.effect_id,
@@ -1676,7 +1732,7 @@ pub(crate) fn decode_idempotency_binding(body: Value) -> Result<IdempotencyBindi
 }
 
 pub(crate) fn decode_effect_lease(body: Value) -> Result<EffectLease, BodyError> {
-    let wire: EffectLeaseWire = serde_json::from_value(body).map_err(CanonicalError::Decode)?;
+    let wire: EffectLeaseWire = serde_json::from_value(body).map_err(CanonicalError::from)?;
     Ok(EffectLease {
         effect_id: wire.effect_id,
         binding_digest: wire.binding_digest,
@@ -1689,8 +1745,7 @@ pub(crate) fn decode_effect_lease(body: Value) -> Result<EffectLease, BodyError>
 }
 
 pub(crate) fn decode_separation_binding(body: Value) -> Result<SeparationBinding, BodyError> {
-    let wire: SeparationBindingWire =
-        serde_json::from_value(body).map_err(CanonicalError::Decode)?;
+    let wire: SeparationBindingWire = serde_json::from_value(body).map_err(CanonicalError::from)?;
     Ok(SeparationBinding {
         idempotency_key: wire.idempotency_key,
         effect_id: wire.effect_id,
@@ -1699,7 +1754,7 @@ pub(crate) fn decode_separation_binding(body: Value) -> Result<SeparationBinding
 }
 
 pub(crate) fn decode_separation_lease(body: Value) -> Result<SeparationLease, BodyError> {
-    let wire: SeparationLeaseWire = serde_json::from_value(body).map_err(CanonicalError::Decode)?;
+    let wire: SeparationLeaseWire = serde_json::from_value(body).map_err(CanonicalError::from)?;
     Ok(SeparationLease {
         effect_id: wire.effect_id,
         binding_digest: wire.binding_digest,
@@ -1714,6 +1769,14 @@ pub(crate) fn decode_separation_lease(body: Value) -> Result<SeparationLease, Bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        authority::BudgetCapacity,
+        body::{
+            StaticArtifactPublishInputRef, StaticArtifactPublishPreconditionRef,
+            StaticArtifactSeparationInputRef, StaticArtifactSeparationPreconditionRef,
+        },
+        scalar::{Hex256, Identifier, IncarnationId, SafeUInt},
+    };
 
     fn test_digest(byte: char) -> Digest {
         Digest::parse(&format!("sha256:{}", byte.to_string().repeat(64))).unwrap()
@@ -1725,6 +1788,7 @@ mod tests {
 
     fn blank_projection() -> LeaseProjection {
         LeaseProjection {
+            installation_digest: test_digest('e'),
             policy_digest: test_digest('f'),
             bindings: BTreeMap::new(),
             spent_warrants: BTreeSet::new(),
@@ -1736,6 +1800,150 @@ mod tests {
             head_sequence: U64Decimal::from_u64(0),
             last_transition_time: None,
         }
+    }
+
+    fn authority_projection() -> (
+        LeaseProjection,
+        ValidatedBody<AuthorityPolicy>,
+        ValidatedBody<InstallationEnrollment>,
+    ) {
+        let budget_key = Identifier::parse("shared-budget").unwrap();
+        let policy = validated_body(
+            AuthorityPolicy::new(
+                Identifier::parse("unit-policy").unwrap(),
+                U64Decimal::from_u64(0),
+                SortedUnique::new(vec![Identifier::parse("proposer").unwrap()]).unwrap(),
+                SortedUnique::new(vec![Identifier::parse("approver").unwrap()]).unwrap(),
+                SortedUnique::new(vec![Identifier::parse("revoker").unwrap()]).unwrap(),
+                SortedUnique::new(vec![Identifier::parse("witness").unwrap()]).unwrap(),
+                true,
+                SortedUnique::new(vec![BudgetCapacity::new(
+                    budget_key.clone(),
+                    SafeUInt::new(8).unwrap(),
+                )])
+                .unwrap(),
+                SortedUnique::new(vec![BudgetCapacity::new(
+                    budget_key.clone(),
+                    SafeUInt::new(8).unwrap(),
+                )])
+                .unwrap(),
+                Identifier::parse("trusted-clock").unwrap(),
+                Identifier::parse("trusted-store").unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let enrollment = validated_body(
+            InstallationEnrollment::new(
+                Identifier::parse("installation").unwrap(),
+                IncarnationId::parse(test_digest('a').as_str()).unwrap(),
+                policy.reference().clone(),
+                UnixNanoseconds::parse("0").unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut projection = blank_projection();
+        projection.installation_digest = enrollment.reference().digest().clone();
+        projection.policy_digest = policy.reference().digest().clone();
+        for class in [BudgetClass::Reservation, BudgetClass::Start] {
+            projection.budget_accounts.insert(
+                (class, budget_key.clone()),
+                BudgetBalance {
+                    capacity: 8,
+                    available: 8,
+                    held: 0,
+                    consumed: 0,
+                },
+            );
+        }
+        (projection, policy, enrollment)
+    }
+
+    fn budget_claim() -> BudgetClaim {
+        BudgetClaim::new(
+            Identifier::parse("shared-budget").unwrap(),
+            BudgetAmount::new(SafeUInt::new(1).unwrap()).unwrap(),
+        )
+    }
+
+    fn publication_authority(
+        policy: &ValidatedBody<AuthorityPolicy>,
+        enrollment: &ValidatedBody<InstallationEnrollment>,
+        resources: [ResourceKey; 2],
+    ) -> (
+        ValidatedBody<PublicationWarrant>,
+        ValidatedBody<PublicationApproval>,
+    ) {
+        let warrant = validated_body(
+            PublicationWarrant::new(
+                enrollment,
+                policy,
+                Identifier::parse("proposer").unwrap(),
+                StaticArtifactPublishInputRef::from_digest(test_digest('b')),
+                StaticArtifactPublishPreconditionRef::from_digest(test_digest('c')),
+                IdempotencyKey::parse("publication-unit-0001").unwrap(),
+                resources,
+                budget_claim(),
+                budget_claim(),
+                UnixNanoseconds::parse("0").unwrap(),
+                UnixNanoseconds::parse("10000000000").unwrap(),
+                Hex256::parse(&"d".repeat(64)).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let approval = validated_body(
+            PublicationApproval::new(
+                &warrant,
+                policy,
+                Identifier::parse("approver").unwrap(),
+                UnixNanoseconds::parse("500000000").unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        (warrant, approval)
+    }
+
+    fn separation_authority(
+        policy: &ValidatedBody<AuthorityPolicy>,
+        enrollment: &ValidatedBody<InstallationEnrollment>,
+        resources: [ResourceKey; 2],
+        expires_at: &str,
+    ) -> (
+        ValidatedBody<SeparationWarrant>,
+        ValidatedBody<SeparationApproval>,
+    ) {
+        let warrant = validated_body(
+            SeparationWarrant::new(
+                enrollment,
+                policy,
+                Identifier::parse("proposer").unwrap(),
+                StaticArtifactSeparationInputRef::from_digest(test_digest('e')),
+                StaticArtifactSeparationPreconditionRef::from_digest(test_digest('f')),
+                IdempotencyKey::parse("separation-unit-0001").unwrap(),
+                resources,
+                budget_claim(),
+                budget_claim(),
+                UnixNanoseconds::parse("0").unwrap(),
+                UnixNanoseconds::parse(expires_at).unwrap(),
+                Hex256::parse(&"1".repeat(64)).unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let approval = validated_body(
+            SeparationApproval::new(
+                &warrant,
+                policy,
+                Identifier::parse("approver").unwrap(),
+                UnixNanoseconds::parse("500000000").unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        (warrant, approval)
     }
 
     #[test]
@@ -1783,5 +1991,188 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn separation_rechecks_generation_expiry_and_revocation_at_start() {
+        let (mut projection, policy, enrollment) = authority_projection();
+        let resources = [test_resource('3'), test_resource('4')];
+        let (warrant, approval) =
+            separation_authority(&policy, &enrollment, resources, "3000000000");
+
+        assert_eq!(
+            projection
+                .reserve_separation_resolved(
+                    &policy,
+                    &warrant,
+                    &approval,
+                    U64Decimal::from_u64(u64::MAX),
+                    UnixNanoseconds::parse("1000000000").unwrap(),
+                    None,
+                )
+                .unwrap_err(),
+            AdmissionError::CounterExhausted,
+        );
+        assert!(!projection.is_warrant_spent(warrant.reference().digest()));
+        assert!(projection.resource_fence(&test_resource('3')).is_none());
+
+        let material = projection
+            .reserve_separation_resolved(
+                &policy,
+                &warrant,
+                &approval,
+                U64Decimal::from_u64(7),
+                UnixNanoseconds::parse("1000000000").unwrap(),
+                None,
+            )
+            .unwrap();
+        let before = (
+            projection.head_sequence(),
+            projection.terminal_sequence_reserve(),
+        );
+        assert_eq!(
+            projection
+                .start_separation_resolved(
+                    material.effect_id(),
+                    U64Decimal::from_u64(8),
+                    UnixNanoseconds::parse("1500000000").unwrap(),
+                    None,
+                )
+                .unwrap_err(),
+            AdmissionError::PreconditionRefused,
+        );
+        assert_eq!(
+            (
+                projection.head_sequence(),
+                projection.terminal_sequence_reserve(),
+            ),
+            before,
+        );
+        assert_eq!(
+            projection
+                .start_separation_resolved(
+                    material.effect_id(),
+                    U64Decimal::from_u64(7),
+                    UnixNanoseconds::parse("3000000000").unwrap(),
+                    None,
+                )
+                .unwrap_err(),
+            AdmissionError::WarrantExpired,
+        );
+        assert_eq!(
+            projection
+                .start_separation_resolved(
+                    material.effect_id(),
+                    U64Decimal::from_u64(7),
+                    UnixNanoseconds::parse("2000000000").unwrap(),
+                    Some(UnixNanoseconds::parse("2000000000").unwrap()),
+                )
+                .unwrap_err(),
+            AdmissionError::WarrantRevoked,
+        );
+        assert_eq!(
+            (
+                projection.head_sequence(),
+                projection.terminal_sequence_reserve(),
+            ),
+            before,
+        );
+    }
+
+    #[test]
+    fn ordinary_events_interleave_with_both_started_families_and_release_unused_slots() {
+        let (mut projection, policy, enrollment) = authority_projection();
+        let publication_resources = [test_resource('1'), test_resource('2')];
+        let separation_resources = [test_resource('3'), test_resource('4')];
+        let (publication_warrant, publication_approval) =
+            publication_authority(&policy, &enrollment, publication_resources.clone());
+        let (separation_warrant, separation_approval) = separation_authority(
+            &policy,
+            &enrollment,
+            separation_resources.clone(),
+            "10000000000",
+        );
+        let publication = projection
+            .reserve_publication_resolved(
+                &policy,
+                &publication_warrant,
+                &publication_approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+                None,
+            )
+            .unwrap();
+        let separation = projection
+            .reserve_separation_resolved(
+                &policy,
+                &separation_warrant,
+                &separation_approval,
+                U64Decimal::from_u64(7),
+                UnixNanoseconds::parse("1100000000").unwrap(),
+                None,
+            )
+            .unwrap();
+        projection
+            .mark_prepared(
+                publication.effect_id(),
+                UnixNanoseconds::parse("1200000000").unwrap(),
+            )
+            .unwrap();
+        projection
+            .start_publication_resolved(
+                publication.effect_id(),
+                UnixNanoseconds::parse("1300000000").unwrap(),
+                None,
+            )
+            .unwrap();
+        projection
+            .start_separation_resolved(
+                separation.effect_id(),
+                U64Decimal::from_u64(7),
+                UnixNanoseconds::parse("1400000000").unwrap(),
+                None,
+            )
+            .unwrap();
+        assert_eq!(projection.terminal_sequence_reserve().get(), 5);
+
+        projection
+            .admit_ordinary_events(2, UnixNanoseconds::parse("1500000000").unwrap())
+            .unwrap();
+        assert_eq!(projection.terminal_sequence_reserve().get(), 5);
+        projection
+            .terminalize(
+                publication.effect_id(),
+                2,
+                UnixNanoseconds::parse("1600000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(projection.terminal_sequence_reserve().get(), 2);
+        assert!(
+            publication_resources
+                .iter()
+                .all(|key| projection.resource_lock(key).is_none())
+        );
+        assert!(
+            separation_resources
+                .iter()
+                .all(|key| projection.resource_lock(key).is_some())
+        );
+
+        projection
+            .admit_ordinary_events(2, UnixNanoseconds::parse("1700000000").unwrap())
+            .unwrap();
+        projection
+            .terminalize(
+                separation.effect_id(),
+                1,
+                UnixNanoseconds::parse("1800000000").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(projection.terminal_sequence_reserve().get(), 0);
+        assert!(
+            separation_resources
+                .iter()
+                .all(|key| projection.resource_lock(key).is_none())
+        );
+        assert_eq!(projection.head_sequence().get(), 12);
     }
 }

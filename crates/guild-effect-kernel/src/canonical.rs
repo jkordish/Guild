@@ -18,18 +18,24 @@ use sha2::{Digest as _, Sha256};
 use crate::scalar::{Digest, SafeUInt, ValidationError};
 
 /// Failures while decoding or encoding protocol-canonical JSON.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CanonicalError {
     #[error("duplicate JSON member `{key}`")]
     DuplicateMember { key: String },
     #[error("JSON number is outside the canonical SafeUInt model")]
     Number,
     #[error("JSON decode failed: {0}")]
-    Decode(#[from] serde_json::Error),
+    Decode(String),
     #[error("JCS encoding failed: {0}")]
     Encode(String),
     #[error("canonical digest was invalid: {0}")]
     Digest(#[from] ValidationError),
+}
+
+impl From<serde_json::Error> for CanonicalError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Decode(error.to_string())
+    }
 }
 
 /// Serializes a value using RFC 8785 after enforcing the protocol's SafeUInt-only number model.
@@ -113,10 +119,10 @@ pub fn strict_from_slice<T: DeserializeOwned>(input: &[u8]) -> Result<T, Canonic
     let mut deserializer = serde_json::Deserializer::from_slice(input);
     let value = match (StrictValueSeed { issue: &issue }).deserialize(&mut deserializer) {
         Ok(value) => value,
-        Err(error) => return Err(issue_to_error(&issue).unwrap_or(CanonicalError::Decode(error))),
+        Err(error) => return Err(issue_to_error(&issue).unwrap_or_else(|| error.into())),
     };
-    deserializer.end().map_err(CanonicalError::Decode)?;
-    T::deserialize(value).map_err(CanonicalError::Decode)
+    deserializer.end().map_err(CanonicalError::from)?;
+    T::deserialize(value).map_err(CanonicalError::from)
 }
 
 #[derive(Debug)]

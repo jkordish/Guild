@@ -13,7 +13,7 @@ use guild_effect_kernel::{
         StaticArtifactSeparationInput, StaticArtifactSeparationPrecondition, XattrValueRef,
         validate_batch, validated_body,
     },
-    canonical::{canonical_bytes, canonical_digest},
+    canonical::{CanonicalError, canonical_bytes, canonical_digest},
     lease::{
         AdmissionError, BudgetClass, LeaseProjection, PreStartReason, PreStartResult,
         checked_next_generation, derive_effect_id, derive_resource_key,
@@ -30,6 +30,7 @@ const TWO: &str = "sha256:222222222222222222222222222222222222222222222222222222
 const THREE: &str = "sha256:3333333333333333333333333333333333333333333333333333333333333333";
 
 struct PublicationScenario {
+    graph: BodyGraph,
     policy: guild_effect_kernel::body::ValidatedBody<AuthorityPolicy>,
     enrollment: guild_effect_kernel::body::ValidatedBody<InstallationEnrollment>,
     source: guild_effect_kernel::body::ValidatedBody<LocalFileObservation>,
@@ -131,7 +132,22 @@ fn publication_scenario(idempotency_key: &str) -> PublicationScenario {
         .unwrap(),
     )
     .unwrap();
+    let graph = validate_batch(
+        &BodyGraph::empty(),
+        BodyBatch::new(vec![
+            policy.clone().into_stored(),
+            enrollment.clone().into_stored(),
+            source.clone().into_stored(),
+            input.clone().into_stored(),
+            precondition.clone().into_stored(),
+            warrant.clone().into_stored(),
+            approval.clone().into_stored(),
+        ])
+        .unwrap(),
+    )
+    .unwrap();
     PublicationScenario {
+        graph,
         policy,
         enrollment,
         source,
@@ -142,6 +158,28 @@ fn publication_scenario(idempotency_key: &str) -> PublicationScenario {
         resource_keys,
         budget_key,
     }
+}
+
+fn graph_for_publication(
+    scenario: &PublicationScenario,
+    enrollment: &guild_effect_kernel::body::ValidatedBody<InstallationEnrollment>,
+    warrant: &guild_effect_kernel::body::ValidatedBody<PublicationWarrant>,
+    approval: &guild_effect_kernel::body::ValidatedBody<PublicationApproval>,
+    revocation: Option<&guild_effect_kernel::body::ValidatedBody<PublicationRevocation>>,
+) -> BodyGraph {
+    let mut bodies = vec![
+        scenario.policy.clone().into_stored(),
+        enrollment.clone().into_stored(),
+        scenario.source.clone().into_stored(),
+        scenario.input.clone().into_stored(),
+        scenario.precondition.clone().into_stored(),
+        warrant.clone().into_stored(),
+        approval.clone().into_stored(),
+    ];
+    if let Some(revocation) = revocation {
+        bodies.push(revocation.clone().into_stored());
+    }
+    validate_batch(&BodyGraph::empty(), BodyBatch::new(bodies).unwrap()).unwrap()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -398,13 +436,14 @@ fn resource_and_effect_ids_match_exact_jcs_preimages() {
 #[test]
 fn authority_and_lease_bodies_strictly_replay_with_exact_edges() {
     let scenario = publication_scenario("graph-replay-test-0001");
-    let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
     let reservation = projection
         .reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000000").unwrap(),
         )
         .unwrap();
@@ -439,13 +478,14 @@ fn authority_and_lease_bodies_strictly_replay_with_exact_edges() {
 #[test]
 fn replay_rejects_hostile_binding_members_and_binding_identity_lies() {
     let scenario = publication_scenario("binding-replay-test-0001");
-    let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
     let reservation = projection
         .reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000000").unwrap(),
         )
         .unwrap();
@@ -614,34 +654,46 @@ fn graph_rejects_unenrolled_or_same_principal_approval() {
 #[test]
 fn revocation_is_effective_at_its_timestamp_and_requires_approval_order() {
     let scenario = publication_scenario("revocation-boundary-0001");
-    let revocation = PublicationRevocation::new(
-        &scenario.warrant,
-        &scenario.approval,
-        &scenario.policy,
-        Identifier::parse("revoker").unwrap(),
-        UnixNanoseconds::parse("2000000000").unwrap(),
-        Identifier::parse("operator-stop").unwrap(),
+    let revocation = validated_body(
+        PublicationRevocation::new(
+            &scenario.warrant,
+            &scenario.approval,
+            &scenario.policy,
+            Identifier::parse("revoker").unwrap(),
+            UnixNanoseconds::parse("2000000000").unwrap(),
+            Identifier::parse("operator-stop").unwrap(),
+        )
+        .unwrap(),
     )
     .unwrap();
-    let mut before = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let revoked_graph = graph_for_publication(
+        &scenario,
+        &scenario.enrollment,
+        &scenario.warrant,
+        &scenario.approval,
+        Some(&revocation),
+    );
+    let mut before =
+        LeaseProjection::new(&revoked_graph, &scenario.enrollment, &scenario.policy).unwrap();
     assert!(
         before
             .reserve_publication(
+                &revoked_graph,
                 &scenario.policy,
                 &scenario.warrant,
                 &scenario.approval,
-                Some(&revocation),
                 UnixNanoseconds::parse("1999999999").unwrap(),
             )
             .is_ok()
     );
-    let mut at = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut at =
+        LeaseProjection::new(&revoked_graph, &scenario.enrollment, &scenario.policy).unwrap();
     assert_eq!(
         at.reserve_publication(
+            &revoked_graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            Some(&revocation),
             UnixNanoseconds::parse("2000000000").unwrap(),
         )
         .unwrap_err(),
@@ -662,17 +714,73 @@ fn revocation_is_effective_at_its_timestamp_and_requires_approval_order() {
 }
 
 #[test]
+fn publication_start_refuses_an_effective_post_reservation_revocation() {
+    let scenario = publication_scenario("start-revocation-test-0001");
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
+    let material = projection
+        .reserve_publication(
+            &scenario.graph,
+            &scenario.policy,
+            &scenario.warrant,
+            &scenario.approval,
+            UnixNanoseconds::parse("1000000000").unwrap(),
+        )
+        .unwrap();
+    projection
+        .mark_prepared(
+            material.effect_id(),
+            UnixNanoseconds::parse("1500000000").unwrap(),
+        )
+        .unwrap();
+
+    let revocation = validated_body(
+        PublicationRevocation::new(
+            &scenario.warrant,
+            &scenario.approval,
+            &scenario.policy,
+            Identifier::parse("revoker").unwrap(),
+            UnixNanoseconds::parse("2000000000").unwrap(),
+            Identifier::parse("operator-stop").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let revoked_graph = graph_for_publication(
+        &scenario,
+        &scenario.enrollment,
+        &scenario.warrant,
+        &scenario.approval,
+        Some(&revocation),
+    );
+    let before = projection_values(&projection, &scenario);
+
+    assert_eq!(
+        projection
+            .start(
+                &revoked_graph,
+                material.effect_id(),
+                UnixNanoseconds::parse("2000000000").unwrap(),
+            )
+            .unwrap_err(),
+        AdmissionError::WarrantRevoked,
+    );
+    assert_eq!(projection_values(&projection, &scenario), before);
+}
+
+#[test]
 fn expiry_equality_refuses_before_any_reservation_state() {
     let scenario = publication_scenario("expiry-boundary-0001");
-    let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
     let before = projection_values(&projection, &scenario);
     assert_eq!(
         projection
             .reserve_publication(
+                &scenario.graph,
                 &scenario.policy,
                 &scenario.warrant,
                 &scenario.approval,
-                None,
                 UnixNanoseconds::parse("20000000000").unwrap(),
             )
             .unwrap_err(),
@@ -681,26 +789,276 @@ fn expiry_equality_refuses_before_any_reservation_state() {
     assert_eq!(projection_values(&projection, &scenario), before);
 }
 
+#[test]
+fn reservation_rejects_warrant_keys_unrelated_to_the_publish_input() {
+    let scenario = publication_scenario("forged-resource-keys-0001");
+    let mut unrelated = [
+        derive_resource_key(&LogicalAddress::parse("local-file:///unrelated/x").unwrap()).unwrap(),
+        derive_resource_key(&LogicalAddress::parse("local-file:///unrelated/y").unwrap()).unwrap(),
+    ];
+    unrelated.sort();
+    let warrant = publication_warrant(
+        &scenario.policy,
+        &scenario.enrollment,
+        scenario.input.reference().clone(),
+        scenario.precondition.reference().clone(),
+        IdempotencyKey::parse("forged-resource-keys-0002").unwrap(),
+        unrelated,
+        &scenario.budget_key,
+        'e',
+    );
+    let approval = validated_body(
+        PublicationApproval::new(
+            &warrant,
+            &scenario.policy,
+            Identifier::parse("approver").unwrap(),
+            UnixNanoseconds::parse("500000000").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        validate_batch(
+            &BodyGraph::empty(),
+            BodyBatch::new(vec![
+                scenario.policy.clone().into_stored(),
+                scenario.enrollment.clone().into_stored(),
+                scenario.source.clone().into_stored(),
+                scenario.input.clone().into_stored(),
+                scenario.precondition.clone().into_stored(),
+                warrant.clone().into_stored(),
+                approval.clone().into_stored(),
+            ])
+            .unwrap(),
+        )
+        .unwrap_err(),
+        BodyError::Local(
+            "publication warrant resource keys are not its exact source and target keys".to_owned(),
+        ),
+    );
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
+    assert_eq!(
+        projection
+            .reserve_publication(
+                &scenario.graph,
+                &scenario.policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap_err(),
+        AdmissionError::AuthorityRefused,
+    );
+}
+
+#[test]
+fn reservation_rejects_deserialized_unenrolled_proposer() {
+    let scenario = publication_scenario("forged-proposer-test-0001");
+    let mut body = serde_json::to_value(scenario.warrant.payload()).unwrap();
+    body["proposerId"] = serde_json::json!("outsider");
+    let warrant =
+        validated_body(serde_json::from_value::<PublicationWarrant>(body).unwrap()).unwrap();
+    let approval = validated_body(
+        PublicationApproval::new(
+            &warrant,
+            &scenario.policy,
+            Identifier::parse("approver").unwrap(),
+            UnixNanoseconds::parse("500000000").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        validate_batch(
+            &BodyGraph::empty(),
+            BodyBatch::new(vec![
+                scenario.policy.clone().into_stored(),
+                scenario.enrollment.clone().into_stored(),
+                scenario.source.clone().into_stored(),
+                scenario.input.clone().into_stored(),
+                scenario.precondition.clone().into_stored(),
+                warrant.clone().into_stored(),
+                approval.clone().into_stored(),
+            ])
+            .unwrap(),
+        )
+        .unwrap_err(),
+        BodyError::Local(
+            "publication warrant does not match enrollment and immutable policy".to_owned(),
+        ),
+    );
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
+    assert_eq!(
+        projection
+            .reserve_publication(
+                &scenario.graph,
+                &scenario.policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap_err(),
+        AdmissionError::AuthorityRefused,
+    );
+}
+
+#[test]
+fn reservation_rejects_a_different_enrollment_under_the_same_policy() {
+    let scenario = publication_scenario("wrong-enrollment-test-0001");
+    let other_enrollment = validated_body(
+        InstallationEnrollment::new(
+            Identifier::parse("other-installation").unwrap(),
+            IncarnationId::parse(THREE).unwrap(),
+            scenario.policy.reference().clone(),
+            UnixNanoseconds::parse("0").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let warrant = publication_warrant(
+        &scenario.policy,
+        &other_enrollment,
+        scenario.input.reference().clone(),
+        scenario.precondition.reference().clone(),
+        IdempotencyKey::parse("wrong-enrollment-test-0002").unwrap(),
+        scenario.resource_keys.clone(),
+        &scenario.budget_key,
+        'f',
+    );
+    let approval = validated_body(
+        PublicationApproval::new(
+            &warrant,
+            &scenario.policy,
+            Identifier::parse("approver").unwrap(),
+            UnixNanoseconds::parse("500000000").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let other_graph =
+        graph_for_publication(&scenario, &other_enrollment, &warrant, &approval, None);
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
+    assert_eq!(
+        projection
+            .reserve_publication(
+                &other_graph,
+                &scenario.policy,
+                &warrant,
+                &approval,
+                UnixNanoseconds::parse("1000000000").unwrap(),
+            )
+            .unwrap_err(),
+        AdmissionError::AuthorityRefused,
+    );
+}
+
+#[test]
+fn publication_start_requires_preparation_and_live_warrant() {
+    let scenario = publication_scenario("start-boundary-test-0001");
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
+    let material = projection
+        .reserve_publication(
+            &scenario.graph,
+            &scenario.policy,
+            &scenario.warrant,
+            &scenario.approval,
+            UnixNanoseconds::parse("1000000000").unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        projection
+            .start(
+                &scenario.graph,
+                material.effect_id(),
+                UnixNanoseconds::parse("2000000000").unwrap(),
+            )
+            .unwrap_err(),
+        AdmissionError::PreconditionRefused,
+    );
+    assert_eq!(
+        projection
+            .mark_prepared(
+                material.effect_id(),
+                UnixNanoseconds::parse("6000000000").unwrap(),
+            )
+            .unwrap_err(),
+        AdmissionError::WarrantExpired,
+    );
+}
+
+#[test]
+fn publication_start_refuses_after_warrant_expiry_even_while_lease_is_live() {
+    let scenario = publication_scenario("short-warrant-test-0001");
+    let mut body = serde_json::to_value(scenario.warrant.payload()).unwrap();
+    body["expiresAt"] = serde_json::json!("3000000000");
+    body["nonce"] = serde_json::json!("9".repeat(64));
+    let warrant =
+        validated_body(serde_json::from_value::<PublicationWarrant>(body).unwrap()).unwrap();
+    let approval = validated_body(
+        PublicationApproval::new(
+            &warrant,
+            &scenario.policy,
+            Identifier::parse("approver").unwrap(),
+            UnixNanoseconds::parse("500000000").unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let short_graph =
+        graph_for_publication(&scenario, &scenario.enrollment, &warrant, &approval, None);
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
+    let material = projection
+        .reserve_publication(
+            &short_graph,
+            &scenario.policy,
+            &warrant,
+            &approval,
+            UnixNanoseconds::parse("1000000000").unwrap(),
+        )
+        .unwrap();
+    projection
+        .mark_prepared(
+            material.effect_id(),
+            UnixNanoseconds::parse("2000000000").unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        projection
+            .start(
+                &short_graph,
+                material.effect_id(),
+                UnixNanoseconds::parse("4000000000").unwrap(),
+            )
+            .unwrap_err(),
+        AdmissionError::WarrantExpired,
+    );
+}
+
 proptest! {
     #[test]
     fn duplicate_reservation_is_a_map_noop_and_changed_identity_conflicts(
         suffix in "[A-Za-z0-9]{16,40}"
     ) {
         let scenario = publication_scenario(&suffix);
-        let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+        let mut projection = LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
         let first = projection.reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000000").unwrap(),
         ).unwrap();
         let after_first = projection_values(&projection, &scenario);
         let second = projection.reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000001").unwrap(),
         ).unwrap();
         prop_assert!(second.delta().is_empty());
@@ -724,12 +1082,19 @@ proptest! {
             Identifier::parse("approver").unwrap(),
             UnixNanoseconds::parse("500000000").unwrap(),
         ).unwrap()).unwrap();
+        let changed_graph = graph_for_publication(
+            &scenario,
+            &scenario.enrollment,
+            &changed,
+            &changed_approval,
+            None,
+        );
         prop_assert_eq!(
             projection.reserve_publication(
+                &changed_graph,
                 &scenario.policy,
                 &changed,
                 &changed_approval,
-                None,
                 UnixNanoseconds::parse("1000000001").unwrap(),
             ).unwrap_err(),
             AdmissionError::IdempotencyConflict,
@@ -741,13 +1106,14 @@ proptest! {
 #[test]
 fn namespaced_budgets_hold_consume_and_never_replenish_on_terminal() {
     let scenario = publication_scenario("budget-state-test-0001");
-    let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
     let material = projection
         .reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000000").unwrap(),
         )
         .unwrap();
@@ -758,7 +1124,14 @@ fn namespaced_budgets_hold_consume_and_never_replenish_on_terminal() {
         assert_eq!((held.available(), held.held(), held.consumed()), (7, 1, 0));
     }
     projection
+        .mark_prepared(
+            material.effect_id(),
+            UnixNanoseconds::parse("1500000000").unwrap(),
+        )
+        .unwrap();
+    projection
         .start(
+            &scenario.graph,
             material.effect_id(),
             UnixNanoseconds::parse("2000000000").unwrap(),
         )
@@ -776,6 +1149,7 @@ fn namespaced_budgets_hold_consume_and_never_replenish_on_terminal() {
     assert!(
         projection
             .start(
+                &scenario.graph,
                 material.effect_id(),
                 UnixNanoseconds::parse("2000000001").unwrap(),
             )
@@ -803,18 +1177,26 @@ fn namespaced_budgets_hold_consume_and_never_replenish_on_terminal() {
 #[test]
 fn two_key_lock_conflict_is_atomic_and_locks_survive_start() {
     let scenario = publication_scenario("resource-lock-test-0001");
-    let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
     let first = projection
         .reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000000").unwrap(),
         )
         .unwrap();
     projection
+        .mark_prepared(
+            first.effect_id(),
+            UnixNanoseconds::parse("1500000000").unwrap(),
+        )
+        .unwrap();
+    projection
         .start(
+            &scenario.graph,
             first.effect_id(),
             UnixNanoseconds::parse("2000000000").unwrap(),
         )
@@ -826,15 +1208,33 @@ fn two_key_lock_conflict_is_atomic_and_locks_survive_start() {
         );
     }
 
-    let third =
-        derive_resource_key(&LogicalAddress::parse("local-file:///active/other").unwrap()).unwrap();
-    let mut overlapping = [scenario.resource_keys[1].clone(), third.clone()];
+    let competing_target = LogicalAddress::parse("local-file:///active/other").unwrap();
+    let competing_input = validated_body(
+        StaticArtifactPublishInput::new(
+            ArtifactName::parse("app").unwrap(),
+            scenario.source.reference().clone(),
+            competing_target.clone(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let competing_precondition = validated_body(StaticArtifactPublishPrecondition::new(
+        competing_target.clone(),
+        ExpectedState::absent(),
+        OptionalValue::absent(),
+    ))
+    .unwrap();
+    let third = derive_resource_key(&competing_target).unwrap();
+    let mut overlapping = [
+        derive_resource_key(scenario.source.payload().logical_address()).unwrap(),
+        third.clone(),
+    ];
     overlapping.sort();
     let competing = publication_warrant(
         &scenario.policy,
         &scenario.enrollment,
-        StaticArtifactPublishInputRef::from_digest(Digest::parse(THREE).unwrap()),
-        scenario.precondition.reference().clone(),
+        competing_input.reference().clone(),
+        competing_precondition.reference().clone(),
         IdempotencyKey::parse("resource-lock-test-0002").unwrap(),
         overlapping,
         &scenario.budget_key,
@@ -850,14 +1250,28 @@ fn two_key_lock_conflict_is_atomic_and_locks_survive_start() {
         .unwrap(),
     )
     .unwrap();
+    let competing_graph = validate_batch(
+        &BodyGraph::empty(),
+        BodyBatch::new(vec![
+            scenario.policy.clone().into_stored(),
+            scenario.enrollment.clone().into_stored(),
+            scenario.source.clone().into_stored(),
+            competing_input.into_stored(),
+            competing_precondition.into_stored(),
+            competing.clone().into_stored(),
+            competing_approval.clone().into_stored(),
+        ])
+        .unwrap(),
+    )
+    .unwrap();
     let before = projection_values(&projection, &scenario);
     assert_eq!(
         projection
             .reserve_publication(
+                &competing_graph,
                 &scenario.policy,
                 &competing,
                 &competing_approval,
-                None,
                 UnixNanoseconds::parse("2000000001").unwrap(),
             )
             .unwrap_err(),
@@ -870,13 +1284,14 @@ fn two_key_lock_conflict_is_atomic_and_locks_survive_start() {
 #[test]
 fn cancellation_releases_holds_and_locks_but_retains_binding_spend_and_fences() {
     let scenario = publication_scenario("cancellation-test-0001");
-    let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
     let material = projection
         .reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000000").unwrap(),
         )
         .unwrap();
@@ -921,10 +1336,10 @@ fn cancellation_releases_holds_and_locks_but_retains_binding_spend_and_fences() 
     let before_repeat = projection_values(&projection, &scenario);
     let existing = projection
         .reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1500000002").unwrap(),
         )
         .unwrap();
@@ -935,13 +1350,14 @@ fn cancellation_releases_holds_and_locks_but_retains_binding_spend_and_fences() 
 #[test]
 fn cancellation_deadline_is_not_legal_before_lease_expiry() {
     let scenario = publication_scenario("deadline-cancel-test-0001");
-    let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
     let material = projection
         .reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000000").unwrap(),
         )
         .unwrap();
@@ -968,13 +1384,14 @@ fn cancellation_deadline_is_not_legal_before_lease_expiry() {
 #[test]
 fn prepared_cancellation_reports_prepared_only_and_releases_at_commit() {
     let scenario = publication_scenario("prepared-cancel-test-0001");
-    let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
     let material = projection
         .reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000000").unwrap(),
         )
         .unwrap();
@@ -1016,21 +1433,30 @@ fn generation_and_event_sequence_exhaustion_are_closed() {
 
     let scenario = publication_scenario("sequence-reserve-test-0001");
     let mut projection = LeaseProjection::with_head_sequence(
-        scenario.policy.payload(),
-        U64Decimal::from_u64(u64::MAX - 5),
+        &scenario.graph,
+        &scenario.enrollment,
+        &scenario.policy,
+        U64Decimal::from_u64(u64::MAX - 6),
     )
     .unwrap();
     let material = projection
         .reserve_publication(
+            &scenario.graph,
             &scenario.policy,
             &scenario.warrant,
             &scenario.approval,
-            None,
             UnixNanoseconds::parse("1000000000").unwrap(),
         )
         .unwrap();
     projection
+        .mark_prepared(
+            material.effect_id(),
+            UnixNanoseconds::parse("1500000000").unwrap(),
+        )
+        .unwrap();
+    projection
         .start(
+            &scenario.graph,
             material.effect_id(),
             UnixNanoseconds::parse("2000000000").unwrap(),
         )
@@ -1067,7 +1493,8 @@ fn generation_and_event_sequence_exhaustion_are_closed() {
 #[test]
 fn transition_time_never_moves_backwards() {
     let scenario = publication_scenario("time-regression-test-0001");
-    let mut projection = LeaseProjection::new(scenario.policy.payload()).unwrap();
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
     projection
         .admit_ordinary_events(1, UnixNanoseconds::parse("100").unwrap())
         .unwrap();
@@ -1077,6 +1504,39 @@ fn transition_time_never_moves_backwards() {
             .unwrap_err(),
         AdmissionError::TimeRegression
     );
+}
+
+#[test]
+fn zero_ordinary_event_bundle_is_rejected_without_advancing_time() {
+    let scenario = publication_scenario("zero-event-test-0001");
+    let mut projection =
+        LeaseProjection::new(&scenario.graph, &scenario.enrollment, &scenario.policy).unwrap();
+
+    assert_eq!(
+        projection
+            .admit_ordinary_events(0, UnixNanoseconds::parse("100").unwrap())
+            .unwrap_err(),
+        AdmissionError::AuthorityRefused,
+    );
+    projection
+        .admit_ordinary_events(1, UnixNanoseconds::parse("99").unwrap())
+        .unwrap();
+    assert_eq!(projection.head_sequence().get(), 1);
+}
+
+#[test]
+fn admission_error_clone_preserves_the_exact_body_error_variant() {
+    let error = AdmissionError::Body(BodyError::Canonical(CanonicalError::Decode(
+        "invalid canonical member".to_owned(),
+    )));
+    let cloned = error.clone();
+
+    assert_eq!(cloned, error);
+    assert!(matches!(
+        cloned,
+        AdmissionError::Body(BodyError::Canonical(CanonicalError::Decode(message)))
+            if message == "invalid canonical member"
+    ));
 }
 
 #[test]
@@ -1130,7 +1590,7 @@ fn pre_start_reason_vocabulary_is_exact_and_cancellation_is_a_strict_subset() {
 }
 
 #[test]
-fn separation_checks_generation_twice_and_reserves_two_terminal_slots() {
+fn separation_generation_boundary_and_owned_decoders_are_closed() {
     let publication = publication_scenario("separation-foundation-0001");
     let active = LogicalAddress::parse("local-file:///active/app").unwrap();
     let quarantine = LogicalAddress::parse("local-file:///quarantine/app").unwrap();
@@ -1194,38 +1654,10 @@ fn separation_checks_generation_twice_and_reserves_two_terminal_slots() {
     )
     .unwrap();
 
-    let mut exhausted = LeaseProjection::new(publication.policy.payload()).unwrap();
     assert_eq!(
-        exhausted
-            .reserve_separation(
-                &publication.policy,
-                &warrant,
-                &approval,
-                None,
-                U64Decimal::from_u64(u64::MAX),
-                UnixNanoseconds::parse("1000000000").unwrap(),
-            )
-            .unwrap_err(),
-        AdmissionError::CounterExhausted
+        checked_next_generation(Some(U64Decimal::from_u64(u64::MAX))),
+        Err(AdmissionError::CounterExhausted)
     );
-    assert_eq!(exhausted.head_sequence().get(), 0);
-    assert!(
-        resource_keys
-            .iter()
-            .all(|key| exhausted.resource_fence(key).is_none())
-    );
-
-    let mut projection = LeaseProjection::new(publication.policy.payload()).unwrap();
-    let material = projection
-        .reserve_separation(
-            &publication.policy,
-            &warrant,
-            &approval,
-            None,
-            U64Decimal::from_u64(u64::MAX - 1),
-            UnixNanoseconds::parse("1000000000").unwrap(),
-        )
-        .unwrap();
     let revocation = SeparationRevocation::new(
         &warrant,
         &approval,
@@ -1250,61 +1682,42 @@ fn separation_checks_generation_twice_and_reserves_two_terminal_slots() {
         serde_json::to_value(&revocation).unwrap(),
         warrant.reference().digest(),
     );
+    let resources = SortedUnique::new(resource_keys.clone().to_vec()).unwrap();
+    let effect_id = derive_effect_id(
+        warrant.payload().installation_digest().digest(),
+        warrant.reference().digest(),
+        EffectKind::StaticArtifactSeparation,
+        &resources,
+        warrant.payload().input_digest().digest(),
+        warrant.payload().precondition_digest().digest(),
+    )
+    .unwrap();
+    let binding_body = serde_json::json!({
+        "idempotencyKey": warrant.payload().idempotency_key(),
+        "effectId": effect_id,
+        "warrantDigest": warrant.reference().digest(),
+    });
+    let binding_envelope = serde_json::json!({
+        "body": binding_body.clone(),
+        "kind": "separation-binding/v1",
+    });
+    let binding_digest = canonical_digest(&binding_envelope).unwrap();
     assert_owned_decoder_extracts_edge(
         "separation-binding/v1",
-        serde_json::to_value(material.binding().payload()).unwrap(),
+        binding_body,
         warrant.reference().digest(),
     );
-    assert_owned_decoder_extracts_edge(
-        "separation-lease/v1",
-        serde_json::to_value(material.lease().payload()).unwrap(),
-        material.binding().reference().digest(),
-    );
-    let before_failed_start = (
-        projection.head_sequence(),
-        projection.terminal_sequence_reserve(),
-    );
-    assert_eq!(
-        projection
-            .start_separation(
-                material.effect_id(),
-                U64Decimal::from_u64(u64::MAX),
-                UnixNanoseconds::parse("2000000000").unwrap(),
-            )
-            .unwrap_err(),
-        AdmissionError::CounterExhausted
-    );
-    assert_eq!(
-        (
-            projection.head_sequence(),
-            projection.terminal_sequence_reserve()
-        ),
-        before_failed_start
-    );
-    projection
-        .start_separation(
-            material.effect_id(),
-            U64Decimal::from_u64(u64::MAX - 1),
-            UnixNanoseconds::parse("2000000000").unwrap(),
-        )
-        .unwrap();
-    assert_eq!(projection.terminal_sequence_reserve().get(), 2);
-    assert!(
-        resource_keys
-            .iter()
-            .all(|key| projection.resource_lock(key).is_some())
-    );
-    projection
-        .terminalize(
-            material.effect_id(),
-            1,
-            UnixNanoseconds::parse("3000000000").unwrap(),
-        )
-        .unwrap();
-    assert_eq!(projection.terminal_sequence_reserve().get(), 0);
-    assert!(
-        resource_keys
-            .iter()
-            .all(|key| projection.resource_lock(key).is_none())
-    );
+    let lease_body = serde_json::json!({
+        "effectId": effect_id,
+        "bindingDigest": binding_digest,
+        "resourceFences": [
+            { "resourceKey": resource_keys[0], "fence": "1" },
+            { "resourceKey": resource_keys[1], "fence": "1" },
+        ],
+        "reservationBudgetHold": { "key": publication.budget_key, "amount": 1 },
+        "startBudgetHold": { "key": publication.budget_key, "amount": 1 },
+        "reservedAt": "1000000000",
+        "expiresAt": "6000000000",
+    });
+    assert_owned_decoder_extracts_edge("separation-lease/v1", lease_body, &binding_digest);
 }

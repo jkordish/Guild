@@ -1317,6 +1317,78 @@ impl BodyGraph {
     pub fn is_empty(&self) -> bool {
         self.bodies.is_empty()
     }
+
+    pub(crate) fn require_validated_body<P: BodySpec>(
+        &self,
+        body: &ValidatedBody<P>,
+    ) -> Result<(), BodyError> {
+        let Some(stored) = self.bodies.get(body.reference().digest()) else {
+            return Err(BodyError::Local(
+                "validated body is not a member of the resolved body graph".to_owned(),
+            ));
+        };
+        if stored.kind != body.kind() || stored.canonical_bytes != body.canonical_bytes() {
+            return Err(BodyError::Local(
+                "validated body does not equal its resolved graph member".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn require_kind(
+        &self,
+        digest: &Digest,
+        expected: BodyKind,
+    ) -> Result<(), BodyError> {
+        match self.bodies.get(digest) {
+            Some(body) if body.kind == expected => Ok(()),
+            _ => Err(BodyError::Local(
+                "required authority body is absent from the resolved body graph".to_owned(),
+            )),
+        }
+    }
+
+    pub(crate) fn publication_revoked_at(
+        &self,
+        warrant_digest: &Digest,
+    ) -> Result<Option<UnixNanoseconds>, BodyError> {
+        self.revoked_at(warrant_digest, true)
+    }
+
+    pub(crate) fn separation_revoked_at(
+        &self,
+        warrant_digest: &Digest,
+    ) -> Result<Option<UnixNanoseconds>, BodyError> {
+        self.revoked_at(warrant_digest, false)
+    }
+
+    fn revoked_at(
+        &self,
+        warrant_digest: &Digest,
+        publication: bool,
+    ) -> Result<Option<UnixNanoseconds>, BodyError> {
+        let mut earliest: Option<UnixNanoseconds> = None;
+        for body in self.bodies.values() {
+            let decoded = decode_entry(&body.digest, &body.canonical_bytes)?;
+            let candidate = match decoded.facts {
+                BodyFacts::PublicationRevocation(revocation)
+                    if publication && revocation.warrant_digest().digest() == warrant_digest =>
+                {
+                    Some(revocation.revoked_at())
+                }
+                BodyFacts::SeparationRevocation(revocation)
+                    if !publication && revocation.warrant_digest().digest() == warrant_digest =>
+                {
+                    Some(revocation.revoked_at())
+                }
+                _ => None,
+            };
+            if let Some(candidate) = candidate {
+                earliest = Some(earliest.map_or(candidate, |current| current.min(candidate)));
+            }
+        }
+        Ok(earliest)
+    }
 }
 
 /// A proposed set of immutable bodies to insert atomically.
@@ -1347,7 +1419,7 @@ impl BodyBatch {
 }
 
 /// Closed failures for body construction, replay, and graph resolution.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BodyError {
     Local(String),
     Canonical(CanonicalError),
@@ -1421,66 +1493,6 @@ impl From<CanonicalError> for BodyError {
         Self::Canonical(error)
     }
 }
-
-impl PartialEq for BodyError {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Local(left), Self::Local(right))
-            | (Self::UnknownKind { kind: left }, Self::UnknownKind { kind: right }) => {
-                left == right
-            }
-            (Self::Canonical(left), Self::Canonical(right)) => {
-                left.to_string() == right.to_string()
-            }
-            (
-                Self::KeyMismatch {
-                    key: left_key,
-                    computed: left_computed,
-                },
-                Self::KeyMismatch {
-                    key: right_key,
-                    computed: right_computed,
-                },
-            ) => left_key == right_key && left_computed == right_computed,
-            (Self::DigestCollision { digest: left }, Self::DigestCollision { digest: right })
-            | (Self::Cycle { digest: left }, Self::Cycle { digest: right }) => left == right,
-            (
-                Self::PayloadModuleUnavailable { kind: left },
-                Self::PayloadModuleUnavailable { kind: right },
-            ) => left == right,
-            (Self::NonCanonicalSet, Self::NonCanonicalSet) => true,
-            (
-                Self::MissingReference {
-                    source: left_source,
-                    target: left_target,
-                },
-                Self::MissingReference {
-                    source: right_source,
-                    target: right_target,
-                },
-            ) => left_source == right_source && left_target == right_target,
-            (
-                Self::WrongTargetKind {
-                    source: left_source,
-                    expected: left_expected,
-                    actual: left_actual,
-                },
-                Self::WrongTargetKind {
-                    source: right_source,
-                    expected: right_expected,
-                    actual: right_actual,
-                },
-            ) => {
-                left_source == right_source
-                    && left_expected == right_expected
-                    && left_actual == right_actual
-            }
-            _ => false,
-        }
-    }
-}
-
-impl Eq for BodyError {}
 
 #[derive(Serialize)]
 struct BodyEnvelope<'a, T: ?Sized> {
@@ -1682,7 +1694,7 @@ fn decode_private_typed<T: BodySpec>(
 ) -> Result<(Value, Vec<TypedEdge>, BodyFacts), BodyError> {
     payload.validate_local()?;
     let edges = payload.edges();
-    let encoded = serde_json::to_value(&payload).map_err(CanonicalError::Decode)?;
+    let encoded = serde_json::to_value(&payload).map_err(CanonicalError::from)?;
     Ok((encoded, edges, facts(payload)))
 }
 
@@ -1693,10 +1705,10 @@ fn decode_typed<T>(
 where
     T: BodySpec + DeserializeOwned,
 {
-    let payload: T = serde_json::from_value(body).map_err(CanonicalError::Decode)?;
+    let payload: T = serde_json::from_value(body).map_err(CanonicalError::from)?;
     payload.validate_local()?;
     let edges = payload.edges();
-    let encoded = serde_json::to_value(&payload).map_err(CanonicalError::Decode)?;
+    let encoded = serde_json::to_value(&payload).map_err(CanonicalError::from)?;
     Ok((encoded, edges, facts(payload)))
 }
 
@@ -1716,8 +1728,7 @@ struct FieldDescriptorWire {
 }
 
 fn decode_schema_descriptor(body: Value) -> Result<(Value, Vec<TypedEdge>, BodyFacts), BodyError> {
-    let wire: SchemaDescriptorWire =
-        serde_json::from_value(body).map_err(CanonicalError::Decode)?;
+    let wire: SchemaDescriptorWire = serde_json::from_value(body).map_err(CanonicalError::from)?;
     let compiled = descriptor(wire.schema_id);
     let expected: Vec<_> = compiled
         .fields()
@@ -1733,7 +1744,7 @@ fn decode_schema_descriptor(body: Value) -> Result<(Value, Vec<TypedEdge>, BodyF
             "schema descriptor does not equal the compiled descriptor".to_owned(),
         ));
     }
-    let encoded = serde_json::to_value(&wire).map_err(CanonicalError::Decode)?;
+    let encoded = serde_json::to_value(&wire).map_err(CanonicalError::from)?;
     Ok((encoded, Vec::new(), BodyFacts::None))
 }
 
