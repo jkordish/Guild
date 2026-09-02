@@ -270,7 +270,13 @@ fn validate_bundle_inner(
         return Err(ChainError::InvalidBundle);
     }
 
-    let combined_bodies = validate_batch(&base.bodies, BodyBatch::new(bundle.new_bodies.clone())?)?;
+    // `ImmutableStore` already owns a validated graph. Re-run cross-body decoding only when a
+    // proposal adds bodies whose edges must be resolved against that base.
+    let combined_bodies = if bundle.new_bodies.is_empty() {
+        base.bodies.clone()
+    } else {
+        validate_batch(&base.bodies, BodyBatch::new(bundle.new_bodies.clone())?)?
+    };
 
     let mut new_event_digests = BTreeSet::new();
     for event in &bundle.events {
@@ -355,14 +361,7 @@ fn validate_bundle_inner(
         }
     }
 
-    let terminal_count = bundle
-        .events
-        .iter()
-        .filter(|event| is_terminal(event.preimage().event_type()))
-        .count();
-    if terminal_count > 1 {
-        return Err(ChainError::InvalidBundle);
-    }
+    validate_bundle_shape(&bundle)?;
     validate_sequence_capacity(base, &bundle)?;
     Ok((bundle, combined_bodies))
 }
@@ -405,16 +404,106 @@ fn validate_genesis_bundle(
     Ok(())
 }
 
-fn is_terminal(event_type: EventType) -> bool {
-    matches!(
-        event_type,
-        EventType::EffectVerified
-            | EventType::EffectFailed
-            | EventType::EffectIndeterminate
-            | EventType::SeparationVerified
-            | EventType::SeparationFailed
-            | EventType::SeparationIndeterminate
-    )
+fn event_type_shape_is_allowed(expected_head: &ExpectedHead, event_types: &[EventType]) -> bool {
+    match expected_head {
+        ExpectedHead::Empty => event_types == [EventType::InstallationEnrolled],
+        ExpectedHead::Present(_) => match event_types {
+            [event_type] => matches!(
+                event_type,
+                EventType::WarrantProposed
+                    | EventType::WarrantApproved
+                    | EventType::WarrantRevoked
+                    | EventType::WarrantExpired
+                    | EventType::EffectReserved
+                    | EventType::EffectCancelledBeforeStart
+                    | EventType::ArtifactPrepared
+                    | EventType::EffectStarted
+                    | EventType::SeparationWarrantProposed
+                    | EventType::SeparationWarrantApproved
+                    | EventType::SeparationWarrantRevoked
+                    | EventType::SeparationWarrantExpired
+                    | EventType::SeparationReserved
+                    | EventType::SeparationCancelledBeforeStart
+                    | EventType::SeparationStarted
+                    | EventType::SeparationVerified
+                    | EventType::SeparationFailed
+            ),
+            [
+                EventType::ArtifactPublished | EventType::ArtifactPublishedRecovered,
+                EventType::EffectVerified,
+            ]
+            | [
+                EventType::ArtifactPublished | EventType::ArtifactPublishedRecovered,
+                EventType::EffectFailed,
+                EventType::CustodyAbsent,
+            ]
+            | [
+                EventType::ArtifactPublished | EventType::ArtifactPublishedRecovered,
+                EventType::EffectIndeterminate,
+                EventType::CustodyDisputed,
+            ]
+            | [
+                EventType::SeparationIndeterminate,
+                EventType::CustodyDisputed,
+            ] => true,
+            _ => false,
+        },
+    }
+}
+
+fn validate_bundle_shape(bundle: &TransitionBundle) -> Result<(), ChainError> {
+    let event_types = bundle
+        .events
+        .iter()
+        .map(|event| event.preimage().event_type())
+        .collect::<Vec<_>>();
+    if !event_type_shape_is_allowed(bundle.expected_head(), &event_types) {
+        return Err(ChainError::InvalidBundle);
+    }
+
+    let paired_receipt_matches = match bundle.events.as_slice() {
+        [_, terminal, custody]
+            if matches!(
+                terminal.preimage().event_type(),
+                EventType::EffectFailed | EventType::EffectIndeterminate
+            ) =>
+        {
+            match (terminal.preimage().payload(), custody.preimage().payload()) {
+                (EventPayload::EffectFailed(terminal), EventPayload::CustodyAbsent(custody)) => {
+                    terminal.receipt_digest() == custody.receipt_digest()
+                }
+                (
+                    EventPayload::EffectIndeterminate(terminal),
+                    EventPayload::CustodyDisputed(custody),
+                ) => matches!(
+                    custody.terminal_receipt(),
+                    crate::evidence::TerminalReceiptRef::Publication { digest }
+                        if digest == terminal.receipt_digest()
+                ),
+                _ => false,
+            }
+        }
+        [terminal, custody]
+            if terminal.preimage().event_type() == EventType::SeparationIndeterminate =>
+        {
+            match (terminal.preimage().payload(), custody.preimage().payload()) {
+                (
+                    EventPayload::SeparationIndeterminate(terminal),
+                    EventPayload::CustodyDisputed(custody),
+                ) => matches!(
+                    custody.terminal_receipt(),
+                    crate::evidence::TerminalReceiptRef::Separation { digest }
+                        if digest == terminal.receipt_digest()
+                ),
+                _ => false,
+            }
+        }
+        _ => true,
+    };
+    if !paired_receipt_matches {
+        return Err(ChainError::InvalidBundle);
+    }
+    Ok(())
 }
 
 fn validate_sequence_capacity(
@@ -485,25 +574,262 @@ fn validate_sequence_capacity(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+
     use serde_json::{Value, json};
 
     use super::{
-        ExpectedHead, ImmutableStore, TransitionBundle, TrustedCommitOutcome, validate_bundle,
+        ExpectedHead, ImmutableStore, TransitionBundle, TrustedCommitOutcome,
+        event_type_shape_is_allowed, validate_bundle, validate_bundle_shape,
         validate_sequence_capacity,
     };
     use crate::{
         authority::{AuthorityPolicy, BudgetCapacity, InstallationEnrollment},
         body::{
-            BodyBatch, BodyError, BodyKind, InstallationEnrollmentRef, SortedUnique, StoredBody,
-            validate_batch, validated_body,
+            BodyBatch, BodyError, BodyGraph, BodyKind, InstallationEnrollmentRef, SortedUnique,
+            StoredBody, validate_batch, validated_body,
         },
         canonical::canonical_digest,
-        event::{ChainError, EventEnvelope},
+        event::{ChainError, EventEnvelope, EventType},
         scalar::{Digest, Identifier, IncarnationId, SafeUInt, U64Decimal, UnixNanoseconds},
     };
 
     const ONE: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
     const THREE: &str = "sha256:3333333333333333333333333333333333333333333333333333333333333333";
+
+    fn repeated_digest(character: char) -> Digest {
+        Digest::parse(&format!("sha256:{}", character.to_string().repeat(64))).unwrap()
+    }
+
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the closed grammar table visibly accounts for all event types and near misses"
+    )]
+    fn closed_bundle_shape_grammar_covers_every_event_type_and_near_miss() {
+        use EventType as E;
+
+        let present = ExpectedHead::Present(repeated_digest('f'));
+        let ordinary_singletons = BTreeSet::from([
+            E::WarrantProposed,
+            E::WarrantApproved,
+            E::WarrantRevoked,
+            E::WarrantExpired,
+            E::EffectReserved,
+            E::EffectCancelledBeforeStart,
+            E::ArtifactPrepared,
+            E::EffectStarted,
+            E::SeparationWarrantProposed,
+            E::SeparationWarrantApproved,
+            E::SeparationWarrantRevoked,
+            E::SeparationWarrantExpired,
+            E::SeparationReserved,
+            E::SeparationCancelledBeforeStart,
+            E::SeparationStarted,
+            E::SeparationVerified,
+            E::SeparationFailed,
+        ]);
+        for event_type in E::ALL {
+            assert_eq!(
+                event_type_shape_is_allowed(&present, &[event_type]),
+                ordinary_singletons.contains(&event_type),
+                "unexpected present-head singleton result for {}",
+                event_type.as_str()
+            );
+            assert_eq!(
+                event_type_shape_is_allowed(&ExpectedHead::Empty, &[event_type]),
+                event_type == E::InstallationEnrolled,
+                "unexpected empty-head singleton result for {}",
+                event_type.as_str()
+            );
+        }
+        for first in &ordinary_singletons {
+            for second in &ordinary_singletons {
+                assert!(!event_type_shape_is_allowed(&present, &[*first, *second]));
+            }
+        }
+
+        let allowed_sequences = [
+            vec![E::ArtifactPublished, E::EffectVerified],
+            vec![E::ArtifactPublishedRecovered, E::EffectVerified],
+            vec![E::ArtifactPublished, E::EffectFailed, E::CustodyAbsent],
+            vec![
+                E::ArtifactPublishedRecovered,
+                E::EffectFailed,
+                E::CustodyAbsent,
+            ],
+            vec![
+                E::ArtifactPublished,
+                E::EffectIndeterminate,
+                E::CustodyDisputed,
+            ],
+            vec![
+                E::ArtifactPublishedRecovered,
+                E::EffectIndeterminate,
+                E::CustodyDisputed,
+            ],
+            vec![E::SeparationIndeterminate, E::CustodyDisputed],
+        ];
+        for sequence in &allowed_sequences {
+            assert!(event_type_shape_is_allowed(&present, sequence));
+
+            let mut reversed = sequence.clone();
+            reversed.reverse();
+            assert!(!event_type_shape_is_allowed(&present, &reversed));
+            assert!(!event_type_shape_is_allowed(
+                &present,
+                &sequence[..sequence.len() - 1]
+            ));
+
+            let mut extra = sequence.clone();
+            extra.push(E::WarrantExpired);
+            assert!(!event_type_shape_is_allowed(&present, &extra));
+        }
+
+        for rejected in [
+            vec![E::WarrantProposed, E::WarrantApproved],
+            vec![E::EffectStarted, E::ArtifactPublished, E::EffectVerified],
+            vec![E::ArtifactPublished, E::SeparationFailed],
+            vec![E::ArtifactPublished, E::EffectFailed, E::CustodyDisputed],
+            vec![
+                E::ArtifactPublished,
+                E::EffectIndeterminate,
+                E::CustodyAbsent,
+            ],
+            vec![E::SeparationIndeterminate, E::CustodyAbsent],
+            vec![E::InstallationEnrolled, E::WarrantProposed],
+        ] {
+            assert!(!event_type_shape_is_allowed(&present, &rejected));
+            assert!(!event_type_shape_is_allowed(
+                &ExpectedHead::Empty,
+                &rejected
+            ));
+        }
+        assert!(!event_type_shape_is_allowed(&present, &[]));
+        assert!(!event_type_shape_is_allowed(&ExpectedHead::Empty, &[]));
+
+        let covered = ordinary_singletons
+            .into_iter()
+            .chain([E::InstallationEnrolled])
+            .chain(allowed_sequences.into_iter().flatten())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(covered, BTreeSet::from(E::ALL));
+    }
+
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one fixture covers both paired receipt identity and protocol-family confusion"
+    )]
+    fn paired_custody_event_must_name_the_terminal_receipt_and_protocol() {
+        let installation = InstallationEnrollmentRef::from_digest(repeated_digest('1'));
+        let report = raw_event(
+            &installation,
+            "1",
+            json!({ "state": "previous", "digest": THREE }),
+            "1",
+            "artifact_published",
+            json!({ "evidenceDigest": repeated_digest('2') }),
+        );
+        let failed = raw_event(
+            &installation,
+            "2",
+            json!({ "state": "previous", "digest": report.digest() }),
+            "1",
+            "effect_failed",
+            json!({ "receiptDigest": repeated_digest('3') }),
+        );
+        let custody_absent = |receipt: Digest| {
+            raw_event(
+                &installation,
+                "3",
+                json!({ "state": "previous", "digest": failed.digest() }),
+                "1",
+                "custody_absent",
+                json!({
+                    "receiptDigest": receipt,
+                    "custodyRecordDigest": repeated_digest('4')
+                }),
+            )
+        };
+        let matching = custody_absent(repeated_digest('3'));
+        assert_eq!(
+            validate_bundle_shape(&TransitionBundle::new(
+                ExpectedHead::Present(repeated_digest('e')),
+                Vec::new(),
+                vec![report.clone(), failed.clone(), matching.clone()],
+                matching.digest().clone(),
+            )),
+            Ok(())
+        );
+        let mismatched = custody_absent(repeated_digest('5'));
+        assert_eq!(
+            validate_bundle_shape(&TransitionBundle::new(
+                ExpectedHead::Present(repeated_digest('e')),
+                Vec::new(),
+                vec![report, failed, mismatched.clone()],
+                mismatched.digest().clone(),
+            )),
+            Err(ChainError::InvalidBundle)
+        );
+
+        for (terminal_type, receipt_protocol) in [
+            ("effect_indeterminate", "separation"),
+            ("separation_indeterminate", "publication"),
+        ] {
+            let terminal = raw_event(
+                &installation,
+                "1",
+                json!({ "state": "previous", "digest": THREE }),
+                "1",
+                terminal_type,
+                if terminal_type == "effect_indeterminate" {
+                    json!({ "receiptDigest": repeated_digest('6') })
+                } else {
+                    json!({ "mode": "live", "receiptDigest": repeated_digest('6') })
+                },
+            );
+            let disputed = raw_event(
+                &installation,
+                "2",
+                json!({ "state": "previous", "digest": terminal.digest() }),
+                "1",
+                "custody_disputed",
+                json!({
+                    "terminalReceipt": {
+                        "protocol": receipt_protocol,
+                        "digest": repeated_digest('6')
+                    },
+                    "custodyRecordDigest": repeated_digest('7')
+                }),
+            );
+            let events = if terminal_type == "effect_indeterminate" {
+                vec![
+                    raw_event(
+                        &installation,
+                        "0",
+                        json!({ "state": "previous", "digest": THREE }),
+                        "1",
+                        "artifact_published",
+                        json!({ "evidenceDigest": repeated_digest('2') }),
+                    ),
+                    terminal,
+                    disputed.clone(),
+                ]
+            } else {
+                vec![terminal, disputed.clone()]
+            };
+            assert_eq!(
+                validate_bundle_shape(&TransitionBundle::new(
+                    ExpectedHead::Present(repeated_digest('e')),
+                    Vec::new(),
+                    events,
+                    disputed.digest().clone(),
+                )),
+                Err(ChainError::InvalidBundle)
+            );
+        }
+    }
 
     fn enrollment_bodies() -> (Vec<StoredBody>, InstallationEnrollmentRef) {
         let capacity = |key: &str| {
@@ -673,6 +999,108 @@ mod tests {
     }
 
     #[test]
+    fn start_and_publication_terminal_sequence_cannot_share_one_bundle() {
+        let installation = InstallationEnrollmentRef::from_digest(repeated_digest('1'));
+        let binding = repeated_digest('2');
+        let lease = repeated_digest('3');
+        let prepared = repeated_digest('4');
+        let source_before = repeated_digest('5');
+        let target_before = repeated_digest('6');
+        let evidence = repeated_digest('7');
+        let receipt = repeated_digest('8');
+        let deed = repeated_digest('9');
+        let custody = repeated_digest('a');
+        let graph = BodyGraph::from_kind_claims_for_test(BTreeMap::from([
+            (
+                installation.digest().clone(),
+                BodyKind::InstallationEnrollment,
+            ),
+            (binding.clone(), BodyKind::IdempotencyBinding),
+            (lease.clone(), BodyKind::EffectLease),
+            (prepared.clone(), BodyKind::PreparedArtifact),
+            (source_before.clone(), BodyKind::LocalFileObservation),
+            (target_before.clone(), BodyKind::LocalFileObservation),
+            (evidence.clone(), BodyKind::PublicationEvidence),
+            (receipt.clone(), BodyKind::EffectReceipt),
+            (deed.clone(), BodyKind::ResourceDeed),
+            (custody.clone(), BodyKind::CustodyRecord),
+        ]));
+        let genesis = genesis(&installation);
+        let base = ImmutableStore::from_validated(
+            graph.clone(),
+            [(genesis.digest().clone(), genesis.clone())]
+                .into_iter()
+                .collect(),
+            Some(genesis.digest().clone()),
+        );
+        let started = raw_event(
+            &installation,
+            "1",
+            json!({ "state": "previous", "digest": genesis.digest() }),
+            "1",
+            "effect_started",
+            json!({
+                "bindingDigest": binding,
+                "leaseDigest": lease,
+                "preparedArtifactDigest": prepared,
+                "sourceBeforeObservationDigest": source_before,
+                "targetBeforeObservationDigest": target_before,
+                "mutationMode": "conditional"
+            }),
+        );
+        let published = raw_event(
+            &installation,
+            "2",
+            json!({ "state": "previous", "digest": started.digest() }),
+            "1",
+            "artifact_published",
+            json!({ "evidenceDigest": evidence }),
+        );
+        let verified = raw_event(
+            &installation,
+            "3",
+            json!({ "state": "previous", "digest": published.digest() }),
+            "1",
+            "effect_verified",
+            json!({
+                "receiptDigest": receipt,
+                "deedDigest": deed,
+                "custodyRecordDigest": custody
+            }),
+        );
+
+        assert_eq!(
+            validate_bundle(
+                &base,
+                TransitionBundle::new(
+                    ExpectedHead::Present(genesis.digest().clone()),
+                    Vec::new(),
+                    vec![started.clone(), published.clone(), verified.clone()],
+                    verified.digest().clone(),
+                ),
+            )
+            .unwrap_err(),
+            ChainError::InvalidBundle
+        );
+
+        let base_with_durable_start = ImmutableStore::from_validated(
+            graph,
+            [genesis.clone(), started.clone()]
+                .into_iter()
+                .map(|event| (event.digest().clone(), event))
+                .collect(),
+            Some(started.digest().clone()),
+        );
+        let valid_terminal = TransitionBundle::new(
+            ExpectedHead::Present(started.digest().clone()),
+            Vec::new(),
+            vec![published, verified.clone()],
+            verified.digest().clone(),
+        );
+        assert!(validate_bundle(&base_with_durable_start, valid_terminal).is_ok());
+    }
+
+    #[test]
     fn invalid_proposal_and_cas_mismatch_leave_the_store_unchanged() {
         let (bodies, installation) = enrollment_bodies();
         let event = genesis(&installation);
@@ -764,7 +1192,7 @@ mod tests {
             BodyBatch::new(bodies).unwrap(),
         )
         .unwrap();
-        let mut base = ImmutableStore::from_validated(
+        let base = ImmutableStore::from_validated(
             graph,
             [(first.digest().clone(), first.clone())]
                 .into_iter()
@@ -845,17 +1273,6 @@ mod tests {
             .unwrap_err(),
             ChainError::InvalidBundle
         );
-
-        let third = successor(&installation, &second, "2", "1");
-        let valid = TransitionBundle::new(
-            ExpectedHead::Present(first.digest().clone()),
-            Vec::new(),
-            vec![second.clone(), third.clone()],
-            third.digest().clone(),
-        );
-        base.apply_committed_for_test(validate_bundle(&base, valid).unwrap())
-            .unwrap();
-        assert_eq!(base.head(), Some(third.digest()));
     }
 
     #[test]

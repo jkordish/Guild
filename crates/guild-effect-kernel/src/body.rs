@@ -1298,6 +1298,26 @@ impl BodyGraph {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn from_kind_claims_for_test(claims: BTreeMap<Digest, BodyKind>) -> Self {
+        Self {
+            bodies: claims
+                .into_iter()
+                .map(|(digest, kind)| {
+                    (
+                        digest.clone(),
+                        StoredBody {
+                            digest,
+                            kind,
+                            canonical_bytes: Vec::new(),
+                            edges: Vec::new(),
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
     /// Strictly reconstructs and validates canonical stored entries.
     ///
     /// # Errors
