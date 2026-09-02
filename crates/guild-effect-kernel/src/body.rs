@@ -4881,3 +4881,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "body/replay_tests.rs"]
+mod replay_tests;
