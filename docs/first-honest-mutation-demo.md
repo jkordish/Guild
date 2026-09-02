@@ -20,9 +20,12 @@ Use these constraints as the starting point for any mutation-demo planning:
 - manifests can already express `apply_requires_approval` and
   `apply_requires_idempotency_key`, but that is planning truth, not runnable
   operator surface yet
-- durable execution receipts and evidence records exist today for inspect-mode
-  and rejected executions, so the mutation target should reuse that host-owned
-  receipt/evidence model rather than invent a second audit path
+- durable Guild execution receipts and evidence records exist today for
+  inspect-mode and rejected executions. In a future effect flow, the
+  pre-/post-execution Guild execution receipt remains the host-owned record of
+  admission and attempt outcome; it is distinct from an effect-local terminal
+  effect receipt. The records may link by stable references only in a later
+  host integration, and neither replaces the other
 - the first mutation slice should prove why approvals, idempotency, retry
   discipline, and evidence matter before Guild broadens into k8s, chat, or
   secret-heavy action stories
@@ -73,8 +76,10 @@ are true.
 - every publication or separation/quarantine request must carry an explicit
   approval or policy decision that names the target artifact, destination or
   quarantine boundary, and operator reason
-- the approval reference must become part of the durable receipt before any
-  mutation attempt starts
+- the approval reference must become part of the pre-execution Guild execution
+  receipt before any effect attempt starts. After terminalization, that
+  execution receipt must link to the separate terminal effect receipt; it must
+  not absorb or replace it
 - docs-only metadata or playbook prose must never imply an approval happened
   automatically
 
@@ -108,11 +113,17 @@ are true.
 
 ### Receipt And Audit
 
-- the durable receipt must record the requested mutation intent, granted
-  capability slice, approval reference, idempotency key, emitted evidence
-  references, and final outcome
-- rejected attempts must remain durable exactly like other Guild rejections so
-  the audit chain does not disappear when policy says no
+- the Guild execution receipt must separately record the requested mutation
+  intent, granted capability slice, execution admission and attempt outcome,
+  approval reference, and durable evidence links. Rejected attempts remain
+  durable exactly like other Guild rejections so the audit chain does not
+  disappear when policy says no
+- the terminal effect receipt must separately record the exact effect identity,
+  durable start barrier, typed observations, terminal effect outcome, and any
+  custody conclusion. It does not replace the Guild execution receipt
+- any later host integration that produces both records must link them by
+  stable execution/effect references. That linkage is not a generic receipt
+  envelope or a session receipt
 - no side channel should be needed to answer who approved the action, what was
   attempted, what evidence was emitted, and whether the provider response was
   definitive or ambiguous
