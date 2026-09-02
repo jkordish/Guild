@@ -38,6 +38,18 @@ pub struct AuthorityFixture {
 }
 
 impl AuthorityFixture {
+    pub fn graph(&self) -> &BodyGraph {
+        &self.graph
+    }
+
+    pub fn enrollment(&self) -> &ValidatedBody<InstallationEnrollment> {
+        &self.enrollment
+    }
+
+    pub fn warrant(&self) -> &ValidatedBody<PublicationWarrant> {
+        &self.warrant
+    }
+
     pub fn proposer_id(&self) -> PrincipalId {
         Identifier::parse("proposer").unwrap()
     }
