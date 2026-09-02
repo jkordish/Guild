@@ -476,17 +476,29 @@ fn replay_decodes_owned_base_kinds_and_stages_later_payload_modules() {
         .filter(|kind| {
             !matches!(
                 kind,
-                BodyKind::SchemaDescriptor
+                BodyKind::InstallationEnrollment
+                    | BodyKind::AuthorityPolicy
+                    | BodyKind::SchemaDescriptor
                     | BodyKind::LocalFileObservation
                     | BodyKind::XattrValue
                     | BodyKind::StaticArtifactPublishInput
                     | BodyKind::StaticArtifactPublishPrecondition
                     | BodyKind::StaticArtifactSeparationInput
                     | BodyKind::StaticArtifactSeparationPrecondition
+                    | BodyKind::PublicationWarrant
+                    | BodyKind::PublicationApproval
+                    | BodyKind::PublicationRevocation
+                    | BodyKind::EffectLease
+                    | BodyKind::IdempotencyBinding
+                    | BodyKind::SeparationWarrant
+                    | BodyKind::SeparationApproval
+                    | BodyKind::SeparationRevocation
+                    | BodyKind::SeparationLease
+                    | BodyKind::SeparationBinding
             )
         })
         .collect();
-    assert_eq!(unavailable.len(), 22);
+    assert_eq!(unavailable.len(), 10);
     for kind in unavailable {
         let value = serde_json::json!({"body": {}, "kind": kind});
         let bytes = canonical_bytes(&value).unwrap();

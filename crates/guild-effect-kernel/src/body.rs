@@ -175,7 +175,7 @@ impl fmt::Display for BodyKind {
     }
 }
 
-mod sealed {
+pub(crate) mod sealed {
     pub trait BodyTag {}
     pub trait BodySpec {}
 }
@@ -518,7 +518,7 @@ pub struct TypedEdge {
 }
 
 impl TypedEdge {
-    fn new<K: BodyTag>(target: &BodyRef<K>) -> Self {
+    pub(crate) fn new<K: BodyTag>(target: &BodyRef<K>) -> Self {
         Self {
             target: target.digest().clone(),
             expected: K::KIND,
@@ -1541,6 +1541,19 @@ enum BodyFacts {
     None,
     Observation(LocalFileObservation),
     PublishInput(StaticArtifactPublishInput),
+    PublishPrecondition(StaticArtifactPublishPrecondition),
+    Policy(crate::authority::AuthorityPolicy),
+    Enrollment(crate::authority::InstallationEnrollment),
+    PublicationWarrant(crate::authority::PublicationWarrant),
+    PublicationApproval(crate::authority::PublicationApproval),
+    PublicationRevocation(crate::authority::PublicationRevocation),
+    IdempotencyBinding(crate::lease::IdempotencyBinding),
+    EffectLease(crate::lease::EffectLease),
+    SeparationWarrant(crate::authority::SeparationWarrant),
+    SeparationApproval(crate::authority::SeparationApproval),
+    SeparationRevocation(crate::authority::SeparationRevocation),
+    SeparationBinding(crate::lease::SeparationBinding),
+    SeparationLease(crate::lease::SeparationLease),
 }
 
 struct DecodedBody {
@@ -1588,6 +1601,12 @@ fn decode_payload(
     body: Value,
 ) -> Result<(Value, Vec<TypedEdge>, BodyFacts), BodyError> {
     match kind {
+        BodyKind::InstallationEnrollment => {
+            decode_typed::<crate::authority::InstallationEnrollment>(body, BodyFacts::Enrollment)
+        }
+        BodyKind::AuthorityPolicy => {
+            decode_typed::<crate::authority::AuthorityPolicy>(body, BodyFacts::Policy)
+        }
         BodyKind::SchemaDescriptor => decode_schema_descriptor(body),
         BodyKind::LocalFileObservation => {
             decode_typed::<LocalFileObservation>(body, BodyFacts::Observation)
@@ -1597,7 +1616,7 @@ fn decode_payload(
             decode_typed::<StaticArtifactPublishInput>(body, BodyFacts::PublishInput)
         }
         BodyKind::StaticArtifactPublishPrecondition => {
-            decode_typed::<StaticArtifactPublishPrecondition>(body, |_| BodyFacts::None)
+            decode_typed::<StaticArtifactPublishPrecondition>(body, BodyFacts::PublishPrecondition)
         }
         BodyKind::StaticArtifactSeparationInput => {
             decode_typed::<StaticArtifactSeparationInput>(body, |_| BodyFacts::None)
@@ -1605,29 +1624,66 @@ fn decode_payload(
         BodyKind::StaticArtifactSeparationPrecondition => {
             decode_typed::<StaticArtifactSeparationPrecondition>(body, |_| BodyFacts::None)
         }
-        BodyKind::InstallationEnrollment
-        | BodyKind::AuthorityPolicy
-        | BodyKind::PublicationWarrant
-        | BodyKind::PublicationApproval
-        | BodyKind::PublicationRevocation
-        | BodyKind::EffectLease
-        | BodyKind::IdempotencyBinding
-        | BodyKind::PreparedArtifact
+        BodyKind::PublicationWarrant => decode_typed::<crate::authority::PublicationWarrant>(
+            body,
+            BodyFacts::PublicationWarrant,
+        ),
+        BodyKind::PublicationApproval => decode_typed::<crate::authority::PublicationApproval>(
+            body,
+            BodyFacts::PublicationApproval,
+        ),
+        BodyKind::PublicationRevocation => decode_typed::<crate::authority::PublicationRevocation>(
+            body,
+            BodyFacts::PublicationRevocation,
+        ),
+        BodyKind::EffectLease => decode_private_typed(
+            crate::lease::decode_effect_lease(body)?,
+            BodyFacts::EffectLease,
+        ),
+        BodyKind::IdempotencyBinding => decode_private_typed(
+            crate::lease::decode_idempotency_binding(body)?,
+            BodyFacts::IdempotencyBinding,
+        ),
+        BodyKind::SeparationWarrant => {
+            decode_typed::<crate::authority::SeparationWarrant>(body, BodyFacts::SeparationWarrant)
+        }
+        BodyKind::SeparationApproval => decode_typed::<crate::authority::SeparationApproval>(
+            body,
+            BodyFacts::SeparationApproval,
+        ),
+        BodyKind::SeparationRevocation => decode_typed::<crate::authority::SeparationRevocation>(
+            body,
+            BodyFacts::SeparationRevocation,
+        ),
+        BodyKind::SeparationLease => decode_private_typed(
+            crate::lease::decode_separation_lease(body)?,
+            BodyFacts::SeparationLease,
+        ),
+        BodyKind::SeparationBinding => decode_private_typed(
+            crate::lease::decode_separation_binding(body)?,
+            BodyFacts::SeparationBinding,
+        ),
+        BodyKind::PreparedArtifact
         | BodyKind::PublicationEvidence
         | BodyKind::CausalityAssessment
         | BodyKind::EffectReceipt
         | BodyKind::ResourceDeed
-        | BodyKind::SeparationWarrant
-        | BodyKind::SeparationApproval
-        | BodyKind::SeparationRevocation
-        | BodyKind::SeparationLease
-        | BodyKind::SeparationBinding
         | BodyKind::SeparationEvidence
         | BodyKind::SeparationReceipt
         | BodyKind::CustodyRecord
         | BodyKind::RecoveryAssessment
         | BodyKind::DossierSummary => Err(BodyError::PayloadModuleUnavailable { kind }),
     }
+}
+
+fn decode_private_typed<T: BodySpec>(
+    payload: T,
+    facts: impl FnOnce(T) -> BodyFacts,
+) -> Result<(Value, Vec<TypedEdge>, BodyFacts), BodyError> {
+    payload.validate_local()?;
+    let edges = payload.edges();
+    let encoded = serde_json::to_value(&payload).map_err(CanonicalError::Decode)?;
+    Ok((encoded, edges, facts(payload)))
 }
 
 fn decode_typed<T>(
@@ -1754,38 +1810,468 @@ fn validate_cross_body(
     facts: &BTreeMap<Digest, BodyFacts>,
 ) -> Result<(), BodyError> {
     for (digest, fact) in facts {
-        if let BodyFacts::PublishInput(input) = fact {
-            let target_digest = input.source_observation_digest.digest();
-            let Some(BodyFacts::Observation(observation)) = facts.get(target_digest) else {
-                return Err(BodyError::WrongTargetKind {
-                    source: BodyKind::StaticArtifactPublishInput,
-                    expected: BodyKind::LocalFileObservation,
-                    actual: bodies
-                        .get(target_digest)
-                        .map_or(BodyKind::StaticArtifactPublishInput, StoredBody::kind),
-                });
-            };
-            let Some(source_artifact) = observation.artifact_name() else {
-                return Err(BodyError::Local(format!(
-                    "publish input {} source observation must be present",
-                    digest.as_str()
-                )));
-            };
-            if source_artifact != &input.artifact_name {
-                return Err(BodyError::Local(format!(
-                    "publish input {} artifact name differs from source observation",
-                    digest.as_str()
-                )));
+        match fact {
+            BodyFacts::PublishInput(input) => {
+                validate_publish_input(digest, input, bodies, facts)?;
             }
-            if observation.logical_address() == &input.target_logical_address {
-                return Err(BodyError::Local(format!(
-                    "publish input {} source and target addresses must differ",
-                    digest.as_str()
-                )));
+            BodyFacts::PublicationWarrant(warrant) => {
+                validate_publication_warrant(warrant, facts)?;
             }
+            BodyFacts::PublicationApproval(approval) => {
+                validate_publication_approval(approval, facts)?;
+            }
+            BodyFacts::PublicationRevocation(revocation) => {
+                validate_publication_revocation(revocation, facts)?;
+            }
+            BodyFacts::IdempotencyBinding(binding) => {
+                validate_publication_binding(binding, facts)?;
+            }
+            BodyFacts::EffectLease(lease) => validate_publication_lease(lease, facts)?,
+            BodyFacts::SeparationWarrant(warrant) => {
+                validate_separation_warrant(warrant, facts)?;
+            }
+            BodyFacts::SeparationApproval(approval) => {
+                validate_separation_approval(approval, facts)?;
+            }
+            BodyFacts::SeparationRevocation(revocation) => {
+                validate_separation_revocation(revocation, facts)?;
+            }
+            BodyFacts::SeparationBinding(binding) => {
+                validate_separation_binding(binding, facts)?;
+            }
+            BodyFacts::SeparationLease(lease) => validate_separation_lease(lease, facts)?,
+            BodyFacts::None
+            | BodyFacts::Observation(_)
+            | BodyFacts::PublishPrecondition(_)
+            | BodyFacts::Policy(_)
+            | BodyFacts::Enrollment(_) => {}
         }
     }
     Ok(())
+}
+
+fn validate_publish_input(
+    digest: &Digest,
+    input: &StaticArtifactPublishInput,
+    bodies: &BTreeMap<Digest, StoredBody>,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let target_digest = input.source_observation_digest.digest();
+    let Some(BodyFacts::Observation(observation)) = facts.get(target_digest) else {
+        return Err(BodyError::WrongTargetKind {
+            source: BodyKind::StaticArtifactPublishInput,
+            expected: BodyKind::LocalFileObservation,
+            actual: bodies
+                .get(target_digest)
+                .map_or(BodyKind::StaticArtifactPublishInput, StoredBody::kind),
+        });
+    };
+    let Some(source_artifact) = observation.artifact_name() else {
+        return Err(BodyError::Local(format!(
+            "publish input {} source observation must be present",
+            digest.as_str()
+        )));
+    };
+    if source_artifact != &input.artifact_name {
+        return Err(BodyError::Local(format!(
+            "publish input {} artifact name differs from source observation",
+            digest.as_str()
+        )));
+    }
+    if observation.logical_address() == &input.target_logical_address {
+        return Err(BodyError::Local(format!(
+            "publish input {} source and target addresses must differ",
+            digest.as_str()
+        )));
+    }
+    Ok(())
+}
+
+fn fact_policy<'a>(
+    facts: &'a BTreeMap<Digest, BodyFacts>,
+    digest: &Digest,
+) -> Result<&'a crate::authority::AuthorityPolicy, BodyError> {
+    match facts.get(digest) {
+        Some(BodyFacts::Policy(policy)) => Ok(policy),
+        _ => Err(BodyError::Local(
+            "authority reference did not resolve to decoded policy facts".to_owned(),
+        )),
+    }
+}
+
+fn validate_claim(
+    policy: &crate::authority::AuthorityPolicy,
+    class: crate::lease::BudgetClass,
+    claim: &crate::authority::BudgetClaim,
+) -> Result<(), BodyError> {
+    if policy
+        .budget_capacity(class, claim.key())
+        .is_none_or(|capacity| capacity.get() < claim.amount().get())
+    {
+        return Err(BodyError::Local(
+            "warrant budget claim is not admitted by its immutable policy".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_publication_warrant(
+    warrant: &crate::authority::PublicationWarrant,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::Enrollment(enrollment)) = facts.get(warrant.installation_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "publication warrant enrollment facts are unavailable".to_owned(),
+        ));
+    };
+    let policy = fact_policy(facts, warrant.policy_digest().digest())?;
+    if enrollment.policy_digest() != warrant.policy_digest()
+        || warrant.policy_generation() != policy.generation()
+        || !policy.contains_proposer(warrant.proposer_id())
+    {
+        return Err(BodyError::Local(
+            "publication warrant does not match enrollment and immutable policy".to_owned(),
+        ));
+    }
+    validate_claim(
+        policy,
+        crate::lease::BudgetClass::Reservation,
+        warrant.reservation_budget(),
+    )?;
+    validate_claim(
+        policy,
+        crate::lease::BudgetClass::Start,
+        warrant.start_budget(),
+    )?;
+    let Some(BodyFacts::PublishInput(input)) = facts.get(warrant.input_digest().digest()) else {
+        return Err(BodyError::Local(
+            "publication warrant input facts are unavailable".to_owned(),
+        ));
+    };
+    let Some(BodyFacts::PublishPrecondition(precondition)) =
+        facts.get(warrant.precondition_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "publication warrant precondition facts are unavailable".to_owned(),
+        ));
+    };
+    if input.target_logical_address() != precondition.target_logical_address() {
+        return Err(BodyError::Local(
+            "publication input and precondition target addresses differ".to_owned(),
+        ));
+    }
+    let Some(BodyFacts::Observation(source)) =
+        facts.get(input.source_observation_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "publication source observation facts are unavailable".to_owned(),
+        ));
+    };
+    let mut exact_keys = [
+        crate::lease::derive_resource_key(source.logical_address())?,
+        crate::lease::derive_resource_key(input.target_logical_address())?,
+    ];
+    exact_keys.sort();
+    if warrant.resource_keys() != &exact_keys {
+        return Err(BodyError::Local(
+            "publication warrant resource keys are not its exact source and target keys".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_publication_approval(
+    approval: &crate::authority::PublicationApproval,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::PublicationWarrant(warrant)) =
+        facts.get(approval.warrant_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "publication approval warrant facts are unavailable".to_owned(),
+        ));
+    };
+    let policy = fact_policy(facts, warrant.policy_digest().digest())?;
+    if !policy.contains_approver(approval.approver_id())
+        || policy.require_distinct_approval_principal()
+            && approval.approver_id() == warrant.proposer_id()
+        || approval.approved_at() < warrant.issued_at()
+        || approval.approved_at() >= warrant.expires_at()
+    {
+        return Err(BodyError::Local(
+            "publication approval is not admitted by warrant and policy".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_publication_revocation(
+    revocation: &crate::authority::PublicationRevocation,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::PublicationWarrant(warrant)) =
+        facts.get(revocation.warrant_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "publication revocation warrant facts are unavailable".to_owned(),
+        ));
+    };
+    let policy = fact_policy(facts, warrant.policy_digest().digest())?;
+    let approved_before_revocation = facts.values().any(|fact| {
+        matches!(
+            fact,
+            BodyFacts::PublicationApproval(approval)
+                if approval.warrant_digest() == revocation.warrant_digest()
+                    && approval.approved_at() <= revocation.revoked_at()
+        )
+    });
+    if !policy.contains_revoker(revocation.revoker_id()) || !approved_before_revocation {
+        return Err(BodyError::Local(
+            "publication revocation lacks enrolled authority or prior approval".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn publication_effect_id(
+    warrant_digest: &Digest,
+    warrant: &crate::authority::PublicationWarrant,
+) -> Result<crate::scalar::EffectId, BodyError> {
+    let resources = SortedUnique::new(warrant.resource_keys().to_vec())?;
+    crate::lease::derive_effect_id(
+        warrant.installation_digest().digest(),
+        warrant_digest,
+        crate::authority::EffectKind::StaticArtifactPublish,
+        &resources,
+        warrant.input_digest().digest(),
+        warrant.precondition_digest().digest(),
+    )
+    .map_err(BodyError::from)
+}
+
+fn validate_publication_binding(
+    binding: &crate::lease::IdempotencyBinding,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::PublicationWarrant(warrant)) = facts.get(binding.warrant_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "publication binding warrant facts are unavailable".to_owned(),
+        ));
+    };
+    if binding.idempotency_key() != warrant.idempotency_key()
+        || binding.effect_id()
+            != &publication_effect_id(binding.warrant_digest().digest(), warrant)?
+    {
+        return Err(BodyError::Local(
+            "publication binding does not equal its warrant-derived identity".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_publication_lease(
+    lease: &crate::lease::EffectLease,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::IdempotencyBinding(binding)) = facts.get(lease.binding_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "publication lease binding facts are unavailable".to_owned(),
+        ));
+    };
+    let Some(BodyFacts::PublicationWarrant(warrant)) = facts.get(binding.warrant_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "publication lease warrant facts are unavailable".to_owned(),
+        ));
+    };
+    validate_lease_relationships(
+        lease.effect_id(),
+        binding.effect_id(),
+        lease.resource_fences(),
+        warrant.resource_keys(),
+        lease.reservation_budget_hold(),
+        warrant.reservation_budget(),
+        lease.start_budget_hold(),
+        warrant.start_budget(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_lease_relationships(
+    lease_effect: &crate::scalar::EffectId,
+    binding_effect: &crate::scalar::EffectId,
+    resource_fences: &[crate::lease::ResourceFence; 2],
+    resource_keys: &[crate::scalar::ResourceKey; 2],
+    reservation_hold: &crate::lease::BudgetHold,
+    reservation_claim: &crate::authority::BudgetClaim,
+    start_hold: &crate::lease::BudgetHold,
+    start_claim: &crate::authority::BudgetClaim,
+) -> Result<(), BodyError> {
+    let fence_keys = [
+        resource_fences[0].resource_key().clone(),
+        resource_fences[1].resource_key().clone(),
+    ];
+    if lease_effect != binding_effect
+        || &fence_keys != resource_keys
+        || reservation_hold.key() != reservation_claim.key()
+        || reservation_hold.amount() != reservation_claim.amount()
+        || start_hold.key() != start_claim.key()
+        || start_hold.amount() != start_claim.amount()
+    {
+        return Err(BodyError::Local(
+            "lease does not equal its binding, resource, and budget facts".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_separation_warrant(
+    warrant: &crate::authority::SeparationWarrant,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::Enrollment(enrollment)) = facts.get(warrant.installation_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "separation warrant enrollment facts are unavailable".to_owned(),
+        ));
+    };
+    let policy = fact_policy(facts, warrant.policy_digest().digest())?;
+    if enrollment.policy_digest() != warrant.policy_digest()
+        || warrant.policy_generation() != policy.generation()
+        || !policy.contains_proposer(warrant.proposer_id())
+    {
+        return Err(BodyError::Local(
+            "separation warrant does not match enrollment and immutable policy".to_owned(),
+        ));
+    }
+    validate_claim(
+        policy,
+        crate::lease::BudgetClass::Reservation,
+        warrant.reservation_budget(),
+    )?;
+    validate_claim(
+        policy,
+        crate::lease::BudgetClass::Start,
+        warrant.start_budget(),
+    )
+}
+
+fn validate_separation_approval(
+    approval: &crate::authority::SeparationApproval,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::SeparationWarrant(warrant)) = facts.get(approval.warrant_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "separation approval warrant facts are unavailable".to_owned(),
+        ));
+    };
+    let policy = fact_policy(facts, warrant.policy_digest().digest())?;
+    if !policy.contains_approver(approval.approver_id())
+        || approval.approver_id() == warrant.proposer_id()
+        || approval.approved_at() < warrant.issued_at()
+        || approval.approved_at() >= warrant.expires_at()
+    {
+        return Err(BodyError::Local(
+            "separation approval is not admitted by warrant and policy".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_separation_revocation(
+    revocation: &crate::authority::SeparationRevocation,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::SeparationWarrant(warrant)) =
+        facts.get(revocation.warrant_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "separation revocation warrant facts are unavailable".to_owned(),
+        ));
+    };
+    let policy = fact_policy(facts, warrant.policy_digest().digest())?;
+    let approved_before_revocation = facts.values().any(|fact| {
+        matches!(
+            fact,
+            BodyFacts::SeparationApproval(approval)
+                if approval.warrant_digest() == revocation.warrant_digest()
+                    && approval.approved_at() <= revocation.revoked_at()
+        )
+    });
+    if !policy.contains_revoker(revocation.revoker_id()) || !approved_before_revocation {
+        return Err(BodyError::Local(
+            "separation revocation lacks enrolled authority or prior approval".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn separation_effect_id(
+    warrant_digest: &Digest,
+    warrant: &crate::authority::SeparationWarrant,
+) -> Result<crate::scalar::EffectId, BodyError> {
+    let resources = SortedUnique::new(warrant.resource_keys().to_vec())?;
+    crate::lease::derive_effect_id(
+        warrant.installation_digest().digest(),
+        warrant_digest,
+        crate::authority::EffectKind::StaticArtifactSeparation,
+        &resources,
+        warrant.input_digest().digest(),
+        warrant.precondition_digest().digest(),
+    )
+    .map_err(BodyError::from)
+}
+
+fn validate_separation_binding(
+    binding: &crate::lease::SeparationBinding,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::SeparationWarrant(warrant)) = facts.get(binding.warrant_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "separation binding warrant facts are unavailable".to_owned(),
+        ));
+    };
+    if binding.idempotency_key() != warrant.idempotency_key()
+        || binding.effect_id() != &separation_effect_id(binding.warrant_digest().digest(), warrant)?
+    {
+        return Err(BodyError::Local(
+            "separation binding does not equal its warrant-derived identity".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_separation_lease(
+    lease: &crate::lease::SeparationLease,
+    facts: &BTreeMap<Digest, BodyFacts>,
+) -> Result<(), BodyError> {
+    let Some(BodyFacts::SeparationBinding(binding)) = facts.get(lease.binding_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "separation lease binding facts are unavailable".to_owned(),
+        ));
+    };
+    let Some(BodyFacts::SeparationWarrant(warrant)) = facts.get(binding.warrant_digest().digest())
+    else {
+        return Err(BodyError::Local(
+            "separation lease warrant facts are unavailable".to_owned(),
+        ));
+    };
+    validate_lease_relationships(
+        lease.effect_id(),
+        binding.effect_id(),
+        lease.resource_fences(),
+        warrant.resource_keys(),
+        lease.reservation_budget_hold(),
+        warrant.reservation_budget(),
+        lease.start_budget_hold(),
+        warrant.start_budget(),
+    )
 }
 
 fn validate_cycles(bodies: &BTreeMap<Digest, StoredBody>) -> Result<(), BodyError> {

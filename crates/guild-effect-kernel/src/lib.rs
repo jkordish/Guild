@@ -4,8 +4,10 @@
 
 //! Pure deterministic effect protocol kernel. This crate performs no I/O.
 
+pub mod authority;
 pub mod body;
 pub mod canonical;
+pub mod lease;
 pub mod protocol;
 pub mod scalar;
 pub mod schema;
