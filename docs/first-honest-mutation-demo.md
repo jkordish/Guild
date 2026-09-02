@@ -9,6 +9,10 @@ the Rust runtime/types. The current runner still rejects `apply` mode with
 this document defines the narrow target and readiness bar without pretending
 that a runnable apply path already ships.
 
+This note is superseded by ADR 0021 for first-effect selection.
+
+The pure effect protocol is planned and may be implemented in this repository; Guild's live runner still rejects apply, and no host adapter or protected mutation path ships from that fact alone.
+
 ## Current Boundary
 
 Use these constraints as the starting point for any mutation-demo planning:
@@ -27,29 +31,29 @@ Use these constraints as the starting point for any mutation-demo planning:
 
 | Candidate | Current fit | Why it is believable or blocked |
 | --- | --- | --- |
-| `cache purge with evidence trail` | preferred target | smallest single-surface mutation in the current planning set; operator-facing capability name is legible (`cache:purge`); before/after evidence can stay focused on purge intent, provider acknowledgement, and one verification check without pulling in broader workflow coordination |
-| `rollback-and-annotate` | fallback | the review half already maps to today's explain/compare/evidence surfaces, but the action half still couples one risky rollback with a second write path for incident annotation and therefore needs broader coordination semantics than cache purge |
+| `static artifact publication plus separation/quarantine` | preferred target | the closed first-effect family from ADR 0021: publish one static artifact through a local-file workstation adapter, then separate or quarantine it with exact before/after observation and custody boundaries |
+| `rollback-and-annotate` | fallback | the review half already maps to today's explain/compare/evidence surfaces, but the action half still couples one risky rollback with a second write path for incident annotation and therefore needs broader coordination semantics than the closed publication family |
 | `restart-and-notify` | deferred broader candidate | remains the long-term hero story, but it combines infrastructure mutation with a separate notification side effect, making partial-failure handling and audit scope materially broader than the first mutation slice should carry |
 
 ## Chosen Direction
 
 Preferred target:
 
-- `cache purge with evidence trail`
+- `static artifact publication plus separation/quarantine`
 
-Fallback if the cache-specific path stalls:
+Fallback if the closed publication path stalls:
 
 - `rollback-and-annotate`
 
-Why `cache purge with evidence trail` wins first:
+Why static artifact publication plus separation/quarantine wins first:
 
-- it narrows the mutable surface to one explicit operator intent instead of
-  coupling infrastructure action and follow-up coordination
-- it keeps blast radius review legible: scope, target objects, and verification
-  checks are easier to name upfront than restart or rollback semantics across a
-  wider service boundary
-- it can prove the value of approval, idempotency, receipt, and evidence
-  requirements without claiming broad k8s, deploy, chat, or secret support
+- it keeps the first closed family on one local-file workstation adapter with
+  explicit publication and separation/quarantine boundaries
+- it makes custody and before/after observation review legible without
+  coupling a service-side mutation to unrelated workflow coordination
+- it can prove the value of exact authority, durable start, receipt, evidence,
+  and custody requirements without claiming broad k8s, deploy, chat, or secret
+  support
 
 Why `rollback-and-annotate` stays the fallback instead of the lead:
 
@@ -66,8 +70,9 @@ are true.
 
 ### Approval
 
-- every purge request must carry an explicit approval or policy decision that
-  names the target environment, cache scope, and operator reason
+- every publication or separation/quarantine request must carry an explicit
+  approval or policy decision that names the target artifact, destination or
+  quarantine boundary, and operator reason
 - the approval reference must become part of the durable receipt before any
   mutation attempt starts
 - docs-only metadata or playbook prose must never imply an approval happened
@@ -75,30 +80,31 @@ are true.
 
 ### Idempotency
 
-- the request must require a caller-supplied idempotency key tied to the purge
-  intent
-- the same idempotency key plus the same target scope must converge on one
-  durable outcome instead of emitting duplicate purge attempts
-- retries must reuse the same idempotency key rather than minting a new action
-  identity after an ambiguous failure
+- the request must require an effect idempotency key tied to the publication or
+  separation/quarantine intent
+- the same effect identity and target boundary must converge on one durable
+  outcome instead of emitting duplicate publication or separation attempts
+- after durable start, recovery must re-probe and terminalize the existing
+  effect rather than repeat the protected mutation
 
 ### Evidence
 
-- pre-mutation evidence must capture the requested purge scope, the operator
-  reason, and the verification check the run expects to perform afterward
-- post-mutation evidence must capture the provider acknowledgement or refusal,
-  any returned request identifier, and one verification result that shows the
-  cache state actually changed or remained unchanged
+- pre-mutation evidence must capture the requested artifact boundary, the
+  operator reason, and the verification check the run expects to perform
+  afterward
+- post-mutation evidence must capture the adapter acknowledgement or refusal,
+  any returned identifier, and one verification result that shows the artifact
+  was published, separated, quarantined, or remained unchanged
 - emitted evidence must stay host-owned and durable so later explanation can
   trace the action without trusting guest-only narration
 
 ### Retry Discipline
 
-- only ambiguous transport or provider failures may be retried automatically,
-  and only with the same idempotency key
-- confirmed success, confirmed refusal, or policy denial must not auto-retry
-- partial outcomes that leave cache state uncertain must require operator
-  review before another mutation attempt is admitted
+- before durable start, denied or unadmitted requests remain non-mutating
+- after durable start, recovery may only re-probe and terminalize the existing
+  effect; it must never retry the protected mutation
+- partial outcomes that leave artifact state uncertain must require operator
+  review before a genuinely new effect is admitted
 
 ### Receipt And Audit
 

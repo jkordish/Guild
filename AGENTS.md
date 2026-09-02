@@ -109,6 +109,16 @@ cargo test -p guild-runner --test live_proofs -- --nocapture
   contracts.
 - If a change affects contracts or trust boundaries, update code, docs, and ADRs
   together.
+- Preserve v1 protocol IDs, including `jidoka.dev/events/v1`; a wire rename
+  requires a new protocol version and explicit migration rules.
+- `guild-effect-kernel` must remain pure and must not depend on any Guild
+  crate.
+- Do not claim host integration, a protected mutation path, or live `apply`
+  support from the protocol or kernel alone.
+- After an effect `Started` event is durable, never retry the protected
+  mutation; only re-probe and terminalize the existing effect.
+
+The pure effect protocol is planned and may be implemented in this repository; Guild's live runner still rejects apply, and no host adapter or protected mutation path ships from that fact alone.
 
 ## Current Milestone
 

@@ -180,15 +180,25 @@ The current operator shell rules are:
 
 The current repository maps this architecture onto a small Rust workspace:
 
+| Truth layer | Authoritative subject | Boundary |
+| --- | --- | --- |
+| Axiom | advisory plans, requested composition, and expectations | does not admit, execute, or establish runtime or effect truth |
+| Guild execution/session | resolved identity, capability admission, execution attempts, durable evidence, and session lineage | does not establish an external mutation's exact postcondition or custody |
+| Effect/custody | exact mutation admission, typed observation classification, terminal effect outcome, and custody | does not choose a skill, harness, session, or perform external I/O |
+
 - `crates/guild-types`: shared contract types for identities, capabilities, execution, and evidence
 - `crates/guild-manifest`: manifest model for source and installed skill metadata
 - `crates/guild-registry`: local installer, local registry, bundle export and import, and Guild resource persistence
 - `crates/guild-runner`: execution orchestration, capability evaluation, and runtime adapter boundary
 - `crates/guild-mcp`: thin `guild` CLI, MCP-facing facade, stdio MCP server, and proof examples
 - `crates/guild-sdk-rust`: guest authoring support for Rust skills
+- `crates/guild-effect-kernel`: planned pure, disconnected leaf crate for the
+  `jidoka.dev/events/v1` effect protocol; it has no Guild crate dependency
 - `wit/guild-skill-v1.wit`: guest and host ABI contract package, including the active inspect world
 - `examples/skills/`: runnable source skills used to prove the vertical slice
 - repo-owned Cargo package versions and Guild skill manifest versions are distinct axes; Guild resolution and transport identity follow manifest metadata plus resolved artifact identity rather than build-package metadata
+
+The pure effect protocol is planned and may be implemented in this repository; Guild's live runner still rejects apply, and no host adapter or protected mutation path ships from that fact alone.
 
 ## 3. Logical Data Model
 

@@ -156,6 +156,15 @@ runner, and ABI:
   state, Guild MUST fail the wake rather than claim that a `cold`
   materialization preserved continuity it could not actually prove
 
+### Planned Effect Truth Boundary
+
+[`docs/protocol/effect-kernel-v1.md`](docs/protocol/effect-kernel-v1.md) is
+normative only for the pure effect protocol. It defines no host adapter,
+protected mutation path, or runtime integration, and its effect receipts do
+not replace Guild execution receipts.
+
+The pure effect protocol is planned and may be implemented in this repository; Guild's live runner still rejects apply, and no host adapter or protected mutation path ships from that fact alone.
+
 ## 3. Non-Goals
 
 Guild does not try to solve the following directly:
