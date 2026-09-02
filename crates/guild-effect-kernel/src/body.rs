@@ -426,11 +426,60 @@ impl<P: BodyTag, S: BodyTag> ProtocolRef<P, S> {
 }
 
 /// A closed explicit optional value; protocol values never omit fields.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum OptionalValue<T> {
     Absent,
     Present { value: T },
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum OptionalAbsentState {
+    Absent,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OptionalAbsentWire {
+    state: OptionalAbsentState,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum OptionalPresentState {
+    Present,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OptionalPresentWire<T> {
+    state: OptionalPresentState,
+    value: T,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum OptionalWire<T> {
+    Absent(OptionalAbsentWire),
+    Present(OptionalPresentWire<T>),
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for OptionalValue<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match OptionalWire::<T>::deserialize(deserializer)? {
+            OptionalWire::Absent(OptionalAbsentWire {
+                state: OptionalAbsentState::Absent,
+            }) => Ok(Self::Absent),
+            OptionalWire::Present(OptionalPresentWire {
+                state: OptionalPresentState::Present,
+                value,
+            }) => Ok(Self::Present { value }),
+        }
+    }
 }
 
 impl<T> OptionalValue<T> {

@@ -200,22 +200,32 @@ fn optional_and_protocol_refs_have_exact_closed_shapes() {
         canonical_bytes(&separation).unwrap(),
         format!(r#"{{"digest":"{ONE}","protocol":"separation"}}"#).as_bytes()
     );
-    for hostile in [
+    for hostile_optional in [
         r#"{"state":"missing"}"#,
         r#"{"state":"absent","value":"7"}"#,
+        r#"{"state":"absent","extra":true}"#,
         r#"{"state":"present"}"#,
+        r#"{"state":"present","value":"7","extra":true}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<OptionalValue<U64Decimal>>(hostile_optional).is_err(),
+            "accepted hostile optional value: {hostile_optional}"
+        );
+    }
+
+    for hostile_protocol_ref in [
         r#"{"protocol":"other","digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111"}"#,
         r#"{"protocol":"publication","digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","extra":true}"#,
     ] {
         assert!(
-            serde_json::from_str::<OptionalValue<U64Decimal>>(hostile).is_err()
-                || serde_json::from_str::<
-                    ProtocolRef<
-                        guild_effect_kernel::body::EffectReceiptTag,
-                        guild_effect_kernel::body::SeparationReceiptTag,
-                    >,
-                >(hostile)
-                .is_err()
+            serde_json::from_str::<
+                ProtocolRef<
+                    guild_effect_kernel::body::EffectReceiptTag,
+                    guild_effect_kernel::body::SeparationReceiptTag,
+                >,
+            >(hostile_protocol_ref)
+            .is_err(),
+            "accepted hostile protocol reference: {hostile_protocol_ref}"
         );
     }
 }
