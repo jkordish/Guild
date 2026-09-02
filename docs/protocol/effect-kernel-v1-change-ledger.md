@@ -6,6 +6,7 @@
 | Cargo identity | `jidoka-kernel` / `jidoka_kernel` | `guild-effect-kernel` / `guild_effect_kernel` | None; Cargo names are not protocol fields. |
 | Rust toolchain | 1.98.0 | 1.94.0 | None; canonical vectors must prove byte parity. |
 | Integration terms | standalone coordinator | future Guild host integration | None; host integration is outside protocol v1 and outside this implementation phase. |
+| `Identifier` and `FieldName` scalar grammar | “lower kebab-case” with alphanumeric endpoints and “lower camel-case ASCII” beginning lowercase | `Identifier` is ASCII `^[a-z0-9]+(?:-[a-z0-9]+)*$` at 1..=63 bytes; `FieldName` is ASCII `^[a-z][A-Za-z0-9]{0,62}$` at 1..=63 bytes | None; this makes the implemented interpretation explicit rather than changing v1 wire intent. |
 
 The following values are frozen and are not migration-ledger substitutions:
 

@@ -2,10 +2,12 @@
 Provenance (non-normative): imported from jkordish/jidoka commit
 78ace548bdfbf7bd354c0d97e22f71b3dfd6526f at
 docs/superpowers/specs/2026-09-01-jidoka-autonomous-change-kernel-recovered-design.md.
-The imported source body's SHA-256 is
+The verbatim imported source body's SHA-256, before the ledgered §6.1
+scalar-grammar clarification, is
 86df64803cd2da89f6d6499aac4f884184b2799122a8f2e5e4cc7f9f178b177b.
 The normative protocol begins at the first H1 below. Guild ownership changes
-are recorded separately and do not alter v1 wire identity.
+and the scalar-grammar clarification are recorded separately and do not alter
+v1 wire identity.
 -->
 
 
@@ -173,8 +175,8 @@ The core exposes validated scalar newtypes rather than accepting ambient strings
 
 - `Digest`: canonical SHA-256 identity string.
 - `Hex256`: exactly 64 lowercase hex digits without an algorithm prefix.
-- `Identifier`: lower kebab-case, 1 to 63 ASCII characters, beginning and ending with an alphanumeric character.
-- `FieldName`: lower camel-case ASCII, 1 to 63 characters, beginning with a lowercase letter.
+- `Identifier`: ASCII matching `^[a-z0-9]+(?:-[a-z0-9]+)*$`, with total byte length `1..=63`. Digit endpoints are admitted; empty hyphen-separated segments, uppercase letters, underscores, and leading or trailing hyphens are forbidden.
+- `FieldName`: ASCII matching `^[a-z][A-Za-z0-9]{0,62}$`, with total byte length `1..=63`.
 - `XattrName`: 1 to 255 visible ASCII characters excluding `=` and NUL; stored byte-for-byte.
 - `LogicalAddress`: 1 to 255 printable ASCII characters, already canonicalized by the adapter; no control characters or surrounding whitespace. The core stores it byte-for-byte and performs no normalization.
 - `ArtifactName`: 1 to 255 Unicode scalar values; not empty after trimming; no NUL. The validated original value is stored byte-for-byte; trimming is a validity check, not a transformation, and no Unicode normalization occurs.

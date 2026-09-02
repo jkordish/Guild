@@ -665,7 +665,7 @@ use guild_effect_kernel::scalar::{
 #[test]
 fn body_map_key_must_equal_canonical_identity() {
     let body = support::absent_observation("local-file:///staging/app");
-    let wrong = Digest::parse(&format!("sha256:{}", "0".repeat(64))).unwrap();
+    let wrong = Digest::parse(&format!("sha256:{}1", "0".repeat(63))).unwrap();
     let entries = BTreeMap::from([(wrong, body.canonical_bytes().to_vec())]);
     assert!(matches!(BodyGraph::from_canonical_entries(entries), Err(BodyError::KeyMismatch { .. })));
 }
