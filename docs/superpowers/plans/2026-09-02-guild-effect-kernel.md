@@ -2428,7 +2428,9 @@ Expected: Phases 1–3 are complete. Stop here; do not begin host integration in
 
 ## Final Review Checklist
 
-- [ ] The imported normative body still hashes to `86df64803cd2da89f6d6499aac4f884184b2799122a8f2e5e4cc7f9f178b177b` after removing only the documented provenance preamble.
+- [ ] Repository history and provenance preserve the verbatim recovered source body with SHA-256 `86df64803cd2da89f6d6499aac4f884184b2799122a8f2e5e4cc7f9f178b177b`.
+- [ ] The current normative body, from the first H1 through EOF and excluding the provenance preamble, has SHA-256 `b38d65617c6922c01c542e5d702aeba9b0866d2119250a4f5e8e83dd4b172f1d` after the ledgered §6.1 clarification.
+- [ ] `docs/protocol/effect-kernel-v1-change-ledger.md` enumerates every normative difference from the recovered source body.
 - [ ] Cargo metadata shows no Guild or effectful runtime dependency beneath `guild-effect-kernel`.
 - [ ] Protocol manifests contain exactly 29 body kinds and 26 event types with unchanged strings.
 - [ ] Every sealed authority/proof type lacks a public constructor and public deserializer.

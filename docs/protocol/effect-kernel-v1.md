@@ -5,6 +5,9 @@ docs/superpowers/specs/2026-09-01-jidoka-autonomous-change-kernel-recovered-desi
 The verbatim imported source body's SHA-256, before the ledgered §6.1
 scalar-grammar clarification, is
 86df64803cd2da89f6d6499aac4f884184b2799122a8f2e5e4cc7f9f178b177b.
+The current normative body, from the first H1 through EOF after that
+clarification, has SHA-256
+b38d65617c6922c01c542e5d702aeba9b0866d2119250a4f5e8e83dd4b172f1d.
 The normative protocol begins at the first H1 below. Guild ownership changes
 and the scalar-grammar clarification are recorded separately and do not alter
 v1 wire identity.
