@@ -5,3 +5,4 @@
 //! Pure deterministic effect protocol kernel. This crate performs no I/O.
 
 pub mod protocol;
+pub mod scalar;
