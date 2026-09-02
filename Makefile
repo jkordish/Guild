@@ -1,4 +1,4 @@
-.PHONY: check test fmt fmt-check clippy draft-truth draft-truth-write draft-support-matrix draft-compatibility draft-benchmark patent-packet project-positioning axiom-plan axiom-plan-preview axiom-plan-goldens verify
+.PHONY: check test fmt fmt-check clippy draft-truth draft-truth-write draft-support-matrix draft-compatibility draft-benchmark patent-packet project-positioning axiom-plan axiom-plan-preview axiom-plan-goldens effect-kernel-boundary verify
 
 check:
 	cargo check --workspace
@@ -45,4 +45,7 @@ axiom-plan-preview:
 axiom-plan-goldens:
 	cargo run -q -p xtask -- axiom-plan check-goldens
 
-verify: fmt-check test clippy draft-truth project-positioning
+effect-kernel-boundary:
+	cargo run -q -p xtask -- effect-kernel check-dependencies
+
+verify: fmt-check test clippy effect-kernel-boundary draft-truth project-positioning

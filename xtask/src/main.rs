@@ -2,6 +2,7 @@
 #![allow(clippy::multiple_crate_versions)]
 
 mod axiom_plan;
+mod effect_kernel;
 
 use anyhow::{Context, Result, bail};
 use guild_draft_truth::{
@@ -9,7 +10,7 @@ use guild_draft_truth::{
     run_truth_action,
 };
 
-const USAGE: &str = "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check\n       cargo run -p xtask -- project-positioning check\n       cargo run -p xtask -- axiom-plan validate <path>\n       cargo run -p xtask -- axiom-plan validate-examples\n       cargo run -p xtask -- axiom-plan preview <path> [--json]\n       cargo run -p xtask -- axiom-plan check-goldens [--update]";
+const USAGE: &str = "usage: cargo run -p xtask -- draft-v1 <truth|support-matrix|compatibility|benchmark> <check|write>\n       cargo run -p xtask -- patent-packet check\n       cargo run -p xtask -- project-positioning check\n       cargo run -p xtask -- axiom-plan validate <path>\n       cargo run -p xtask -- axiom-plan validate-examples\n       cargo run -p xtask -- axiom-plan preview <path> [--json]\n       cargo run -p xtask -- axiom-plan check-goldens [--update]\n       cargo run -p xtask -- effect-kernel check-dependencies";
 
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
@@ -18,6 +19,9 @@ fn main() -> Result<()> {
     };
     if command == "axiom-plan" {
         return axiom_plan::run(args);
+    }
+    if command == "effect-kernel" {
+        return effect_kernel::run(args);
     }
     if command == "patent-packet" {
         let Some(mode_name) = args.next() else {

@@ -2,6 +2,7 @@
 members = [
     "xtask",
     "crates/guild-draft-truth",
+    "crates/guild-effect-kernel",
     "crates/guild-types",
     "crates/guild-manifest",
     "crates/guild-runner",

@@ -1,0 +1,26 @@
+[package]
+categories.workspace = true
+description = "Deterministic mutation admission, evidence, receipt, recovery, and custody kernel for Guild"
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+name = "guild-effect-kernel"
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+hex = "=0.4.3"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_jcs = "=0.1.0"
+serde_json = "=1.0.145"
+sha2 = "=0.10.9"
+thiserror = "=2.0.17"
+
+[dev-dependencies]
+proptest = "=1.8.0"
+
+[lints]
+workspace = true

@@ -40,6 +40,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      - name: Effect Kernel Boundary
+        run: cargo run -q -p xtask -- effect-kernel check-dependencies
+
       - name: Draft Truth
         run: cargo run -q -p xtask -- draft-v1 truth check
 
