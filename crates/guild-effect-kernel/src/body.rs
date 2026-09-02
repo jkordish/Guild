@@ -2298,7 +2298,6 @@ fn validate_separation_warrant_contract(
         || expected_active.content_digest() != deed.content_digest()
         || expected_active.byte_length() != deed.byte_length()
         || expected_active.incarnation() != deed.incarnation()
-        || precondition.expected_custody_generation() != deed.custody_generation()
     {
         return Err(BodyError::Local(
             "separation warrant resources and precondition are not deed-derived".to_owned(),
@@ -2877,6 +2876,7 @@ fn validate_resource_deed(
     {
         return Err(evidence_invariant("deed does not name a verified receipt"));
     }
+    let admission = publication_admission_for_receipt(receipt, facts)?;
     let Some(BodyFacts::PublicationEvidence(evidence)) =
         facts.get(receipt.evidence_digest().digest())
     else {
@@ -2896,6 +2896,8 @@ fn validate_resource_deed(
     };
     if evidence.effect_id() != receipt.effect_id()
         || evidence.postcondition() != crate::evidence::PublicationPostcondition::ExactRequested
+        || deed.logical_address() != admission.target_address
+        || deed.custody_generation() != admission.assigned_generation
         || deed.logical_address() != target_before.logical_address()
         || target_after.logical_address() != deed.logical_address()
         || source_before.artifact_name() != Some(deed.artifact_name())
@@ -2932,10 +2934,15 @@ fn observation_is_exact_deed(
         && observation.incarnation() == Some(deed.incarnation())
 }
 
-fn separation_input_for_evidence<'a>(
+struct SeparationAdmissionReplay<'a> {
+    input: &'a StaticArtifactSeparationInput,
+    next_generation: U64Decimal,
+}
+
+fn separation_admission_for_evidence<'a>(
     evidence: &crate::evidence::SeparationEvidence,
     facts: &'a BTreeMap<Digest, BodyFacts>,
-) -> Result<&'a StaticArtifactSeparationInput, BodyError> {
+) -> Result<SeparationAdmissionReplay<'a>, BodyError> {
     let Some(BodyFacts::SeparationBinding(binding)) = facts.get(evidence.binding_digest().digest())
     else {
         return Err(evidence_invariant(
@@ -2956,19 +2963,34 @@ fn separation_input_for_evidence<'a>(
     let Some(BodyFacts::SeparationInput(input)) = facts.get(warrant.input_digest().digest()) else {
         return Err(evidence_invariant("separation input facts are unavailable"));
     };
+    let Some(BodyFacts::SeparationPrecondition(precondition)) =
+        facts.get(warrant.precondition_digest().digest())
+    else {
+        return Err(evidence_invariant(
+            "separation precondition facts are unavailable",
+        ));
+    };
     if input.deed_digest() != evidence.deed_digest() {
         return Err(evidence_invariant(
             "separation evidence names a different deed",
         ));
     }
-    Ok(input)
+    let next_generation = precondition
+        .expected_custody_generation()
+        .checked_add(1)
+        .map_err(|_| evidence_invariant("separation custody generation is exhausted"))?;
+    Ok(SeparationAdmissionReplay {
+        input,
+        next_generation,
+    })
 }
 
 fn validate_separation_evidence(
     evidence: &crate::evidence::SeparationEvidence,
     facts: &BTreeMap<Digest, BodyFacts>,
 ) -> Result<(), BodyError> {
-    let input = separation_input_for_evidence(evidence, facts)?;
+    let admission = separation_admission_for_evidence(evidence, facts)?;
+    let input = admission.input;
     let Some(BodyFacts::ResourceDeed(deed)) = facts.get(evidence.deed_digest().digest()) else {
         return Err(evidence_invariant("separation deed facts are unavailable"));
     };
@@ -3102,6 +3124,7 @@ fn validate_separation_receipt(
     let Some(BodyFacts::ResourceDeed(deed)) = facts.get(receipt.deed_digest().digest()) else {
         return Err(evidence_invariant("separation receipt deed is unavailable"));
     };
+    let admission = separation_admission_for_evidence(evidence, facts)?;
     let expected_result = match evidence.command_report() {
         crate::evidence::CommandReport::ReportedSuccess => {
             crate::evidence::OperationResult::QuarantineReportedSuccess
@@ -3118,9 +3141,11 @@ fn validate_separation_receipt(
     };
     let expected_classification = classify_replayed_separation(evidence, deed, facts)?;
     if binding.effect_id() != receipt.effect_id()
+        || receipt.binding_digest() != evidence.binding_digest()
         || evidence.effect_id() != receipt.effect_id()
         || evidence.deed_digest() != receipt.deed_digest()
         || receipt.terminal_at() != evidence.assessed_at()
+        || receipt.next_custody_generation() != admission.next_generation
         || receipt.result() != expected_result
         || (receipt.state(), receipt.reason()) != expected_classification
     {
@@ -3136,6 +3161,7 @@ fn validate_separation_custody_contract(
     receipt: &crate::evidence::SeparationReceipt,
     deed: &crate::evidence::ResourceDeed,
     input: &StaticArtifactSeparationInput,
+    expected_next_generation: U64Decimal,
 ) -> Result<(), BodyError> {
     use crate::evidence::{CustodyState as C, ReceiptState as S};
     let expected_state = match receipt.state() {
@@ -3144,6 +3170,7 @@ fn validate_separation_custody_contract(
         S::Indeterminate => C::Disputed,
     };
     if receipt.deed_digest() != input.deed_digest()
+        || receipt.next_custody_generation() != expected_next_generation
         || receipt.next_custody_generation() != custody.custody_generation()
         || custody.state() != expected_state
         || deed.resource_key() != custody.resource_key()
@@ -3155,6 +3182,70 @@ fn validate_separation_custody_contract(
         ));
     }
     Ok(())
+}
+
+struct PublicationAdmissionReplay<'a> {
+    target_address: &'a LogicalAddress,
+    assigned_generation: U64Decimal,
+}
+
+fn publication_admission_for_receipt<'a>(
+    receipt: &crate::evidence::EffectReceipt,
+    facts: &'a BTreeMap<Digest, BodyFacts>,
+) -> Result<PublicationAdmissionReplay<'a>, BodyError> {
+    let Some(BodyFacts::PublicationEvidence(evidence)) =
+        facts.get(receipt.evidence_digest().digest())
+    else {
+        return Err(evidence_invariant(
+            "publication custody evidence is unavailable",
+        ));
+    };
+    let Some(BodyFacts::IdempotencyBinding(binding)) =
+        facts.get(evidence.binding_digest().digest())
+    else {
+        return Err(evidence_invariant(
+            "publication custody binding is unavailable",
+        ));
+    };
+    let Some(BodyFacts::PublicationWarrant(warrant)) = facts.get(binding.warrant_digest().digest())
+    else {
+        return Err(evidence_invariant(
+            "publication custody warrant is unavailable",
+        ));
+    };
+    let Some(BodyFacts::PublishInput(input)) = facts.get(warrant.input_digest().digest()) else {
+        return Err(evidence_invariant(
+            "publication custody input is unavailable",
+        ));
+    };
+    let Some(BodyFacts::PublishPrecondition(precondition)) =
+        facts.get(warrant.precondition_digest().digest())
+    else {
+        return Err(evidence_invariant(
+            "publication custody precondition is unavailable",
+        ));
+    };
+    let target_before = fact_observation(facts, evidence.target_before_observation_digest())?;
+    if receipt.binding_digest() != evidence.binding_digest()
+        || receipt.effect_id() != evidence.effect_id()
+        || receipt.effect_id() != binding.effect_id()
+        || input.target_logical_address() != precondition.target_logical_address()
+        || target_before.logical_address() != input.target_logical_address()
+    {
+        return Err(evidence_invariant(
+            "publication custody admission chain does not name one target",
+        ));
+    }
+    let assigned_generation = match precondition.expected_custody_generation() {
+        OptionalValue::Absent => U64Decimal::from_u64(0),
+        OptionalValue::Present { value } => value
+            .checked_add(1)
+            .map_err(|_| evidence_invariant("publication custody generation is exhausted"))?,
+    };
+    Ok(PublicationAdmissionReplay {
+        target_address: target_before.logical_address(),
+        assigned_generation,
+    })
 }
 
 fn validate_custody_record(
@@ -3174,6 +3265,17 @@ fn validate_custody_record(
                     "custody publication receipt is unavailable",
                 ));
             };
+            let admission = publication_admission_for_receipt(receipt, facts)?;
+            let expected_resource_key =
+                crate::lease::derive_resource_key(admission.target_address)?;
+            if custody.active_address() != admission.target_address
+                || custody.resource_key() != &expected_resource_key
+                || custody.custody_generation() != admission.assigned_generation
+            {
+                return Err(evidence_invariant(
+                    "publication custody address, resource key, and generation are not admission-derived",
+                ));
+            }
             let expected_state = match receipt.state() {
                 S::Verified => C::Owned,
                 S::Failed => C::Absent,
@@ -3192,6 +3294,7 @@ fn validate_custody_record(
                     if deed.publication_receipt_digest() != digest
                         || deed.resource_key() != custody.resource_key()
                         || deed.logical_address() != custody.active_address()
+                        || deed.custody_generation() != admission.assigned_generation
                         || deed.custody_generation() != custody.custody_generation()
                     {
                         return Err(evidence_invariant("owned custody does not equal its deed"));
@@ -3231,8 +3334,14 @@ fn validate_custody_record(
                     "separation custody evidence is unavailable",
                 ));
             };
-            let input = separation_input_for_evidence(evidence, facts)?;
-            validate_separation_custody_contract(custody, receipt, deed, input)?;
+            let admission = separation_admission_for_evidence(evidence, facts)?;
+            validate_separation_custody_contract(
+                custody,
+                receipt,
+                deed,
+                admission.input,
+                admission.next_generation,
+            )?;
         }
     }
     Ok(())
@@ -3497,6 +3606,545 @@ mod tests {
 
     fn test_digest(byte: char) -> Digest {
         Digest::parse(&format!("sha256:{}", byte.to_string().repeat(64))).unwrap()
+    }
+
+    #[derive(Clone, Copy)]
+    enum PublicationFixtureOutcome {
+        Verified,
+        Failed,
+        Indeterminate,
+    }
+
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the replay fixture makes the complete admitted publication chain explicit"
+    )]
+    fn publication_custody_replay_fixture(
+        outcome: PublicationFixtureOutcome,
+        custody_address: &LogicalAddress,
+        admitted_generation: Option<u64>,
+        terminal_generation: u64,
+    ) -> (crate::evidence::CustodyRecord, BTreeMap<Digest, BodyFacts>) {
+        let receipt_digest = test_digest('1');
+        let evidence_digest = test_digest('2');
+        let binding_digest = test_digest('3');
+        let warrant_digest = test_digest('4');
+        let input_digest = test_digest('5');
+        let precondition_digest = test_digest('6');
+        let target_before_digest = test_digest('7');
+        let deed_digest = test_digest('8');
+        let source_before_digest = test_digest('9');
+        let source_after_digest = test_digest('f');
+        let target_after_digest = Digest::parse(&format!("sha256:{}", "01".repeat(32))).unwrap();
+        let source_address = LogicalAddress::parse("local-file:///staging/app").unwrap();
+        let target_address = LogicalAddress::parse("local-file:///active/app").unwrap();
+        let witness = Identifier::parse("host-probe").unwrap();
+        let content = RawDigest::parse(
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .unwrap();
+        let incarnation = IncarnationId::parse(
+            "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        )
+        .unwrap();
+        let source_before = LocalFileObservation::present(
+            source_address.clone(),
+            witness.clone(),
+            UnixNanoseconds::parse("10").unwrap(),
+            ArtifactName::parse("app").unwrap(),
+            content.clone(),
+            ByteLength::from_u64(42),
+            incarnation.clone(),
+            OptionalValue::absent(),
+        );
+        let target_before = LocalFileObservation::absent(
+            target_address.clone(),
+            witness.clone(),
+            UnixNanoseconds::parse("10").unwrap(),
+        );
+        let input = StaticArtifactPublishInput::new(
+            ArtifactName::parse("app").unwrap(),
+            LocalFileObservationRef::from_digest(source_before_digest.clone()),
+            target_address.clone(),
+        )
+        .unwrap();
+        let expected_generation = admitted_generation
+            .map_or_else(OptionalValue::absent, |generation| {
+                OptionalValue::present(U64Decimal::from_u64(generation))
+            });
+        let precondition = StaticArtifactPublishPrecondition::new(
+            target_address.clone(),
+            ExpectedState::absent(),
+            expected_generation,
+        );
+        let mut resource_keys = [
+            crate::lease::derive_resource_key(&source_address).unwrap(),
+            crate::lease::derive_resource_key(&target_address).unwrap(),
+        ];
+        resource_keys.sort();
+        let warrant: crate::authority::PublicationWarrant =
+            serde_json::from_value(serde_json::json!({
+                "installationDigest": test_digest('c'),
+                "policyDigest": test_digest('d'),
+                "policyGeneration": "0",
+                "effectKind": "static_artifact_publish",
+                "proposerId": "proposer",
+                "inputDigest": input_digest,
+                "preconditionDigest": precondition_digest,
+                "idempotencyKey": "publish-app-00001",
+                "resourceKeys": resource_keys,
+                "reservationBudget": {"key":"reservation", "amount":1},
+                "startBudget": {"key":"start", "amount":1},
+                "issuedAt": "10",
+                "expiresAt": "20",
+                "nonce": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            }))
+            .unwrap();
+        let effect_id = publication_effect_id(&warrant_digest, &warrant).unwrap();
+        let binding = crate::lease::decode_idempotency_binding(serde_json::json!({
+            "idempotencyKey": "publish-app-00001",
+            "effectId": effect_id,
+            "warrantDigest": warrant_digest
+        }))
+        .unwrap();
+        let (command_report, source_after, target_after, postcondition, limitations) = match outcome
+        {
+            PublicationFixtureOutcome::Verified => (
+                "reported_success",
+                serde_json::json!({"state":"observed", "digest":source_after_digest}),
+                serde_json::json!({"state":"observed", "digest":target_after_digest}),
+                "exact_requested",
+                serde_json::json!([]),
+            ),
+            PublicationFixtureOutcome::Failed => (
+                "reported_no_effect",
+                serde_json::json!({"state":"observed", "digest":source_after_digest}),
+                serde_json::json!({"state":"observed", "digest":target_before_digest}),
+                "prior_state_unchanged",
+                serde_json::json!([]),
+            ),
+            PublicationFixtureOutcome::Indeterminate => (
+                "reported_uncertain",
+                serde_json::json!({
+                    "state":"unavailable",
+                    "logicalAddress":source_address,
+                    "witnessId":"host-probe",
+                    "attemptedAt":"20"
+                }),
+                serde_json::json!({
+                    "state":"unavailable",
+                    "logicalAddress":target_address,
+                    "witnessId":"host-probe",
+                    "attemptedAt":"20"
+                }),
+                "ambiguous",
+                serde_json::json!(["witness_unavailable"]),
+            ),
+        };
+        let evidence = crate::evidence::decode_publication_evidence(serde_json::json!({
+            "effectId": effect_id,
+            "bindingDigest": binding_digest,
+            "preparedArtifactDigest": test_digest('b'),
+            "commandReport": command_report,
+            "sourceBeforeObservationDigest": source_before_digest,
+            "targetBeforeObservationDigest": target_before_digest,
+            "sourceAfter": source_after,
+            "targetAfter": target_after,
+            "postcondition": postcondition,
+            "limitations": limitations,
+            "assessedAt": "20"
+        }))
+        .unwrap();
+        let (receipt_state, result, reason, custody_state) = match outcome {
+            PublicationFixtureOutcome::Verified => (
+                "verified",
+                "publish_reported_success",
+                "artifact_verified",
+                "owned",
+            ),
+            PublicationFixtureOutcome::Failed => (
+                "failed",
+                "publish_reported_no_effect",
+                "publication_no_effect",
+                "absent",
+            ),
+            PublicationFixtureOutcome::Indeterminate => (
+                "indeterminate",
+                "publish_reported_uncertain",
+                "witness_unavailable",
+                "disputed",
+            ),
+        };
+        let receipt = crate::evidence::decode_effect_receipt(serde_json::json!({
+            "effectId": effect_id,
+            "bindingDigest": binding_digest,
+            "evidenceDigest": evidence_digest,
+            "causalityDigest": test_digest('a'),
+            "state": receipt_state,
+            "result": result,
+            "reason": reason,
+            "terminalAt": "20"
+        }))
+        .unwrap();
+        let deed_value = match outcome {
+            PublicationFixtureOutcome::Verified => {
+                serde_json::json!({"state":"present", "value":deed_digest})
+            }
+            PublicationFixtureOutcome::Failed | PublicationFixtureOutcome::Indeterminate => {
+                serde_json::json!({"state":"absent"})
+            }
+        };
+        let custody = crate::evidence::decode_custody_record(serde_json::json!({
+            "resourceKey": crate::lease::derive_resource_key(custody_address).unwrap(),
+            "deedDigest": deed_value,
+            "custodyGeneration": terminal_generation.to_string(),
+            "state": custody_state,
+            "terminalReceipt": {"protocol":"publication", "digest":receipt_digest},
+            "activeAddress": custody_address,
+            "quarantineAddress": {"state":"absent"}
+        }))
+        .unwrap();
+        let mut facts = BTreeMap::from([
+            (receipt_digest.clone(), BodyFacts::EffectReceipt(receipt)),
+            (evidence_digest, BodyFacts::PublicationEvidence(evidence)),
+            (binding_digest, BodyFacts::IdempotencyBinding(binding)),
+            (warrant_digest, BodyFacts::PublicationWarrant(warrant)),
+            (input_digest, BodyFacts::PublishInput(input)),
+            (
+                precondition_digest,
+                BodyFacts::PublishPrecondition(precondition),
+            ),
+            (
+                source_before_digest,
+                BodyFacts::Observation(source_before.clone()),
+            ),
+            (target_before_digest, BodyFacts::Observation(target_before)),
+        ]);
+        match outcome {
+            PublicationFixtureOutcome::Verified => {
+                let source_after = LocalFileObservation::absent(
+                    source_address,
+                    witness.clone(),
+                    UnixNanoseconds::parse("20").unwrap(),
+                );
+                let target_after = LocalFileObservation::present(
+                    target_address.clone(),
+                    witness,
+                    UnixNanoseconds::parse("20").unwrap(),
+                    ArtifactName::parse("app").unwrap(),
+                    content.clone(),
+                    ByteLength::from_u64(42),
+                    incarnation.clone(),
+                    OptionalValue::absent(),
+                );
+                let deed = crate::evidence::decode_resource_deed(serde_json::json!({
+                    "resourceKey": crate::lease::derive_resource_key(&target_address).unwrap(),
+                    "logicalAddress": target_address,
+                    "artifactName": "app",
+                    "contentDigest": content,
+                    "byteLength": "42",
+                    "incarnation": incarnation,
+                    "publicationReceiptDigest": receipt_digest,
+                    "custodyGeneration": terminal_generation.to_string()
+                }))
+                .unwrap();
+                facts.insert(source_after_digest, BodyFacts::Observation(source_after));
+                facts.insert(target_after_digest, BodyFacts::Observation(target_after));
+                facts.insert(deed_digest, BodyFacts::ResourceDeed(deed));
+            }
+            PublicationFixtureOutcome::Failed => {
+                let source_after = LocalFileObservation::present(
+                    source_address,
+                    witness,
+                    UnixNanoseconds::parse("20").unwrap(),
+                    ArtifactName::parse("app").unwrap(),
+                    content,
+                    ByteLength::from_u64(42),
+                    incarnation,
+                    OptionalValue::absent(),
+                );
+                facts.insert(source_after_digest, BodyFacts::Observation(source_after));
+            }
+            PublicationFixtureOutcome::Indeterminate => {}
+        }
+        (custody, facts)
+    }
+
+    #[derive(Clone, Copy)]
+    enum SeparationFixtureOutcome {
+        Verified,
+        Failed,
+        Indeterminate,
+    }
+
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the replay fixture makes the complete admitted separation chain explicit"
+    )]
+    fn separation_replay_fixture(
+        outcome: SeparationFixtureOutcome,
+        deed_generation: u64,
+        admitted_generation: u64,
+        receipt_generation: u64,
+        custody_generation: u64,
+    ) -> (
+        crate::evidence::SeparationReceipt,
+        crate::evidence::CustodyRecord,
+        BTreeMap<Digest, BodyFacts>,
+    ) {
+        let deed_digest = test_digest('1');
+        let receipt_digest = test_digest('2');
+        let evidence_digest = test_digest('3');
+        let binding_digest = test_digest('4');
+        let warrant_digest = test_digest('5');
+        let input_digest = test_digest('6');
+        let precondition_digest = test_digest('7');
+        let active_before_digest = test_digest('8');
+        let quarantine_before_digest = test_digest('9');
+        let active_after_digest = test_digest('a');
+        let quarantine_after_digest = test_digest('b');
+        let xattr_digest = test_digest('c');
+        let active_address = LogicalAddress::parse("local-file:///active/app").unwrap();
+        let quarantine_address = LogicalAddress::parse("local-file:///quarantine/app").unwrap();
+        let witness = Identifier::parse("host-probe").unwrap();
+        let content = RawDigest::parse(
+            "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        )
+        .unwrap();
+        let incarnation = IncarnationId::parse(
+            "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        )
+        .unwrap();
+        let deed = crate::evidence::decode_resource_deed(serde_json::json!({
+            "resourceKey": crate::lease::derive_resource_key(&active_address).unwrap(),
+            "logicalAddress": active_address,
+            "artifactName": "app",
+            "contentDigest": content,
+            "byteLength": "42",
+            "incarnation": incarnation,
+            "publicationReceiptDigest": test_digest('f'),
+            "custodyGeneration": deed_generation.to_string()
+        }))
+        .unwrap();
+        let input = StaticArtifactSeparationInput::new(
+            ResourceDeedRef::from_digest(deed_digest.clone()),
+            quarantine_address.clone(),
+            XattrValueRef::from_digest(xattr_digest.clone()),
+        )
+        .unwrap();
+        let precondition = StaticArtifactSeparationPrecondition::new(
+            PresentExpectedState::new(
+                ArtifactName::parse("app").unwrap(),
+                content.clone(),
+                ByteLength::from_u64(42),
+                incarnation.clone(),
+            ),
+            AbsentExpectedState::new(),
+            U64Decimal::from_u64(admitted_generation),
+        );
+        let mut resource_keys = [
+            deed.resource_key().clone(),
+            crate::lease::derive_resource_key(&quarantine_address).unwrap(),
+        ];
+        resource_keys.sort();
+        let warrant: crate::authority::SeparationWarrant =
+            serde_json::from_value(serde_json::json!({
+                "installationDigest": test_digest('d'),
+                "policyDigest": test_digest('e'),
+                "policyGeneration": "0",
+                "effectKind": "static_artifact_separation",
+                "proposerId": "proposer",
+                "inputDigest": input_digest,
+                "preconditionDigest": precondition_digest,
+                "idempotencyKey": "separate-app-0001",
+                "resourceKeys": resource_keys,
+                "reservationBudget": {"key":"reservation", "amount":1},
+                "startBudget": {"key":"start", "amount":1},
+                "issuedAt": "10",
+                "expiresAt": "20",
+                "nonce": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            }))
+            .unwrap();
+        let effect_id = separation_effect_id(&warrant_digest, &warrant).unwrap();
+        let binding = crate::lease::decode_separation_binding(serde_json::json!({
+            "idempotencyKey": "separate-app-0001",
+            "effectId": effect_id,
+            "warrantDigest": warrant_digest
+        }))
+        .unwrap();
+        let (command_report, active_after, quarantine_after, postcondition, limitations) =
+            match outcome {
+                SeparationFixtureOutcome::Verified => (
+                    "reported_success",
+                    serde_json::json!({"state":"observed", "digest":active_after_digest}),
+                    serde_json::json!({"state":"observed", "digest":quarantine_after_digest}),
+                    "exact_quarantine",
+                    serde_json::json!([]),
+                ),
+                SeparationFixtureOutcome::Failed => (
+                    "reported_no_effect",
+                    serde_json::json!({"state":"observed", "digest":active_after_digest}),
+                    serde_json::json!({"state":"observed", "digest":quarantine_after_digest}),
+                    "no_move",
+                    serde_json::json!([]),
+                ),
+                SeparationFixtureOutcome::Indeterminate => (
+                    "reported_uncertain",
+                    serde_json::json!({
+                        "state":"unavailable",
+                        "logicalAddress":active_address,
+                        "witnessId":"host-probe",
+                        "attemptedAt":"20"
+                    }),
+                    serde_json::json!({
+                        "state":"unavailable",
+                        "logicalAddress":quarantine_address,
+                        "witnessId":"host-probe",
+                        "attemptedAt":"20"
+                    }),
+                    "ambiguous",
+                    serde_json::json!(["witness_unavailable"]),
+                ),
+            };
+        let evidence = crate::evidence::decode_separation_evidence(serde_json::json!({
+            "effectId": effect_id,
+            "bindingDigest": binding_digest,
+            "deedDigest": deed_digest,
+            "activeBeforeObservationDigest": active_before_digest,
+            "quarantineBeforeObservationDigest": quarantine_before_digest,
+            "activeAfter": active_after,
+            "quarantineAfter": quarantine_after,
+            "commandReport": command_report,
+            "postcondition": postcondition,
+            "limitations": limitations,
+            "assessedAt": "20"
+        }))
+        .unwrap();
+        let (receipt_state, result, reason, custody_state) = match outcome {
+            SeparationFixtureOutcome::Verified => (
+                "verified",
+                "quarantine_reported_success",
+                "separation_verified",
+                "quarantined",
+            ),
+            SeparationFixtureOutcome::Failed => (
+                "failed",
+                "quarantine_reported_no_effect",
+                "separation_no_move",
+                "owned",
+            ),
+            SeparationFixtureOutcome::Indeterminate => (
+                "indeterminate",
+                "quarantine_reported_uncertain",
+                "witness_unavailable",
+                "disputed",
+            ),
+        };
+        let receipt = crate::evidence::decode_separation_receipt(serde_json::json!({
+            "effectId": effect_id,
+            "bindingDigest": binding_digest,
+            "evidenceDigest": evidence_digest,
+            "deedDigest": deed_digest,
+            "state": receipt_state,
+            "result": result,
+            "reason": reason,
+            "terminalAt": "20",
+            "nextCustodyGeneration": receipt_generation.to_string()
+        }))
+        .unwrap();
+        let custody = crate::evidence::decode_custody_record(serde_json::json!({
+            "resourceKey": deed.resource_key(),
+            "deedDigest": {"state":"present", "value":deed_digest},
+            "custodyGeneration": custody_generation.to_string(),
+            "state": custody_state,
+            "terminalReceipt": {"protocol":"separation", "digest":receipt_digest},
+            "activeAddress": active_address,
+            "quarantineAddress": {"state":"present", "value":quarantine_address}
+        }))
+        .unwrap();
+        let active_before = LocalFileObservation::present(
+            active_address.clone(),
+            witness.clone(),
+            UnixNanoseconds::parse("10").unwrap(),
+            ArtifactName::parse("app").unwrap(),
+            content.clone(),
+            ByteLength::from_u64(42),
+            incarnation.clone(),
+            OptionalValue::absent(),
+        );
+        let quarantine_before = LocalFileObservation::absent(
+            quarantine_address.clone(),
+            witness.clone(),
+            UnixNanoseconds::parse("10").unwrap(),
+        );
+        let mut facts = BTreeMap::from([
+            (deed_digest, BodyFacts::ResourceDeed(deed)),
+            (
+                receipt_digest,
+                BodyFacts::SeparationReceipt(receipt.clone()),
+            ),
+            (evidence_digest, BodyFacts::SeparationEvidence(evidence)),
+            (binding_digest, BodyFacts::SeparationBinding(binding)),
+            (warrant_digest, BodyFacts::SeparationWarrant(warrant)),
+            (input_digest, BodyFacts::SeparationInput(input)),
+            (
+                precondition_digest,
+                BodyFacts::SeparationPrecondition(precondition),
+            ),
+            (active_before_digest, BodyFacts::Observation(active_before)),
+            (
+                quarantine_before_digest,
+                BodyFacts::Observation(quarantine_before),
+            ),
+        ]);
+        match outcome {
+            SeparationFixtureOutcome::Verified => {
+                let active_after = LocalFileObservation::absent(
+                    active_address,
+                    witness.clone(),
+                    UnixNanoseconds::parse("20").unwrap(),
+                );
+                let quarantine_after = LocalFileObservation::present(
+                    quarantine_address,
+                    witness,
+                    UnixNanoseconds::parse("20").unwrap(),
+                    ArtifactName::parse("app").unwrap(),
+                    content,
+                    ByteLength::from_u64(42),
+                    incarnation,
+                    OptionalValue::present(XattrValueRef::from_digest(xattr_digest)),
+                );
+                facts.insert(active_after_digest, BodyFacts::Observation(active_after));
+                facts.insert(
+                    quarantine_after_digest,
+                    BodyFacts::Observation(quarantine_after),
+                );
+            }
+            SeparationFixtureOutcome::Failed => {
+                let active_after = LocalFileObservation::present(
+                    active_address,
+                    witness.clone(),
+                    UnixNanoseconds::parse("20").unwrap(),
+                    ArtifactName::parse("app").unwrap(),
+                    content,
+                    ByteLength::from_u64(42),
+                    incarnation,
+                    OptionalValue::absent(),
+                );
+                let quarantine_after = LocalFileObservation::absent(
+                    quarantine_address,
+                    witness,
+                    UnixNanoseconds::parse("20").unwrap(),
+                );
+                facts.insert(active_after_digest, BodyFacts::Observation(active_after));
+                facts.insert(
+                    quarantine_after_digest,
+                    BodyFacts::Observation(quarantine_after),
+                );
+            }
+            SeparationFixtureOutcome::Indeterminate => {}
+        }
+        (receipt, custody, facts)
     }
 
     #[test]
@@ -3952,6 +4600,228 @@ mod tests {
     }
 
     #[test]
+    fn separation_warrant_replay_allows_current_generation_beyond_retained_deed() {
+        let active_address = LogicalAddress::parse("local-file:///active/app").unwrap();
+        let quarantine_address = LogicalAddress::parse("local-file:///quarantine/app").unwrap();
+        let content_digest = RawDigest::parse(
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .unwrap();
+        let incarnation = IncarnationId::parse(
+            "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        )
+        .unwrap();
+        let deed = crate::evidence::decode_resource_deed(serde_json::json!({
+            "resourceKey": crate::lease::derive_resource_key(&active_address).unwrap(),
+            "logicalAddress": active_address,
+            "artifactName": "app",
+            "contentDigest": content_digest,
+            "byteLength": "42",
+            "incarnation": incarnation,
+            "publicationReceiptDigest": test_digest('1'),
+            "custodyGeneration": "0"
+        }))
+        .unwrap();
+        let input = StaticArtifactSeparationInput::new(
+            ResourceDeedRef::from_digest(test_digest('2')),
+            quarantine_address.clone(),
+            XattrValueRef::from_digest(test_digest('3')),
+        )
+        .unwrap();
+        let precondition = StaticArtifactSeparationPrecondition::new(
+            PresentExpectedState::new(
+                ArtifactName::parse("app").unwrap(),
+                content_digest,
+                ByteLength::from_u64(42),
+                incarnation,
+            ),
+            AbsentExpectedState::new(),
+            U64Decimal::from_u64(1),
+        );
+        let mut expected_keys = [
+            deed.resource_key().clone(),
+            crate::lease::derive_resource_key(&quarantine_address).unwrap(),
+        ];
+        expected_keys.sort();
+        let warrant: crate::authority::SeparationWarrant =
+            serde_json::from_value(serde_json::json!({
+                "installationDigest": test_digest('4'),
+                "policyDigest": test_digest('5'),
+                "policyGeneration": "0",
+                "effectKind": "static_artifact_separation",
+                "proposerId": "proposer",
+                "inputDigest": test_digest('6'),
+                "preconditionDigest": test_digest('7'),
+                "idempotencyKey": "separate-app-0001",
+                "resourceKeys": expected_keys,
+                "reservationBudget": {"key":"reservation", "amount":1},
+                "startBudget": {"key":"start", "amount":1},
+                "issuedAt": "10",
+                "expiresAt": "20",
+                "nonce": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            }))
+            .unwrap();
+
+        assert_eq!(
+            validate_separation_warrant_contract(&warrant, &input, &precondition, &deed),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn publication_custody_replay_rejects_non_target_address_for_nonverified_receipts() {
+        let attacker_address =
+            LogicalAddress::parse("local-file:///attacker-selected/app").unwrap();
+        for outcome in [
+            PublicationFixtureOutcome::Failed,
+            PublicationFixtureOutcome::Indeterminate,
+        ] {
+            let (custody, facts) =
+                publication_custody_replay_fixture(outcome, &attacker_address, None, 0);
+
+            assert!(matches!(
+                validate_custody_record(&custody, &facts),
+                Err(BodyError::Local(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn publication_custody_replay_rejects_caller_selected_generation_for_every_outcome() {
+        let target_address = LogicalAddress::parse("local-file:///active/app").unwrap();
+        for outcome in [
+            PublicationFixtureOutcome::Verified,
+            PublicationFixtureOutcome::Failed,
+            PublicationFixtureOutcome::Indeterminate,
+        ] {
+            let (custody, facts) =
+                publication_custody_replay_fixture(outcome, &target_address, None, 7);
+
+            assert!(matches!(
+                validate_custody_record(&custody, &facts),
+                Err(BodyError::Local(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn publication_custody_replay_accepts_checked_successor_generation_for_every_outcome() {
+        let target_address = LogicalAddress::parse("local-file:///active/app").unwrap();
+        for outcome in [
+            PublicationFixtureOutcome::Verified,
+            PublicationFixtureOutcome::Failed,
+            PublicationFixtureOutcome::Indeterminate,
+        ] {
+            let (custody, facts) =
+                publication_custody_replay_fixture(outcome, &target_address, Some(7), 8);
+
+            assert_eq!(validate_custody_record(&custody, &facts), Ok(()));
+        }
+    }
+
+    #[test]
+    fn publication_custody_replay_rejects_exhausted_admitted_generation() {
+        let target_address = LogicalAddress::parse("local-file:///active/app").unwrap();
+        let (custody, facts) = publication_custody_replay_fixture(
+            PublicationFixtureOutcome::Failed,
+            &target_address,
+            Some(u64::MAX),
+            0,
+        );
+
+        assert!(matches!(
+            validate_custody_record(&custody, &facts),
+            Err(BodyError::Local(_))
+        ));
+    }
+
+    #[test]
+    fn publication_deed_replay_rejects_caller_selected_generation() {
+        let target_address = LogicalAddress::parse("local-file:///active/app").unwrap();
+        let (_custody, facts) = publication_custody_replay_fixture(
+            PublicationFixtureOutcome::Verified,
+            &target_address,
+            None,
+            7,
+        );
+        let Some(BodyFacts::ResourceDeed(deed)) = facts.get(&test_digest('8')) else {
+            panic!("fixture omitted its verified publication deed");
+        };
+
+        assert!(matches!(
+            validate_resource_deed(deed, &facts),
+            Err(BodyError::Local(_))
+        ));
+    }
+
+    #[test]
+    fn separation_receipt_replay_rejects_caller_selected_generation_for_every_outcome() {
+        for outcome in [
+            SeparationFixtureOutcome::Verified,
+            SeparationFixtureOutcome::Failed,
+            SeparationFixtureOutcome::Indeterminate,
+        ] {
+            let (receipt, _custody, facts) = separation_replay_fixture(outcome, 0, 7, 42, 42);
+
+            assert!(matches!(
+                validate_separation_receipt(&receipt, &facts),
+                Err(BodyError::Local(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn separation_custody_replay_rejects_caller_selected_generation() {
+        let (_receipt, custody, facts) =
+            separation_replay_fixture(SeparationFixtureOutcome::Indeterminate, 0, 7, 42, 42);
+
+        assert!(matches!(
+            validate_custody_record(&custody, &facts),
+            Err(BodyError::Local(_))
+        ));
+    }
+
+    #[test]
+    fn separation_receipt_replay_rejects_exhausted_admitted_generation() {
+        let (receipt, _custody, facts) =
+            separation_replay_fixture(SeparationFixtureOutcome::Indeterminate, 0, u64::MAX, 1, 1);
+
+        assert!(matches!(
+            validate_separation_receipt(&receipt, &facts),
+            Err(BodyError::Local(_))
+        ));
+    }
+
+    #[test]
+    fn repeated_safe_no_move_replay_retains_deed_and_advances_current_generation() {
+        let (receipt, custody, facts) =
+            separation_replay_fixture(SeparationFixtureOutcome::Failed, 0, 1, 2, 2);
+        let Some(BodyFacts::SeparationWarrant(warrant)) = facts.get(&test_digest('5')) else {
+            panic!("fixture omitted its separation warrant");
+        };
+        let Some(BodyFacts::SeparationInput(input)) = facts.get(&test_digest('6')) else {
+            panic!("fixture omitted its separation input");
+        };
+        let Some(BodyFacts::SeparationPrecondition(precondition)) = facts.get(&test_digest('7'))
+        else {
+            panic!("fixture omitted its separation precondition");
+        };
+        let Some(BodyFacts::ResourceDeed(deed)) = facts.get(&test_digest('1')) else {
+            panic!("fixture omitted its retained deed");
+        };
+
+        assert_eq!(
+            validate_separation_warrant_contract(warrant, input, precondition, deed),
+            Ok(())
+        );
+        assert_eq!(validate_separation_receipt(&receipt, &facts), Ok(()));
+        assert_eq!(validate_custody_record(&custody, &facts), Ok(()));
+        assert_eq!(deed.custody_generation().get(), 0);
+        assert_eq!(precondition.expected_custody_generation().get(), 1);
+        assert_eq!(receipt.next_custody_generation().get(), 2);
+    }
+
+    #[test]
     fn separation_custody_replay_rejects_a_non_derived_quarantine_address() {
         let deed_digest = test_digest('1');
         let receipt_digest = test_digest('2');
@@ -4000,7 +4870,13 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            validate_separation_custody_contract(&custody, &receipt, &deed, &input),
+            validate_separation_custody_contract(
+                &custody,
+                &receipt,
+                &deed,
+                &input,
+                U64Decimal::from_u64(1),
+            ),
             Err(BodyError::Local(_))
         ));
     }
