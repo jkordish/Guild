@@ -495,10 +495,18 @@ fn replay_decodes_owned_base_kinds_and_stages_later_payload_modules() {
                     | BodyKind::SeparationRevocation
                     | BodyKind::SeparationLease
                     | BodyKind::SeparationBinding
+                    | BodyKind::PublicationEvidence
+                    | BodyKind::CausalityAssessment
+                    | BodyKind::EffectReceipt
+                    | BodyKind::ResourceDeed
+                    | BodyKind::SeparationEvidence
+                    | BodyKind::SeparationReceipt
+                    | BodyKind::CustodyRecord
+                    | BodyKind::RecoveryAssessment
             )
         })
         .collect();
-    assert_eq!(unavailable.len(), 10);
+    assert_eq!(unavailable.len(), 2);
     for kind in unavailable {
         let value = serde_json::json!({"body": {}, "kind": kind});
         let bytes = canonical_bytes(&value).unwrap();

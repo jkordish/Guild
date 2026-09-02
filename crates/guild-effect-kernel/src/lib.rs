@@ -7,6 +7,7 @@
 pub mod authority;
 pub mod body;
 pub mod canonical;
+pub mod evidence;
 pub mod lease;
 pub mod protocol;
 pub mod scalar;

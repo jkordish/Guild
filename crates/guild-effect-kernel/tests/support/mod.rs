@@ -10,12 +10,22 @@ use guild_effect_kernel::{
         StaticArtifactPublishInput, StaticArtifactPublishPrecondition, ValidatedBody,
         validate_batch, validated_body,
     },
+    evidence::{ObservationAttempt, WitnessStatus},
     lease::{AdmissionError, EffectLease, LeaseProjection, derive_resource_key},
     scalar::{
         ArtifactName, ByteLength, Hex256, IdempotencyKey, Identifier, IncarnationId,
         LogicalAddress, RawDigest, SafeUInt, U64Decimal, UnixNanoseconds,
     },
 };
+
+pub fn authenticated_attempt(
+    observation: ValidatedBody<LocalFileObservation>,
+) -> ObservationAttempt {
+    ObservationAttempt::Observed {
+        observation,
+        witness: WitnessStatus::AuthenticatedEnrolled,
+    }
+}
 
 const ONE: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 const TWO: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
