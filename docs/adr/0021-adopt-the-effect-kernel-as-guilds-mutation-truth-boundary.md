@@ -1,6 +1,6 @@
 # ADR 0021: Adopt The Effect Kernel As Guild's Mutation Truth Boundary
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-02
 
 ## Context

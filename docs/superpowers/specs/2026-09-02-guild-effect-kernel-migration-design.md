@@ -1,6 +1,6 @@
 # Guild Effect Kernel Migration Design
 
-**Status:** Proposed; pending written-spec review
+**Status:** Approved
 
 **Date:** 2026-09-02
 
